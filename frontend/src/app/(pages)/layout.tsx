@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { Menu } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
 import { ChatHistoryProvider } from "@/app/contexts/ChatHistoryContext";
 import { SidebarContext } from "@/app/contexts/SidebarContext";
 import { AppSidebar } from "@/app/components/shared/AppSidebar";
@@ -13,8 +11,6 @@ export default function MikeLayout({
 }: {
     children: React.ReactNode;
 }) {
-    const { isAuthenticated, authLoading } = useAuth();
-    const router = useRouter();
 
     const [isSidebarOpenDesktop, setIsSidebarOpenDesktop] = useState(() => {
         if (typeof window !== "undefined") {
@@ -58,28 +54,12 @@ export default function MikeLayout({
         }
     };
 
-    useEffect(() => {
-        if (!authLoading && !isAuthenticated) {
-            router.push("/login");
-        }
-    }, [authLoading, isAuthenticated, router]);
-
-    if (authLoading) {
-        return (
-            <div className="flex h-screen items-center justify-center">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-gray-700" />
-            </div>
-        );
-    }
-
-    if (!isAuthenticated) return null;
-
     return (
         <ChatHistoryProvider>
             <SidebarContext.Provider
                 value={{ setSidebarOpen: (open) => { setIsSidebarOpen(open); setIsSidebarOpenDesktop(open); } }}
             >
-                <div className="h-dvh bg-white flex flex-col">
+                <div className="h-dvh bg-background flex flex-col">
                     <div className="flex-1 flex overflow-hidden">
                         <AppSidebar
                             isOpen={isSidebarOpen}
@@ -87,10 +67,10 @@ export default function MikeLayout({
                         />
                         <div className="flex-1 flex flex-col h-dvh md:overflow-hidden relative w-full">
                             {/* Mobile header */}
-                            <div className="flex md:hidden items-center gap-3 px-4 py-3 border-b border-gray-100 shrink-0">
+                            <div className="flex md:hidden items-center gap-3 px-4 py-3 border-b border-border shrink-0">
                                 <button
                                     onClick={handleSidebarToggle}
-                                    className="flex items-center justify-center w-8 h-8 rounded hover:bg-gray-100 text-gray-500 transition-colors"
+                                    className="flex items-center justify-center w-8 h-8 rounded hover:bg-accent text-foreground/60 transition-colors"
                                 >
                                     <Menu className="h-5 w-5" />
                                 </button>
