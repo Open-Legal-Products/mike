@@ -249,6 +249,7 @@ create table if not exists public.chat_messages (
   content jsonb,
   files jsonb,
   annotations jsonb,
+  workflow jsonb,
   created_at timestamptz not null default now()
 );
 
