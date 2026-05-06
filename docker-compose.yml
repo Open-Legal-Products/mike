@@ -1,0 +1,24 @@
+services:
+  mike-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mike-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.production
+    ports:
+      - "127.0.0.1:3001:3001"
+
+  mike-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mike-frontend
+    restart: unless-stopped
+    env_file:
+      - ./frontend/.env.production
+    depends_on:
+      - mike-backend
+    ports:
+      - "127.0.0.1:3002:3000"

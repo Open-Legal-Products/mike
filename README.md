@@ -55,6 +55,59 @@ npm run build --prefix frontend
 npm run lint --prefix frontend
 ```
 
+## AWS Lightsail Deployment
+
+This repo now includes deploy-ready Docker and Nginx files:
+
+- `backend/Dockerfile`
+- `frontend/Dockerfile`
+- `docker-compose.yml`
+- `backend/.env.production.example`
+- `frontend/.env.production.example`
+- `deploy/nginx/legal.playersfund.vc.conf`
+
+### 1. Clone on server and prepare env files
+
+```bash
+git clone <your-fork-url> scout-ai-legal
+cd scout-ai-legal
+cp backend/.env.production.example backend/.env.production
+cp frontend/.env.production.example frontend/.env.production
+```
+
+Fill in real values in both `.env.production` files.
+
+### 2. Start app containers
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+This starts:
+- frontend on `127.0.0.1:3002`
+- backend on `127.0.0.1:3001`
+
+### 3. Install and configure Nginx
+
+```bash
+sudo apt update
+sudo apt install -y nginx
+sudo cp deploy/nginx/legal.playersfund.vc.conf /etc/nginx/sites-available/legal.playersfund.vc.conf
+sudo ln -s /etc/nginx/sites-available/legal.playersfund.vc.conf /etc/nginx/sites-enabled/legal.playersfund.vc.conf
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### 4. Enable HTTPS
+
+After DNS for `legal.playersfund.vc` and `legal-backend.playersfund.vc` points to the server:
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d legal.playersfund.vc -d legal-backend.playersfund.vc
+```
+
 ## License
 
 AGPL-3.0-only. See `LICENSE`.
