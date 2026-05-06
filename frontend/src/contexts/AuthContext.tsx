@@ -28,6 +28,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [authLoading, setAuthLoading] = useState(true);
 
     useEffect(() => {
+        const scoutAllowedOrigin =
+            process.env.NEXT_PUBLIC_SCOUT_ALLOWED_ORIGIN ||
+            "http://localhost:3000";
+
+        const tryBootstrapEmbeddedSession = async (): Promise<boolean> => {
+            if (typeof window === "undefined") return false;
+            if (window.self === window.top) return false;
+
+            return new Promise((resolve) => {
+                let settled = false;
+                const settle = (value: boolean) => {
+                    if (settled) return;
+                    settled = true;
+                    window.removeEventListener("message", onMessage);
+                    resolve(value);
+                };
+
+                const onMessage = async (event: MessageEvent) => {
+                    if (event.origin !== scoutAllowedOrigin) return;
+                    if (event.data?.type !== "SCOUT_SUPABASE_SESSION") return;
+                    const accessToken = event.data?.payload?.access_token;
+                    const refreshToken = event.data?.payload?.refresh_token;
+                    if (!accessToken || !refreshToken) return;
+
+                    const { error } = await supabase.auth.setSession({
+                        access_token: accessToken,
+                        refresh_token: refreshToken,
+                    });
+                    if (!error) {
+                        settle(true);
+                    }
+                };
+
+                window.addEventListener("message", onMessage);
+                window.setTimeout(() => settle(false), 2500);
+            });
+        };
+
         const ensureProfile = async (accessToken: string) => {
             const apiBase =
                 process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
@@ -40,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
 
         const checkUser = async () => {
+            await tryBootstrapEmbeddedSession();
             const {
                 data: { session },
             } = await supabase.auth.getSession();

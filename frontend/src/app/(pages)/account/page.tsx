@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LogOut, Check } from "lucide-react";
+import { Check } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { deleteAccount } from "@/app/lib/mikeApi";
@@ -30,11 +30,6 @@ export default function AccountPage() {
             setOrganisation(profile.organisation);
         }
     }, [profile]);
-
-    const handleLogout = async () => {
-        await signOut();
-        router.push("/");
-    };
 
     const handleDeleteAccount = async () => {
         setIsDeleting(true);
@@ -175,21 +170,6 @@ export default function AccountPage() {
                         {profile?.tier || "Free"}
                     </p>
                 </div>
-            </div>
-
-            {/* Actions */}
-            <div className="py-6">
-                <h2 className="text-2xl font-medium font-serif mb-4">
-                    Actions
-                </h2>
-                <Button
-                    variant="outline"
-                    onClick={handleLogout}
-                    className="w-full sm:w-auto"
-                >
-                    <LogOut className="h-4 w-4 mr-2" />
-                    Sign Out
-                </Button>
             </div>
 
             {/* Danger Zone */}
