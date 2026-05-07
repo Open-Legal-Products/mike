@@ -1,5 +1,10 @@
 import { createServerSupabase } from "./supabase";
 import {
+    decryptApiKey,
+    encryptApiKey,
+    isEncryptedApiKey,
+} from "./apiKeys";
+import {
     resolveModel,
     DEFAULT_TITLE_MODEL,
     DEFAULT_TABULAR_MODEL,
@@ -33,10 +38,7 @@ export async function getUserModelSettings(
         .eq("user_id", userId)
         .single();
 
-    const api_keys: UserApiKeys = {
-        claude: data?.claude_api_key ?? null,
-        gemini: data?.gemini_api_key ?? null,
-    };
+    const api_keys = await decryptAndUpgradeApiKeys(userId, data, client);
 
     return {
         title_model: resolveTitleModel(api_keys),
@@ -55,8 +57,39 @@ export async function getUserApiKeys(
         .select("claude_api_key, gemini_api_key")
         .eq("user_id", userId)
         .single();
-    return {
-        claude: data?.claude_api_key ?? null,
-        gemini: data?.gemini_api_key ?? null,
+    return decryptAndUpgradeApiKeys(userId, data, client);
+}
+
+async function decryptAndUpgradeApiKeys(
+    userId: string,
+    data:
+        | {
+              claude_api_key?: string | null;
+              gemini_api_key?: string | null;
+          }
+        | null,
+        client: ReturnType<typeof createServerSupabase>,
+): Promise<UserApiKeys> {
+    const storedClaude = data?.claude_api_key ?? null;
+    const storedGemini = data?.gemini_api_key ?? null;
+    const apiKeys: UserApiKeys = {
+        claude: decryptApiKey(storedClaude),
+        gemini: decryptApiKey(storedGemini),
     };
+
+    const updates: Record<string, string> = {};
+    if (apiKeys.claude && storedClaude && !isEncryptedApiKey(storedClaude)) {
+        updates.claude_api_key = encryptApiKey(apiKeys.claude)!;
+    }
+    if (apiKeys.gemini && storedGemini && !isEncryptedApiKey(storedGemini)) {
+        updates.gemini_api_key = encryptApiKey(apiKeys.gemini)!;
+    }
+    if (Object.keys(updates).length > 0) {
+        await client
+            .from("user_profiles")
+            .update({ ...updates, updated_at: new Date().toISOString() })
+            .eq("user_id", userId);
+    }
+
+    return apiKeys;
 }

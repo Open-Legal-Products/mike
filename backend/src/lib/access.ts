@@ -100,12 +100,16 @@ export async function ensureReviewAccess(
     userId: string,
     userEmail: string | null | undefined,
     db: Db,
-): Promise<{ ok: true; isOwner: boolean } | { ok: false }> {
-    if (review.user_id === userId) return { ok: true, isOwner: true };
+): Promise<
+    | { ok: true; isOwner: boolean; via: "owner" | "project" | "direct" }
+    | { ok: false }
+> {
+    if (review.user_id === userId)
+        return { ok: true, isOwner: true, via: "owner" };
     const email = (userEmail ?? "").toLowerCase();
-    if (email && Array.isArray(review.shared_with)) {
+    if (!review.project_id && email && Array.isArray(review.shared_with)) {
         if (review.shared_with.some((e) => (e ?? "").toLowerCase() === email)) {
-            return { ok: true, isOwner: false };
+            return { ok: true, isOwner: false, via: "direct" };
         }
     }
     if (!review.project_id) return { ok: false };
@@ -115,8 +119,14 @@ export async function ensureReviewAccess(
         userEmail,
         db,
     );
-    if (access.ok) return { ok: true, isOwner: false };
+    if (access.ok) return { ok: true, isOwner: false, via: "project" };
     return { ok: false };
+}
+
+export function canEditReview(
+    access: { ok: true; isOwner: boolean; via?: "owner" | "project" | "direct" },
+): boolean {
+    return access.isOwner || access.via === "project";
 }
 
 /**

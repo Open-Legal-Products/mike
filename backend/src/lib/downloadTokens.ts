@@ -10,11 +10,11 @@ import crypto from "crypto";
  */
 
 function getSecret(): string {
-    return (
-        process.env.DOWNLOAD_SIGNING_SECRET ??
-        process.env.SUPABASE_SECRET_KEY ??
-        "dev-secret"
-    );
+    const secret = process.env.DOWNLOAD_SIGNING_SECRET;
+    if (!secret?.trim()) {
+        throw new Error("DOWNLOAD_SIGNING_SECRET is required");
+    }
+    return secret.trim();
 }
 
 function b64urlEncode(buf: Buffer): string {

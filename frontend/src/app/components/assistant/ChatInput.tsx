@@ -68,8 +68,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
     const [model, setModel] = useSelectedModel();
     const { profile } = useUserProfile();
     const apiKeys = {
-        claudeApiKey: profile?.claudeApiKey ?? null,
-        geminiApiKey: profile?.geminiApiKey ?? null,
+        claudeApiKey: profile?.hasClaudeApiKey ? "configured" : null,
+        geminiApiKey: profile?.hasGeminiApiKey ? "configured" : null,
     };
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [docSelectorOpen, setDocSelectorOpen] = useState(false);

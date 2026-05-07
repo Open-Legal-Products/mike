@@ -1140,18 +1140,10 @@ async function readDocumentContent(
     opts?: { emitEvents?: boolean },
 ): Promise<string> {
     const emitEvents = opts?.emitEvents ?? true;
-    console.log(`[read_document] called with docLabel="${docLabel}"`);
     const docInfo = docStore.get(docLabel);
     if (!docInfo) {
-        console.log(
-            `[read_document] MISS — docLabel "${docLabel}" not in docStore. Known labels:`,
-            Array.from(docStore.keys()),
-        );
         return "Document not found.";
     }
-    console.log(
-        `[read_document] docInfo: filename="${docInfo.filename}", file_type="${docInfo.file_type}", storage_path="${docInfo.storage_path}"`,
-    );
 
     const documentId = docIndex?.[docLabel]?.document_id;
     const emitDocRead = () => {
@@ -1185,93 +1177,39 @@ async function readDocumentContent(
                     current.bytes.byteOffset + current.bytes.byteLength,
                 ) as ArrayBuffer;
                 sourcePath = current.storage_path;
-                console.log(
-                    `[read_document] using current version path="${sourcePath}" (bytes=${raw.byteLength})`,
-                );
-            } else {
-                console.log(
-                    `[read_document] loadCurrentVersionBytes returned null for documentId="${documentId}", falling back to original storage_path`,
-                );
             }
         }
         if (!raw) {
             raw = await downloadFile(docInfo.storage_path);
-            if (raw) {
-                console.log(
-                    `[read_document] fallback download from storage_path="${docInfo.storage_path}" (bytes=${raw.byteLength})`,
-                );
-            }
         }
         if (!raw) {
-            console.log(
-                `[read_document] FAILED to download any bytes for docLabel="${docLabel}" (tried path="${sourcePath}")`,
-            );
             emitDocRead();
             return "Document could not be read.";
-        }
-        // Log the first 8 bytes so we can identify real file format regardless
-        // of the declared file_type. Valid .docx starts with "PK\x03\x04"
-        // (zip). Legacy .doc starts with "\xD0\xCF\x11\xE0" (OLE/CFB).
-        // %PDF-1 is a PDF even if mislabeled. Truncated uploads show as all-zero.
-        {
-            const head = Buffer.from(raw).subarray(0, 8);
-            const hex = head.toString("hex");
-            const ascii = head
-                .toString("binary")
-                .replace(/[^\x20-\x7e]/g, ".");
-            console.log(
-                `[read_document] magic bytes hex=${hex} ascii="${ascii}" for filename="${docInfo.filename}"`,
-            );
         }
         let text: string;
         if (docInfo.file_type === "pdf") {
             text = await extractPdfText(raw);
-            console.log(
-                `[read_document] pdf extracted length=${text.length} for filename="${docInfo.filename}"`,
-            );
         } else if (docInfo.file_type === "docx") {
             // Use the same flattening as the edit_document matcher so the
             // LLM sees exactly the characters it can anchor against.
             text = await extractDocxBodyText(Buffer.from(raw));
-            console.log(
-                `[read_document] docx extractDocxBodyText length=${text.length} for filename="${docInfo.filename}"`,
-            );
             if (!text) {
-                console.log(
-                    `[read_document] docx accepted-view extractor returned empty, falling back to mammoth for filename="${docInfo.filename}"`,
-                );
                 const mammoth = await import("mammoth");
                 const result = await mammoth.extractRawText({
                     buffer: Buffer.from(raw),
                 });
                 text = result.value;
-                console.log(
-                    `[read_document] docx mammoth fallback length=${text.length} for filename="${docInfo.filename}"`,
-                );
             }
         } else {
-            console.log(
-                `[read_document] unknown file_type="${docInfo.file_type}" for filename="${docInfo.filename}", trying mammoth`,
-            );
             const mammoth = await import("mammoth");
             const result = await mammoth.extractRawText({
                 buffer: Buffer.from(raw),
             });
             text = result.value;
-            console.log(
-                `[read_document] mammoth length=${text.length} for filename="${docInfo.filename}"`,
-            );
         }
-        console.log(
-            `[read_document] DONE filename="${docInfo.filename}" finalTextLength=${text.length} firstChars=${JSON.stringify(text.slice(0, 120))}`,
-        );
         emitDocRead();
         return text;
     } catch (err) {
-        console.log(
-            `[read_document] THREW for docLabel="${docLabel}" filename="${docInfo.filename}":`,
-            err,
-        );
         if (emitEvents)
             write(`data: ${JSON.stringify({ type: "doc_read", filename: docInfo.filename })}\n\n`);
         return "Document could not be read.";
@@ -2123,7 +2061,6 @@ export async function runToolCalls(
         } else if (tc.function.name === "generate_docx") {
             const title = args.title as string;
             const landscape = !!(args.landscape);
-            console.log(`[generate_docx] title="${title}" landscape=${landscape} args.landscape=${args.landscape}`);
             const previewFilename = `${(title.replace(/[^a-zA-Z0-9 _-]/g, "").trim().slice(0, 64) || "document")}.docx`;
             write(`data: ${JSON.stringify({ type: "doc_created_start", filename: previewFilename })}\n\n`);
             const result = await generateDocx(
@@ -2323,14 +2260,6 @@ export async function runLLMStream(params: {
     const rawMsgs = apiMessages as { role: string; content: string | null }[];
     const systemPrompt =
         rawMsgs[0]?.role === "system" ? (rawMsgs[0].content ?? "") : "";
-    console.log(
-        "[runLLMStream] system prompt:\n" +
-            "─".repeat(80) +
-            "\n" +
-            systemPrompt +
-            "\n" +
-            "─".repeat(80),
-    );
     const chatMessages: LlmMessage[] = rawMsgs
         .filter((m) => m.role !== "system")
         .map((m) => ({
@@ -2698,14 +2627,6 @@ export async function buildDocContext(
         }
     }
 
-    console.log(
-        "[buildDocContext] available docs:",
-        Object.entries(docIndex).map(([label, info]) => ({
-            label,
-            filename: info.filename,
-            document_id: info.document_id,
-        })),
-    );
     return { docIndex, docStore };
 }
 
@@ -2776,15 +2697,6 @@ export async function buildProjectDocContext(
         if (path) folderPaths.set(docLabel, path);
     }
 
-    console.log(
-        "[buildProjectDocContext] available docs:",
-        Object.entries(docIndex).map(([label, info]) => ({
-            label,
-            filename: info.filename,
-            document_id: info.document_id,
-            folder: folderPaths.get(label) ?? null,
-        })),
-    );
     return { docIndex, docStore, folderPaths };
 }
 

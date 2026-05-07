@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AlertCircle, Check, ChevronDown, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,8 +42,12 @@ export default function ModelsAndApiKeysPage() {
                                 "gemini-3-flash-preview"
                             }
                             apiKeys={{
-                                claudeApiKey: profile?.claudeApiKey ?? null,
-                                geminiApiKey: profile?.geminiApiKey ?? null,
+                                claudeApiKey: profile?.hasClaudeApiKey
+                                    ? "configured"
+                                    : null,
+                                geminiApiKey: profile?.hasGeminiApiKey
+                                    ? "configured"
+                                    : null,
                             }}
                             onChange={(id) =>
                                 updateModelPreference("tabularModel", id)
@@ -74,17 +78,17 @@ export default function ModelsAndApiKeysPage() {
                     <ApiKeyField
                         label="Anthropic (Claude) API Key"
                         placeholder="sk-ant-…"
-                        initialValue={profile?.claudeApiKey ?? ""}
+                        hasKey={!!profile?.hasClaudeApiKey}
                         onSave={(value) =>
-                            updateApiKey("claude", value.trim() || null)
+                            updateApiKey("claude", value?.trim() || null)
                         }
                     />
                     <ApiKeyField
                         label="Google (Gemini) API Key"
                         placeholder="AI…"
-                        initialValue={profile?.geminiApiKey ?? ""}
+                        hasKey={!!profile?.hasGeminiApiKey}
                         onSave={(value) =>
-                            updateApiKey("gemini", value.trim() || null)
+                            updateApiKey("gemini", value?.trim() || null)
                         }
                     />
                 </div>
@@ -183,34 +187,42 @@ function TabularModelDropdown({
 function ApiKeyField({
     label,
     placeholder,
-    initialValue,
+    hasKey,
     onSave,
 }: {
     label: string;
     placeholder: string;
-    initialValue: string;
-    onSave: (value: string) => Promise<boolean>;
+    hasKey: boolean;
+    onSave: (value: string | null) => Promise<boolean>;
 }) {
-    const [value, setValue] = useState(initialValue);
+    const [value, setValue] = useState("");
     const [reveal, setReveal] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [saved, setSaved] = useState(false);
 
-    useEffect(() => {
-        setValue(initialValue);
-    }, [initialValue]);
-
-    const dirty = value !== initialValue;
+    const dirty = value.trim().length > 0;
 
     const handleSave = async () => {
         setIsSaving(true);
         const ok = await onSave(value);
         setIsSaving(false);
         if (ok) {
+            setValue("");
             setSaved(true);
             setTimeout(() => setSaved(false), 2000);
         } else {
             alert(`Failed to save ${label}.`);
+        }
+    };
+
+    const handleClear = async () => {
+        setIsSaving(true);
+        const ok = await onSave(null);
+        setIsSaving(false);
+        if (!ok) {
+            alert(`Failed to clear ${label}.`);
+        } else {
+            setValue("");
         }
     };
 
@@ -223,7 +235,11 @@ function ApiKeyField({
                         type={reveal ? "text" : "password"}
                         value={value}
                         onChange={(e) => setValue(e.target.value)}
-                        placeholder={placeholder}
+                        placeholder={
+                            hasKey
+                                ? "Configured - enter a new key to replace"
+                                : placeholder
+                        }
                         className="pr-10"
                         autoComplete="off"
                         spellCheck={false}
@@ -257,6 +273,16 @@ function ApiKeyField({
                         "Save"
                     )}
                 </Button>
+                {hasKey && !dirty && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleClear}
+                        disabled={isSaving}
+                    >
+                        Clear
+                    </Button>
+                )}
             </div>
         </div>
     );

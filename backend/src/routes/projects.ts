@@ -9,10 +9,9 @@ import {
 import { downloadFile, uploadFile, storageKey } from "../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../lib/convert";
 import { checkProjectAccess } from "../lib/access";
-import { singleFileUpload } from "../lib/upload";
+import { singleFileUpload, validateDocumentUpload } from "../lib/upload";
 
 export const projectsRouter = Router();
-const ALLOWED_TYPES = new Set(["pdf", "docx", "doc"]);
 
 // GET /projects
 projectsRouter.get("/", requireAuth, async (req, res) => {
@@ -594,15 +593,15 @@ export async function handleDocumentUpload(
   if (!file) return void res.status(400).json({ detail: "file is required" });
 
   const filename = file.originalname;
-  const suffix = filename.includes(".")
-    ? filename.split(".").pop()!.toLowerCase()
-    : "";
-  if (!ALLOWED_TYPES.has(suffix))
-    return void res
-      .status(400)
-      .json({
-        detail: `Unsupported file type: ${suffix}. Allowed: pdf, docx, doc`,
-      });
+  let validated: Awaited<ReturnType<typeof validateDocumentUpload>>;
+  try {
+    validated = await validateDocumentUpload(file);
+  } catch (err) {
+    return void res.status(400).json({
+      detail: err instanceof Error ? err.message : "Invalid upload",
+    });
+  }
+  const suffix = validated.suffix;
 
   const content = file.buffer;
   const { data: doc, error: insertErr } = await db
@@ -626,17 +625,13 @@ export async function handleDocumentUpload(
   try {
     const docId = doc.id as string;
     const key = storageKey(userId, docId, filename);
-    const contentType =
-      suffix === "pdf"
-        ? "application/pdf"
-        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     await uploadFile(
       key,
       content.buffer.slice(
         content.byteOffset,
         content.byteOffset + content.byteLength,
       ) as ArrayBuffer,
-      contentType,
+      validated.contentType,
     );
 
     const rawBuf = content.buffer.slice(
@@ -662,10 +657,7 @@ export async function handleDocumentUpload(
         );
         pdfStoragePath = pdfKey;
       } catch (err) {
-        console.error(
-          `[upload] DOCX→PDF conversion failed for ${filename}:`,
-          err,
-        );
+        console.error("[upload] DOCX→PDF conversion failed", err);
       }
     } else if (suffix === "pdf") {
       pdfStoragePath = key;

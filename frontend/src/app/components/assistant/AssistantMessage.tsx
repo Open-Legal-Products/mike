@@ -315,14 +315,25 @@ function ResponseStatus({ status }: { status: StatusState }) {
     const isError = status === "error";
 
     useEffect(() => {
+        let hideTimer: ReturnType<typeof setTimeout> | null = null;
         if (wasActiveRef.current && !isActive) {
-            setShowDone(true);
-            setDoneVisible(true);
-            const t = setTimeout(() => setDoneVisible(false), 1500);
-            return () => clearTimeout(t);
+            const showTimer = setTimeout(() => {
+                setShowDone(true);
+                setDoneVisible(true);
+                hideTimer = setTimeout(() => setDoneVisible(false), 1500);
+            }, 0);
+            wasActiveRef.current = isActive;
+            return () => {
+                clearTimeout(showTimer);
+                if (hideTimer) clearTimeout(hideTimer);
+            };
         } else if (!wasActiveRef.current && isActive) {
-            setShowDone(false);
-            setDoneVisible(false);
+            const resetTimer = setTimeout(() => {
+                setShowDone(false);
+                setDoneVisible(false);
+            }, 0);
+            wasActiveRef.current = isActive;
+            return () => clearTimeout(resetTimer);
         }
         wasActiveRef.current = isActive;
     }, [isActive]);
@@ -893,7 +904,9 @@ function MarkdownContent({
                         />
                     ),
                     p: ({ node, ...props }) => {
-                        const parent = (node as any)?.parent;
+                        const parent = (
+                            node as { parent?: { type?: string } } | undefined
+                        )?.parent;
                         if (parent?.type === "listItem") {
                             return (
                                 <p
@@ -936,10 +949,6 @@ function MarkdownContent({
                                 return (
                                     <button
                                         onClick={() => {
-                                            console.log(
-                                                "[AssistantMessage] citation clicked",
-                                                annotation,
-                                            );
                                             onCitationClick?.(annotation);
                                         }}
                                         className="mx-0.5 inline-flex items-center justify-center rounded-full w-4 h-4 text-[10px] font-medium transition-colors align-super bg-gray-100 text-gray-900 hover:bg-gray-200"
@@ -1089,7 +1098,6 @@ export function AssistantMessage({
         versionId: string | null;
         downloadUrl: string | null;
     }) => {
-        console.log("[AssistantMessage] handleEditResolved", args);
         if (args.downloadUrl) {
             setResolvedOverrides((prev) => ({
                 ...prev,

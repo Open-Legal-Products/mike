@@ -47,19 +47,13 @@ export function useFetchDocxBytes(
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    console.log("[useFetchDocxBytes] init", {
-        documentId,
-        versionId,
-        refetchKey,
-        initialKey,
-        cacheHit: initialKey ? bytesCache.has(initialKey) : null,
-    });
-
     useEffect(() => {
         if (!documentId) {
-            setBytes(null);
-            setDownloadUrl(null);
-            return;
+            const resetTimer = setTimeout(() => {
+                setBytes(null);
+                setDownloadUrl(null);
+            }, 0);
+            return () => clearTimeout(resetTimer);
         }
 
         const key = cacheKey(documentId, versionId, refetchKey);
@@ -73,16 +67,21 @@ export function useFetchDocxBytes(
         // Cache hit: reuse bytes synchronously, no network, no spinner.
         const cached = bytesCache.get(key);
         if (cached) {
-            setBytes(cached);
-            setDownloadUrl(url);
-            setLoading(false);
-            setError(null);
-            return;
+            const cacheTimer = setTimeout(() => {
+                setBytes(cached);
+                setDownloadUrl(url);
+                setLoading(false);
+                setError(null);
+            }, 0);
+            return () => clearTimeout(cacheTimer);
         }
 
         let cancelled = false;
-        setLoading(true);
-        setError(null);
+        const loadingTimer = setTimeout(() => {
+            if (cancelled) return;
+            setLoading(true);
+            setError(null);
+        }, 0);
 
         const pending =
             inFlight.get(key) ??
@@ -120,6 +119,7 @@ export function useFetchDocxBytes(
 
         return () => {
             cancelled = true;
+            clearTimeout(loadingTimer);
         };
     }, [documentId, versionId, refetchKey]);
 

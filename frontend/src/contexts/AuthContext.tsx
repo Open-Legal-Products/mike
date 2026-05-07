@@ -34,9 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await fetch(`${apiBase}/user/profile`, {
                 method: "POST",
                 headers: { Authorization: `Bearer ${accessToken}` },
-            }).catch((e) => {
-                console.log(e);
-            });
+            }).catch(() => {});
         };
 
         const checkUser = async () => {

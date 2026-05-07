@@ -347,13 +347,6 @@ export function DocxView({
         const scrollEl = scrollRef.current;
         const containerEl = containerRef.current;
 
-        console.log("[DocxView] render effect fired", {
-            documentId,
-            versionId,
-            refetchKey,
-            bytesLen: bytes.byteLength,
-        });
-
         // Remember scroll position across re-renders so Accept/Reject stays put.
         lastScrollTopRef.current = scrollEl.scrollTop;
         const thisRender = ++renderKeyRef.current;
