@@ -77,7 +77,6 @@ export async function streamGemini(
         let sawThinking = false;
 
         for await (const chunk of stream) {
-            console.log("[gemini stream chunk]", JSON.stringify(chunk, null, 2));
             const parts =
                 (chunk as { candidates?: { content?: { parts?: GeminiPart[] } }[] })
                     .candidates?.[0]?.content?.parts ?? [];

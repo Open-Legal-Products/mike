@@ -34,22 +34,18 @@ export async function getUserFromRequest(request: NextRequest): Promise<{
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
     if (error || !user) {
-      console.warn('[Auth] Invalid or expired token:', error?.message);
       return null;
     }
 
     if (!user.email) {
-      console.warn('[Auth] User has no email');
       return null;
     }
 
-    console.log(`[Auth] User authenticated: ${user.email}`);
     return {
       email: user.email,
       id: user.id
     };
   } catch (error) {
-    console.error('[Auth] Error validating token:', error);
     return null;
   }
 }

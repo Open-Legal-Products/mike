@@ -44,8 +44,15 @@ Open `http://localhost:3000`.
 
 - Supabase Auth and Postgres
 - S3-compatible object storage, such as Cloudflare R2
-- At least one supported model provider key, depending on which models you enable
+- At least one backend-managed model provider key, depending on which models the platform enables
 - LibreOffice for DOC/DOCX to PDF conversion
+
+## SaaS Provider Mode
+
+Mike is configured as a subscription platform, not a bring-your-own-key app.
+Model provider keys live only in the backend environment (`GEMINI_API_KEY`,
+`ANTHROPIC_API_KEY`, and future provider keys). The frontend only receives
+provider availability flags and never stores or displays user model API keys.
 
 ## Checks
 

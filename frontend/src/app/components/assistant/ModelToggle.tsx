@@ -10,7 +10,10 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { isModelAvailable } from "@/app/lib/modelAvailability";
+import {
+    isModelAvailable,
+    type ProviderAvailability,
+} from "@/app/lib/modelAvailability";
 
 export interface ModelOption {
     id: string;
@@ -34,18 +37,15 @@ const GROUP_ORDER: ModelOption["group"][] = ["Anthropic", "Google"];
 interface Props {
     value: string;
     onChange: (id: string) => void;
-    apiKeys?: {
-        claudeApiKey: string | null;
-        geminiApiKey: string | null;
-    };
+    providerAvailability?: ProviderAvailability;
 }
 
-export function ModelToggle({ value, onChange, apiKeys }: Props) {
+export function ModelToggle({ value, onChange, providerAvailability }: Props) {
     const [isOpen, setIsOpen] = useState(false);
     const selected = MODELS.find((m) => m.id === value);
     const selectedLabel = selected?.label ?? "Model";
-    const selectedAvailable = apiKeys
-        ? isModelAvailable(value, apiKeys)
+    const selectedAvailable = providerAvailability
+        ? isModelAvailable(value, providerAvailability)
         : true;
 
     return (
@@ -80,8 +80,8 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                                 {group}
                             </DropdownMenuLabel>
                             {items.map((m) => {
-                                const available = apiKeys
-                                    ? isModelAvailable(m.id, apiKeys)
+                                const available = providerAvailability
+                                    ? isModelAvailable(m.id, providerAvailability)
                                     : true;
                                 return (
                                     <DropdownMenuItem

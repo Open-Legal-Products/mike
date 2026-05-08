@@ -14,12 +14,10 @@ create table if not exists public.user_profiles (
   user_id uuid not null unique references auth.users(id) on delete cascade,
   display_name text,
   organisation text,
-  tier text not null default 'Free',
+  tier text not null default 'Starter',
   message_credits_used integer not null default 0,
   credits_reset_date timestamptz not null default (now() + interval '30 days'),
   tabular_model text not null default 'gemini-3-flash-preview',
-  claude_api_key text,
-  gemini_api_key text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -30,14 +28,7 @@ create index if not exists idx_user_profiles_user
 alter table public.user_profiles enable row level security;
 
 drop policy if exists "Users can view their own profile" on public.user_profiles;
-create policy "Users can view their own profile"
-  on public.user_profiles for select
-  using (auth.uid() = user_id);
-
 drop policy if exists "Users can update their own profile" on public.user_profiles;
-create policy "Users can update their own profile"
-  on public.user_profiles for update
-  using (auth.uid() = user_id);
 
 create or replace function public.handle_new_user()
 returns trigger
@@ -338,3 +329,42 @@ create table if not exists public.tabular_review_chat_messages (
 
 create index if not exists tabular_review_chat_messages_chat_idx
   on public.tabular_review_chat_messages(chat_id, created_at);
+
+-- ---------------------------------------------------------------------------
+-- Security posture
+-- ---------------------------------------------------------------------------
+-- App data is accessed through backend service-role routes. Keep RLS enabled
+-- without direct anon/authenticated policies so browser clients cannot read or
+-- write raw tables such as user profiles, document metadata, or API keys.
+
+alter table public.user_profiles enable row level security;
+alter table public.projects enable row level security;
+alter table public.project_subfolders enable row level security;
+alter table public.documents enable row level security;
+alter table public.document_versions enable row level security;
+alter table public.document_edits enable row level security;
+alter table public.workflows enable row level security;
+alter table public.hidden_workflows enable row level security;
+alter table public.workflow_shares enable row level security;
+alter table public.chats enable row level security;
+alter table public.chat_messages enable row level security;
+alter table public.tabular_reviews enable row level security;
+alter table public.tabular_cells enable row level security;
+alter table public.tabular_review_chats enable row level security;
+alter table public.tabular_review_chat_messages enable row level security;
+
+revoke all on public.user_profiles from anon, authenticated;
+revoke all on public.projects from anon, authenticated;
+revoke all on public.project_subfolders from anon, authenticated;
+revoke all on public.documents from anon, authenticated;
+revoke all on public.document_versions from anon, authenticated;
+revoke all on public.document_edits from anon, authenticated;
+revoke all on public.workflows from anon, authenticated;
+revoke all on public.hidden_workflows from anon, authenticated;
+revoke all on public.workflow_shares from anon, authenticated;
+revoke all on public.chats from anon, authenticated;
+revoke all on public.chat_messages from anon, authenticated;
+revoke all on public.tabular_reviews from anon, authenticated;
+revoke all on public.tabular_cells from anon, authenticated;
+revoke all on public.tabular_review_chats from anon, authenticated;
+revoke all on public.tabular_review_chat_messages from anon, authenticated;

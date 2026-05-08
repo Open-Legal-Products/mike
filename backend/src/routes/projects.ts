@@ -9,66 +9,70 @@ import {
 import { downloadFile, uploadFile, storageKey } from "../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../lib/convert";
 import { checkProjectAccess } from "../lib/access";
-import { singleFileUpload } from "../lib/upload";
+import { singleFileUpload, validateDocumentUpload } from "../lib/upload";
 
 export const projectsRouter = Router();
-const ALLOWED_TYPES = new Set(["pdf", "docx", "doc"]);
 
 // GET /projects
 projectsRouter.get("/", requireAuth, async (req, res) => {
-  const userId = res.locals.userId as string;
-  const userEmail = res.locals.userEmail as string;
-  const db = createServerSupabase();
+  try {
+    const userId = res.locals.userId as string;
+    const userEmail = res.locals.userEmail as string;
+    const db = createServerSupabase();
 
-  const { data: ownProjects, error: ownError } = await db
-    .from("projects")
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
-  if (ownError) return void res.status(500).json({ detail: ownError.message });
+    const { data: ownProjects, error: ownError } = await db
+      .from("projects")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+    if (ownError) return void res.status(500).json({ detail: ownError.message });
 
-  const { data: sharedProjects, error: sharedError } = userEmail
-    ? await db
-        .from("projects")
-        .select("*")
-        .contains("shared_with", [userEmail])
-        .neq("user_id", userId)
-        .order("created_at", { ascending: false })
-    : { data: [], error: null };
-  if (sharedError)
-    return void res.status(500).json({ detail: sharedError.message });
+    const { data: sharedProjects, error: sharedError } = userEmail
+      ? await db
+          .from("projects")
+          .select("*")
+          .filter("shared_with", "cs", JSON.stringify([userEmail]))
+          .neq("user_id", userId)
+          .order("created_at", { ascending: false })
+      : { data: [], error: null };
+    if (sharedError)
+      return void res.status(500).json({ detail: sharedError.message });
 
-  const projects = [...(ownProjects ?? []), ...(sharedProjects ?? [])].sort(
-    (a, b) =>
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-  );
+    const projects = [...(ownProjects ?? []), ...(sharedProjects ?? [])].sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
 
-  const result = await Promise.all(
-    projects.map(async (p) => {
-      const [docs, chats, reviews] = await Promise.all([
-        db
-          .from("documents")
-          .select("id", { count: "exact", head: true })
-          .eq("project_id", p.id),
-        db
-          .from("chats")
-          .select("id", { count: "exact", head: true })
-          .eq("project_id", p.id),
-        db
-          .from("tabular_reviews")
-          .select("id", { count: "exact", head: true })
-          .eq("project_id", p.id),
-      ]);
-      return {
-        ...p,
-        is_owner: p.user_id === userId,
-        document_count: docs.count ?? 0,
-        chat_count: chats.count ?? 0,
-        review_count: reviews.count ?? 0,
-      };
-    }),
-  );
-  res.json(result);
+    const result = await Promise.all(
+      projects.map(async (p) => {
+        const [docs, chats, reviews] = await Promise.all([
+          db
+            .from("documents")
+            .select("id", { count: "exact", head: true })
+            .eq("project_id", p.id),
+          db
+            .from("chats")
+            .select("id", { count: "exact", head: true })
+            .eq("project_id", p.id),
+          db
+            .from("tabular_reviews")
+            .select("id", { count: "exact", head: true })
+            .eq("project_id", p.id),
+        ]);
+        return {
+          ...p,
+          is_owner: p.user_id === userId,
+          document_count: docs.count ?? 0,
+          chat_count: chats.count ?? 0,
+          review_count: reviews.count ?? 0,
+        };
+      }),
+    );
+    res.json(result);
+  } catch (err) {
+    console.error("[projects] unhandled error:", err);
+    res.status(500).json({ detail: String(err) });
+  }
 });
 
 // POST /projects
@@ -526,11 +530,14 @@ projectsRouter.patch("/:projectId/folders/:folderId", requireAuth, async (req, r
   if ("parent_folder_id" in body) {
     // Cycle check: walk up the tree from the proposed parent to ensure folderId is not an ancestor
     if (body.parent_folder_id) {
+      const parent = await loadProjectFolder(db, projectId, body.parent_folder_id);
+      if (!parent) return void res.status(404).json({ detail: "Parent folder not found" });
+
       let cur: string | null = body.parent_folder_id;
       while (cur) {
         if (cur === folderId) return void res.status(400).json({ detail: "Cannot move a folder into itself or a descendant" });
-        const { data: p }: { data: { parent_folder_id: string | null } | null } =
-          await db.from("project_subfolders").select("parent_folder_id").eq("id", cur).single();
+        const p = await loadProjectFolder(db, projectId, cur);
+        if (!p) return void res.status(404).json({ detail: "Parent folder not found" });
         cur = p?.parent_folder_id ?? null;
       }
     }
@@ -555,8 +562,11 @@ projectsRouter.delete("/:projectId/folders/:folderId", requireAuth, async (req, 
   const access = await checkProjectAccess(projectId, userId, userEmail, db);
   if (!access.ok) return void res.status(404).json({ detail: "Project not found" });
 
+  const folder = await loadProjectFolder(db, projectId, folderId);
+  if (!folder) return void res.status(404).json({ detail: "Folder not found" });
+
   // Move direct documents to root before cascade-deleting subfolders
-  await db.from("documents").update({ folder_id: null }).eq("folder_id", folderId);
+  await db.from("documents").update({ folder_id: null }).eq("folder_id", folderId).eq("project_id", projectId);
 
   const { error } = await db.from("project_subfolders")
     .delete().eq("id", folderId).eq("project_id", projectId);
@@ -575,6 +585,11 @@ projectsRouter.patch("/:projectId/documents/:documentId/folder", requireAuth, as
   const access = await checkProjectAccess(projectId, userId, userEmail, db);
   if (!access.ok) return void res.status(404).json({ detail: "Project not found" });
 
+  if (folder_id) {
+    const folder = await loadProjectFolder(db, projectId, folder_id);
+    if (!folder) return void res.status(404).json({ detail: "Folder not found" });
+  }
+
   const { data, error } = await db.from("documents")
     .update({ folder_id: folder_id ?? null, updated_at: new Date().toISOString() })
     .eq("id", documentId).eq("project_id", projectId)
@@ -582,6 +597,20 @@ projectsRouter.patch("/:projectId/documents/:documentId/folder", requireAuth, as
   if (error || !data) return void res.status(404).json({ detail: "Document not found" });
   res.json(data);
 });
+
+async function loadProjectFolder(
+  db: ReturnType<typeof createServerSupabase>,
+  projectId: string,
+  folderId: string,
+): Promise<{ id: string; parent_folder_id: string | null } | null> {
+  const { data } = await db
+    .from("project_subfolders")
+    .select("id, parent_folder_id")
+    .eq("id", folderId)
+    .eq("project_id", projectId)
+    .maybeSingle();
+  return (data as { id: string; parent_folder_id: string | null } | null) ?? null;
+}
 
 export async function handleDocumentUpload(
   req: import("express").Request,
@@ -594,15 +623,15 @@ export async function handleDocumentUpload(
   if (!file) return void res.status(400).json({ detail: "file is required" });
 
   const filename = file.originalname;
-  const suffix = filename.includes(".")
-    ? filename.split(".").pop()!.toLowerCase()
-    : "";
-  if (!ALLOWED_TYPES.has(suffix))
-    return void res
-      .status(400)
-      .json({
-        detail: `Unsupported file type: ${suffix}. Allowed: pdf, docx, doc`,
-      });
+  let validated: Awaited<ReturnType<typeof validateDocumentUpload>>;
+  try {
+    validated = await validateDocumentUpload(file);
+  } catch (err) {
+    return void res.status(400).json({
+      detail: err instanceof Error ? err.message : "Invalid upload",
+    });
+  }
+  const suffix = validated.suffix;
 
   const content = file.buffer;
   const { data: doc, error: insertErr } = await db
@@ -626,17 +655,13 @@ export async function handleDocumentUpload(
   try {
     const docId = doc.id as string;
     const key = storageKey(userId, docId, filename);
-    const contentType =
-      suffix === "pdf"
-        ? "application/pdf"
-        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     await uploadFile(
       key,
       content.buffer.slice(
         content.byteOffset,
         content.byteOffset + content.byteLength,
       ) as ArrayBuffer,
-      contentType,
+      validated.contentType,
     );
 
     const rawBuf = content.buffer.slice(
@@ -662,10 +687,7 @@ export async function handleDocumentUpload(
         );
         pdfStoragePath = pdfKey;
       } catch (err) {
-        console.error(
-          `[upload] DOCX→PDF conversion failed for ${filename}:`,
-          err,
-        );
+        console.error("[upload] DOCX→PDF conversion failed", err);
       }
     } else if (suffix === "pdf") {
       pdfStoragePath = key;

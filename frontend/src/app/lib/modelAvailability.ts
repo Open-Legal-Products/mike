@@ -1,6 +1,7 @@
 import { MODELS, type ModelOption } from "../components/assistant/ModelToggle";
 
 export type ModelProvider = "claude" | "gemini";
+export type ProviderAvailability = Record<ModelProvider, boolean>;
 
 export function getModelProvider(modelId: string): ModelProvider | null {
     const model = MODELS.find((m) => m.id === modelId);
@@ -10,22 +11,18 @@ export function getModelProvider(modelId: string): ModelProvider | null {
 
 export function isModelAvailable(
     modelId: string,
-    apiKeys: { claudeApiKey: string | null; geminiApiKey: string | null },
+    availability: ProviderAvailability,
 ): boolean {
     const provider = getModelProvider(modelId);
     if (!provider) return false;
-    return provider === "claude"
-        ? !!apiKeys.claudeApiKey?.trim()
-        : !!apiKeys.geminiApiKey?.trim();
+    return availability[provider];
 }
 
 export function isProviderAvailable(
     provider: ModelProvider,
-    apiKeys: { claudeApiKey: string | null; geminiApiKey: string | null },
+    availability: ProviderAvailability,
 ): boolean {
-    return provider === "claude"
-        ? !!apiKeys.claudeApiKey?.trim()
-        : !!apiKeys.geminiApiKey?.trim();
+    return availability[provider];
 }
 
 export function providerLabel(provider: ModelProvider): string {

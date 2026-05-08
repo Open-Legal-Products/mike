@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { AlertCircle, Check, ChevronDown, Eye, EyeOff } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useState } from "react";
+import { AlertCircle, Check, ChevronDown } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -17,18 +15,22 @@ import { MODELS } from "@/app/components/assistant/ModelToggle";
 import {
     isModelAvailable,
     modelGroupToProvider,
+    type ProviderAvailability,
 } from "@/app/lib/modelAvailability";
 
-export default function ModelsAndApiKeysPage() {
-    const { profile, updateModelPreference, updateApiKey } = useUserProfile();
+export default function ModelsPage() {
+    const { profile, updateModelPreference } = useUserProfile();
+    const providerAvailability = {
+        claude: !!profile?.claudeAvailable,
+        gemini: !!profile?.geminiAvailable,
+    };
 
     return (
         <div className="space-y-4">
-            {/* Model Preferences */}
             <div className="pb-6">
                 <div className="flex items-center gap-2 mb-4">
                     <h2 className="text-2xl font-medium font-serif">
-                        Model Preferences
+                        Model preferences
                     </h2>
                 </div>
                 <div className="space-y-4 max-w-md">
@@ -41,10 +43,7 @@ export default function ModelsAndApiKeysPage() {
                                 profile?.tabularModel ??
                                 "gemini-3-flash-preview"
                             }
-                            apiKeys={{
-                                claudeApiKey: profile?.claudeApiKey ?? null,
-                                geminiApiKey: profile?.geminiApiKey ?? null,
-                            }}
+                            providerAvailability={providerAvailability}
                             onChange={(id) =>
                                 updateModelPreference("tabularModel", id)
                             }
@@ -53,39 +52,27 @@ export default function ModelsAndApiKeysPage() {
                 </div>
             </div>
 
-            {/* API Keys */}
             <div className="py-6">
                 <div className="flex items-center gap-2 mb-2">
                     <h2 className="text-2xl font-medium font-serif">
-                        API Keys
+                        Platform providers
                     </h2>
                 </div>
                 <p className="text-sm text-gray-500 mb-4 max-w-xl">
-                    You must provide your own API keys for the app to work or
-                    add your API keys into the .env file if you are running your
-                    own instance of Mike.
+                    Model access is managed by the platform and exposed through
+                    subscription plans. Availability depends on the providers
+                    configured for this deployment.
                 </p>
-                <p className="text-xs text-gray-400 mb-4 max-w-xl">
-                    Title generation automatically routes to the cheapest model
-                    of whichever provider you&rsquo;ve configured (Gemini Flash
-                    Lite if a Gemini key is set, otherwise Claude Haiku).
-                </p>
-                <div className="space-y-4 max-w-xl">
-                    <ApiKeyField
-                        label="Anthropic (Claude) API Key"
-                        placeholder="sk-ant-…"
-                        initialValue={profile?.claudeApiKey ?? ""}
-                        onSave={(value) =>
-                            updateApiKey("claude", value.trim() || null)
-                        }
+                <div className="grid gap-3 max-w-xl sm:grid-cols-2">
+                    <ProviderStatus
+                        label="Anthropic"
+                        detail="Claude models"
+                        available={!!profile?.claudeAvailable}
                     />
-                    <ApiKeyField
-                        label="Google (Gemini) API Key"
-                        placeholder="AI…"
-                        initialValue={profile?.geminiApiKey ?? ""}
-                        onSave={(value) =>
-                            updateApiKey("gemini", value.trim() || null)
-                        }
+                    <ProviderStatus
+                        label="Google"
+                        detail="Gemini models"
+                        available={!!profile?.geminiAvailable}
                     />
                 </div>
             </div>
@@ -96,15 +83,15 @@ export default function ModelsAndApiKeysPage() {
 function TabularModelDropdown({
     value,
     onChange,
-    apiKeys,
+    providerAvailability,
 }: {
     value: string;
     onChange: (id: string) => void;
-    apiKeys: { claudeApiKey: string | null; geminiApiKey: string | null };
+    providerAvailability: ProviderAvailability;
 }) {
     const [isOpen, setIsOpen] = useState(false);
     const selected = MODELS.find((m) => m.id === value);
-    const selectedAvailable = isModelAvailable(value, apiKeys);
+    const selectedAvailable = isModelAvailable(value, providerAvailability);
     const groups: ("Anthropic" | "Google")[] = ["Anthropic", "Google"];
 
     return (
@@ -145,7 +132,7 @@ function TabularModelDropdown({
                                 const provider = modelGroupToProvider(m.group);
                                 const available = isModelAvailable(
                                     m.id,
-                                    apiKeys,
+                                    providerAvailability,
                                 );
                                 return (
                                     <DropdownMenuItem
@@ -154,7 +141,7 @@ function TabularModelDropdown({
                                         onSelect={() => onChange(m.id)}
                                         title={
                                             !available
-                                                ? `Add a ${provider === "claude" ? "Claude" : "Gemini"} API key to use this model`
+                                                ? `${provider === "claude" ? "Claude" : "Gemini"} is not configured for this deployment`
                                                 : undefined
                                         }
                                     >
@@ -180,83 +167,35 @@ function TabularModelDropdown({
     );
 }
 
-function ApiKeyField({
+function ProviderStatus({
     label,
-    placeholder,
-    initialValue,
-    onSave,
+    detail,
+    available,
 }: {
     label: string;
-    placeholder: string;
-    initialValue: string;
-    onSave: (value: string) => Promise<boolean>;
+    detail: string;
+    available: boolean;
 }) {
-    const [value, setValue] = useState(initialValue);
-    const [reveal, setReveal] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
-    const [saved, setSaved] = useState(false);
-
-    useEffect(() => {
-        setValue(initialValue);
-    }, [initialValue]);
-
-    const dirty = value !== initialValue;
-
-    const handleSave = async () => {
-        setIsSaving(true);
-        const ok = await onSave(value);
-        setIsSaving(false);
-        if (ok) {
-            setSaved(true);
-            setTimeout(() => setSaved(false), 2000);
-        } else {
-            alert(`Failed to save ${label}.`);
-        }
-    };
-
     return (
-        <div>
-            <label className="text-sm text-gray-600 block mb-2">{label}</label>
-            <div className="flex gap-2">
-                <div className="relative flex-1">
-                    <Input
-                        type={reveal ? "text" : "password"}
-                        value={value}
-                        onChange={(e) => setValue(e.target.value)}
-                        placeholder={placeholder}
-                        className="pr-10"
-                        autoComplete="off"
-                        spellCheck={false}
-                    />
-                    <button
-                        type="button"
-                        onClick={() => setReveal((r) => !r)}
-                        className="absolute inset-y-0 right-2 flex items-center text-gray-400 hover:text-gray-600"
-                        aria-label={reveal ? "Hide key" : "Show key"}
-                    >
-                        {reveal ? (
-                            <EyeOff className="h-4 w-4" />
-                        ) : (
-                            <Eye className="h-4 w-4" />
-                        )}
-                    </button>
+        <div className="rounded-md border border-gray-200 bg-white px-3 py-3">
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <div className="text-sm font-medium text-gray-900">
+                        {label}
+                    </div>
+                    <div className="text-xs text-gray-500">{detail}</div>
                 </div>
-                <Button
-                    onClick={handleSave}
-                    disabled={isSaving || !dirty || saved}
-                    className="min-w-[80px] transition-all bg-black hover:bg-gray-900 text-white"
-                >
-                    {isSaving ? (
-                        "Saving..."
-                    ) : saved ? (
-                        <>
-                            <Check className="h-4 w-3" />
-                            Saved
-                        </>
-                    ) : (
-                        "Save"
-                    )}
-                </Button>
+                {available ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
+                        <Check className="h-3 w-3" />
+                        Included
+                    </span>
+                ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+                        <AlertCircle className="h-3 w-3" />
+                        Not configured
+                    </span>
+                )}
             </div>
         </div>
     );

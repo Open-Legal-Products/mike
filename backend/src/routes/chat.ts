@@ -12,7 +12,7 @@ import {
 } from "../lib/chatTools";
 import { completeText } from "../lib/llm";
 import { getUserApiKeys, getUserModelSettings } from "../lib/userSettings";
-import { checkProjectAccess } from "../lib/access";
+import { checkProjectAccess, listAccessibleProjectIds } from "../lib/access";
 
 export const chatRouter = Router();
 
@@ -24,6 +24,7 @@ export const chatRouter = Router();
 // listed per-project via GET /projects/:projectId/chats.
 chatRouter.get("/", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
+    const userEmail = res.locals.userEmail as string | undefined;
     const db = createServerSupabase();
 
     const { data: ownProjects, error: projErr } = await db
@@ -46,14 +47,29 @@ chatRouter.get("/", requireAuth, async (req, res) => {
         .or(filter)
         .order("created_at", { ascending: false });
     if (error) return void res.status(500).json({ detail: error.message });
-    res.json(data ?? []);
+    const accessibleProjectIds = new Set(
+        await listAccessibleProjectIds(userId, userEmail, db),
+    );
+    res.json(
+        (data ?? []).filter((chat) => {
+            const projectId = chat.project_id as string | null;
+            if (!projectId) return chat.user_id === userId;
+            return accessibleProjectIds.has(projectId);
+        }),
+    );
 });
 
 // POST /chat/create
 chatRouter.post("/create", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
+    const userEmail = res.locals.userEmail as string | undefined;
     const projectId: string | null = req.body.project_id ?? null;
     const db = createServerSupabase();
+    if (projectId) {
+        const access = await checkProjectAccess(projectId, userId, userEmail, db);
+        if (!access.ok)
+            return void res.status(404).json({ detail: "Project not found" });
+    }
     const { data, error } = await db
         .from("chats")
         .insert({ user_id: userId, project_id: projectId ?? undefined })
@@ -78,9 +94,10 @@ chatRouter.get("/:chatId", requireAuth, async (req, res) => {
         .single();
     if (error || !chat)
         return void res.status(404).json({ detail: "Chat not found" });
-    // Owner of the chat OR a member of the chat's project can view it.
-    let canView = chat.user_id === userId;
-    if (!canView && chat.project_id) {
+    // Standalone chats stay owner-only. Project chats require current project
+    // access so revoked shares cannot keep using old chat IDs.
+    let canView = false;
+    if (chat.project_id) {
         const access = await checkProjectAccess(
             chat.project_id,
             userId,
@@ -88,6 +105,8 @@ chatRouter.get("/:chatId", requireAuth, async (req, res) => {
             db,
         );
         canView = access.ok;
+    } else {
+        canView = chat.user_id === userId;
     }
     if (!canView)
         return void res.status(404).json({ detail: "Chat not found" });
@@ -274,8 +293,8 @@ chatRouter.post("/:chatId/generate-title", requireAuth, async (req, res) => {
 
     if (error || !chat)
         return void res.status(404).json({ detail: "Chat not found" });
-    let canTitle = chat.user_id === userId;
-    if (!canTitle && chat.project_id) {
+    let canTitle = false;
+    if (chat.project_id) {
         const access = await checkProjectAccess(
             chat.project_id,
             userId,
@@ -283,6 +302,8 @@ chatRouter.post("/:chatId/generate-title", requireAuth, async (req, res) => {
             db,
         );
         canTitle = access.ok;
+    } else {
+        canTitle = chat.user_id === userId;
     }
     if (!canTitle)
         return void res.status(404).json({ detail: "Chat not found" });
@@ -323,28 +344,24 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         model?: string;
     };
 
-    console.log("[chat/stream] incoming request", {
-        userId,
-        chat_id,
-        project_id,
-        model,
-        messageCount: messages?.length,
-    });
-
     const userEmail = res.locals.userEmail as string | undefined;
     const db = createServerSupabase();
     let chatId = chat_id ?? null;
     let chatTitle: string | null = null;
+    let effectiveProjectId: string | null = project_id ?? null;
 
     if (chatId) {
-        // Either chat owner OR a member of the chat's project can post.
+        // Standalone chats stay owner-only. Project chats require current
+        // project access, using the project_id stored on the chat row.
         const { data: existing } = await db
             .from("chats")
             .select("id, title, user_id, project_id")
             .eq("id", chatId)
             .single();
-        let canUse = !!existing && existing.user_id === userId;
-        if (!canUse && existing?.project_id) {
+        if (!existing)
+            return void res.status(404).json({ detail: "Chat not found" });
+        let canUse = false;
+        if (existing.project_id) {
             const access = await checkProjectAccess(
                 existing.project_id,
                 userId,
@@ -352,9 +369,13 @@ chatRouter.post("/", requireAuth, async (req, res) => {
                 db,
             );
             canUse = access.ok;
+        } else {
+            canUse = existing.user_id === userId;
         }
-        if (!canUse || !existing) chatId = null;
-        else chatTitle = existing.title;
+        if (!canUse)
+            return void res.status(404).json({ detail: "Chat not found" });
+        chatTitle = existing.title;
+        effectiveProjectId = (existing.project_id as string | null) ?? null;
     }
 
     if (!chatId) {
@@ -372,9 +393,10 @@ chatRouter.post("/", requireAuth, async (req, res) => {
                     .status(404)
                     .json({ detail: "Project not found" });
         }
+        effectiveProjectId = project_id ?? null;
         const { data: newChat, error } = await db
             .from("chats")
-            .insert({ user_id: userId, project_id: project_id ?? null })
+            .insert({ user_id: userId, project_id: effectiveProjectId })
             .select("id, title")
             .single();
         if (error || !newChat) {
@@ -386,8 +408,6 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         chatId = newChat.id as string;
         chatTitle = newChat.title;
     }
-
-    console.log("[chat/stream] resolved chatId", chatId);
 
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (lastUser) {
@@ -420,12 +440,6 @@ chatRouter.post("/", requireAuth, async (req, res) => {
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
 
-    console.log("[chat/stream] starting LLM stream", {
-        apiMessageCount: apiMessages.length,
-        docCount: Object.keys(docIndex).length,
-        workflowCount: Object.keys(workflowStore).length,
-    });
-
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -449,12 +463,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             workflowStore,
             model,
             apiKeys,
-            projectId: project_id ?? null,
-        });
-
-        console.log("[chat/stream] LLM stream finished", {
-            fullTextLen: fullText?.length ?? 0,
-            eventCount: events?.length ?? 0,
+            projectId: effectiveProjectId,
         });
 
         const annotations = extractAnnotations(fullText, docIndex, events);

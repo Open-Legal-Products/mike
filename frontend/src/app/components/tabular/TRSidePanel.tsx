@@ -109,10 +109,6 @@ export function TRSidePanel({
     const { processed: reasoningText, citations: reasoningCitations } =
         preprocessCitations(cell.content?.reasoning ?? "");
 
-    useEffect(() => {
-        console.log("[TRSidePanel] summary:", cell.content?.summary ?? "");
-    }, [cell.id, cell.content?.summary]);
-
     return (
         <div
             className="fixed right-0 top-0 bottom-0 z-100 flex flex-row shadow-md border-l border-gray-200"
@@ -156,7 +152,7 @@ export function TRSidePanel({
                                         ref={quoteParagraphRef}
                                         className={`flex-1 text-sm text-gray-600 ${quoteExpanded ? "" : "truncate"}`}
                                     >
-                                        "{docCitation.quote}"
+                                        &quot;{docCitation.quote}&quot;
                                     </p>
                                     {(isTruncated || quoteExpanded) && (
                                         <ChevronDown

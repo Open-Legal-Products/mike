@@ -20,7 +20,7 @@ export function ApiKeyMissingModal({ open, onClose, provider, message }: Props) 
     const providerName = provider ? providerLabel(provider) : "this provider";
     const body =
         message ??
-        `You haven't added a ${providerName} API key yet. Add one in your account settings to use this model.`;
+        `${providerName} is not configured for this subscription plan or deployment.`;
 
     const handleGoToAccount = () => {
         onClose();
@@ -40,7 +40,7 @@ export function ApiKeyMissingModal({ open, onClose, provider, message }: Props) 
                     <div className="flex items-center gap-2">
                         <AlertTriangle className="h-4 w-4 text-amber-600" />
                         <h2 className="text-base font-medium text-gray-900">
-                            API key required
+                            Provider unavailable
                         </h2>
                     </div>
                     <button
@@ -68,7 +68,7 @@ export function ApiKeyMissingModal({ open, onClose, provider, message }: Props) 
                         onClick={handleGoToAccount}
                         className="rounded-lg bg-gray-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-700"
                     >
-                        Go to account settings
+                        View model settings
                     </button>
                 </div>
             </div>

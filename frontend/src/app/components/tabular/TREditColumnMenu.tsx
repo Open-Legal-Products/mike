@@ -85,8 +85,6 @@ export function TREditColumnMenu({
             setSaving(false);
         }
     }
-    console.log(tags);
-
     async function handleDelete() {
         setDeleting(true);
         try {

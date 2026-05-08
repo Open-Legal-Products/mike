@@ -186,16 +186,26 @@ function TRResponseStatus({ isActive }: { isActive: boolean }) {
     const wasActiveRef = useRef(false);
 
     useEffect(() => {
+        let hideTimer: ReturnType<typeof setTimeout> | null = null;
         if (wasActiveRef.current && !isActive) {
-            setShowDone(true);
-            setDoneVisible(true);
-            const t = setTimeout(() => setDoneVisible(false), 1500);
+            const showTimer = setTimeout(() => {
+                setShowDone(true);
+                setDoneVisible(true);
+                hideTimer = setTimeout(() => setDoneVisible(false), 1500);
+            }, 0);
             wasActiveRef.current = isActive;
-            return () => clearTimeout(t);
+            return () => {
+                clearTimeout(showTimer);
+                if (hideTimer) clearTimeout(hideTimer);
+            };
         }
         if (!wasActiveRef.current && isActive) {
-            setShowDone(false);
-            setDoneVisible(false);
+            const resetTimer = setTimeout(() => {
+                setShowDone(false);
+                setDoneVisible(false);
+            }, 0);
+            wasActiveRef.current = isActive;
+            return () => clearTimeout(resetTimer);
         }
         wasActiveRef.current = isActive;
     }, [isActive]);
@@ -446,14 +456,14 @@ function TRChatInput({
     onCancel,
     model,
     onModelChange,
-    apiKeys,
+    providerAvailability,
 }: {
     isLoading: boolean;
     onSubmit: (value: string) => void;
     onCancel: () => void;
     model: string;
     onModelChange: (id: string) => void;
-    apiKeys: { claudeApiKey: string | null; geminiApiKey: string | null };
+    providerAvailability: { claude: boolean; gemini: boolean };
 }) {
     const [value, setValue] = useState("");
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -495,7 +505,7 @@ function TRChatInput({
                     <ModelToggle
                         value={model}
                         onChange={onModelChange}
-                        apiKeys={apiKeys}
+                        providerAvailability={providerAvailability}
                     />
                     <button
                         type="button"
@@ -607,9 +617,9 @@ export function TRChatPanel({
     onChatIdChange,
 }: Props) {
     const { profile, updateModelPreference } = useUserProfile();
-    const apiKeys = {
-        claudeApiKey: profile?.claudeApiKey ?? null,
-        geminiApiKey: profile?.geminiApiKey ?? null,
+    const providerAvailability = {
+        claude: !!profile?.claudeAvailable,
+        gemini: !!profile?.geminiAvailable,
     };
     const currentModel = profile?.tabularModel ?? "gemini-3-flash-preview";
     const [apiKeyModalProvider, setApiKeyModalProvider] =
@@ -957,7 +967,7 @@ export function TRChatPanel({
 
     async function handleSubmit(trimmed: string) {
         if (!trimmed || isLoading) return;
-        if (!isModelAvailable(currentModel, apiKeys)) {
+        if (!isModelAvailable(currentModel, providerAvailability)) {
             setApiKeyModalProvider(getModelProvider(currentModel));
             return;
         }
@@ -1457,7 +1467,7 @@ export function TRChatPanel({
                 onModelChange={(id) =>
                     updateModelPreference("tabularModel", id)
                 }
-                apiKeys={apiKeys}
+                providerAvailability={providerAvailability}
             />
 
             <ApiKeyMissingModal

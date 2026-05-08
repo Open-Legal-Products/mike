@@ -22,10 +22,9 @@ import {
   loadActiveVersion,
 } from "../lib/documentVersions";
 import { ensureDocAccess } from "../lib/access";
-import { singleFileUpload } from "../lib/upload";
+import { singleFileUpload, validateDocumentUpload } from "../lib/upload";
 
 export const documentsRouter = Router();
-const ALLOWED_TYPES = new Set(["pdf", "docx", "doc"]);
 
 // GET /single-documents
 documentsRouter.get("/", requireAuth, async (req, res) => {
@@ -401,11 +400,19 @@ documentsRouter.post(
     if (!access.ok)
       return void res.status(404).json({ detail: "Document not found" });
 
-    // Reject if the uploaded file's extension doesn't match the document's
-    // declared type — otherwise every downstream viewer/extractor breaks.
-    const suffix = file.originalname.includes(".")
-      ? file.originalname.split(".").pop()!.toLowerCase()
-      : "";
+    let validated: Awaited<ReturnType<typeof validateDocumentUpload>>;
+    try {
+      validated = await validateDocumentUpload(file);
+    } catch (err) {
+      return void res.status(400).json({
+        detail: err instanceof Error ? err.message : "Invalid upload",
+      });
+    }
+    const suffix = validated.suffix;
+
+    // Reject if the uploaded file's extension/content doesn't match the
+    // document's declared type — otherwise every downstream viewer/extractor
+    // breaks or processes an unexpected format.
     if (doc.file_type && suffix && doc.file_type !== suffix) {
       return void res.status(400).json({
         detail: `Uploaded file type (${suffix}) does not match document type (${doc.file_type}).`,
@@ -421,10 +428,6 @@ documentsRouter.post(
       versionSlug,
       file.originalname,
     );
-    const contentType =
-      suffix === "pdf"
-        ? "application/pdf"
-        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     try {
       await uploadFile(
         key,
@@ -432,7 +435,7 @@ documentsRouter.post(
           file.buffer.byteOffset,
           file.buffer.byteOffset + file.buffer.byteLength,
         ) as ArrayBuffer,
-        contentType,
+        validated.contentType,
       );
     } catch (e) {
       console.error("[versions/upload] storage write failed", e);
@@ -459,10 +462,7 @@ documentsRouter.post(
         );
         pdfStoragePath = pdfKey;
       } catch (err) {
-        console.error(
-          `[versions/upload] DOCX→PDF conversion failed for ${file.originalname}:`,
-          err,
-        );
+        console.error("[versions/upload] DOCX→PDF conversion failed", err);
       }
     } else if (suffix === "pdf") {
       // For PDF uploads, the uploaded bytes are themselves the PDF rendition.
@@ -632,43 +632,31 @@ async function handleEditResolution(
   const { documentId, editId } = req.params;
   const db = createServerSupabase();
 
-  console.log(`[edit-resolution] incoming ${mode}`, {
-    userId,
-    documentId,
-    editId,
-  });
-
   const { data: edit, error: editErr } = await db
     .from("document_edits")
     .select("id, document_id, change_id, del_w_id, ins_w_id, status")
     .eq("id", editId)
     .eq("document_id", documentId)
     .single();
-  console.log(`[edit-resolution] fetched edit row`, { edit, editErr });
+  if (editErr)
+    return void res.status(404).json({ detail: "Edit not found" });
   if (!edit) {
-    console.log(`[edit-resolution] edit not found, returning 404`);
     return void res.status(404).json({ detail: "Edit not found" });
   }
   // Idempotent: if the edit is already resolved, return the current doc
   // state so stale UI (e.g. an old chat reloaded in a new session) can
   // reconcile without throwing.
   if (edit.status !== "pending") {
-    console.log(`[edit-resolution] edit already resolved`, {
-      editId,
-      status: edit.status,
-    });
     const { data: doc } = await db
       .from("documents")
       .select("current_version_id, filename, user_id, project_id")
       .eq("id", documentId)
       .single();
     if (!doc) {
-      console.log(`[edit-resolution] doc not found for resolved edit`);
       return void res.status(404).json({ detail: "Document not found" });
     }
     const accessResolved = await ensureDocAccess(doc, userId, userEmail, db);
     if (!accessResolved.ok) {
-      console.log(`[edit-resolution] doc access denied for resolved edit`);
       return void res.status(404).json({ detail: "Document not found" });
     }
     const activeForResolved = await loadActiveVersion(documentId, db);
@@ -685,7 +673,6 @@ async function handleEditResolution(
         : null,
       remaining_pending: 0,
     };
-    console.log(`[edit-resolution] returning already-resolved payload`, payload);
     return void res.status(200).json(payload);
   }
 
@@ -694,7 +681,8 @@ async function handleEditResolution(
     .select("id, current_version_id, user_id, project_id")
     .eq("id", documentId)
     .single();
-  console.log(`[edit-resolution] fetched doc`, { doc, docErr });
+  if (docErr)
+    return void res.status(404).json({ detail: "Document not found" });
   if (!doc)
     return void res.status(404).json({ detail: "Document not found" });
   const access = await ensureDocAccess(doc, userId, userEmail, db);
@@ -703,17 +691,10 @@ async function handleEditResolution(
 
   const active = await loadActiveVersion(documentId, db);
   const latestPath = active?.storage_path ?? null;
-  console.log(`[edit-resolution] resolved latestPath`, {
-    latestPath,
-    current_version_id: doc.current_version_id,
-  });
   if (!latestPath)
     return void res.status(404).json({ detail: "No file to edit" });
 
   const raw = await downloadFile(latestPath);
-  console.log(`[edit-resolution] downloaded bytes`, {
-    byteLength: raw?.byteLength ?? 0,
-  });
   if (!raw)
     return void res.status(404).json({ detail: "Document bytes not available" });
 
@@ -725,24 +706,15 @@ async function handleEditResolution(
     wIds,
     mode,
   );
-  console.log(`[edit-resolution] resolveTrackedChange result`, {
-    mode,
-    change_id: edit.change_id,
-    wIds,
-    found,
-    resolvedByteLength: resolvedBytes?.byteLength ?? 0,
-  });
   if (!found) {
-    console.log(
-      `[edit-resolution] change_id not found in docx — updating status only`,
-    );
     // Still update DB status so the UI reflects the decision — the change
     // may have been auto-consumed by a previous accept/reject pass.
     const { error: updErr } = await db
       .from("document_edits")
       .update({ status: mode === "accept" ? "accepted" : "rejected", resolved_at: new Date().toISOString() })
       .eq("id", editId);
-    console.log(`[edit-resolution] status-only update`, { updErr });
+    if (updErr)
+      return void res.status(500).json({ detail: "Failed to update edit" });
     const { data: filenameRow } = await db
       .from("documents")
       .select("filename")
@@ -757,7 +729,6 @@ async function handleEditResolution(
       ),
       remaining_pending: 0,
     };
-    console.log(`[edit-resolution] returning not-found payload`, payload);
     return void res.status(200).json(payload);
   }
 
@@ -770,10 +741,6 @@ async function handleEditResolution(
     resolvedBytes.byteOffset,
     resolvedBytes.byteOffset + resolvedBytes.byteLength,
   ) as ArrayBuffer;
-  console.log(`[edit-resolution] overwriting bytes in place`, {
-    latestPath,
-    byteLength: ab.byteLength,
-  });
   await uploadFile(
     latestPath,
     ab,
@@ -787,18 +754,14 @@ async function handleEditResolution(
       resolved_at: new Date().toISOString(),
     })
     .eq("id", editId);
-  console.log(`[edit-resolution] updated document_edits status`, {
-    editId,
-    newStatus: mode === "accept" ? "accepted" : "rejected",
-    statusErr,
-  });
+  if (statusErr)
+    return void res.status(500).json({ detail: "Failed to update edit" });
 
   const { count: remainingPending } = await db
     .from("document_edits")
     .select("id", { count: "exact", head: true })
     .eq("document_id", documentId)
     .eq("status", "pending");
-  console.log(`[edit-resolution] remaining pending count`, { remainingPending });
 
   const { data: filenameRow } = await db
     .from("documents")
@@ -814,7 +777,6 @@ async function handleEditResolution(
     ),
     remaining_pending: remainingPending ?? 0,
   };
-  console.log(`[edit-resolution] returning success payload`, payload);
   res.json(payload);
 }
 
@@ -841,15 +803,15 @@ async function handleDocumentUpload(
   if (!file) return void res.status(400).json({ detail: "file is required" });
 
   const filename = file.originalname;
-  const suffix = filename.includes(".")
-    ? filename.split(".").pop()!.toLowerCase()
-    : "";
-  if (!ALLOWED_TYPES.has(suffix))
-    return void res
-      .status(400)
-      .json({
-        detail: `Unsupported file type: ${suffix}. Allowed: pdf, docx, doc`,
-      });
+  let validated: Awaited<ReturnType<typeof validateDocumentUpload>>;
+  try {
+    validated = await validateDocumentUpload(file);
+  } catch (err) {
+    return void res.status(400).json({
+      detail: err instanceof Error ? err.message : "Invalid upload",
+    });
+  }
+  const suffix = validated.suffix;
 
   const content = file.buffer;
   const { data: doc, error: insertErr } = await db
@@ -872,17 +834,13 @@ async function handleDocumentUpload(
   try {
     const docId = doc.id as string;
     const key = storageKey(userId, docId, filename);
-    const contentType =
-      suffix === "pdf"
-        ? "application/pdf"
-        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     await uploadFile(
       key,
       content.buffer.slice(
         content.byteOffset,
         content.byteOffset + content.byteLength,
       ) as ArrayBuffer,
-      contentType,
+      validated.contentType,
     );
 
     const rawBuf = content.buffer.slice(
@@ -908,10 +866,7 @@ async function handleDocumentUpload(
         );
         pdfStoragePath = pdfKey;
       } catch (err) {
-        console.error(
-          `[upload] DOCX→PDF conversion failed for ${filename}:`,
-          err,
-        );
+        console.error("[upload] DOCX→PDF conversion failed", err);
       }
     } else if (suffix === "pdf") {
       pdfStoragePath = key;
