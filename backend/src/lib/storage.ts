@@ -1,40 +1,28 @@
 /**
- * Cloudflare R2 storage utilities for Mike document management.
- * R2 is S3-compatible — uses @aws-sdk/client-s3.
+ * Supabase Storage utilities for Mike document management.
  *
  * Required env vars:
- *   R2_ENDPOINT_URL     — https://<account-id>.r2.cloudflarestorage.com
- *   R2_ACCESS_KEY_ID    — R2 API token (Access Key ID)
- *   R2_SECRET_ACCESS_KEY — R2 API token (Secret Access Key)
- *   R2_BUCKET_NAME      — bucket name (default: "mike")
+ *   SUPABASE_URL         — your Supabase project URL
+ *   SUPABASE_SECRET_KEY  — service role key (bypasses RLS)
+ *   STORAGE_BUCKET       — storage bucket name (default: "mike")
  */
 
-import {
-  S3Client,
-  PutObjectCommand,
-  GetObjectCommand,
-  DeleteObjectCommand,
-} from "@aws-sdk/client-s3";
-import { getSignedUrl as awsGetSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { createClient } from "@supabase/supabase-js";
 
-function getClient(): S3Client {
-  return new S3Client({
-    region: "auto",
-    endpoint: process.env.R2_ENDPOINT_URL!,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    },
-  });
-}
-
-const BUCKET = process.env.R2_BUCKET_NAME ?? "mike";
+const BUCKET = process.env.STORAGE_BUCKET ?? "mike";
 
 export const storageEnabled = Boolean(
-  process.env.R2_ENDPOINT_URL &&
-  process.env.R2_ACCESS_KEY_ID &&
-  process.env.R2_SECRET_ACCESS_KEY,
+  process.env.SUPABASE_URL &&
+  process.env.SUPABASE_SECRET_KEY,
 );
+
+function getClient() {
+  return createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SECRET_KEY!,
+    { auth: { persistSession: false } },
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Upload
@@ -45,15 +33,11 @@ export async function uploadFile(
   content: ArrayBuffer,
   contentType: string,
 ): Promise<void> {
-  const client = getClient();
-  await client.send(
-    new PutObjectCommand({
-      Bucket: BUCKET,
-      Key: key,
-      Body: Buffer.from(content),
-      ContentType: contentType,
-    }),
-  );
+  const { error } = await getClient()
+    .storage
+    .from(BUCKET)
+    .upload(key, content, { contentType, upsert: true });
+  if (error) throw error;
 }
 
 // ---------------------------------------------------------------------------
@@ -63,13 +47,12 @@ export async function uploadFile(
 export async function downloadFile(key: string): Promise<ArrayBuffer | null> {
   if (!storageEnabled) return null;
   try {
-    const client = getClient();
-    const response = await client.send(
-      new GetObjectCommand({ Bucket: BUCKET, Key: key }),
-    );
-    if (!response.Body) return null;
-    const bytes = await response.Body.transformToByteArray();
-    return bytes.buffer as ArrayBuffer;
+    const { data, error } = await getClient()
+      .storage
+      .from(BUCKET)
+      .download(key);
+    if (error || !data) return null;
+    return await data.arrayBuffer();
   } catch {
     return null;
   }
@@ -81,12 +64,11 @@ export async function downloadFile(key: string): Promise<ArrayBuffer | null> {
 
 export async function deleteFile(key: string): Promise<void> {
   if (!storageEnabled) return;
-  const client = getClient();
-  await client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
+  await getClient().storage.from(BUCKET).remove([key]);
 }
 
 // ---------------------------------------------------------------------------
-// Signed URL (pre-signed for temporary direct access)
+// Signed URL (temporary direct access)
 // ---------------------------------------------------------------------------
 
 export async function getSignedUrl(
@@ -96,20 +78,13 @@ export async function getSignedUrl(
 ): Promise<string | null> {
   if (!storageEnabled) return null;
   try {
-    const client = getClient();
-    // Override the response Content-Disposition so the browser uses this
-    // filename on download, instead of the last path segment of the R2 key
-    // (which includes the document UUID). The `download` attribute on <a>
-    // is ignored for cross-origin URLs, so we have to set it server-side.
-    const responseContentDisposition = downloadFilename
-      ? buildContentDisposition("attachment", downloadFilename)
-      : undefined;
-    const command = new GetObjectCommand({
-      Bucket: BUCKET,
-      Key: key,
-      ResponseContentDisposition: responseContentDisposition,
-    });
-    return await awsGetSignedUrl(client, command, { expiresIn });
+    const options = downloadFilename ? { download: downloadFilename } : undefined;
+    const { data, error } = await getClient()
+      .storage
+      .from(BUCKET)
+      .createSignedUrl(key, expiresIn, options);
+    if (error || !data) return null;
+    return data.signedUrl;
   } catch {
     return null;
   }
