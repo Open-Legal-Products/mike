@@ -1,0 +1,45 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mike-backend
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      - PORT=3001
+      - FRONTEND_URL=http://localhost:4000
+    ports:
+      - "4001:3001"
+    volumes:
+      - ./backend:/app
+      - backend_node_modules:/app/node_modules
+    command: sh -c "npm install && exec npm run dev"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mike-frontend
+    env_file:
+      - path: ./frontend/.env.local
+        required: false
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:4001
+    ports:
+      - "4000:3000"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next_cache:/app/.next
+    command: sh -c "npm install --legacy-peer-deps && exec npm run dev -- -H 0.0.0.0 -p 3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  backend_node_modules:
+  frontend_node_modules:
+  frontend_next_cache:
