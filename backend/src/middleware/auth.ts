@@ -1,5 +1,9 @@
 import { Request, Response, NextFunction } from "express";
 import { createClient } from "@supabase/supabase-js";
+import {
+  installAccessDeniedMessage,
+  isEmailAllowedForInstall,
+} from "../lib/accessPolicy";
 
 export async function requireAuth(
   req: Request,
@@ -30,8 +34,14 @@ export async function requireAuth(
     return;
   }
 
+  const userEmail = data.user.email?.toLowerCase() ?? "";
+  if (!isEmailAllowedForInstall(userEmail)) {
+    res.status(403).json({ detail: installAccessDeniedMessage() });
+    return;
+  }
+
   res.locals.userId = data.user.id;
-  res.locals.userEmail = data.user.email?.toLowerCase() ?? "";
+  res.locals.userEmail = userEmail;
   res.locals.token = token;
   next();
 }

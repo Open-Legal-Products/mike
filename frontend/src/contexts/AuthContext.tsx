@@ -7,6 +7,7 @@ import React, {
     useState,
     ReactNode,
 } from "react";
+import { isEmailAllowedForInstall } from "@/lib/accessPolicy";
 import { supabase } from "@/lib/supabase";
 
 interface User {
@@ -34,10 +35,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             } = await supabase.auth.getSession();
 
             if (session?.user) {
-                setUser({
-                    id: session.user.id,
-                    email: session.user.email || "",
-                });
+                const email = session.user.email || "";
+                if (isEmailAllowedForInstall(email)) {
+                    setUser({
+                        id: session.user.id,
+                        email,
+                    });
+                } else {
+                    await supabase.auth.signOut();
+                    setUser(null);
+                }
             }
             setAuthLoading(false);
         };
@@ -48,10 +55,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             data: { subscription },
         } = supabase.auth.onAuthStateChange(async (_event, session) => {
             if (session?.user) {
-                setUser({
-                    id: session.user.id,
-                    email: session.user.email || "",
-                });
+                const email = session.user.email || "";
+                if (isEmailAllowedForInstall(email)) {
+                    setUser({
+                        id: session.user.id,
+                        email,
+                    });
+                } else {
+                    await supabase.auth.signOut();
+                    setUser(null);
+                }
             } else {
                 setUser(null);
             }

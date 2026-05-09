@@ -1,0 +1,28 @@
+substitutions:
+  _IMAGE: ""
+  _NEXT_PUBLIC_API_BASE_URL: ""
+  _NEXT_PUBLIC_ALLOWED_EMAIL_DOMAINS: ""
+  _NEXT_PUBLIC_ALLOWED_EMAILS: ""
+  _NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY: ""
+  _NEXT_PUBLIC_SUPABASE_URL: ""
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg
+      - NEXT_PUBLIC_API_BASE_URL=${_NEXT_PUBLIC_API_BASE_URL}
+      - --build-arg
+      - NEXT_PUBLIC_ALLOWED_EMAIL_DOMAINS=${_NEXT_PUBLIC_ALLOWED_EMAIL_DOMAINS}
+      - --build-arg
+      - NEXT_PUBLIC_ALLOWED_EMAILS=${_NEXT_PUBLIC_ALLOWED_EMAILS}
+      - --build-arg
+      - NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=${_NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY}
+      - --build-arg
+      - NEXT_PUBLIC_SUPABASE_URL=${_NEXT_PUBLIC_SUPABASE_URL}
+      - -t
+      - ${_IMAGE}
+      - .
+
+images:
+  - ${_IMAGE}

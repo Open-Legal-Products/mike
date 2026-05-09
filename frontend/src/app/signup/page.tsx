@@ -10,6 +10,10 @@ import { SiteLogo } from "@/components/site-logo";
 import { CheckCircle2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { updateUserProfile } from "@/app/lib/mikeApi";
+import {
+    installAccessDeniedMessage,
+    isEmailAllowedForInstall,
+} from "@/lib/accessPolicy";
 
 export default function SignupPage() {
     const router = useRouter();
@@ -49,8 +53,13 @@ export default function SignupPage() {
         }
 
         try {
+            const normalizedEmail = email.trim().toLowerCase();
+            if (!isEmailAllowedForInstall(normalizedEmail)) {
+                throw new Error(installAccessDeniedMessage());
+            }
+
             const { data, error } = await supabase.auth.signUp({
-                email,
+                email: normalizedEmail,
                 password,
             });
 
@@ -274,10 +283,9 @@ export default function SignupPage() {
                     </div>
                 </div>
                 <p className="text-center text-xs text-gray-500 leading-relaxed px-2">
-                    Mike hosted on MikeOSS.com is currently a demo service.
-                    Please do not upload, submit, or store sensitive,
-                    confidential, privileged, client, or personally identifiable
-                    documents.
+                    This Mike install is available only to approved users.
+                    Follow your organization&apos;s document handling policy
+                    before uploading sensitive or confidential documents.
                 </p>
             </div>
         </div>

@@ -8,6 +8,10 @@ import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { SiteLogo } from "@/components/site-logo";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+    installAccessDeniedMessage,
+    isEmailAllowedForInstall,
+} from "@/lib/accessPolicy";
 export default function LoginPage() {
     const router = useRouter();
     const { isAuthenticated, authLoading } = useAuth();
@@ -28,16 +32,30 @@ export default function LoginPage() {
         setError(null);
 
         try {
+            const normalizedEmail = email.trim().toLowerCase();
+            if (!isEmailAllowedForInstall(normalizedEmail)) {
+                throw new Error(installAccessDeniedMessage());
+            }
+
             const { data, error } = await supabase.auth.signInWithPassword({
-                email,
+                email: normalizedEmail,
                 password,
             });
 
             if (error) throw error;
 
+            if (!isEmailAllowedForInstall(data.user?.email)) {
+                await supabase.auth.signOut();
+                throw new Error(installAccessDeniedMessage());
+            }
+
             router.push("/assistant");
-        } catch (error: any) {
-            setError(error.message || "An error occurred during login");
+        } catch (error: unknown) {
+            setError(
+                error instanceof Error
+                    ? error.message
+                    : "An error occurred during login",
+            );
         } finally {
             setLoading(false);
         }
@@ -120,10 +138,9 @@ export default function LoginPage() {
                     </form>
                 </div>
                 <p className="text-center text-xs text-gray-500 leading-relaxed px-2">
-                    Mike hosted on MikeOSS.com is currently a demo service.
-                    Please do not upload, submit, or store sensitive,
-                    confidential, privileged, client, or personally
-                    identifiable documents.
+                    This Mike install is available only to approved users.
+                    Follow your organization&apos;s document handling policy
+                    before uploading sensitive or confidential documents.
                 </p>
             </div>
         </div>
