@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, Check, AlertCircle } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { ChevronDown, Check, AlertCircle, Pencil } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -13,10 +13,18 @@ import {
 import { isModelAvailable } from "@/app/lib/modelAvailability";
 import type { ApiKeyState } from "@/app/lib/mikeApi";
 
+// Sentinel used to detect when the user selected "custom model".
+const CUSTOM_MODEL_ID = "local-__custom__";
+
 export interface ModelOption {
     id: string;
     label: string;
-    group: "Anthropic" | "Google" | "OpenAI";
+    group: "Anthropic" | "Google" | "OpenAI" | "Local";
+}
+
+/** True if the model id refers to a local (Ollama) model. */
+export function isLocalModel(id: string): boolean {
+    return id.startsWith("local-") && id !== CUSTOM_MODEL_ID;
 }
 
 export const MODELS: ModelOption[] = [
@@ -28,25 +36,92 @@ export const MODELS: ModelOption[] = [
     { id: "gpt-5.4-mini", label: "GPT-5.4 Mini", group: "OpenAI" },
 ];
 
+/** Predefined local models (excluding the custom placeholder). */
+export const LOCAL_MODELS = MODELS.filter((m) => m.group === "Local");
+
+/**
+ * Given a model id, return the user-facing label.
+ * For custom models (not in the predefined list), derive a label.
+ */
+export function modelLabel(id: string): string {
+    const m = MODELS.find((x) => x.id === id);
+    if (m) return m.label;
+    // Custom model: strip the "local-" prefix and show the raw name
+    if (id.startsWith("local-")) return `Local: ${id.slice("local-".length)}`;
+    return id;
+}
+
 export const DEFAULT_MODEL_ID = "gemini-3-flash-preview";
 
 export const ALLOWED_MODEL_IDS = new Set(MODELS.map((m) => m.id));
 
-const GROUP_ORDER: ModelOption["group"][] = ["Anthropic", "Google", "OpenAI"];
+const GROUP_ORDER: ModelOption["group"][] = ["Anthropic", "Google", "OpenAI", "Local"];
 
 interface Props {
     value: string;
     onChange: (id: string) => void;
     apiKeys?: ApiKeyState;
+    localModels?: ModelOption[];
 }
 
-export function ModelToggle({ value, onChange, apiKeys }: Props) {
+/** Inline input for typing a custom local model name. */
+function CustomModelInput({
+    currentId,
+    onSelect,
+}: {
+    currentId: string;
+    onSelect: (id: string) => void;
+}) {
+    const [customValue, setCustomValue] = useState(() =>
+        currentId.startsWith("local-") &&
+        !LOCAL_MODELS.some((m) => m.id === currentId)
+            ? currentId.slice("local-".length)
+            : "",
+    );
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (currentId === CUSTOM_MODEL_ID && inputRef.current) {
+            inputRef.current.focus();
+        }
+    }, [currentId]);
+
+    const handleSubmit = () => {
+        const trimmed = customValue.trim();
+        if (trimmed) {
+            onSelect(`local-${trimmed}`);
+        }
+    };
+
+    return (
+        <div className="px-2 py-1.5">
+            <div className="flex items-center gap-1.5">
+                <Pencil className="h-3 w-3 shrink-0 text-gray-400" />
+                <input
+                    ref={inputRef}
+                    type="text"
+                    value={customValue}
+                    onChange={(e) => setCustomValue(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSubmit();
+                    }}
+                    placeholder="Custom model name…"
+                    className="flex-1 min-w-0 text-sm border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-black/20"
+                />
+            </div>
+        </div>
+    );
+}
+
+export function ModelToggle({ value, onChange, apiKeys, localModels }: Props) {
     const [isOpen, setIsOpen] = useState(false);
-    const selected = MODELS.find((m) => m.id === value);
-    const selectedLabel = selected?.label ?? "Model";
+    const selectedLabel = modelLabel(value);
     const selectedAvailable = apiKeys
         ? isModelAvailable(value, apiKeys)
         : true;
+
+    const cloudModels = MODELS.filter((m) => m.group !== "Local");
+    const allModels = [...cloudModels, ...(localModels ?? [])];
 
     return (
         <DropdownMenu onOpenChange={setIsOpen}>
@@ -69,9 +144,9 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                     />
                 </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56 z-50" side="top" align="start">
+            <DropdownMenuContent className="w-64 z-50" side="top" align="start">
                 {GROUP_ORDER.map((group, gi) => {
-                    const items = MODELS.filter((m) => m.group === group);
+                    const items = allModels.filter((m) => m.group === group);
                     if (items.length === 0) return null;
                     return (
                         <div key={group}>
@@ -106,6 +181,13 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                                     </DropdownMenuItem>
                                 );
                             })}
+                            {/* Inline custom-model input for the Local group */}
+                            {group === "Local" && (
+                                <CustomModelInput
+                                    currentId={value}
+                                    onSelect={onChange}
+                                />
+                            )}
                         </div>
                     );
                 })}

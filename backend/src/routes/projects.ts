@@ -27,11 +27,14 @@ projectsRouter.get("/", requireAuth, async (req, res) => {
     .order("created_at", { ascending: false });
   if (ownError) return void res.status(500).json({ detail: ownError.message });
 
+  // .contains() sends PostgreSQL array syntax {value} instead of JSON ["value"]
+  // for jsonb columns, causing "invalid input syntax for type json".
+  // Use .filter() with explicit JSON.stringify() to get the correct format.
   const { data: sharedProjects, error: sharedError } = userEmail
     ? await db
         .from("projects")
         .select("*")
-        .contains("shared_with", [userEmail])
+        .filter("shared_with", "cs", JSON.stringify([userEmail]))
         .neq("user_id", userId)
         .order("created_at", { ascending: false })
     : { data: [], error: null };

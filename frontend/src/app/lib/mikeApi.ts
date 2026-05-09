@@ -124,7 +124,7 @@ export async function updateUserProfile(payload: {
     });
 }
 
-export type ApiKeyProvider = "claude" | "gemini" | "openai";
+export type ApiKeyProvider = "claude" | "gemini" | "openai" | "ollama";
 export type ApiKeySource = "user" | "env" | null;
 export type ApiKeyState = Record<
     ApiKeyProvider,
@@ -140,6 +140,15 @@ export type ApiKeyStatus = Record<ApiKeyProvider, boolean> & {
 
 export async function getApiKeyStatus(): Promise<ApiKeyStatus> {
     return apiRequest<ApiKeyStatus>("/user/api-keys");
+}
+
+export async function getOllamaModels(): Promise<string[]> {
+    try {
+        const data = await apiRequest<{ models: string[] }>("/user/ollama/models");
+        return data.models ?? [];
+    } catch {
+        return [];
+    }
 }
 
 export async function saveApiKey(

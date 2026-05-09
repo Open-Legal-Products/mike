@@ -235,7 +235,9 @@ userRouter.put("/api-keys/:provider", requireAuth, async (req, res) => {
     typeof req.body?.api_key === "string" ? req.body.api_key : null;
   const db = createServerSupabase();
   try {
-    if (hasEnvApiKey(provider)) {
+    // Ollama is env-configured when the base URL is set — but the API key
+    // is optional, so we always allow the browser to save/clear it.
+    if (provider !== "ollama" && hasEnvApiKey(provider)) {
       return void res.status(409).json({
         detail:
           "This provider is configured by the server environment and cannot be changed from the browser.",
@@ -250,6 +252,34 @@ userRouter.put("/api-keys/:provider", requireAuth, async (req, res) => {
       error: err instanceof Error ? err.message : String(err),
     });
     res.status(500).json({ detail: "Failed to save API key" });
+  }
+});
+
+// GET /user/ollama/models — lists models available on the configured Ollama server
+userRouter.get("/ollama/models", requireAuth, async (_req, res) => {
+  const baseUrl =
+    process.env.OLLAMA_BASE_URL?.trim() ||
+    process.env.LLAMACPP_BASE_URL?.trim();
+  if (!baseUrl) return void res.json({ models: [] });
+
+  try {
+    const headers: Record<string, string> = {};
+    const key =
+      process.env.OLLAMA_API_KEY?.trim() ||
+      process.env.LLAMACPP_API_KEY?.trim();
+    if (key) headers["Authorization"] = `Bearer ${key}`;
+
+    const response = await fetch(`${baseUrl}/models`, {
+      headers,
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) return void res.json({ models: [] });
+
+    const data = (await response.json()) as { data?: { id: string }[] };
+    const models = (data.data ?? []).map((m) => `local-${m.id}`);
+    res.json({ models });
+  } catch {
+    res.json({ models: [] });
   }
 });
 

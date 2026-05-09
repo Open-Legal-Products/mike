@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import type { ApiKeyState } from "@/app/lib/mikeApi";
-import { MODELS } from "@/app/components/assistant/ModelToggle";
+import { MODELS, modelLabel, type ModelOption } from "@/app/components/assistant/ModelToggle";
 import {
     isModelAvailable,
     modelGroupToProvider,
@@ -37,10 +37,15 @@ const API_KEY_FIELDS = [
         label: "OpenAI API Key",
         placeholder: "sk-…",
     },
+    {
+        provider: "ollama",
+        label: "Ollama / Llama.cpp API Key (optional)",
+        placeholder: "Ollama key or leave empty",
+    },
 ] as const;
 
 export default function ModelsAndApiKeysPage() {
-    const { profile, updateModelPreference, updateApiKey } = useUserProfile();
+    const { profile, updateModelPreference, updateApiKey, ollamaModels } = useUserProfile();
 
     return (
         <div className="space-y-4">
@@ -66,6 +71,7 @@ export default function ModelsAndApiKeysPage() {
                                 "gemini-3-flash-preview"
                             }
                             apiKeys={profile?.apiKeys}
+                            localModels={ollamaModels}
                             onChange={(id) =>
                                 updateModelPreference("tabularModel", id)
                             }
@@ -124,19 +130,34 @@ function TabularModelDropdown({
     value,
     onChange,
     apiKeys,
+    localModels = [],
 }: {
     value: string;
     onChange: (id: string) => void;
     apiKeys?: ApiKeyState;
+    localModels?: ModelOption[];
 }) {
     const [isOpen, setIsOpen] = useState(false);
-    const selected = MODELS.find((m) => m.id === value);
-    const selectedAvailable = apiKeys ? isModelAvailable(value, apiKeys) : true;
-    const groups: ("Anthropic" | "Google" | "OpenAI")[] = [
-        "Anthropic",
-        "Google",
-        "OpenAI",
+
+    const allLocalModels = [
+        ...MODELS.filter((m) => m.group === "Local"),
+        ...localModels.filter((m) => !MODELS.some((s) => s.id === m.id)),
     ];
+
+    const selected =
+        MODELS.find((m) => m.id === value) ??
+        allLocalModels.find((m) => m.id === value);
+    const selectedAvailable = apiKeys ? isModelAvailable(value, apiKeys) : true;
+
+    type GroupKey = ModelOption["group"];
+    const groups: { key: GroupKey; items: ModelOption[] }[] = (
+        [
+            { key: "Anthropic" as GroupKey, items: MODELS.filter((m) => m.group === "Anthropic") },
+            { key: "Google" as GroupKey, items: MODELS.filter((m) => m.group === "Google") },
+            { key: "OpenAI" as GroupKey, items: MODELS.filter((m) => m.group === "OpenAI") },
+            { key: "Local" as GroupKey, items: allLocalModels },
+        ] as { key: GroupKey; items: ModelOption[] }[]
+    ).filter((g) => g.items.length > 0);
 
     return (
         <DropdownMenu onOpenChange={setIsOpen}>
@@ -150,7 +171,7 @@ function TabularModelDropdown({
                             <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
                         )}
                         <span className="truncate text-gray-900">
-                            {selected?.label ?? "Select a model"}
+                            {selected?.label ?? modelLabel(value)}
                         </span>
                     </span>
                     <ChevronDown
@@ -163,9 +184,7 @@ function TabularModelDropdown({
                 style={{ width: "var(--radix-dropdown-menu-trigger-width)" }}
                 align="start"
             >
-                {groups.map((group, gi) => {
-                    const items = MODELS.filter((m) => m.group === group);
-                    if (items.length === 0) return null;
+                {groups.map(({ key: group, items }, gi) => {
                     return (
                         <div key={group}>
                             {gi > 0 && <DropdownMenuSeparator />}

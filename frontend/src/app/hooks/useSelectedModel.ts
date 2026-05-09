@@ -5,10 +5,14 @@ import { ALLOWED_MODEL_IDS, DEFAULT_MODEL_ID } from "../components/assistant/Mod
 
 const STORAGE_KEY = "mike.selectedModel";
 
+function isValidModel(id: string): boolean {
+    return ALLOWED_MODEL_IDS.has(id) || id.startsWith("local-");
+}
+
 function readStored(): string {
     if (typeof window === "undefined") return DEFAULT_MODEL_ID;
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw && ALLOWED_MODEL_IDS.has(raw)) return raw;
+    if (raw && isValidModel(raw)) return raw;
     return DEFAULT_MODEL_ID;
 }
 
@@ -20,7 +24,7 @@ export function useSelectedModel(): [string, (id: string) => void] {
     }, []);
 
     const setModel = useCallback((id: string) => {
-        const next = ALLOWED_MODEL_IDS.has(id) ? id : DEFAULT_MODEL_ID;
+        const next = isValidModel(id) ? id : DEFAULT_MODEL_ID;
         setModelState(next);
         if (typeof window !== "undefined") {
             window.localStorage.setItem(STORAGE_KEY, next);

@@ -3,7 +3,7 @@ import { createServerSupabase } from "./supabase";
 import type { UserApiKeys } from "./llm";
 
 type Db = ReturnType<typeof createServerSupabase>;
-export type ApiKeyProvider = "claude" | "gemini" | "openai";
+export type ApiKeyProvider = "claude" | "gemini" | "openai" | "ollama";
 export type ApiKeySource = "user" | "env" | null;
 export type ApiKeyStatus = Record<ApiKeyProvider, boolean> & {
     sources: Record<ApiKeyProvider, ApiKeySource>;
@@ -16,7 +16,7 @@ type EncryptedKeyRow = {
     auth_tag: string;
 };
 
-const PROVIDERS: ApiKeyProvider[] = ["claude", "gemini", "openai"];
+const PROVIDERS: ApiKeyProvider[] = ["claude", "gemini", "openai", "ollama"];
 
 function envApiKey(provider: ApiKeyProvider): string | null {
     if (provider === "claude") {
@@ -29,7 +29,26 @@ function envApiKey(provider: ApiKeyProvider): string | null {
     if (provider === "openai") {
         return process.env.OPENAI_API_KEY?.trim() || null;
     }
+    if (provider === "ollama") {
+        return process.env.OLLAMA_API_KEY?.trim() ||
+               process.env.LLAMACPP_API_KEY?.trim() ||
+               null;
+    }
     return process.env.GEMINI_API_KEY?.trim() || null;
+}
+
+/**
+ * Returns true if the Ollama provider is available via env config
+ * (either OLLAMA_BASE_URL or an API key).  Used separately from
+ * envApiKey because Ollama may not require an API key at all.
+ */
+export function hasEnvOllama(): boolean {
+    return !!(
+        process.env.OLLAMA_API_KEY?.trim() ||
+        process.env.LLAMACPP_API_KEY?.trim() ||
+        process.env.OLLAMA_BASE_URL?.trim() ||
+        process.env.LLAMACPP_BASE_URL?.trim()
+    );
 }
 
 export function hasEnvApiKey(provider: ApiKeyProvider): boolean {
@@ -99,25 +118,33 @@ export async function getUserApiKeyStatus(
         claude: false,
         gemini: false,
         openai: false,
+        ollama: false,
         sources: {
             claude: null,
             gemini: null,
             openai: null,
+            ollama: null,
         },
     };
 
     for (const provider of PROVIDERS) {
-        if (hasEnvApiKey(provider)) {
+        // Ollama is available via env if the base URL or API key is set,
+        // even if no actual API key is provided.
+        if (provider === "ollama") {
+            if (hasEnvOllama()) {
+                status[provider] = true;
+                status.sources[provider] = "env";
+            }
+        } else if (hasEnvApiKey(provider)) {
             status[provider] = true;
             status.sources[provider] = "env";
         }
     }
 
-    const { data, error } = await db
+    const { data } = await db
         .from("user_api_keys")
         .select("provider")
         .eq("user_id", userId);
-    if (error) throw error;
 
     for (const row of data ?? []) {
         const provider = normalizeApiKeyProvider(String(row.provider));
@@ -138,13 +165,13 @@ export async function getUserApiKeys(
         claude: envApiKey("claude"),
         gemini: envApiKey("gemini"),
         openai: envApiKey("openai"),
+        ollama: envApiKey("ollama"),
     };
 
-    const { data, error } = await db
+    const { data } = await db
         .from("user_api_keys")
         .select("provider, encrypted_key, iv, auth_tag")
         .eq("user_id", userId);
-    if (error) throw error;
 
     for (const row of (data ?? []) as EncryptedKeyRow[]) {
         const provider = normalizeApiKeyProvider(row.provider);
@@ -163,6 +190,7 @@ export async function saveUserApiKey(
     db: Db = createServerSupabase(),
 ): Promise<void> {
     const normalized = value?.trim() || null;
+
     if (!normalized) {
         const { error } = await db
             .from("user_api_keys")

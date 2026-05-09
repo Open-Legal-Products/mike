@@ -14,9 +14,11 @@ import {
     type ApiKeyProvider,
     type UserProfile as ApiUserProfile,
     getUserProfile,
+    getOllamaModels,
     saveApiKey,
     updateUserProfile,
 } from "@/app/lib/mikeApi";
+import type { ModelOption } from "@/app/components/assistant/ModelToggle";
 
 interface UserProfile {
     displayName: string | null;
@@ -32,6 +34,7 @@ interface UserProfile {
 interface UserProfileContextType {
     profile: UserProfile | null;
     loading: boolean;
+    ollamaModels: ModelOption[];
     updateDisplayName: (name: string) => Promise<boolean>;
     updateOrganisation: (organisation: string) => Promise<boolean>;
     updateModelPreference: (
@@ -50,13 +53,14 @@ const UserProfileContext = createContext<UserProfileContextType | undefined>(
     undefined,
 );
 
-const API_KEY_PROVIDERS: ApiKeyProvider[] = ["claude", "gemini", "openai"];
+const API_KEY_PROVIDERS: ApiKeyProvider[] = ["claude", "gemini", "openai", "ollama"];
 
 function emptyApiKeys(): ApiKeyState {
     return {
         claude: { configured: false, source: null },
         gemini: { configured: false, source: null },
         openai: { configured: false, source: null },
+        ollama: { configured: false, source: null },
     };
 }
 
@@ -82,11 +86,20 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     const { user, isAuthenticated } = useAuth();
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
+    const [ollamaModels, setOllamaModels] = useState<ModelOption[]>([]);
 
     const loadProfile = useCallback(async () => {
         try {
             const profileData = await getUserProfile();
-            setProfile(toProfile(profileData));
+            const mapped = toProfile(profileData);
+            setProfile(mapped);
+            if (mapped.apiKeys.ollama.configured) {
+                getOllamaModels().then((ids) =>
+                    setOllamaModels(
+                        ids.map((id) => ({ id, label: id.startsWith("local-") ? id.slice("local-".length) : id, group: "Local" as const })),
+                    ),
+                );
+            }
         } catch {
             // Calculate a default future reset date for fallback
             const futureResetDate = new Date();
@@ -227,6 +240,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
             value={{
                 profile,
                 loading,
+                ollamaModels,
                 updateDisplayName,
                 updateOrganisation,
                 updateModelPreference,

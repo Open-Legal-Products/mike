@@ -448,6 +448,7 @@ function TRChatInput({
     model,
     onModelChange,
     apiKeys,
+    localModels,
     onHeightChange,
 }: {
     isLoading: boolean;
@@ -456,6 +457,7 @@ function TRChatInput({
     model: string;
     onModelChange: (id: string) => void;
     apiKeys?: ApiKeyState;
+    localModels?: import("@/app/components/assistant/ModelToggle").ModelOption[];
     onHeightChange: (height: number) => void;
 }) {
     const [value, setValue] = useState("");
@@ -532,6 +534,7 @@ function TRChatInput({
                         value={model}
                         onChange={onModelChange}
                         apiKeys={apiKeys}
+                        localModels={localModels}
                     />
                     <button
                         type="button"
@@ -642,7 +645,7 @@ export function TRChatPanel({
     initialChatId,
     onChatIdChange,
 }: Props) {
-    const { profile, updateModelPreference } = useUserProfile();
+    const { profile, updateModelPreference, ollamaModels } = useUserProfile();
     const apiKeys = profile?.apiKeys;
     const currentModel = profile?.tabularModel ?? "gemini-3-flash-preview";
     const [apiKeyModalProvider, setApiKeyModalProvider] =
@@ -1493,6 +1496,7 @@ export function TRChatPanel({
                     updateModelPreference("tabularModel", id)
                 }
                 apiKeys={apiKeys}
+                localModels={ollamaModels}
                 onHeightChange={setInputHeight}
             />
 

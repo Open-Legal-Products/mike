@@ -22,6 +22,13 @@ export const CLAUDE_LOW_MODELS = ["claude-haiku-4-5"] as const;
 export const GEMINI_LOW_MODELS = ["gemini-3.1-flash-lite-preview"] as const;
 export const OPENAI_LOW_MODELS = ["gpt-5.4-nano"] as const;
 
+// Local / self-hosted models via Ollama or llama.cpp
+// Any model name can be used at runtime — the list below are sensible defaults
+// that appear in the UI model picker.
+export const OLLAMA_MAIN_MODELS = ["local-gemma-26b", "local-llama3.3", "local-deepseek-r1"] as const;
+export const OLLAMA_MID_MODELS = ["local-gemma-26b"] as const;
+export const OLLAMA_LOW_MODELS = ["local-gemma-26b"] as const;
+
 export const DEFAULT_MAIN_MODEL = "gemini-3-flash-preview";
 export const DEFAULT_TITLE_MODEL = "gemini-3.1-flash-lite-preview";
 export const DEFAULT_TABULAR_MODEL = "gemini-3-flash-preview";
@@ -36,6 +43,9 @@ const ALL_MODELS = new Set<string>([
     ...CLAUDE_LOW_MODELS,
     ...GEMINI_LOW_MODELS,
     ...OPENAI_LOW_MODELS,
+    ...OLLAMA_MAIN_MODELS,
+    ...OLLAMA_MID_MODELS,
+    ...OLLAMA_LOW_MODELS,
 ]);
 
 // ---------------------------------------------------------------------------
@@ -46,10 +56,18 @@ export function providerForModel(model: string): Provider {
     if (model.startsWith("claude")) return "claude";
     if (model.startsWith("gemini")) return "gemini";
     if (model.startsWith("gpt-")) return "openai";
+    if (model.startsWith("local-")) return "ollama";
+    // Fallback: if OLLAMA_BASE_URL is set, route any model name to Ollama.
+    // This allows using the UI to type in any Ollama model name directly.
+    const ollamaBase = process.env.OLLAMA_BASE_URL?.trim() || process.env.LLAMACPP_BASE_URL?.trim();
+    if (ollamaBase) return "ollama";
     throw new Error(`Unknown model id: ${model}`);
 }
 
 export function resolveModel(id: string | null | undefined, fallback: string): string {
-    if (id && ALL_MODELS.has(id)) return id;
+    if (!id) return fallback;
+    if (ALL_MODELS.has(id)) return id;
+    // Allow any local-* model name — the user may have typed a custom one.
+    if (id.startsWith("local-")) return id;
     return fallback;
 }

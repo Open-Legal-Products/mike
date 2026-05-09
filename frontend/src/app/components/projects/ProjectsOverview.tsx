@@ -41,13 +41,20 @@ export function ProjectsOverview() {
     const actionsRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
     const { user } = useAuth();
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     useEffect(() => {
+        if (!user) return;
+        setLoading(true);
+        setLoadError(null);
         listProjects()
             .then(setProjects)
-            .catch(() => setProjects([]))
+            .catch((err: unknown) => {
+                setProjects([]);
+                setLoadError(err instanceof Error ? err.message : "Errore nel caricamento dei progetti");
+            })
             .finally(() => setLoading(false));
-    }, []);
+    }, [user?.id]);
 
     useEffect(() => {
         setSelectedIds([]);
@@ -262,6 +269,14 @@ export function ProjectsOverview() {
                                 <div className="w-8 shrink-0" />
                             </div>
                         ))}
+                    </div>
+                ) : loadError ? (
+                    <div className="flex flex-col items-start py-24 w-full max-w-xs mx-auto">
+                        <p className="text-sm text-red-500 font-mono break-all">{loadError}</p>
+                        <button
+                            onClick={() => { setLoading(true); setLoadError(null); listProjects().then(setProjects).catch((err: unknown) => { setProjects([]); setLoadError(err instanceof Error ? err.message : String(err)); }).finally(() => setLoading(false)); }}
+                            className="mt-3 text-xs underline text-gray-500 hover:text-gray-800"
+                        >Riprova</button>
                     </div>
                 ) : filtered.length === 0 ? (
                     <div className="flex flex-col items-start py-24 w-full max-w-xs mx-auto">

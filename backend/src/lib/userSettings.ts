@@ -4,6 +4,7 @@ import {
     DEFAULT_TITLE_MODEL,
     DEFAULT_TABULAR_MODEL,
     OPENAI_LOW_MODELS,
+    OLLAMA_LOW_MODELS,
     type UserApiKeys,
 } from "./llm";
 import { getUserApiKeys as getStoredUserApiKeys } from "./userApiKeys";
@@ -16,12 +17,14 @@ export type UserModelSettings = {
 
 // Title generation is a lightweight task — always routed to the cheapest model
 // of whichever provider the user has keys for: Gemini Flash Lite if Gemini is
-// available, otherwise OpenAI nano, otherwise Claude Haiku. With no user keys
-// set, defaults to Gemini (the dev-mode env fallback).
+// available, otherwise OpenAI nano, otherwise Claude Haiku, otherwise the
+// cheapest local model. With no user keys set, defaults to Gemini (the dev-mode
+// env fallback).
 function resolveTitleModel(apiKeys: UserApiKeys): string {
     if (apiKeys.gemini?.trim()) return DEFAULT_TITLE_MODEL;
     if (apiKeys.openai?.trim()) return OPENAI_LOW_MODELS[0];
     if (apiKeys.claude?.trim()) return "claude-haiku-4-5";
+    if (apiKeys.ollama !== undefined) return OLLAMA_LOW_MODELS[0];
     return DEFAULT_TITLE_MODEL;
 }
 
