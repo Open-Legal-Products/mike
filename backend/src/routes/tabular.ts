@@ -1201,10 +1201,13 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
 
     // Persist user message
     if (chatId) {
+        const contentVal = typeof lastUser.content === "string"
+            ? JSON.stringify(lastUser.content)
+            : lastUser.content;
         await db.from("tabular_review_chat_messages").insert({
             chat_id: chatId,
             role: "user",
-            content: lastUser.content,
+            content: contentVal,
         });
     }
 

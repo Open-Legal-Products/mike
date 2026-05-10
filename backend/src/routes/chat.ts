@@ -505,10 +505,16 @@ chatRouter.post("/", requireAuth, async (req, res) => {
 
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (lastUser) {
+        // content is a jsonb column: plain strings must be JSON-encoded so PostgreSQL
+        // can parse them as valid JSON (e.g. "ciao" → '"ciao"'). Objects/arrays are
+        // handled by PgAdapter already.
+        const contentVal = typeof lastUser.content === "string"
+            ? JSON.stringify(lastUser.content)
+            : lastUser.content;
         await db.from("chat_messages").insert({
             chat_id: chatId,
             role: "user",
-            content: lastUser.content,
+            content: contentVal,
             files: lastUser.files ?? null,
             workflow: lastUser.workflow ?? null,
         });

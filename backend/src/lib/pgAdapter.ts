@@ -259,6 +259,9 @@ export class PgQueryBuilder {
                 if (res.rows.length === 0) return { data: null, error: { message: "No rows found" } };
                 return { data: res.rows[0], error: null };
             }
+            if (this._maybeSingleMode) {
+                return { data: res.rows[0] ?? null, error: null };
+            }
             return { data: res.rows, error: null };
         }
 
@@ -268,7 +271,10 @@ export class PgQueryBuilder {
             const params: unknown[] = [];
             const valueSets = rows.map((row) => {
                 const placeholders = cols.map((col) => {
-                    params.push(row[col]);
+                    // pg formats JS arrays as PostgreSQL array literals {a,b} which is invalid
+                    // for jsonb columns. JSON.stringify produces valid JSON for PostgreSQL to parse.
+                    const val = row[col];
+                    params.push(Array.isArray(val) ? JSON.stringify(val) : val);
                     return `$${params.length}`;
                 });
                 return `(${placeholders.join(", ")})`;
@@ -302,7 +308,7 @@ export class PgQueryBuilder {
             const entries = Object.entries(this._updateData!);
             const setParams: unknown[] = [];
             const setClauses = entries.map(([col, val]) => {
-                setParams.push(val);
+                setParams.push(Array.isArray(val) ? JSON.stringify(val) : val);
                 return `"${col}" = $${setParams.length}`;
             });
 
