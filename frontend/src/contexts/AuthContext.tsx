@@ -5,6 +5,7 @@ import React, {
     useContext,
     useEffect,
     useState,
+    useCallback,
     ReactNode,
 } from "react";
 import { isLocalMode, getLocalUser, clearToken } from "@/lib/localAuth";
@@ -19,6 +20,7 @@ interface AuthContextType {
     isAuthenticated: boolean;
     authLoading: boolean;
     signOut: () => Promise<void>;
+    refreshAuth: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -27,11 +29,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [authLoading, setAuthLoading] = useState(true);
 
+    // Re-reads localStorage and updates state — called after localSignIn/localSignUp
+    // so the context reflects the new token without a full page reload.
+    const refreshAuth = useCallback(() => {
+        if (isLocalMode()) {
+            setUser(getLocalUser());
+        }
+    }, []);
+
     useEffect(() => {
         if (isLocalMode()) {
-            // Local mode: read JWT from localStorage synchronously
-            const localUser = getLocalUser();
-            setUser(localUser);
+            setUser(getLocalUser());
             setAuthLoading(false);
             return;
         }
@@ -75,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return (
         <AuthContext.Provider
-            value={{ user, isAuthenticated: !!user, authLoading, signOut }}
+            value={{ user, isAuthenticated: !!user, authLoading, signOut, refreshAuth }}
         >
             {children}
         </AuthContext.Provider>

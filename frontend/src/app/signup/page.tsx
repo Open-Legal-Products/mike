@@ -13,7 +13,7 @@ import { updateUserProfile } from "@/app/lib/mikeApi";
 
 export default function SignupPage() {
     const router = useRouter();
-    const { isAuthenticated, authLoading } = useAuth();
+    const { isAuthenticated, authLoading, refreshAuth } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
@@ -51,6 +51,7 @@ export default function SignupPage() {
         try {
             if (isLocalMode()) {
                 await localSignUp(email, password);
+                refreshAuth();
             } else {
                 const { supabase } = await import("@/lib/supabase");
                 const { data, error } = await supabase.auth.signUp({ email, password });

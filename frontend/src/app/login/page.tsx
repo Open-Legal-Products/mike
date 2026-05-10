@@ -10,7 +10,7 @@ import { SiteLogo } from "@/components/site-logo";
 import { useAuth } from "@/contexts/AuthContext";
 export default function LoginPage() {
     const router = useRouter();
-    const { isAuthenticated, authLoading } = useAuth();
+    const { isAuthenticated, authLoading, refreshAuth } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
@@ -30,6 +30,7 @@ export default function LoginPage() {
         try {
             if (isLocalMode()) {
                 await localSignIn(email, password);
+                refreshAuth();
             } else {
                 const { supabase } = await import("@/lib/supabase");
                 const { error } = await supabase.auth.signInWithPassword({ email, password });
