@@ -7,7 +7,7 @@ import {
     OLLAMA_LOW_MODELS,
     type UserApiKeys,
 } from "./llm";
-import { getUserApiKeys as getStoredUserApiKeys } from "./userApiKeys";
+import { getUserApiKeys as getStoredUserApiKeys, hasEnvOllama } from "./userApiKeys";
 
 export type UserModelSettings = {
     title_model: string;
@@ -20,11 +20,16 @@ export type UserModelSettings = {
 // available, otherwise OpenAI nano, otherwise Claude Haiku, otherwise the
 // cheapest local model. With no user keys set, defaults to Gemini (the dev-mode
 // env fallback).
-function resolveTitleModel(apiKeys: UserApiKeys): string {
+// When Ollama is the only available provider, reuse the user's tabular model
+// (which we know is installed) rather than a hardcoded default that may not exist.
+function resolveTitleModel(apiKeys: UserApiKeys, tabularModel: string): string {
     if (apiKeys.gemini?.trim()) return DEFAULT_TITLE_MODEL;
     if (apiKeys.openai?.trim()) return OPENAI_LOW_MODELS[0];
     if (apiKeys.claude?.trim()) return "claude-haiku-4-5";
-    if (apiKeys.ollama !== undefined) return OLLAMA_LOW_MODELS[0];
+    const ollamaAvailable = !!(apiKeys.ollama?.trim()) || hasEnvOllama();
+    if (ollamaAvailable) {
+        return tabularModel.startsWith("local-") ? tabularModel : OLLAMA_LOW_MODELS[0];
+    }
     return DEFAULT_TITLE_MODEL;
 }
 
@@ -39,10 +44,11 @@ export async function getUserModelSettings(
         .eq("user_id", userId)
         .single();
     const api_keys = await getStoredUserApiKeys(userId, client);
+    const tabular_model = resolveModel(data?.tabular_model, DEFAULT_TABULAR_MODEL);
 
     return {
-        title_model: resolveTitleModel(api_keys),
-        tabular_model: resolveModel(data?.tabular_model, DEFAULT_TABULAR_MODEL),
+        title_model: resolveTitleModel(api_keys, tabular_model),
+        tabular_model,
         api_keys,
     };
 }

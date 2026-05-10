@@ -94,6 +94,7 @@ export class PgQueryBuilder {
     private _insertData?: Row | Row[];
     private _updateData?: Row;
     private _upsertConflict?: string;
+    private _ignoreDuplicates = false;
     private _withReturning = false;
     private _orCond?: Condition;
 
@@ -132,10 +133,11 @@ export class PgQueryBuilder {
         return this;
     }
 
-    upsert(data: Row | Row[], opts?: { onConflict?: string }): this {
+    upsert(data: Row | Row[], opts?: { onConflict?: string; ignoreDuplicates?: boolean }): this {
         this._op = "upsert";
         this._insertData = data;
         this._upsertConflict = opts?.onConflict;
+        this._ignoreDuplicates = opts?.ignoreDuplicates ?? false;
         return this;
     }
 
@@ -286,8 +288,12 @@ export class PgQueryBuilder {
             if (this._op === "upsert" && this._upsertConflict) {
                 const conflictCols = this._upsertConflict.split(",").map((c) => `"${c.trim()}"`).join(", ");
                 const updateCols = cols.filter((c) => !this._upsertConflict!.split(",").map((x) => x.trim()).includes(c));
-                const setClauses = updateCols.map((c) => `"${c}" = EXCLUDED."${c}"`).join(", ");
-                sql += ` ON CONFLICT (${conflictCols}) DO UPDATE SET ${setClauses}`;
+                if (this._ignoreDuplicates || updateCols.length === 0) {
+                    sql += ` ON CONFLICT (${conflictCols}) DO NOTHING`;
+                } else {
+                    const setClauses = updateCols.map((c) => `"${c}" = EXCLUDED."${c}"`).join(", ");
+                    sql += ` ON CONFLICT (${conflictCols}) DO UPDATE SET ${setClauses}`;
+                }
             }
 
             if (this._withReturning) {
