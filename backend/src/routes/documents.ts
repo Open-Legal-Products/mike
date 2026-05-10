@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
-import { createServerSupabase } from "../lib/supabase";
+import { createDb, DbClient } from "../lib/db";
 import {
   buildContentDisposition,
   downloadFile,
@@ -30,7 +30,7 @@ const ALLOWED_TYPES = new Set(["pdf", "docx", "doc"]);
 // GET /single-documents
 documentsRouter.get("/", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
-  const db = createServerSupabase();
+  const db = createDb();
   const { data, error } = await db
     .from("documents")
     .select("*")
@@ -54,7 +54,7 @@ documentsRouter.post(
   singleFileUpload("file"),
   async (req, res) => {
     const userId = res.locals.userId as string;
-    const db = createServerSupabase();
+    const db = createDb();
     await handleDocumentUpload(req, res, userId, null, db);
   },
 );
@@ -63,7 +63,7 @@ documentsRouter.post(
 documentsRouter.delete("/:documentId", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
   const { documentId } = req.params;
-  const db = createServerSupabase();
+  const db = createDb();
 
   const { data: doc, error } = await db
     .from("documents")
@@ -100,7 +100,7 @@ documentsRouter.get("/:documentId/display", requireAuth, async (req, res) => {
   const { documentId } = req.params;
   const versionIdParam =
     typeof req.query.version_id === "string" ? req.query.version_id : null;
-  const db = createServerSupabase();
+  const db = createDb();
 
   const { data: doc } = await db
     .from("documents")
@@ -161,7 +161,7 @@ documentsRouter.post("/download-zip", requireAuth, async (req, res) => {
   if (!Array.isArray(document_ids) || document_ids.length === 0)
     return void res.status(400).json({ detail: "document_ids is required" });
 
-  const db = createServerSupabase();
+  const db = createDb();
   const { data: rawDocs, error } = await db
     .from("documents")
     .select("id, filename, file_type, current_version_id, user_id, project_id")
@@ -213,7 +213,7 @@ documentsRouter.get("/:documentId/url", requireAuth, async (req, res) => {
   const userEmail = res.locals.userEmail as string | undefined;
   const { documentId } = req.params;
   const versionIdParam = typeof req.query.version_id === "string" ? req.query.version_id : null;
-  const db = createServerSupabase();
+  const db = createDb();
 
   const { data: doc, error } = await db
     .from("documents")
@@ -264,7 +264,7 @@ documentsRouter.get("/:documentId/docx", requireAuth, async (req, res) => {
   const userEmail = res.locals.userEmail as string | undefined;
   const { documentId } = req.params;
   const versionIdParam = typeof req.query.version_id === "string" ? req.query.version_id : null;
-  const db = createServerSupabase();
+  const db = createDb();
 
   const { data: doc, error } = await db
     .from("documents")
@@ -347,7 +347,7 @@ documentsRouter.get("/:documentId/versions", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
   const userEmail = res.locals.userEmail as string | undefined;
   const { documentId } = req.params;
-  const db = createServerSupabase();
+  const db = createDb();
 
   const { data: doc } = await db
     .from("documents")
@@ -384,7 +384,7 @@ documentsRouter.post(
     const userId = res.locals.userId as string;
     const userEmail = res.locals.userEmail as string | undefined;
     const { documentId } = req.params;
-    const db = createServerSupabase();
+    const db = createDb();
 
     const file = req.file;
     if (!file)
@@ -547,7 +547,7 @@ documentsRouter.patch(
     const userId = res.locals.userId as string;
     const userEmail = res.locals.userEmail as string | undefined;
     const { documentId, versionId } = req.params;
-    const db = createServerSupabase();
+    const db = createDb();
 
     const { data: doc } = await db
       .from("documents")
@@ -592,7 +592,7 @@ documentsRouter.get(
     const { documentId } = req.params;
     const versionIdParam =
       typeof req.query.version_id === "string" ? req.query.version_id : null;
-    const db = createServerSupabase();
+    const db = createDb();
 
     const { data: doc } = await db
       .from("documents")
@@ -630,7 +630,7 @@ async function handleEditResolution(
   const userId = res.locals.userId as string;
   const userEmail = res.locals.userEmail as string | undefined;
   const { documentId, editId } = req.params;
-  const db = createServerSupabase();
+  const db = createDb();
 
   console.log(`[edit-resolution] incoming ${mode}`, {
     userId,
@@ -835,7 +835,7 @@ async function handleDocumentUpload(
   res: import("express").Response,
   userId: string,
   projectId: string | null,
-  db: ReturnType<typeof createServerSupabase>,
+  db: DbClient,
 ) {
   const file = req.file;
   if (!file) return void res.status(400).json({ detail: "file is required" });

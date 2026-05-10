@@ -1,6 +1,6 @@
-import type { createServerSupabase } from "./supabase";
+import { createDb, DbClient } from "./db";
 
-type Supa = ReturnType<typeof createServerSupabase>;
+type Supa = DbClient;
 
 interface DocRow {
     id: string;

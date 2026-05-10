@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { isLocalMode, localSignUp } from "@/lib/localAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -49,14 +49,29 @@ export default function SignupPage() {
         }
 
         try {
-            const { data, error } = await supabase.auth.signUp({
-                email,
-                password,
-            });
-
-            if (error) throw error;
-
-            if (data.session) {
+            if (isLocalMode()) {
+                await localSignUp(email, password);
+            } else {
+                const { supabase } = await import("@/lib/supabase");
+                const { data, error } = await supabase.auth.signUp({ email, password });
+                if (error) throw error;
+                if (data.session) {
+                    const trimmedName = name.trim();
+                    const trimmedOrg = organisation.trim();
+                    if (trimmedName || trimmedOrg) {
+                        try {
+                            await updateUserProfile({
+                                ...(trimmedName && { displayName: trimmedName }),
+                                ...(trimmedOrg && { organisation: trimmedOrg }),
+                            });
+                        } catch (profileError) {
+                            console.error("[signup] failed to persist profile fields", profileError);
+                        }
+                    }
+                }
+            }
+            // In local mode, update profile after signup (token is now in localStorage)
+            if (isLocalMode()) {
                 const trimmedName = name.trim();
                 const trimmedOrg = organisation.trim();
                 if (trimmedName || trimmedOrg) {
@@ -65,12 +80,7 @@ export default function SignupPage() {
                             ...(trimmedName && { displayName: trimmedName }),
                             ...(trimmedOrg && { organisation: trimmedOrg }),
                         });
-                    } catch (profileError) {
-                        console.error(
-                            "[signup] failed to persist profile fields",
-                            profileError,
-                        );
-                    }
+                    } catch { /* profile update is best-effort */ }
                 }
             }
             setSuccess(true);

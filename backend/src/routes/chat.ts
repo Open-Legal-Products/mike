@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
-import { createServerSupabase } from "../lib/supabase";
+import { createDb, DbClient } from "../lib/db";
 import {
     buildDocContext,
     buildMessages,
@@ -16,7 +16,7 @@ import { checkProjectAccess } from "../lib/access";
 
 export const chatRouter = Router();
 
-type Db = ReturnType<typeof createServerSupabase>;
+type Db = DbClient;
 const isDev = process.env.NODE_ENV !== "production";
 const devLog = (...args: Parameters<typeof console.log>) => {
     if (isDev) console.log(...args);
@@ -140,7 +140,7 @@ async function getAccessibleChat(
 // listed per-project via GET /projects/:projectId/chats.
 chatRouter.get("/", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
-    const db = createServerSupabase();
+    const db = createDb();
 
     const { data: ownProjects, error: projErr } = await db
         .from("projects")
@@ -174,7 +174,7 @@ chatRouter.post("/create", requireAuth, async (req, res) => {
         return void res.status(400).json({ detail: parsedProjectId.detail });
     }
     const projectId = parsedProjectId.projectId;
-    const db = createServerSupabase();
+    const db = createDb();
     const projectAccess = await validateAccessibleProjectId(
         projectId,
         userId,
@@ -201,7 +201,7 @@ chatRouter.get("/:chatId", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
     const userEmail = res.locals.userEmail as string | undefined;
     const { chatId } = req.params;
-    const db = createServerSupabase();
+    const db = createDb();
 
     const chat = await getAccessibleChat(chatId, userId, userEmail, db);
     if (!chat)
@@ -224,7 +224,7 @@ chatRouter.get("/:chatId", requireAuth, async (req, res) => {
 // EditCards render with the real state.
 async function hydrateEditStatuses(
     messages: Record<string, unknown>[],
-    db: ReturnType<typeof createServerSupabase>,
+    db: DbClient,
 ): Promise<Record<string, unknown>[]> {
     const editIds = new Set<string>();
     const versionIds = new Set<string>();
@@ -342,7 +342,7 @@ chatRouter.patch("/:chatId", requireAuth, async (req, res) => {
     if (!title)
         return void res.status(400).json({ detail: "title is required" });
 
-    const db = createServerSupabase();
+    const db = createDb();
     const { data, error } = await db
         .from("chats")
         .update({ title })
@@ -360,7 +360,7 @@ chatRouter.patch("/:chatId", requireAuth, async (req, res) => {
 chatRouter.delete("/:chatId", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
     const { chatId } = req.params;
-    const db = createServerSupabase();
+    const db = createDb();
     const { error } = await db
         .from("chats")
         .delete()
@@ -381,7 +381,7 @@ chatRouter.post("/:chatId/generate-title", requireAuth, async (req, res) => {
     if (!message)
         return void res.status(400).json({ detail: "message is required" });
 
-    const db = createServerSupabase();
+    const db = createDb();
     const chat = await getAccessibleChat(chatId, userId, userEmail, db);
     if (!chat)
         return void res.status(404).json({ detail: "Chat not found" });
@@ -449,7 +449,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     });
 
     const userEmail = res.locals.userEmail as string | undefined;
-    const db = createServerSupabase();
+    const db = createDb();
     let chatId = chat_id ?? null;
     let chatTitle: string | null = null;
     let resolvedProjectId: string | null = parsedProjectId.projectId;

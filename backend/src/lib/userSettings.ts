@@ -1,4 +1,4 @@
-import { createServerSupabase } from "./supabase";
+import { createDb, DbClient } from "./db";
 import {
     resolveModel,
     DEFAULT_TITLE_MODEL,
@@ -30,9 +30,9 @@ function resolveTitleModel(apiKeys: UserApiKeys): string {
 
 export async function getUserModelSettings(
     userId: string,
-    db?: ReturnType<typeof createServerSupabase>,
+    db?: DbClient,
 ): Promise<UserModelSettings> {
-    const client = db ?? createServerSupabase();
+    const client = db ?? createDb();
     const { data } = await client
         .from("user_profiles")
         .select("tabular_model")
@@ -49,8 +49,8 @@ export async function getUserModelSettings(
 
 export async function getUserApiKeys(
     userId: string,
-    db?: ReturnType<typeof createServerSupabase>,
+    db?: DbClient,
 ): Promise<UserApiKeys> {
-    const client = db ?? createServerSupabase();
+    const client = db ?? createDb();
     return getStoredUserApiKeys(userId, client);
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { isLocalMode, localSignIn } from "@/lib/localAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -28,16 +28,16 @@ export default function LoginPage() {
         setError(null);
 
         try {
-            const { data, error } = await supabase.auth.signInWithPassword({
-                email,
-                password,
-            });
-
-            if (error) throw error;
-
+            if (isLocalMode()) {
+                await localSignIn(email, password);
+            } else {
+                const { supabase } = await import("@/lib/supabase");
+                const { error } = await supabase.auth.signInWithPassword({ email, password });
+                if (error) throw error;
+            }
             router.push("/assistant");
-        } catch (error: any) {
-            setError(error.message || "An error occurred during login");
+        } catch (error: unknown) {
+            setError(error instanceof Error ? error.message : "An error occurred during login");
         } finally {
             setLoading(false);
         }

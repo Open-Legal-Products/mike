@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mike
+      POSTGRES_USER: mike
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mike_secret}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mike -d mike"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Auth & database
+      AUTH_MODE: local
+      DATABASE_URL: postgres://mike:${POSTGRES_PASSWORD:-mike_secret}@postgres:5432/mike
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      # Storage (local filesystem inside the container)
+      LOCAL_STORAGE_PATH: /app/uploads
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:3001}
+      # CORS
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      PORT: 3001
+      # API keys (set the ones you use)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://localhost:11434/v1}
+      # Key encryption (defaults to JWT_SECRET when not set)
+      USER_API_KEYS_ENCRYPTION_SECRET: ${USER_API_KEYS_ENCRYPTION_SECRET:-}
+    volumes:
+      - uploads_data:/app/uploads
+    ports:
+      - "${BACKEND_PORT:-3001}:3001"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_AUTH_MODE: local
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3001}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NODE_ENV: production
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+
+volumes:
+  postgres_data:
+  uploads_data:

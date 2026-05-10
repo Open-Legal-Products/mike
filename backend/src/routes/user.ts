@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
-import { createServerSupabase } from "../lib/supabase";
+import { createDb, DbClient, deleteAuthUser } from "../lib/db";
 import { DEFAULT_TABULAR_MODEL, resolveModel } from "../lib/llm";
 import {
   type ApiKeyStatus,
@@ -102,7 +102,7 @@ function validateProfilePayload(body: unknown):
 }
 
 async function ensureProfileRow(
-  db: ReturnType<typeof createServerSupabase>,
+  db: DbClient,
   userId: string,
 ) {
   const { error } = await db
@@ -115,7 +115,7 @@ async function ensureProfileRow(
 }
 
 async function loadProfile(
-  db: ReturnType<typeof createServerSupabase>,
+  db: DbClient,
   userId: string,
   options: { repairMissing?: boolean } = {},
 ) {
@@ -174,7 +174,7 @@ async function loadProfile(
 // POST /user/profile
 userRouter.post("/profile", requireAuth, async (_req, res) => {
   const userId = res.locals.userId as string;
-  const db = createServerSupabase();
+  const db = createDb();
   const error = await ensureProfileRow(db, userId);
   if (error) return void res.status(500).json({ detail: error.message });
   res.json({ ok: true });
@@ -183,7 +183,7 @@ userRouter.post("/profile", requireAuth, async (_req, res) => {
 // GET /user/profile
 userRouter.get("/profile", requireAuth, async (_req, res) => {
   const userId = res.locals.userId as string;
-  const db = createServerSupabase();
+  const db = createDb();
   const { data, error } = await loadProfile(db, userId, {
     repairMissing: true,
   });
@@ -198,7 +198,7 @@ userRouter.patch("/profile", requireAuth, async (req, res) => {
   const parsed = validateProfilePayload(req.body);
   if (!parsed.ok) return void res.status(400).json({ detail: parsed.detail });
 
-  const db = createServerSupabase();
+  const db = createDb();
   const ensureError = await ensureProfileRow(db, userId);
   if (ensureError)
     return void res.status(500).json({ detail: ensureError.message });
@@ -219,7 +219,7 @@ userRouter.patch("/profile", requireAuth, async (req, res) => {
 // GET /user/api-keys
 userRouter.get("/api-keys", requireAuth, async (_req, res) => {
   const userId = res.locals.userId as string;
-  const db = createServerSupabase();
+  const db = createDb();
   const status = await getUserApiKeyStatus(userId, db);
   res.json(status);
 });
@@ -233,7 +233,7 @@ userRouter.put("/api-keys/:provider", requireAuth, async (req, res) => {
 
   const apiKey =
     typeof req.body?.api_key === "string" ? req.body.api_key : null;
-  const db = createServerSupabase();
+  const db = createDb();
   try {
     // Ollama is env-configured when the base URL is set — but the API key
     // is optional, so we always allow the browser to save/clear it.
@@ -286,8 +286,7 @@ userRouter.get("/ollama/models", requireAuth, async (_req, res) => {
 // DELETE /user/account
 userRouter.delete("/account", requireAuth, async (_req, res) => {
   const userId = res.locals.userId as string;
-  const db = createServerSupabase();
-  const { error } = await db.auth.admin.deleteUser(userId);
+  const { error } = await deleteAuthUser(userId);
   if (error) return void res.status(500).json({ detail: error.message });
   res.status(204).send();
 });

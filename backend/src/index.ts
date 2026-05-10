@@ -12,6 +12,7 @@ import { workflowsRouter } from "./routes/workflows";
 import { userRouter } from "./routes/user";
 import { downloadsRouter } from "./routes/downloads";
 import { localFilesRouter } from "./routes/localFiles";
+import { localAuthRouter } from "./routes/localAuth";
 
 const app = express();
 const PORT = process.env.PORT ?? 3001;
@@ -120,6 +121,9 @@ app.use("/user", userRouter);
 app.use("/users", userRouter);
 app.use("/download", downloadsRouter);
 app.use("/local-files", localFilesRouter);
+if (process.env.AUTH_MODE === "local") {
+    app.use("/auth", localAuthRouter);
+}
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 

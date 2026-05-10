@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
-import { createServerSupabase } from "../lib/supabase";
+import { createDb, DbClient } from "../lib/db";
 import {
     buildProjectDocContext,
     buildMessages,
@@ -38,7 +38,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             attached_documents?: { filename: string; document_id: string }[];
         };
 
-    const db = createServerSupabase();
+    const db = createDb();
 
     // Verify the user has access to the project (owner or shared member).
     const projectAccess = await checkProjectAccess(

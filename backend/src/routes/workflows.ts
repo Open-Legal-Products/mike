@@ -1,19 +1,10 @@
 import { Router } from "express";
-import { createClient } from "@supabase/supabase-js";
 import { requireAuth } from "../middleware/auth";
-import { createServerSupabase } from "../lib/supabase";
-
-function getAdminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
-    process.env.SUPABASE_SECRET_KEY ?? "",
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
-}
+import { createDb, DbClient, listAuthUsers } from "../lib/db";
 
 export const workflowsRouter = Router();
 
-type Db = ReturnType<typeof createServerSupabase>;
+type Db = DbClient;
 
 type WorkflowRecord = {
   id: string;
@@ -78,7 +69,7 @@ workflowsRouter.get("/", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
   const userEmail = res.locals.userEmail as string;
   const { type } = req.query as { type?: string };
-  const db = createServerSupabase();
+  const db = createDb();
 
   // Own workflows
   let ownQuery = db
@@ -112,10 +103,8 @@ workflowsRouter.get("/", requireAuth, async (req, res) => {
         ? await db.from("user_profiles").select("user_id, display_name").in("user_id", sharerIds)
         : { data: [] };
 
-      // Fetch sharer emails via admin client
-      const admin = getAdminClient();
-      const { data: authData } = await admin.auth.admin.listUsers({ perPage: 1000 });
-      const authUsers = authData?.users ?? [];
+      // Fetch sharer emails (works in both Supabase and local mode)
+      const authUsers = await listAuthUsers();
 
       sharedWorkflows = wfs.map((wf) => {
         const share = shares.find((s) => s.workflow_id === wf.id);
@@ -155,7 +144,7 @@ workflowsRouter.post("/", requireAuth, async (req, res) => {
       .status(400)
       .json({ detail: "type must be 'assistant' or 'tabular'" });
 
-  const db = createServerSupabase();
+  const db = createDb();
   const { data, error } = await db
     .from("workflows")
     .insert({
@@ -184,7 +173,7 @@ async function handleWorkflowUpdate(req: import("express").Request, res: import(
     updates.columns_config = req.body.columns_config;
   if ("practice" in req.body) updates.practice = req.body.practice ?? null;
 
-  const db = createServerSupabase();
+  const db = createDb();
   const access = await resolveWorkflowAccess(workflowId, userId, userEmail, db);
   if (!access || access.workflow.is_system || !access.allowEdit) {
     return void res
@@ -220,7 +209,7 @@ workflowsRouter.patch("/:workflowId", requireAuth, handleWorkflowUpdate);
 workflowsRouter.delete("/:workflowId", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
   const { workflowId } = req.params;
-  const db = createServerSupabase();
+  const db = createDb();
   const { error } = await db
     .from("workflows")
     .delete()
@@ -234,7 +223,7 @@ workflowsRouter.delete("/:workflowId", requireAuth, async (req, res) => {
 // GET /workflows/hidden
 workflowsRouter.get("/hidden", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
-  const db = createServerSupabase();
+  const db = createDb();
   const { data, error } = await db
     .from("hidden_workflows")
     .select("workflow_id")
@@ -249,7 +238,7 @@ workflowsRouter.post("/hidden", requireAuth, async (req, res) => {
   const { workflow_id } = req.body as { workflow_id: string };
   if (!workflow_id?.trim())
     return void res.status(400).json({ detail: "workflow_id is required" });
-  const db = createServerSupabase();
+  const db = createDb();
   const { error } = await db
     .from("hidden_workflows")
     .upsert({ user_id: userId, workflow_id }, { onConflict: "user_id,workflow_id" });
@@ -261,7 +250,7 @@ workflowsRouter.post("/hidden", requireAuth, async (req, res) => {
 workflowsRouter.delete("/hidden/:workflowId", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
   const { workflowId } = req.params;
-  const db = createServerSupabase();
+  const db = createDb();
   const { error } = await db
     .from("hidden_workflows")
     .delete()
@@ -276,7 +265,7 @@ workflowsRouter.get("/:workflowId", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
   const userEmail = res.locals.userEmail as string | undefined;
   const { workflowId } = req.params;
-  const db = createServerSupabase();
+  const db = createDb();
   const access = await resolveWorkflowAccess(workflowId, userId, userEmail, db);
   if (!access)
     return void res.status(404).json({ detail: "Workflow not found" });
@@ -292,7 +281,7 @@ workflowsRouter.get("/:workflowId", requireAuth, async (req, res) => {
 workflowsRouter.get("/:workflowId/shares", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
   const { workflowId } = req.params;
-  const db = createServerSupabase();
+  const db = createDb();
 
   const { data: wf } = await db
     .from("workflows")
@@ -317,7 +306,7 @@ workflowsRouter.get("/:workflowId/shares", requireAuth, async (req, res) => {
 workflowsRouter.delete("/:workflowId/shares/:shareId", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
   const { workflowId, shareId } = req.params;
-  const db = createServerSupabase();
+  const db = createDb();
 
   const { data: wf } = await db
     .from("workflows")
@@ -339,7 +328,7 @@ workflowsRouter.post("/:workflowId/share", requireAuth, async (req, res) => {
 
   if (!emails?.length) return void res.status(400).json({ detail: "emails is required" });
 
-  const db = createServerSupabase();
+  const db = createDb();
   // Verify ownership
   const { data: wf } = await db
     .from("workflows")

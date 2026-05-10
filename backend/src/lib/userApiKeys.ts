@@ -1,8 +1,8 @@
 import crypto from "crypto";
-import { createServerSupabase } from "./supabase";
+import { createDb, DbClient } from "./db";
 import type { UserApiKeys } from "./llm";
 
-type Db = ReturnType<typeof createServerSupabase>;
+type Db = DbClient;
 export type ApiKeyProvider = "claude" | "gemini" | "openai" | "ollama";
 export type ApiKeySource = "user" | "env" | null;
 export type ApiKeyStatus = Record<ApiKeyProvider, boolean> & {
@@ -59,6 +59,7 @@ function encryptionKey(): Buffer {
     const secret =
         process.env.USER_API_KEYS_ENCRYPTION_SECRET ||
         process.env.API_KEYS_ENCRYPTION_SECRET ||
+        process.env.JWT_SECRET ||
         process.env.SUPABASE_SECRET_KEY;
     if (!secret) {
         throw new Error("API key encryption secret is not configured");
@@ -112,7 +113,7 @@ export function normalizeApiKeyProvider(value: string): ApiKeyProvider | null {
 
 export async function getUserApiKeyStatus(
     userId: string,
-    db: Db = createServerSupabase(),
+    db: Db = createDb(),
 ): Promise<ApiKeyStatus> {
     const status: ApiKeyStatus = {
         claude: false,
@@ -159,7 +160,7 @@ export async function getUserApiKeyStatus(
 
 export async function getUserApiKeys(
     userId: string,
-    db: Db = createServerSupabase(),
+    db: Db = createDb(),
 ): Promise<UserApiKeys> {
     const apiKeys: UserApiKeys = {
         claude: envApiKey("claude"),
@@ -187,7 +188,7 @@ export async function saveUserApiKey(
     userId: string,
     provider: ApiKeyProvider,
     value: string | null,
-    db: Db = createServerSupabase(),
+    db: Db = createDb(),
 ): Promise<void> {
     const normalized = value?.trim() || null;
 

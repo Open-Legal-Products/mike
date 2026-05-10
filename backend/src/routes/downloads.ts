@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
-import { createServerSupabase } from "../lib/supabase";
+import { createDb, DbClient } from "../lib/db";
 import { buildContentDisposition, downloadFile } from "../lib/storage";
 import { verifyDownload } from "../lib/downloadTokens";
 import { ensureDocAccess } from "../lib/access";
@@ -25,7 +25,7 @@ downloadsRouter.get("/:token", requireAuth, async (req, res) => {
     if (!info)
         return void res.status(404).json({ detail: "Invalid link" });
 
-    const db = createServerSupabase();
+    const db = createDb();
     let version:
         | {
               id: string;

@@ -7,7 +7,7 @@ import React, {
     useState,
     ReactNode,
 } from "react";
-import { supabase } from "@/lib/supabase";
+import { isLocalMode, getLocalUser, clearToken } from "@/lib/localAuth";
 
 interface User {
     id: string;
@@ -28,54 +28,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [authLoading, setAuthLoading] = useState(true);
 
     useEffect(() => {
-        const checkUser = async () => {
-            const {
-                data: { session },
-            } = await supabase.auth.getSession();
+        if (isLocalMode()) {
+            // Local mode: read JWT from localStorage synchronously
+            const localUser = getLocalUser();
+            setUser(localUser);
+            setAuthLoading(false);
+            return;
+        }
 
+        // Supabase mode
+        let subscription: { unsubscribe: () => void } | null = null;
+
+        const initSupabase = async () => {
+            const { supabase } = await import("@/lib/supabase");
+            const { data: { session } } = await supabase.auth.getSession();
             if (session?.user) {
-                setUser({
-                    id: session.user.id,
-                    email: session.user.email || "",
-                });
+                setUser({ id: session.user.id, email: session.user.email ?? "" });
             }
             setAuthLoading(false);
+
+            const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+                if (session?.user) {
+                    setUser({ id: session.user.id, email: session.user.email ?? "" });
+                } else {
+                    setUser(null);
+                }
+                setAuthLoading(false);
+            });
+            subscription = data.subscription;
         };
 
-        checkUser();
-
-        const {
-            data: { subscription },
-        } = supabase.auth.onAuthStateChange(async (_event, session) => {
-            if (session?.user) {
-                setUser({
-                    id: session.user.id,
-                    email: session.user.email || "",
-                });
-            } else {
-                setUser(null);
-            }
-            setAuthLoading(false);
-        });
-
-        return () => {
-            subscription.unsubscribe();
-        };
+        initSupabase();
+        return () => { subscription?.unsubscribe(); };
     }, []);
 
     const signOut = async () => {
+        if (isLocalMode()) {
+            clearToken();
+            setUser(null);
+            return;
+        }
+        const { supabase } = await import("@/lib/supabase");
         await supabase.auth.signOut();
         setUser(null);
     };
 
     return (
         <AuthContext.Provider
-            value={{
-                user,
-                isAuthenticated: !!user,
-                authLoading,
-                signOut,
-            }}
+            value={{ user, isAuthenticated: !!user, authLoading, signOut }}
         >
             {children}
         </AuthContext.Provider>
