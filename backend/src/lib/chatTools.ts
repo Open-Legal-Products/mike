@@ -9,7 +9,7 @@ import { convertedPdfKey } from "./convert";
 import { createServerSupabase } from "./supabase";
 import {
     applyTrackedEdits,
-    extractDocxBodyText,
+    extractDocxWithParagraphIds,
     type EditInput,
 } from "./docxTrackedChanges";
 import { buildDownloadUrl } from "./downloadTokens";
@@ -120,11 +120,19 @@ Contracts: when generating a contract or agreement, always include a signatures 
 Contract preambles: the preamble of a contract (the opening recitals, parties block, "WHEREAS" clauses, and any introductory narrative before the first operative clause) must NOT be numbered. Render these as unnumbered content (plain paragraphs or an unnumbered heading), and begin numbering only at the first operative clause/section.
 
 DOCUMENT EDITING:
-When using edit_document, any edit that adds, removes, or reorders a numbered clause, section, sub-clause, schedule, exhibit, or list item shifts every downstream number. You MUST update all affected numbering AND every cross-reference to those numbers in the same edit_document call:
-- Renumber the sibling clauses/sections/sub-clauses that follow the change so the sequence stays contiguous (e.g. if you insert a new Section 4, existing Sections 4, 5, 6… become 5, 6, 7…).
-- Find every in-document reference to the shifted numbers — e.g. "see Section 5", "pursuant to Clause 4.2(b)", "as set out in Schedule 3", "defined in Section 2.1" — and update them to the new numbers. Include defined-term blocks, cross-references in recitals, schedules, and exhibits.
-- Before issuing the edits, scan the full document (use read_document or find_in_document) to enumerate affected cross-references; do not assume references only appear near the change site.
-- If you are uncertain whether a reference points to the shifted number or an unrelated number, err on the side of including it as an edit and explain in the reason field.
+When you read a .docx document, each paragraph is shown with its ID in brackets, e.g. "[body:ABC123] Paragraph text here." Use these paragraph IDs to target edits precisely.
+
+Edit types:
+- replaceText: Replace specific text within a paragraph (requires paraId, find, replace)
+- replaceParagraph: Replace the entire content of a paragraph (requires paraId, content array)
+- deleteParagraph: Remove a paragraph entirely (requires paraId)
+- insertAfter: Insert a new paragraph after the specified one (requires paraId, content array)
+- insertBefore: Insert a new paragraph before the specified one (requires paraId, content array)
+
+When any edit adds, removes, or reorders a numbered clause, section, sub-clause, schedule, exhibit, or list item, it shifts every downstream number. You MUST update all affected numbering AND every cross-reference to those numbers in the same edit_document call:
+- Renumber the sibling clauses/sections/sub-clauses that follow the change so the sequence stays contiguous (e.g. if you insert a new Section 4, existing Sections 4, 5, 6... become 5, 6, 7...).
+- Find every in-document reference to the shifted numbers (e.g. "see Section 5", "pursuant to Clause 4.2(b)") and update them to the new numbers.
+- Before issuing the edits, scan the full document (use read_document or find_in_document) to enumerate affected cross-references.
 - When deleting square brackets, delete both the opening \`[\` and the closing \`]\`. Never leave behind an unmatched square bracket after an edit.
 
 WORKFLOWS:
@@ -395,7 +403,7 @@ export const TOOLS = [
         function: {
             name: "edit_document",
             description:
-                "Propose edits to a user-attached .docx as tracked changes. Each edit is a precise, minimal substitution of specific words/characters, NOT a whole-line or paragraph replacement. Use read_document first. Anchor each edit with short before/after context so it can be located unambiguously. Returns per-edit annotations the UI will render as Accept/Reject cards and a download link to the edited document.",
+                "Propose edits to a .docx as tracked changes. Reference paragraphs by their ID (shown in brackets when you read the document, e.g. '[body:ABC123]'). Use read_document first to see paragraph IDs.",
             parameters: {
                 type: "object",
                 properties: {
@@ -405,42 +413,47 @@ export const TOOLS = [
                     },
                     edits: {
                         type: "array",
-                        description: "List of precise substitutions.",
+                        description: "List of edit operations.",
                         items: {
                             type: "object",
                             properties: {
+                                type: {
+                                    type: "string",
+                                    enum: ["replaceText", "replaceParagraph", "deleteParagraph", "insertAfter", "insertBefore"],
+                                    description: "Type of edit operation.",
+                                },
+                                paraId: {
+                                    type: "string",
+                                    description: "Paragraph ID from read_document output (e.g. 'body:ABC123').",
+                                },
                                 find: {
                                     type: "string",
-                                    description:
-                                        "Exact substring to replace (keep it as short as possible — ideally just the words/chars being changed).",
+                                    description: "For replaceText: exact text to find within the paragraph.",
                                 },
                                 replace: {
                                     type: "string",
-                                    description:
-                                        "Replacement text. Empty string = pure deletion.",
+                                    description: "For replaceText: replacement text. Empty string = deletion.",
                                 },
-                                context_before: {
-                                    type: "string",
-                                    description:
-                                        "~40 chars immediately preceding `find`, used to disambiguate.",
+                                occurrence: {
+                                    type: "integer",
+                                    description: "For replaceText: which occurrence to replace (1 = first). Ignored if 'all' is true.",
+                                    minimum: 1,
                                 },
-                                context_after: {
-                                    type: "string",
-                                    description:
-                                        "~40 chars immediately following `find`.",
+                                all: {
+                                    type: "boolean",
+                                    description: "For replaceText: replace all occurrences instead of just the first.",
+                                },
+                                content: {
+                                    type: "array",
+                                    items: { type: "string" },
+                                    description: "For replaceParagraph/insertAfter/insertBefore: new paragraph content.",
                                 },
                                 reason: {
                                     type: "string",
-                                    description:
-                                        "Short explanation shown to the user on the card.",
+                                    description: "Short explanation shown on the Accept/Reject card.",
                                 },
                             },
-                            required: [
-                                "find",
-                                "replace",
-                                "context_before",
-                                "context_after",
-                            ],
+                            required: ["type", "paraId"],
                         },
                     },
                 },
@@ -1319,7 +1332,7 @@ export async function runEditDocument(params: {
             ok: false,
             error:
                 errors[0]?.reason ??
-                "No edits could be applied. Refine context_before/context_after and retry.",
+                "No edits could be applied. Check that paraId matches the document and retry.",
         };
     }
 
@@ -1402,6 +1415,7 @@ export async function runEditDocument(params: {
     }
 
     // Insert one row per change
+    // Note: context_before/context_after are left empty with paragraph ID-based edits
     const editRows = changes.map((c) => ({
         document_id: documentId,
         version_id: versionRowId,
@@ -1410,8 +1424,8 @@ export async function runEditDocument(params: {
         ins_w_id: c.insId ?? null,
         deleted_text: c.deletedText,
         inserted_text: c.insertedText,
-        context_before: c.contextBefore ?? "",
-        context_after: c.contextAfter ?? "",
+        context_before: "",
+        context_after: "",
         status: "pending" as const,
     }));
     const { data: insertedEdits, error: editsErr } = await db
@@ -1575,12 +1589,28 @@ async function readDocumentContent(
                 `[read_document] pdf extracted length=${text.length} for filename="${docInfo.filename}"`,
             );
         } else if (docInfo.file_type === "docx") {
-            // Use the same flattening as the edit_document matcher so the
-            // LLM sees exactly the characters it can anchor against.
-            text = await extractDocxBodyText(Buffer.from(raw));
+            // Use paragraph IDs so the LLM can target edits precisely.
+            // Format: "[body:ABC123] First paragraph text.\n[body:DEF456] Second paragraph..."
+            const extracted = await extractDocxWithParagraphIds(Buffer.from(raw));
+            text = extracted.text;
             console.log(
-                `[read_document] docx extractDocxBodyText length=${text.length} for filename="${docInfo.filename}"`,
+                `[read_document] docx extractDocxWithParagraphIds length=${text.length} for filename="${docInfo.filename}"`,
             );
+            // Save minted paragraph IDs back to storage so they're stable for edits
+            if (sourcePath && extracted.bytes) {
+                const ab = extracted.bytes.buffer.slice(
+                    extracted.bytes.byteOffset,
+                    extracted.bytes.byteOffset + extracted.bytes.byteLength,
+                ) as ArrayBuffer;
+                await uploadFile(
+                    sourcePath,
+                    ab,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                );
+                console.log(
+                    `[read_document] saved minted paragraph IDs to path="${sourcePath}"`,
+                );
+            }
             if (!text) {
                 console.log(
                     `[read_document] docx accepted-view extractor returned empty, falling back to mammoth for filename="${docInfo.filename}"`,
@@ -2126,10 +2156,13 @@ export async function runToolCalls(
                 const edits: EditInput[] = (
                     editsRaw as Record<string, unknown>[]
                 ).map((e) => ({
-                    find: String(e.find ?? ""),
-                    replace: String(e.replace ?? ""),
-                    context_before: String(e.context_before ?? ""),
-                    context_after: String(e.context_after ?? ""),
+                    type: String(e.type ?? "replaceText") as EditInput["type"],
+                    paraId: String(e.paraId ?? ""),
+                    find: e.find ? String(e.find) : undefined,
+                    replace: e.replace !== undefined ? String(e.replace) : undefined,
+                    content: Array.isArray(e.content) ? e.content.map(String) : undefined,
+                    occurrence: typeof e.occurrence === "number" ? e.occurrence : undefined,
+                    all: typeof e.all === "boolean" ? e.all : undefined,
                     reason: e.reason ? String(e.reason) : undefined,
                 }));
                 const reuseVersion = turnEditState?.get(indexed.document_id);
