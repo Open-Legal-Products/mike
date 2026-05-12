@@ -842,11 +842,13 @@ function MarkdownContent({
     citationsList,
     onCitationClick,
     divRef,
+    isStreaming,
 }: {
     text: string;
     citationsList: MikeCitationAnnotation[];
     onCitationClick?: (c: MikeCitationAnnotation) => void;
     divRef?: React.RefObject<HTMLDivElement | null>;
+    isStreaming?: boolean;
 }) {
     return (
         <div
@@ -854,6 +856,7 @@ function MarkdownContent({
             className="text-gray-900 mb-4 text-base prose prose-sm max-w-none font-serif"
         >
             <ReactMarkdown
+                key={isStreaming ? "streaming" : "done"}
                 remarkPlugins={[
                     [remarkMath, { singleDollarTextMath: false }],
                     remarkGfm,
@@ -1236,6 +1239,7 @@ export function AssistantMessage({
                         citationsList={citationsList}
                         onCitationClick={onCitationClick}
                         divRef={isLastContent ? contentDivRef : undefined}
+                        isStreaming={isLastContent ? isStreaming : false}
                     />
                 </div>
             );
@@ -1382,6 +1386,7 @@ export function AssistantMessage({
                                                     ? contentDivRef
                                                     : undefined
                                             }
+                                            isStreaming={isLastContent ? isStreaming : false}
                                         />
                                     </div>
                                 );
