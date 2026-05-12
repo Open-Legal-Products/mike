@@ -17,14 +17,48 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl as awsGetSignedUrl } from "@aws-sdk/s3-request-presigner";
 
+function validateStorageConfig(): {
+  endpoint: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+} {
+  const endpoint = process.env.R2_ENDPOINT_URL?.trim() || "";
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID?.trim() || "";
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY?.trim() || "";
+
+  if (!endpoint || !accessKeyId || !secretAccessKey) {
+    throw new Error(
+      "R2 storage is not fully configured. Set R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY.",
+    );
+  }
+
+  if (accessKeyId.length !== 32) {
+    const hint = accessKeyId.startsWith("cf")
+      ? "This looks like a Cloudflare API token, not an R2 S3 Access Key ID."
+      : "Cloudflare R2 S3 Access Key IDs are typically 32 characters long.";
+    throw new Error(
+      `Invalid R2_ACCESS_KEY_ID configuration. Expected an R2 S3 Access Key ID (32 characters), got length ${accessKeyId.length}. ${hint}`,
+    );
+  }
+
+  if (secretAccessKey.length < 40) {
+    throw new Error(
+      `Invalid R2_SECRET_ACCESS_KEY configuration. Expected an R2 S3 Secret Access Key, got length ${secretAccessKey.length}.`,
+    );
+  }
+
+  return { endpoint, accessKeyId, secretAccessKey };
+}
+
 function getClient(): S3Client {
+  const { endpoint, accessKeyId, secretAccessKey } = validateStorageConfig();
   return new S3Client({
     region: "auto",
-    endpoint: process.env.R2_ENDPOINT_URL!,
+    endpoint,
     forcePathStyle: true,
     credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      accessKeyId,
+      secretAccessKey,
     },
   });
 }
