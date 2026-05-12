@@ -13,11 +13,31 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useUserProfile } from "@/contexts/UserProfileContext";
+import type { ApiKeyState } from "@/app/lib/mikeApi";
 import { MODELS } from "@/app/components/assistant/ModelToggle";
 import {
     isModelAvailable,
     modelGroupToProvider,
+    providerLabel,
 } from "@/app/lib/modelAvailability";
+
+const API_KEY_FIELDS = [
+    {
+        provider: "claude",
+        label: "Anthropic (Claude) API Key",
+        placeholder: "sk-ant-…",
+    },
+    {
+        provider: "gemini",
+        label: "Google (Gemini) API Key",
+        placeholder: "AI…",
+    },
+    {
+        provider: "openai",
+        label: "OpenAI API Key",
+        placeholder: "sk-…",
+    },
+] as const;
 
 export default function ModelsAndApiKeysPage() {
     const { profile, updateModelPreference, updateApiKey } = useUserProfile();
@@ -36,15 +56,16 @@ export default function ModelsAndApiKeysPage() {
                         <label className="text-sm text-gray-600 block mb-2">
                             Tabular review model
                         </label>
+                        <p className="text-xs text-gray-400 mb-2">
+                            We recommend using a smaller model for tabular
+                            reviews to reduce token costs.
+                        </p>
                         <TabularModelDropdown
                             value={
                                 profile?.tabularModel ??
                                 "gemini-3-flash-preview"
                             }
-                            apiKeys={{
-                                claudeApiKey: profile?.claudeApiKey ?? null,
-                                geminiApiKey: profile?.geminiApiKey ?? null,
-                            }}
+                            apiKeys={profile?.apiKeys}
                             onChange={(id) =>
                                 updateModelPreference("tabularModel", id)
                             }
@@ -66,29 +87,33 @@ export default function ModelsAndApiKeysPage() {
                     own instance of Mike.
                 </p>
                 <p className="text-xs text-gray-400 mb-4 max-w-xl">
-                    Title generation automatically routes to the cheapest model
-                    of whichever provider you&rsquo;ve configured (Gemini Flash
-                    Lite if a Gemini key is set, otherwise Claude Haiku).
+                    Title generation automatically routes to the cheapest
+                    configured provider model.
                 </p>
                 <div className="space-y-4 max-w-xl">
-                    <ApiKeyField
-                        label="Anthropic (Claude) API Key"
-                        placeholder="sk-ant-…"
-                        hasSavedKey={!!profile?.claudeApiKey}
-                        onSave={(value) =>
-                            updateApiKey("claude", value.trim() || null)
-                        }
-                        onRemove={() => updateApiKey("claude", null)}
-                    />
-                    <ApiKeyField
-                        label="Google (Gemini) API Key"
-                        placeholder="AI…"
-                        hasSavedKey={!!profile?.geminiApiKey}
-                        onSave={(value) =>
-                            updateApiKey("gemini", value.trim() || null)
-                        }
-                        onRemove={() => updateApiKey("gemini", null)}
-                    />
+                    {API_KEY_FIELDS.map((field) => (
+                        <ApiKeyField
+                            key={field.provider}
+                            label={field.label}
+                            placeholder={field.placeholder}
+                            hasSavedKey={
+                                !!profile?.apiKeys[field.provider].configured
+                            }
+                            isServerConfigured={
+                                profile?.apiKeys[field.provider].source ===
+                                "env"
+                            }
+                            onSave={(value) =>
+                                updateApiKey(
+                                    field.provider,
+                                    value.trim() || null,
+                                )
+                            }
+                            onRemove={() =>
+                                updateApiKey(field.provider, null)
+                            }
+                        />
+                    ))}
                 </div>
             </div>
         </div>
@@ -102,12 +127,16 @@ function TabularModelDropdown({
 }: {
     value: string;
     onChange: (id: string) => void;
-    apiKeys: { claudeApiKey: string | null; geminiApiKey: string | null };
+    apiKeys?: ApiKeyState;
 }) {
     const [isOpen, setIsOpen] = useState(false);
     const selected = MODELS.find((m) => m.id === value);
-    const selectedAvailable = isModelAvailable(value, apiKeys);
-    const groups: ("Anthropic" | "Google")[] = ["Anthropic", "Google"];
+    const selectedAvailable = apiKeys ? isModelAvailable(value, apiKeys) : true;
+    const groups: ("Anthropic" | "Google" | "OpenAI")[] = [
+        "Anthropic",
+        "Google",
+        "OpenAI",
+    ];
 
     return (
         <DropdownMenu onOpenChange={setIsOpen}>
@@ -145,10 +174,9 @@ function TabularModelDropdown({
                             </DropdownMenuLabel>
                             {items.map((m) => {
                                 const provider = modelGroupToProvider(m.group);
-                                const available = isModelAvailable(
-                                    m.id,
-                                    apiKeys,
-                                );
+                                const available = apiKeys
+                                    ? isModelAvailable(m.id, apiKeys)
+                                    : true;
                                 return (
                                     <DropdownMenuItem
                                         key={m.id}
@@ -156,7 +184,7 @@ function TabularModelDropdown({
                                         onSelect={() => onChange(m.id)}
                                         title={
                                             !available
-                                                ? `Add a ${provider === "claude" ? "Claude" : "Gemini"} API key to use this model`
+                                                ? `Add a ${providerLabel(provider)} API key to use this model`
                                                 : undefined
                                         }
                                     >
@@ -186,12 +214,14 @@ function ApiKeyField({
     label,
     placeholder,
     hasSavedKey,
+    isServerConfigured,
     onSave,
     onRemove,
 }: {
     label: string;
     placeholder: string;
     hasSavedKey: boolean;
+    isServerConfigured: boolean;
     onSave: (value: string) => Promise<boolean>;
     onRemove: () => Promise<boolean>;
 }) {
@@ -229,7 +259,20 @@ function ApiKeyField({
     return (
         <div>
             <label className="text-sm text-gray-600 block mb-2">{label}</label>
-            {hasSavedKey && (
+            {isServerConfigured && (
+                <div className="mb-2 rounded-md border border-blue-100 bg-blue-50 px-3 py-2">
+                    <p className="text-xs text-blue-800">
+                        A server .env key is configured for this provider.
+                        Browser API-key edits are disabled.
+                    </p>
+                    {hasSavedKey && (
+                        <p className="mt-1 text-xs text-blue-800">
+                            The server key will be used for this provider.
+                        </p>
+                    )}
+                </div>
+            )}
+            {hasSavedKey && !isServerConfigured && (
                 <p className="text-xs text-gray-500 mb-2">
                     A key is saved. Paste a new key to replace it.
                 </p>
@@ -240,15 +283,23 @@ function ApiKeyField({
                         type={reveal ? "text" : "password"}
                         value={value}
                         onChange={(e) => setValue(e.target.value)}
-                        placeholder={hasSavedKey ? "Saved key hidden" : placeholder}
+                        placeholder={
+                            isServerConfigured
+                                ? "Server .env key configured"
+                                : hasSavedKey
+                                  ? "Saved key hidden"
+                                  : placeholder
+                        }
                         className="pr-10"
                         autoComplete="off"
                         spellCheck={false}
+                        disabled={isServerConfigured}
                     />
                     <button
                         type="button"
                         onClick={() => setReveal((r) => !r)}
-                        className="absolute inset-y-0 right-2 flex items-center text-gray-400 hover:text-gray-600"
+                        disabled={isServerConfigured}
+                        className="absolute inset-y-0 right-2 flex items-center text-gray-400 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
                         aria-label={reveal ? "Hide key" : "Show key"}
                     >
                         {reveal ? (
@@ -260,7 +311,7 @@ function ApiKeyField({
                 </div>
                 <Button
                     onClick={handleSave}
-                    disabled={isSaving || !dirty || saved}
+                    disabled={isServerConfigured || isSaving || !dirty || saved}
                     className="min-w-[80px] transition-all bg-black hover:bg-gray-900 text-white"
                 >
                     {isSaving ? (
@@ -274,7 +325,7 @@ function ApiKeyField({
                         "Save"
                     )}
                 </Button>
-                {hasSavedKey && (
+                {hasSavedKey && !isServerConfigured && (
                     <Button
                         type="button"
                         variant="outline"

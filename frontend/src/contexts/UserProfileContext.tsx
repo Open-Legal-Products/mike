@@ -10,6 +10,8 @@ import React, {
 } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+    type ApiKeyState,
+    type ApiKeyProvider,
     type UserProfile as ApiUserProfile,
     getUserProfile,
     saveApiKey,
@@ -24,8 +26,7 @@ interface UserProfile {
     creditsRemaining: number;
     tier: string;
     tabularModel: string;
-    claudeApiKey: string | null;
-    geminiApiKey: string | null;
+    apiKeys: ApiKeyState;
 }
 
 interface UserProfileContextType {
@@ -38,7 +39,7 @@ interface UserProfileContextType {
         value: string,
     ) => Promise<boolean>;
     updateApiKey: (
-        provider: "claude" | "gemini",
+        provider: ApiKeyProvider,
         value: string | null,
     ) => Promise<boolean>;
     reloadProfile: () => Promise<void>;
@@ -49,14 +50,31 @@ const UserProfileContext = createContext<UserProfileContextType | undefined>(
     undefined,
 );
 
-const CONFIGURED_KEY_MARKER = "configured";
+const API_KEY_PROVIDERS: ApiKeyProvider[] = ["claude", "gemini", "openai"];
+
+function emptyApiKeys(): ApiKeyState {
+    return {
+        claude: { configured: false, source: null },
+        gemini: { configured: false, source: null },
+        openai: { configured: false, source: null },
+    };
+}
 
 function toProfile(data: ApiUserProfile): UserProfile {
     const { apiKeyStatus, ...profile } = data;
+    const apiKeys = emptyApiKeys();
+    for (const provider of API_KEY_PROVIDERS) {
+        apiKeys[provider] = {
+            configured: !!apiKeyStatus[provider],
+            source:
+                apiKeyStatus.sources?.[provider] ??
+                (apiKeyStatus[provider] ? "user" : null),
+        };
+    }
+
     return {
         ...profile,
-        claudeApiKey: apiKeyStatus.claude ? CONFIGURED_KEY_MARKER : null,
-        geminiApiKey: apiKeyStatus.gemini ? CONFIGURED_KEY_MARKER : null,
+        apiKeys,
     };
 }
 
@@ -83,8 +101,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 creditsRemaining: 999999, // temporarily unlimited
                 tier: "Free",
                 tabularModel: "gemini-3-flash-preview",
-                claudeApiKey: null,
-                geminiApiKey: null,
+                apiKeys: emptyApiKeys(),
             });
         } finally {
             setLoading(false);
@@ -157,12 +174,10 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
 
     const updateApiKey = useCallback(
         async (
-            provider: "claude" | "gemini",
+            provider: ApiKeyProvider,
             value: string | null,
         ): Promise<boolean> => {
             if (!user) return false;
-            const stateField =
-                provider === "claude" ? "claudeApiKey" : "geminiApiKey";
             const normalized = value?.trim() ? value.trim() : null;
             try {
                 await saveApiKey(provider, normalized);
@@ -170,9 +185,13 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                     prev
                         ? {
                               ...prev,
-                              [stateField]: normalized
-                                  ? CONFIGURED_KEY_MARKER
-                                  : null,
+                              apiKeys: {
+                                  ...prev.apiKeys,
+                                  [provider]: {
+                                      configured: !!normalized,
+                                      source: normalized ? "user" : null,
+                                  },
+                              },
                           }
                         : null,
                 );

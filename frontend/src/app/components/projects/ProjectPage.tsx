@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
     Upload,
@@ -54,7 +54,11 @@ import type {
 } from "@/app/components/shared/types";
 import { ToolbarTabs } from "@/app/components/shared/ToolbarTabs";
 import { RenameableTitle } from "@/app/components/shared/RenameableTitle";
-import { RowActions } from "@/app/components/shared/RowActions";
+import {
+    closeRowActionMenus,
+    RowActionMenuItems,
+    RowActions,
+} from "@/app/components/shared/RowActions";
 import { AddDocumentsModal } from "@/app/components/shared/AddDocumentsModal";
 import { PeopleModal } from "@/app/components/shared/PeopleModal";
 import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
@@ -74,12 +78,35 @@ type Tab = "documents" | "assistant" | "reviews";
 type ContextMenu = {
     x: number;
     y: number;
+    docId?: string | null;
     folderId: string | null;       // null = right-clicked on root/empty space
     showFolderActions: boolean;    // true when right-clicked on a specific folder row
 };
 
 const CHECK_W = "w-8 shrink-0";
 const NAME_COL_W = "w-[300px] shrink-0";
+const TREE_CONTROL_WIDTH_PX = 32;
+const TREE_NAME_PADDING_PX = 8;
+
+function treeControlWidth(depth: number) {
+    return TREE_CONTROL_WIDTH_PX * (Math.max(0, depth) + 1);
+}
+
+function treeControlCellStyle(depth: number): CSSProperties | undefined {
+    if (depth <= 0) return undefined;
+    const width = treeControlWidth(depth);
+    return {
+        justifyContent: "flex-start",
+        minWidth: width,
+        paddingLeft: TREE_NAME_PADDING_PX + depth * TREE_CONTROL_WIDTH_PX,
+        width,
+    };
+}
+
+function treeNameCellStyle(depth: number): CSSProperties | undefined {
+    if (depth <= 0) return undefined;
+    return { left: treeControlWidth(depth) };
+}
 
 function formatBytes(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
@@ -113,6 +140,7 @@ function DocVersionHistory({
     filename,
     loading,
     versions,
+    depth = 0,
     onDownloadVersion,
     onOpenVersion,
     onRenameVersion,
@@ -121,6 +149,7 @@ function DocVersionHistory({
     filename: string;
     loading: boolean;
     versions: MikeDocumentVersion[];
+    depth?: number;
     onDownloadVersion: (
         docId: string,
         versionId: string,
@@ -150,8 +179,8 @@ function DocVersionHistory({
     if (loading && versions.length === 0) {
         return (
             <div className="flex items-center h-9 border-b border-gray-50 text-xs text-gray-500 bg-gray-50/60">
-                <div className={`sticky left-0 z-[60] ${CHECK_W} bg-gray-50/60 self-stretch`} />
-                <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-gray-50/60 p-2`}>
+                <div className={`sticky left-0 z-[60] ${CHECK_W} bg-gray-50/60 self-stretch`} style={treeControlCellStyle(depth)} />
+                <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-gray-50/60 p-2`} style={treeNameCellStyle(depth)}>
                     <div className="flex items-center gap-2">
                         <Loader2 className="h-3 w-3 animate-spin text-gray-400" />
                         <span>Loading versions…</span>
@@ -163,8 +192,8 @@ function DocVersionHistory({
     if (versions.length === 0) {
         return (
             <div className="flex items-center h-9 border-b border-gray-50 text-xs text-gray-400 bg-gray-50/60">
-                <div className={`sticky left-0 z-[60] ${CHECK_W} bg-gray-50/60 self-stretch`} />
-                <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-gray-50/60 p-2`}>
+                <div className={`sticky left-0 z-[60] ${CHECK_W} bg-gray-50/60 self-stretch`} style={treeControlCellStyle(depth)} />
+                <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-gray-50/60 p-2`} style={treeNameCellStyle(depth)}>
                     <div>
                         No version history.
                     </div>
@@ -204,8 +233,8 @@ function DocVersionHistory({
                         }}
                         className="group flex items-center h-9 pr-8 border-b border-gray-50 bg-gray-50/60 text-xs text-gray-600 cursor-pointer hover:bg-gray-100/80 transition-colors"
                     >
-                        <div className={`sticky left-0 z-[60] ${CHECK_W} bg-gray-50/60 group-hover:bg-gray-100/80 self-stretch`} />
-                        <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-gray-50/60 group-hover:bg-gray-100/80 p-2`}>
+                        <div className={`sticky left-0 z-[60] ${CHECK_W} bg-gray-50/60 group-hover:bg-gray-100/80 self-stretch`} style={treeControlCellStyle(depth)} />
+                        <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-gray-50/60 group-hover:bg-gray-100/80 p-2`} style={treeNameCellStyle(depth)}>
                         <div className="flex items-center gap-2">
                             <span className="shrink-0 text-gray-400">↳</span>
                             {isEditing ? (
@@ -846,7 +875,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
 
     // ── Tree rendering ────────────────────────────────────────────────────────
 
-    function renderFolderInput(parentId: string | null) {
+    function renderFolderInput(parentId: string | null, depth: number) {
         if (creatingFolderIn !== parentId) return null;
         return (
             <div
@@ -854,10 +883,17 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                 className="group flex items-center h-10 pr-8 border-b border-gray-50"
                 key={`new-folder-${parentId ?? "root"}`}
             >
-                <div className={`sticky left-0 z-[60] ${CHECK_W} bg-white self-stretch`} />
-                <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-white p-2`}>
+                <div
+                    className={`sticky left-0 z-[60] ${CHECK_W} bg-white p-2 flex items-center justify-center self-stretch`}
+                    style={treeControlCellStyle(depth)}
+                >
+                    <ChevronRight className="h-3.5 w-3.5 text-gray-300 shrink-0" />
+                </div>
+                <div
+                    className={`sticky left-8 z-[60] ${NAME_COL_W} bg-white p-2`}
+                    style={treeNameCellStyle(depth)}
+                >
                     <div className="flex items-center gap-1.5">
-                        <ChevronRight className="h-3.5 w-3.5 text-gray-300 shrink-0" />
                         <FolderPlus className="h-4 w-4 text-amber-400 shrink-0" />
                         <input
                             autoFocus
@@ -911,7 +947,18 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                     setViewingDocVersion(null);
                                     setViewingDoc(doc);
                                 }}
-                                onContextMenu={(e) => e.stopPropagation()}
+                                onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    closeRowActionMenus();
+                                    setContextMenu({
+                                        x: e.clientX,
+                                        y: e.clientY,
+                                        docId: doc.id,
+                                        folderId: null,
+                                        showFolderActions: false,
+                                    });
+                                }}
                             className="group flex items-center h-10 pr-8 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
                             >
                                 {(() => {
@@ -922,6 +969,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                         <>
                                 <div
                                     className={`sticky left-0 z-[60] ${CHECK_W} p-2 flex items-center justify-center ${rowBg} group-hover:bg-gray-50`}
+                                    style={treeControlCellStyle(depth)}
                                     onClick={(e) => e.stopPropagation()}
                                 >
                                     <input
@@ -937,7 +985,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                         className="h-2.5 w-2.5 rounded border-gray-200 cursor-pointer accent-black"
                                     />
                                 </div>
-                                <div className={`sticky left-8 z-[60] ${NAME_COL_W} p-2 ${rowBg} group-hover:bg-gray-50`}>
+                                <div className={`sticky left-8 z-[60] ${NAME_COL_W} p-2 ${rowBg} group-hover:bg-gray-50`} style={treeNameCellStyle(depth)}>
                                 <div className="flex items-center gap-2">
                                     {isProcessing ? (
                                         <Loader2 className="h-4 w-4 animate-spin text-gray-400 shrink-0" />
@@ -1008,6 +1056,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                     filename={doc.filename}
                                     loading={loadingVersionDocIds.has(doc.id)}
                                     versions={versionsByDocId.get(doc.id) ?? []}
+                                    depth={depth}
                                     onDownloadVersion={downloadDocVersion}
                                     onOpenVersion={(versionId, label) => {
                                         setViewingDocVersion({ id: versionId, label });
@@ -1042,17 +1091,18 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                 onContextMenu={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
+                                    closeRowActionMenus();
                                     setContextMenu({ x: e.clientX, y: e.clientY, folderId: folder.id, showFolderActions: true });
                                 }}
                                 className={`group flex items-center h-10 pr-8 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors select-none ${dragOverFolderId === folder.id ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : ""}`}
                             >
-                                <div className={`sticky left-0 z-[60] ${CHECK_W} p-2 flex items-center justify-center ${dragOverFolderId === folder.id ? "bg-blue-50" : "bg-white"} group-hover:bg-gray-50 self-stretch`}>
+                                <div className={`sticky left-0 z-[60] ${CHECK_W} p-2 flex items-center justify-center ${dragOverFolderId === folder.id ? "bg-blue-50" : "bg-white"} group-hover:bg-gray-50 self-stretch`} style={treeControlCellStyle(depth)}>
                                     {isExpanded
                                         ? <ChevronDown className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                                         : <ChevronRight className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                                     }
                                 </div>
-                                <div className={`sticky left-8 z-[60] ${NAME_COL_W} p-2 ${dragOverFolderId === folder.id ? "bg-blue-50" : "bg-white"} group-hover:bg-gray-50`}>
+                                <div className={`sticky left-8 z-[60] ${NAME_COL_W} p-2 ${dragOverFolderId === folder.id ? "bg-blue-50" : "bg-white"} group-hover:bg-gray-50`} style={treeNameCellStyle(depth)}>
                                 <div className="flex items-center gap-1.5">
                                     {isExpanded
                                         ? <FolderOpen className="h-4 w-4 text-amber-500 shrink-0" />
@@ -1100,7 +1150,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                 })}
 
                 {/* New-folder input row at the bottom of this level */}
-                {renderFolderInput(parentId)}
+                {renderFolderInput(parentId, depth)}
             </>
         );
     }
@@ -1187,7 +1237,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                 <ChevronDown className="h-3.5 w-3.5" />
             </button>
             {actionsOpen && (
-                <div className="absolute top-full right-0 mt-1 w-36 rounded-lg border border-gray-100 bg-white shadow-lg z-50 overflow-hidden">
+                <div className="absolute top-full right-0 mt-1 w-36 rounded-lg border border-gray-100 bg-white shadow-lg z-[120] overflow-hidden">
                     {tab === "documents" && (
                         <button
                             onClick={handleDownloadSelectedDocs}
@@ -1365,7 +1415,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                         {/* Blue ring wraps everything below the header when root-dropping */}
                         <div className="flex-1 flex flex-col min-h-0 relative">
                             {dragOverRoot && dragOverFolderId === null && (
-                                <div className="absolute inset-0 border-2 border-blue-400 pointer-events-none z-20" />
+                                <div className="absolute inset-0 border-2 border-blue-400 pointer-events-none z-[80]" />
                             )}
 
                         {/* Empty state */}
@@ -1382,6 +1432,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                 className="flex-1 flex flex-col"
                                 onContextMenu={(e) => {
                                     e.preventDefault();
+                                    closeRowActionMenus();
                                     setContextMenu({ x: e.clientX, y: e.clientY, folderId: null, showFolderActions: false });
                                 }}
                                 onClick={() => setContextMenu(null)}
@@ -1414,6 +1465,18 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                     setViewingDocVersion(null);
                                     setViewingDoc(doc);
                                 }}
+                                                    onContextMenu={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        closeRowActionMenus();
+                                                        setContextMenu({
+                                                            x: e.clientX,
+                                                            y: e.clientY,
+                                                            docId: doc.id,
+                                                            folderId: null,
+                                                            showFolderActions: false,
+                                                        });
+                                                    }}
                                                     className="group flex items-center h-10 pr-8 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
                                                 >
                                                     <div className={`sticky left-0 z-[60] ${CHECK_W} p-2 flex items-center justify-center ${selectedDocIds.includes(doc.id) ? "bg-gray-50" : "bg-white"} group-hover:bg-gray-50`} onClick={(e) => e.stopPropagation()}>
@@ -1503,51 +1566,107 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                         )}
 
                         {/* Context menu */}
-                        {contextMenu && (
-                            <div
-                                ref={contextMenuRef}
-                                className="fixed z-50 w-44 rounded-lg border border-gray-100 bg-white shadow-lg overflow-hidden text-xs"
-                                style={{ top: contextMenu.y, left: contextMenu.x }}
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                <button
-                                    className="w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                                    onClick={() => {
-                                        setCreatingFolderIn(contextMenu.folderId);
-                                        setNewFolderName("");
-                                        if (contextMenu.folderId) setExpandedFolderIds((prev) => new Set([...prev, contextMenu.folderId!]));
-                                        setContextMenu(null);
-                                    }}
-                                >
-                                    <FolderPlus className="h-3.5 w-3.5 text-gray-400" />
-                                    {contextMenu.showFolderActions ? "New subfolder inside" : "New subfolder"}
-                                </button>
-                                {contextMenu.showFolderActions && contextMenu.folderId && (
-                                    <>
-                                        <button
-                                            className="w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"
-                                            onClick={() => {
-                                                const f = folders.find((x) => x.id === contextMenu.folderId);
-                                                setRenameFolderValue(f?.name ?? "");
-                                                setRenamingFolderId(contextMenu.folderId!);
-                                                setContextMenu(null);
-                                            }}
-                                        >
-                                            Rename folder
-                                        </button>
-                                        <button
-                                            className="w-full px-3 py-1.5 text-left text-red-600 hover:bg-red-50"
-                                            onClick={() => {
-                                                handleDeleteFolder(contextMenu.folderId!);
-                                                setContextMenu(null);
-                                            }}
-                                        >
-                                            Delete folder
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        )}
+                        {contextMenu &&
+                            (() => {
+                                const menuDoc = contextMenu.docId
+                                    ? docs.find((doc) => doc.id === contextMenu.docId)
+                                    : null;
+                                const menuDocHasVersions =
+                                    typeof menuDoc?.latest_version_number === "number" &&
+                                    menuDoc.latest_version_number >= 1;
+                                const menuDocVersionsOpen = menuDoc
+                                    ? expandedVersionDocIds.has(menuDoc.id)
+                                    : false;
+
+                                return (
+                                    <div
+                                        ref={contextMenuRef}
+                                        className="fixed z-[120] w-48 rounded-xl border border-gray-100 bg-white shadow-lg overflow-hidden"
+                                        style={{ top: contextMenu.y, left: contextMenu.x }}
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        {menuDoc ? (
+                                            <RowActionMenuItems
+                                                onClose={() => setContextMenu(null)}
+                                                onDownload={() => downloadDoc(menuDoc.id)}
+                                                onShowAllVersions={
+                                                    menuDocHasVersions && !menuDocVersionsOpen
+                                                        ? () => void toggleVersions(menuDoc.id)
+                                                        : undefined
+                                                }
+                                                onUploadNewVersion={() =>
+                                                    void handleUploadNewVersion(menuDoc)
+                                                }
+                                                onRemoveFromFolder={
+                                                    menuDoc.folder_id
+                                                        ? () =>
+                                                              void handleRemoveDocFromFolder(
+                                                                  menuDoc.id,
+                                                              )
+                                                        : undefined
+                                                }
+                                                onDelete={() =>
+                                                    void handleRemoveDoc(menuDoc.id)
+                                                }
+                                            />
+                                        ) : (
+                                            <RowActionMenuItems
+                                                onClose={() => setContextMenu(null)}
+                                                onNewSubfolder={() => {
+                                                    setCreatingFolderIn(
+                                                        contextMenu.folderId,
+                                                    );
+                                                    setNewFolderName("");
+                                                    if (contextMenu.folderId) {
+                                                        setExpandedFolderIds(
+                                                            (prev) =>
+                                                                new Set([
+                                                                    ...prev,
+                                                                    contextMenu.folderId!,
+                                                                ]),
+                                                        );
+                                                    }
+                                                }}
+                                                newSubfolderLabel={
+                                                    contextMenu.showFolderActions
+                                                        ? "New subfolder inside"
+                                                        : "New subfolder"
+                                                }
+                                                onRename={
+                                                    contextMenu.showFolderActions &&
+                                                    contextMenu.folderId
+                                                        ? () => {
+                                                              const f =
+                                                                  folders.find(
+                                                                      (x) =>
+                                                                          x.id ===
+                                                                          contextMenu.folderId,
+                                                                  );
+                                                              setRenameFolderValue(
+                                                                  f?.name ?? "",
+                                                              );
+                                                              setRenamingFolderId(
+                                                                  contextMenu.folderId!,
+                                                              );
+                                                          }
+                                                        : undefined
+                                                }
+                                                renameLabel="Rename folder"
+                                                onDelete={
+                                                    contextMenu.showFolderActions &&
+                                                    contextMenu.folderId
+                                                        ? () =>
+                                                              handleDeleteFolder(
+                                                                  contextMenu.folderId!,
+                                                              )
+                                                        : undefined
+                                                }
+                                                deleteLabel="Delete folder"
+                                            />
+                                        )}
+                                    </div>
+                                );
+                            })()}
 
                         </div>{/* end blue ring wrapper */}
                     </div>

@@ -37,6 +37,7 @@ import {
     isModelAvailable,
     type ModelProvider,
 } from "@/app/lib/modelAvailability";
+import type { ApiKeyState } from "@/app/lib/mikeApi";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -454,7 +455,7 @@ function TRChatInput({
     onCancel: () => void;
     model: string;
     onModelChange: (id: string) => void;
-    apiKeys: { claudeApiKey: string | null; geminiApiKey: string | null };
+    apiKeys?: ApiKeyState;
     onHeightChange: (height: number) => void;
 }) {
     const [value, setValue] = useState("");
@@ -642,10 +643,7 @@ export function TRChatPanel({
     onChatIdChange,
 }: Props) {
     const { profile, updateModelPreference } = useUserProfile();
-    const apiKeys = {
-        claudeApiKey: profile?.claudeApiKey ?? null,
-        geminiApiKey: profile?.geminiApiKey ?? null,
-    };
+    const apiKeys = profile?.apiKeys;
     const currentModel = profile?.tabularModel ?? "gemini-3-flash-preview";
     const [apiKeyModalProvider, setApiKeyModalProvider] =
         useState<ModelProvider | null>(null);
@@ -993,7 +991,7 @@ export function TRChatPanel({
 
     async function handleSubmit(trimmed: string) {
         if (!trimmed || isLoading) return;
-        if (!isModelAvailable(currentModel, apiKeys)) {
+        if (apiKeys && !isModelAvailable(currentModel, apiKeys)) {
             setApiKeyModalProvider(getModelProvider(currentModel));
             return;
         }

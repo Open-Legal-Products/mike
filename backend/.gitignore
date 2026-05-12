@@ -4,4 +4,5 @@ dist
 !.env.example
 !.env.docker.example
 *.log
+logs/
 .DS_Store

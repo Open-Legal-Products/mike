@@ -87,10 +87,7 @@ export function TRView({ reviewId, projectId }: Props) {
     const tableRef = useRef<TRTableHandle>(null);
     const router = useRouter();
     const { profile } = useUserProfile();
-    const apiKeys = {
-        claudeApiKey: profile?.claudeApiKey ?? null,
-        geminiApiKey: profile?.geminiApiKey ?? null,
-    };
+    const apiKeys = profile?.apiKeys;
     const tabularModel = profile?.tabularModel ?? "gemini-3-flash-preview";
 
     useEffect(() => {
@@ -243,7 +240,7 @@ export function TRView({ reviewId, projectId }: Props) {
         // If columns changed since last save, update the review first
         if (columns.length === 0) return;
 
-        if (!isModelAvailable(tabularModel, apiKeys)) {
+        if (apiKeys && !isModelAvailable(tabularModel, apiKeys)) {
             setApiKeyModalProvider(getModelProvider(tabularModel));
             return;
         }

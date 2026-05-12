@@ -62,7 +62,7 @@ create trigger on_auth_user_created
 create table if not exists public.user_api_keys (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  provider text not null check (provider in ('claude', 'gemini')),
+  provider text not null check (provider in ('claude', 'gemini', 'openai')),
   encrypted_key text not null,
   iv text not null,
   auth_tag text not null,
@@ -1044,3 +1044,30 @@ create policy "Tabular chat owners can delete messages"
         and c.user_id = public.current_user_id_text()
     )
   );
+
+-- ---------------------------------------------------------------------------
+-- Direct client grant hardening
+-- ---------------------------------------------------------------------------
+--
+-- The frontend uses Supabase directly only for authentication. Application
+-- data access goes through the backend API with the service role after the
+-- backend verifies the user's JWT. Keep RLS enabled and policies defined
+-- above as defense in depth, but do not grant the browser anon/authenticated
+-- roles direct table privileges for backend-owned data.
+
+revoke all on public.user_profiles from anon, authenticated;
+revoke all on public.projects from anon, authenticated;
+revoke all on public.project_subfolders from anon, authenticated;
+revoke all on public.documents from anon, authenticated;
+revoke all on public.document_versions from anon, authenticated;
+revoke all on public.document_edits from anon, authenticated;
+revoke all on public.workflows from anon, authenticated;
+revoke all on public.hidden_workflows from anon, authenticated;
+revoke all on public.workflow_shares from anon, authenticated;
+revoke all on public.chats from anon, authenticated;
+revoke all on public.chat_messages from anon, authenticated;
+revoke all on public.tabular_reviews from anon, authenticated;
+revoke all on public.tabular_cells from anon, authenticated;
+revoke all on public.tabular_review_chats from anon, authenticated;
+revoke all on public.tabular_review_chat_messages from anon, authenticated;
+revoke all on public.user_api_keys from anon, authenticated;

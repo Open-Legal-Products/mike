@@ -31,7 +31,7 @@ projectsRouter.get("/", requireAuth, async (req, res) => {
     ? await db
         .from("projects")
         .select("*")
-        .contains("shared_with", [userEmail])
+        .filter("shared_with", "cs", JSON.stringify([userEmail]))
         .neq("user_id", userId)
         .order("created_at", { ascending: false })
     : { data: [], error: null };

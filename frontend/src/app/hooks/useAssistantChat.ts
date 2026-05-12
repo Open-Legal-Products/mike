@@ -250,11 +250,11 @@ export function useAssistantChat({
     const pushEvent = (event: AssistantEvent) => {
         finalizeStreamingContent();
         finalizeStreamingReasoning();
-        // Drop any in-flight placeholder unless we're pushing one ourselves.
-        let next = eventsRef.current;
-        if (event.type !== "tool_call_start" && event.type !== "thinking") {
-            next = next.filter((e) => !isStreamingPlaceholder(e));
-        }
+        // A real event, or a more specific placeholder such as
+        // tool_call_start, should replace any generic "Thinking..." line.
+        const next = eventsRef.current.filter(
+            (e) => !isStreamingPlaceholder(e),
+        );
         eventsRef.current = [...next, event];
         const snapshot = [...eventsRef.current];
         setMessages((prev) => {

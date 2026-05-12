@@ -113,9 +113,10 @@ After calling generate_docx, you MUST call read_document on the returned doc_id 
 Your prose response MUST include a short description of the generated document: what it is, its structure (key sections/clauses), and — if the draft was informed by any provided source documents — which sources you drew from and how. Keep it concise (typically 3–8 sentences or a short bulleted list). Refer to the document by filename, never by a download link.
 When the description makes factual claims about the contents of the newly generated document, cite the generated document with [N] markers and a <CITATIONS> block exactly as specified in the DOCUMENT CITATION INSTRUCTIONS above. If you also make factual claims about provided source documents, cite those source documents separately. In every citation entry, use the exact chat-local doc_id label for the cited document. Omit the <CITATIONS> block if the description makes no such claims.
 Heading hierarchy: always use Heading 1 before introducing Heading 2, Heading 2 before Heading 3, and so on. Never skip levels (e.g. do not jump from Heading 1 to Heading 3).
-Numbering: all numbering MUST start from 1, never 0. This applies at every level of the hierarchy — use 1., 1.1, 1.1.1, 1.1.1.1, etc. Never produce 0., 0.1, 1.0, 1.0.1, or any other sequence that begins a level with 0.
+Numbering: all numbering MUST start from 1, never 0. This applies at every level of the hierarchy. Legal clause numbering is applied automatically by the document generator: top-level operative headings render as 1., 2., 3.; the first numbered body clause under a top-level heading renders as 1.1; nested body clauses under that render as (a), (b), (c); deeper nested clauses render as (i), (ii), (iii), then (A), (B), (C). Do NOT use 1.1.1 for legal body clauses when (a) is the expected next level. Never produce 0., 0.1, 1.0, 1.0.1, or any other sequence that begins a level with 0.
 Never duplicate the numbering prefix in heading text. The heading's own numbering is applied automatically by the document generator, so the heading text must contain the title only — do NOT prepend "1.", "1.1", "2.", etc. into the heading text itself. For example, a Heading 1 titled "Introduction" must be passed as "Introduction", never as "1. Introduction" (which would render as "1. 1. Introduction"). The same rule applies at every level.
-Contracts: when generating a contract or agreement, always include a signatures block at the very end of the document on its own page. Set pageBreak: true on that final section so it starts on a fresh page, and include a signature line for each party — typically the party name followed by lines for "By:", "Name:", "Title:", and "Date:". Do not number the signatures heading; put the signature block in the section's content rather than as a numbered heading.
+Do not repeat the document title as the first section heading. The document generator already renders the title as a centered title paragraph. Put any opening preamble text directly in the first section's content, without a duplicate heading such as "Agreement", "Contract", "Mutual Non-Disclosure Agreement", or another shortened form of the title.
+Contracts: when generating a contract or agreement, always include a signatures block at the very end of the document on its own page. Set pageBreak: true on that final section so it starts on a fresh page, and include a signature line for each party — typically the party name followed by lines for "By:", "Name:", "Title:", and "Date:". The entire signature block must be plain unnumbered text: do NOT number the signatures heading, do NOT number or letter the introductory signature sentence, party names, "By:", "Name:", "Title:", or "Date:" lines, and do NOT place the signature block inside a numbered clause. Put the signature block in the section's content rather than as a numbered heading.
 Contract preambles: the preamble of a contract (the opening recitals, parties block, "WHEREAS" clauses, and any introductory narrative before the first operative clause) must NOT be numbered. Render these as unnumbered content (plain paragraphs or an unnumbered heading), and begin numbering only at the first operative clause/section.
 
 DOCUMENT EDITING:
@@ -459,8 +460,19 @@ type ParsedCitation = {
 function normalizeCitation(raw: unknown): ParsedCitation | null {
     if (!raw || typeof raw !== "object") return null;
     const c = raw as Record<string, unknown>;
-    if (typeof c.ref !== "number" || typeof c.doc_id !== "string") return null;
-    if (typeof c.quote !== "string" || !c.quote) return null;
+    const markerRef =
+        typeof c.marker === "string"
+            ? Number(c.marker.match(/^\[(\d+)\]$/)?.[1])
+            : NaN;
+    const ref =
+        typeof c.ref === "number"
+            ? c.ref
+            : Number.isFinite(markerRef)
+              ? markerRef
+              : null;
+    if (typeof ref !== "number" || typeof c.doc_id !== "string") return null;
+    const quote = typeof c.quote === "string" ? c.quote : c.text;
+    if (typeof quote !== "string" || !quote) return null;
     let page: number | string;
     if (typeof c.page === "number") {
         page = c.page;
@@ -468,10 +480,10 @@ function normalizeCitation(raw: unknown): ParsedCitation | null {
         page = c.page;
     } else {
         const n = parseInt(String(c.page ?? ""), 10);
-        if (!Number.isFinite(n)) return null;
-        page = n;
+        if (!Number.isFinite(n)) page = 1;
+        else page = n;
     }
-    return { ref: c.ref, doc_id: c.doc_id, page, quote: c.quote };
+    return { ref, doc_id: c.doc_id, page, quote };
 }
 
 // ---------------------------------------------------------------------------
@@ -504,6 +516,16 @@ export function resolveDocLabel(
         }
     }
     return null;
+}
+
+function citationReminder(docLabel: string, filename: string): string {
+    return [
+        `[Citation requirement for ${docLabel} ("${filename}")]:`,
+        `If your final answer makes any factual claim from this document, include inline [N] markers and append a final <CITATIONS> JSON block.`,
+        `Every citation entry for this document MUST use "doc_id": "${docLabel}".`,
+        `Use this exact citation object shape: {"ref": 1, "doc_id": "${docLabel}", "page": 1, "quote": "exact verbatim text from the document"}.`,
+        `Do not use "marker" or "text" keys in the citation block; use "ref" and "quote".`,
+    ].join("\n");
 }
 
 /**
@@ -725,6 +747,8 @@ export async function generateDocx(
             BorderStyle,
             TextRun,
             AlignmentType,
+            LevelFormat,
+            LevelSuffix,
             PageOrientation,
             PageBreak,
         } = await import("docx");
@@ -766,42 +790,236 @@ export async function generateDocx(
             HeadingLevel.HEADING_3,
             HeadingLevel.HEADING_4,
         ];
-        const counters = [0, 0, 0, 0];
+        const LEGAL_NUMBERING_REF = "legal-clause-numbering";
+        const legalNumbering = (level: number) => ({
+            reference: LEGAL_NUMBERING_REF,
+            level: Math.max(0, Math.min(level, 4)),
+        });
+        const legalNumberingLevels = [
+            {
+                level: 0,
+                format: LevelFormat.DECIMAL,
+                text: "%1.",
+                alignment: AlignmentType.START,
+                suffix: LevelSuffix.TAB,
+                isLegalNumberingStyle: true,
+                style: {
+                    paragraph: { indent: { left: 720, hanging: 720 } },
+                    run: {
+                        bold: true,
+                        color: "000000",
+                        font: FONT,
+                        size: SIZE,
+                    },
+                },
+            },
+            {
+                level: 1,
+                format: LevelFormat.DECIMAL,
+                text: "%1.%2",
+                alignment: AlignmentType.START,
+                suffix: LevelSuffix.TAB,
+                isLegalNumberingStyle: true,
+                style: {
+                    paragraph: { indent: { left: 720, hanging: 720 } },
+                    run: { color: "000000", font: FONT, size: SIZE },
+                },
+            },
+            {
+                level: 2,
+                format: LevelFormat.LOWER_LETTER,
+                text: "(%3)",
+                alignment: AlignmentType.START,
+                suffix: LevelSuffix.TAB,
+                style: {
+                    paragraph: { indent: { left: 1440, hanging: 720 } },
+                    run: { color: "000000", font: FONT, size: SIZE },
+                },
+            },
+            {
+                level: 3,
+                format: LevelFormat.LOWER_ROMAN,
+                text: "(%4)",
+                alignment: AlignmentType.START,
+                suffix: LevelSuffix.TAB,
+                style: {
+                    paragraph: { indent: { left: 1440, hanging: 720 } },
+                    run: { color: "000000", font: FONT, size: SIZE },
+                },
+            },
+            {
+                level: 4,
+                format: LevelFormat.UPPER_LETTER,
+                text: "(%5)",
+                alignment: AlignmentType.START,
+                suffix: LevelSuffix.TAB,
+                style: {
+                    paragraph: { indent: { left: 2520, hanging: 720 } },
+                    run: { color: "000000", font: FONT, size: SIZE },
+                },
+            },
+        ];
+        const normalizeTable = (
+            table: unknown,
+        ): { headers: string[]; rows: string[][] } | null => {
+            if (!table || typeof table !== "object") return null;
+            const raw = table as { headers?: unknown; rows?: unknown };
+            const headers = Array.isArray(raw.headers)
+                ? raw.headers
+                      .map((header) =>
+                          typeof header === "string" ? header.trim() : "",
+                      )
+                      .filter(Boolean)
+                : [];
+            if (headers.length === 0) return null;
 
-        for (const section of sections as {
+            const rawRows = Array.isArray(raw.rows) ? raw.rows : [];
+            const rows = rawRows
+                .filter((row): row is unknown[] => Array.isArray(row))
+                .map((row) =>
+                    headers.map((_, i) =>
+                        typeof row[i] === "string" ? row[i] : "",
+                    ),
+                );
+
+            return { headers, rows };
+        };
+        const stripManualNumbering = (
+            value: string,
+        ): { text: string; levelFromPrefix: number | null } => {
+            const match = value
+                .trim()
+                .match(/^(\d+(?:\.\d+)*)(?:[.)])?\s+(.+)$/);
+            if (!match) return { text: value.trim(), levelFromPrefix: null };
+            return {
+                text: match[2].trim(),
+                levelFromPrefix: match[1].split(".").length - 1,
+            };
+        };
+        const parseManualListMarker = (
+            value: string,
+        ): { text: string; levelOffset: number | null } => {
+            const trimmed = value.trim();
+            const match = trimmed.match(/^(\(([a-z]+)\)|([a-z]+)[.)])\s+(.+)$/i);
+            if (!match) return { text: trimmed, levelOffset: null };
+            const marker = (match[2] ?? match[3] ?? "").toLowerCase();
+            const isRoman =
+                marker === "i" ||
+                (marker.length > 1 &&
+                    /^(?:m{0,4}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3}))$/i.test(
+                        marker,
+                    ));
+            return { text: match[4].trim(), levelOffset: isRoman ? 3 : 2 };
+        };
+        const normalizeHeadingText = (value: string) =>
+            value
+                .trim()
+                .replace(/[^a-zA-Z0-9]+/g, " ")
+                .trim()
+                .toLowerCase();
+
+        const isTitleLikeFirstHeading = (
+            heading: string,
+            sectionIndex: number,
+        ) => {
+            if (sectionIndex !== 0) return false;
+            const normalized = normalizeHeadingText(heading);
+            const titleNormalized = normalizeHeadingText(title);
+            if (!normalized || !titleNormalized) return false;
+            if (normalized === titleNormalized) return true;
+            return (
+                titleNormalized.includes(normalized) &&
+                /\b(agreement|contract|deed|terms|policy|notice|nda|disclosure)\b/.test(
+                    normalized,
+                )
+            );
+        };
+
+        const isUnnumberedHeading = (heading: string, sectionIndex: number) => {
+            const normalized = normalizeHeadingText(heading);
+            if (!normalized) return true;
+            if (normalized === "signatures" || normalized === "signature") {
+                return true;
+            }
+            if (isTitleLikeFirstHeading(heading, sectionIndex)) {
+                return true;
+            }
+            if (
+                sectionIndex === 0 &&
+                /^(agreement|contract|mutual non disclosure agreement|non disclosure agreement|employment agreement|service level agreement)$/.test(
+                    normalized,
+                )
+            ) {
+                return true;
+            }
+            return false;
+        };
+        const isSignatureLine = (value: string) =>
+            /^(?:by|name|title|date):\s*/i.test(value.trim());
+        const looksLikeSignatureBlock = (value: string) => {
+            const lines = value
+                .split("\n")
+                .map((line) => line.trim())
+                .filter(Boolean);
+            if (lines.length === 0) return false;
+            const signatureLineCount = lines.filter(isSignatureLine).length;
+            return signatureLineCount >= 2;
+        };
+        let currentClauseLevel: number | null = null;
+
+        for (const [sectionIndex, section] of (sections as {
             heading?: string;
             content?: string;
             level?: number;
             pageBreak?: boolean;
             table?: { headers: string[]; rows: string[][] };
-        }[]) {
+        }[]).entries()) {
             if (section.pageBreak) {
                 children.push(new Paragraph({ children: [new PageBreak()] }));
             }
             if (section.heading) {
-                const idx = Math.min((section.level ?? 1) - 1, 3);
-                counters[idx]++;
-                for (let i = idx + 1; i < 4; i++) counters[i] = 0;
-                const prefix = counters.slice(0, idx + 1).join(".");
-                const headingText = `${prefix}. ${idx === 0 ? section.heading.toUpperCase() : section.heading}`;
-                children.push(
-                    new Paragraph({
-                        heading: headingLevels[idx],
-                        spacing: { after: 160 },
-                        children: [
-                            new TextRun({
-                                text: headingText,
-                                color: "000000",
-                                font: FONT,
-                                size: SIZE,
-                                bold: true,
-                            }),
-                        ],
-                    }),
+                const stripped = stripManualNumbering(section.heading);
+                const isUnnumbered = isUnnumberedHeading(
+                    stripped.text,
+                    sectionIndex,
                 );
+                const skipHeading = isTitleLikeFirstHeading(
+                    stripped.text,
+                    sectionIndex,
+                );
+                const idx = Math.min(
+                    stripped.levelFromPrefix ?? (section.level ?? 1) - 1,
+                    3,
+                );
+                currentClauseLevel = isUnnumbered || skipHeading ? null : idx;
+                const headingText =
+                    idx === 0 && !isUnnumbered
+                        ? stripped.text.toUpperCase()
+                        : stripped.text;
+                if (!skipHeading) {
+                    children.push(
+                        new Paragraph({
+                            heading: headingLevels[idx],
+                            numbering: isUnnumbered
+                                ? undefined
+                                : legalNumbering(idx),
+                            spacing: { after: 160 },
+                            children: [
+                                new TextRun({
+                                    text: headingText,
+                                    color: "000000",
+                                    font: FONT,
+                                    size: SIZE,
+                                    bold: true,
+                                }),
+                            ],
+                        }),
+                    );
+                }
             }
-            if (section.table) {
-                const { headers, rows } = section.table;
+            const normalizedTable = normalizeTable(section.table);
+            if (normalizedTable) {
+                const { headers, rows } = normalizedTable;
                 const colCount = headers.length;
                 const tableRows: InstanceType<typeof TableRow>[] = [];
                 // Header row
@@ -834,19 +1052,7 @@ export async function generateDocx(
                 // LLMs occasionally emit malformed rows (extra fragments from
                 // stray delimiters, or short rows); padding/truncating here
                 // keeps the rendered table aligned to the headers.
-                for (const rawRow of rows) {
-                    const row = Array.isArray(rawRow) ? rawRow : [];
-                    const normalized: string[] = [];
-                    for (let i = 0; i < colCount; i++) {
-                        normalized.push(
-                            typeof row[i] === "string" ? row[i] : "",
-                        );
-                    }
-                    if (row.length !== colCount) {
-                        console.warn(
-                            `[generate_docx] row length ${row.length} != headers ${colCount}; normalized`,
-                        );
-                    }
+                for (const normalized of rows) {
                     tableRows.push(
                         new TableRow({
                             children: normalized.map(
@@ -878,38 +1084,55 @@ export async function generateDocx(
                 children.push(new Paragraph({ text: "" }));
             }
             if (section.content) {
+                let numberedBodyParagraphs = 0;
+                const contentIsSignatureBlock =
+                    section.heading &&
+                    normalizeHeadingText(section.heading).includes("signature")
+                        ? true
+                        : looksLikeSignatureBlock(section.content);
                 for (const line of section.content.split("\n")) {
                     const trimmed = line.trim();
                     if (!trimmed) continue;
                     const bulletMatch = trimmed.match(/^[-•*]\s+(.+)/);
-                    if (bulletMatch) {
-                        children.push(
-                            new Paragraph({
-                                bullet: { level: 0 },
-                                spacing: { after: 120 },
-                                children: [
-                                    new TextRun({
-                                        text: bulletMatch[1],
-                                        font: FONT,
-                                        size: SIZE,
-                                    }),
-                                ],
-                            }),
-                        );
-                    } else {
-                        children.push(
-                            new Paragraph({
-                                spacing: { after: 120 },
-                                children: [
-                                    new TextRun({
-                                        text: trimmed,
-                                        font: FONT,
-                                        size: SIZE,
-                                    }),
-                                ],
-                            }),
-                        );
-                    }
+                    const rawText = bulletMatch
+                        ? bulletMatch[1].trim()
+                        : trimmed;
+                    const manualList = parseManualListMarker(rawText);
+                    const numeric = stripManualNumbering(rawText);
+                    const text = bulletMatch
+                        ? rawText
+                        : manualList.levelOffset !== null
+                          ? manualList.text
+                          : numeric.text;
+                    const inferredLevel =
+                        currentClauseLevel === null || contentIsSignatureBlock
+                            ? undefined
+                            : bulletMatch
+                              ? currentClauseLevel + 2
+                              : manualList.levelOffset !== null
+                                ? currentClauseLevel + manualList.levelOffset
+                              : numeric.levelFromPrefix !== null
+                                ? numeric.levelFromPrefix
+                                : numberedBodyParagraphs === 0
+                                  ? currentClauseLevel + 1
+                                  : currentClauseLevel + 2;
+                    if (currentClauseLevel !== null) numberedBodyParagraphs++;
+                    children.push(
+                        new Paragraph({
+                            numbering:
+                                inferredLevel === undefined
+                                    ? undefined
+                                    : legalNumbering(inferredLevel),
+                            spacing: { after: 120 },
+                            children: [
+                                new TextRun({
+                                    text,
+                                    font: FONT,
+                                    size: SIZE,
+                                }),
+                            ],
+                        }),
+                    );
                 }
             }
         }
@@ -919,9 +1142,30 @@ export async function generateDocx(
             : {};
 
         const doc = new Document({
+            numbering: {
+                config: [
+                    {
+                        reference: LEGAL_NUMBERING_REF,
+                        levels: legalNumberingLevels,
+                    },
+                ],
+            },
             sections: [{ properties: pageSetup, children }],
         });
         const buf = await Packer.toBuffer(doc);
+        const zip = await import("jszip");
+        const packageZip = await zip.default.loadAsync(buf);
+        for (const requiredPath of [
+            "[Content_Types].xml",
+            "word/document.xml",
+            "word/_rels/document.xml.rels",
+        ]) {
+            if (!packageZip.file(requiredPath)) {
+                return {
+                    error: `Generated DOCX is missing required package part: ${requiredPath}`,
+                };
+            }
+        }
         const docId = crypto.randomUUID().replace(/-/g, "");
         const safeTitle =
             title
@@ -1644,7 +1888,13 @@ export async function runToolCalls(
             const filename = docStore.get(docId)?.filename;
             const documentId = docIndex?.[docId]?.document_id;
             if (filename) docsRead.push({ filename, document_id: documentId });
-            toolResults.push({ role: "tool", tool_call_id: tc.id, content });
+            toolResults.push({
+                role: "tool",
+                tool_call_id: tc.id,
+                content: filename
+                    ? `${citationReminder(docId, filename)}\n\n${content}`
+                    : content,
+            });
         } else if (tc.function.name === "find_in_document") {
             const rawDocId = args.doc_id as string;
             const docId =
@@ -1714,7 +1964,9 @@ export async function runToolCalls(
                     db,
                 );
                 const filename = docStore.get(docId)?.filename ?? docId;
-                parts.push(`--- ${filename} (${docId}) ---\n${content}`);
+                parts.push(
+                    `--- ${filename} (${docId}) ---\n${citationReminder(docId, filename)}\n\n${content}`,
+                );
                 if (docStore.get(docId)) {
                     const documentId = docIndex?.[docId]?.document_id;
                     docsRead.push({ filename, document_id: documentId });
@@ -2346,12 +2598,15 @@ export async function runToolCalls(
             // model can pass it as `doc_id` to edit_document / read_document
             // / find_in_document in the same turn. Without this the model
             // only sees the DB UUID, which isn't valid as a doc_id anchor.
+            const { download_url, storage_path, ...safeToolResult } =
+                result as Record<string, unknown>;
             const toolResultPayload = newDocLabel
                 ? {
-                      ...(result as Record<string, unknown>),
+                      ...safeToolResult,
                       doc_id: newDocLabel,
+                      next_required_action: `Before writing your final response, call read_document with doc_id "${newDocLabel}". Describe and cite the generated document using doc_id "${newDocLabel}", not the source/template document.`,
                   }
-                : result;
+                : safeToolResult;
             toolResults.push({
                 role: "tool",
                 tool_call_id: tc.id,

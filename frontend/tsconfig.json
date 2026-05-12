@@ -12,6 +12,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
+    "types": ["node", "react", "react-dom"],
     "incremental": true,
     "plugins": [
       {

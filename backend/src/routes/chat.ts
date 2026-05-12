@@ -17,6 +17,10 @@ import { checkProjectAccess } from "../lib/access";
 export const chatRouter = Router();
 
 type Db = ReturnType<typeof createServerSupabase>;
+const isDev = process.env.NODE_ENV !== "production";
+const devLog = (...args: Parameters<typeof console.log>) => {
+    if (isDev) console.log(...args);
+};
 
 type AccessibleChat = {
     id: string;
@@ -436,7 +440,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     const project_id = parsedProjectId.projectId;
     const model = parsedModel.model;
 
-    console.log("[chat/stream] incoming request", {
+    devLog("[chat/stream] incoming request", {
         userId,
         chat_id,
         project_id,
@@ -497,7 +501,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         chatTitle = newChat.title;
     }
 
-    console.log("[chat/stream] resolved chatId", chatId);
+    devLog("[chat/stream] resolved chatId", chatId);
 
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (lastUser) {
@@ -530,7 +534,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
 
-    console.log("[chat/stream] starting LLM stream", {
+    devLog("[chat/stream] starting LLM stream", {
         apiMessageCount: apiMessages.length,
         docCount: Object.keys(docIndex).length,
         workflowCount: Object.keys(workflowStore).length,
@@ -562,7 +566,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             projectId: resolvedProjectId,
         });
 
-        console.log("[chat/stream] LLM stream finished", {
+        devLog("[chat/stream] LLM stream finished", {
             fullTextLen: fullText?.length ?? 0,
             eventCount: events?.length ?? 0,
         });

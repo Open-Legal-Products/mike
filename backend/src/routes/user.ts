@@ -3,7 +3,9 @@ import { requireAuth } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
 import { DEFAULT_TABULAR_MODEL, resolveModel } from "../lib/llm";
 import {
+  type ApiKeyStatus,
   getUserApiKeyStatus,
+  hasEnvApiKey,
   normalizeApiKeyProvider,
   saveUserApiKey,
 } from "../lib/userApiKeys";
@@ -23,7 +25,7 @@ type UserProfileRow = {
 
 function serializeProfile(
   row: UserProfileRow,
-  apiKeyStatus?: { claude: boolean; gemini: boolean },
+  apiKeyStatus?: ApiKeyStatus,
 ) {
   const creditsUsed = row.message_credits_used ?? 0;
   return {
@@ -233,6 +235,12 @@ userRouter.put("/api-keys/:provider", requireAuth, async (req, res) => {
     typeof req.body?.api_key === "string" ? req.body.api_key : null;
   const db = createServerSupabase();
   try {
+    if (hasEnvApiKey(provider)) {
+      return void res.status(409).json({
+        detail:
+          "This provider is configured by the server environment and cannot be changed from the browser.",
+      });
+    }
     await saveUserApiKey(userId, provider, apiKey, db);
     const status = await getUserApiKeyStatus(userId, db);
     res.json(status);
