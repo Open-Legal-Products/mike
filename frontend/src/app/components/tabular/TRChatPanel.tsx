@@ -14,6 +14,7 @@ import {
     Trash2,
 } from "lucide-react";
 import { MikeIcon } from "@/components/chat/mike-icon";
+import { AppLogo } from "@/components/chat/app-logo";
 import {
     streamTabularChat,
     getTabularChats,
@@ -1361,7 +1362,7 @@ export function TRChatPanel({
             {/* Header */}
             <div className="flex items-center justify-between h-8 px-2 border-b border-gray-200 shrink-0">
                 <div className="flex items-center gap-1.5 px-2 min-w-0">
-                    <MikeIcon mike size={14} />
+                    <AppLogo size={14} />
                     <div
                         onMouseEnter={(e) => {
                             const el = e.currentTarget;
@@ -1438,7 +1439,7 @@ export function TRChatPanel({
             >
                 {messages.length === 0 && !isLoadingMessages && (
                     <div className="flex flex-1 flex-col items-center justify-center gap-2">
-                        <MikeIcon size={24} />
+                        <AppLogo size={24} />
                         <p className="text-sm text-gray-400 text-center">
                             {t("fazerPergunta")}
                         </p>

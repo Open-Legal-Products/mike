@@ -42,7 +42,7 @@ import { ProjectExplorer } from "@/app/components/projects/ProjectExplorer";
 import { DocView } from "@/app/components/shared/DocView";
 import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
 import { DocxView } from "@/app/components/shared/DocxView";
-import { MikeIcon } from "@/components/chat/mike-icon";
+import { AppLogo } from "@/components/chat/app-logo";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useSidebar } from "@/app/contexts/SidebarContext";
@@ -126,7 +126,7 @@ function AssistantGreeting({ username }: { username: string }) {
                             "transform 900ms cubic-bezier(0.25, 0.46, 0.45, 0.94)",
                     }}
                 >
-                    <MikeIcon size={ICON_SIZE} />
+                    <AppLogo size={ICON_SIZE} />
                 </div>
                 <h1
                     ref={textRef}
@@ -1124,7 +1124,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                     onDrop={handleChatDrop}
                 >
                     <div className="h-10 flex items-center gap-2 px-4 border-b border-gray-200 shrink-0">
-                        <MikeIcon size={16} />
+                        <AppLogo size={16} />
                         <span className="text-xs text-gray-700">
                             {t("assistenteProjeto")}
                         </span>
