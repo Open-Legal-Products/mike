@@ -277,21 +277,22 @@
   },
   "workflows": {
     "novoModal": {
-      "editarWorkflow": "Editar workflow",
-      "novoWorkflow": "Novo workflow",
-      "placeholderNome": "Nome do workflow",
+      "editarWorkflow": "Editar fluxo",
+      "novoWorkflow": "Novo fluxo",
+      "placeholderNome": "Nome do fluxo",
       "tipo": "Tipo",
       "assistente": "Assistente",
       "tabular": "Tabular",
       "areaDePratica": "Área de Prática",
       "placeholderAreaDePratica": "Digite a área de prática…",
-      "erroAtualizar": "Falha ao atualizar workflow",
-      "erroCriar": "Falha ao criar workflow",
+      "erroAtualizar": "Falha ao atualizar fluxo",
+      "erroCriar": "Falha ao criar fluxo",
       "cancelar": "Cancelar",
       "salvando": "Salvando…",
       "criando": "Criando…",
       "salvarAlteracoes": "Salvar alterações",
-      "criarWorkflow": "Criar workflow"
+      "criarWorkflow": "Criar fluxo",
+      "breadcrumb": "Fluxos de trabalho"
     },
     "compartilharModal": {
       "pessoas": "Pessoas",

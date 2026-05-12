@@ -102,7 +102,7 @@ export function NewWorkflowModal({ open, onClose, onCreated, editWorkflow, onUpd
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 pt-5 pb-2 shrink-0">
                     <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                        <span>Workflows</span>
+                        <span>{t("breadcrumb")}</span>
                         <span>›</span>
                         <span>{isEditing ? t("editarWorkflow") : t("novoWorkflow")}</span>
                     </div>
