@@ -357,6 +357,14 @@
       "cancelado": "Cancelado pelo usuário",
       "erroGenerico": "Desculpe, algo deu errado."
     },
+    "addDocButton": {
+      "adicionarDocumentos": "Adicionar documentos",
+      "documento": "Documento",
+      "documentos": "Documentos",
+      "enviarArquivos": "Enviar arquivos",
+      "enviando": "Enviando…",
+      "explorarTodos": "Explorar todos"
+    },
     "appSidebar": {
       "navAssistente": "Assistente",
       "navProjetos": "Projetos",
