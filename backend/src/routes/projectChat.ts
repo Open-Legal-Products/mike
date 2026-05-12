@@ -1,6 +1,9 @@
 import { Router } from "express";
+import { eq } from "drizzle-orm";
+
 import { requireAuth } from "../middleware/auth";
-import { createServerSupabase } from "../lib/supabase";
+import { db } from "../lib/db";
+import { chatMessages, chats } from "../db/schema";
 import {
     buildProjectDocContext,
     buildMessages,
@@ -38,54 +41,49 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             attached_documents?: { filename: string; document_id: string }[];
         };
 
-    const db = createServerSupabase();
-
     // Verify the user has access to the project (owner or shared member).
-    const projectAccess = await checkProjectAccess(
-        projectId,
-        userId,
-        userEmail,
-        db,
-    );
+    const projectAccess = await checkProjectAccess(projectId, userId, userEmail);
     if (!projectAccess.ok)
         return void res.status(404).json({ detail: "Project not found" });
 
-    let chatId = chat_id ?? null;
+    let chatId: string | null = chat_id ?? null;
     let chatTitle: string | null = null;
 
     if (chatId) {
-        const { data: existing } = await db
-            .from("chats")
-            .select("id, title, project_id")
-            .eq("id", chatId)
-            .single();
+        const [existing] = await db
+            .select({
+                id: chats.id,
+                title: chats.title,
+                project_id: chats.projectId,
+            })
+            .from(chats)
+            .where(eq(chats.id, chatId))
+            .limit(1);
         const canUse = !!existing && existing.project_id === projectId;
         if (!canUse) chatId = null;
         else chatTitle = existing!.title;
     }
 
     if (!chatId) {
-        const { data: newChat, error } = await db
-            .from("chats")
-            .insert({ user_id: userId, project_id: projectId })
-            .select("id, title")
-            .single();
-        if (error || !newChat)
+        const [newChat] = await db
+            .insert(chats)
+            .values({ userId, projectId })
+            .returning({ id: chats.id, title: chats.title });
+        if (!newChat)
             return void res
                 .status(500)
                 .json({ detail: "Failed to create chat" });
-        chatId = newChat.id as string;
+        chatId = newChat.id;
         chatTitle = newChat.title;
     }
 
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (lastUser) {
-        await db.from("chat_messages").insert({
-            chat_id: chatId,
+        await db.insert(chatMessages).values({
+            chatId,
             role: "user",
-            content: lastUser.content,
-            files: lastUser.files ?? null,
-            workflow: lastUser.workflow ?? null,
+            content: lastUser.content as any,
+            files: (lastUser.files ?? null) as any,
         });
     }
 
@@ -152,7 +150,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
 
     const write = (line: string) => res.write(line);
 
-    const apiKeys = await getUserApiKeys(userId, db);
+    const apiKeys = await getUserApiKeys(userId);
 
     try {
         write(`data: ${JSON.stringify({ type: "chat_id", chatId })}\n\n`);
@@ -172,18 +170,18 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         });
 
         const annotations = extractAnnotations(fullText, docIndex, events);
-        await db.from("chat_messages").insert({
-            chat_id: chatId,
+        await db.insert(chatMessages).values({
+            chatId,
             role: "assistant",
-            content: events.length ? events : null,
-            annotations: annotations.length ? annotations : null,
+            content: (events.length ? events : null) as any,
+            annotations: (annotations.length ? annotations : null) as any,
         });
 
         if (!chatTitle && lastUser?.content) {
             await db
-                .from("chats")
-                .update({ title: lastUser.content.slice(0, 120) })
-                .eq("id", chatId);
+                .update(chats)
+                .set({ title: lastUser.content.slice(0, 120) })
+                .where(eq(chats.id, chatId));
         }
     } catch (err) {
         console.error("[project-chat/stream] error:", err);

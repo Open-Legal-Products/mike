@@ -11,9 +11,10 @@
  * owner-only (delete, rename, member management).
  */
 
-import type { createServerSupabase } from "./supabase";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 
-type Db = ReturnType<typeof createServerSupabase>;
+import { db } from "./db";
+import { documents, projects } from "../db/schema";
 
 export type ProjectAccess =
     | {
@@ -31,23 +32,29 @@ export async function checkProjectAccess(
     projectId: string,
     userId: string,
     userEmail: string | null | undefined,
-    db: Db,
+    _db?: unknown,
 ): Promise<ProjectAccess> {
-    const { data: project } = await db
-        .from("projects")
-        .select("id, user_id, shared_with")
-        .eq("id", projectId)
-        .single();
-    if (!project) return { ok: false };
-    const proj = project as {
-        id: string;
-        user_id: string;
-        shared_with: string[] | null;
+    const [row] = await db
+        .select({
+            id: projects.id,
+            user_id: projects.userId,
+            shared_with: projects.sharedWith,
+        })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+    if (!row) return { ok: false };
+    const proj = {
+        id: row.id,
+        user_id: row.user_id,
+        shared_with: Array.isArray(row.shared_with)
+            ? (row.shared_with as string[])
+            : null,
     };
     if (proj.user_id === userId) {
         return { ok: true, isOwner: true, project: proj };
     }
-    const sharedWith = Array.isArray(proj.shared_with) ? proj.shared_with : [];
+    const sharedWith = proj.shared_with ?? [];
     const email = (userEmail ?? "").toLowerCase();
     if (
         email &&
@@ -68,16 +75,11 @@ export async function ensureDocAccess(
     doc: { user_id: string; project_id: string | null },
     userId: string,
     userEmail: string | null | undefined,
-    db: Db,
+    _db?: unknown,
 ): Promise<{ ok: true; isOwner: boolean } | { ok: false }> {
     if (doc.user_id === userId) return { ok: true, isOwner: true };
     if (!doc.project_id) return { ok: false };
-    const access = await checkProjectAccess(
-        doc.project_id,
-        userId,
-        userEmail,
-        db,
-    );
+    const access = await checkProjectAccess(doc.project_id, userId, userEmail);
     if (access.ok) return { ok: true, isOwner: false };
     return { ok: false };
 }
@@ -99,7 +101,7 @@ export async function ensureReviewAccess(
     },
     userId: string,
     userEmail: string | null | undefined,
-    db: Db,
+    _db?: unknown,
 ): Promise<{ ok: true; isOwner: boolean } | { ok: false }> {
     if (review.user_id === userId) return { ok: true, isOwner: true };
     const email = (userEmail ?? "").toLowerCase();
@@ -113,7 +115,6 @@ export async function ensureReviewAccess(
         review.project_id,
         userId,
         userEmail,
-        db,
     );
     if (access.ok) return { ok: true, isOwner: false };
     return { ok: false };
@@ -130,22 +131,21 @@ export async function filterAccessibleDocumentIds(
     documentIds: string[],
     userId: string,
     userEmail: string | null | undefined,
-    db: Db,
+    _db?: unknown,
 ): Promise<string[]> {
     if (documentIds.length === 0) return [];
-    const { data: docs } = await db
-        .from("documents")
-        .select("id, user_id, project_id")
-        .in("id", documentIds);
-    const rows = (docs ?? []) as {
-        id: string;
-        user_id: string;
-        project_id: string | null;
-    }[];
+    const rows = await db
+        .select({
+            id: documents.id,
+            user_id: documents.userId,
+            project_id: documents.projectId,
+        })
+        .from(documents)
+        .where(inArray(documents.id, documentIds));
     if (rows.length === 0) return [];
 
     const accessibleProjectIds = new Set(
-        await listAccessibleProjectIds(userId, userEmail, db),
+        await listAccessibleProjectIds(userId, userEmail),
     );
     const allowed: string[] = [];
     for (const doc of rows) {
@@ -169,20 +169,27 @@ export async function filterAccessibleDocumentIds(
 export async function listAccessibleProjectIds(
     userId: string,
     userEmail: string | null | undefined,
-    db: Db,
+    _db?: unknown,
 ): Promise<string[]> {
-    const [{ data: own }, { data: shared }] = await Promise.all([
-        db.from("projects").select("id").eq("user_id", userId),
+    const [own, shared] = await Promise.all([
+        db
+            .select({ id: projects.id })
+            .from(projects)
+            .where(eq(projects.userId, userId)),
         userEmail
             ? db
-                  .from("projects")
-                  .select("id")
-                  .filter("shared_with", "cs", JSON.stringify([userEmail]))
-                  .neq("user_id", userId)
-            : Promise.resolve({ data: [] as { id: string }[] }),
+                  .select({ id: projects.id })
+                  .from(projects)
+                  .where(
+                      and(
+                          sql`${projects.sharedWith} @> ${JSON.stringify([userEmail])}::jsonb`,
+                          ne(projects.userId, userId),
+                      ),
+                  )
+            : Promise.resolve([] as { id: string }[]),
     ]);
     const ids = new Set<string>();
-    for (const p of (own ?? []) as { id: string }[]) ids.add(p.id);
-    for (const p of (shared ?? []) as { id: string }[]) ids.add(p.id);
+    for (const p of own) ids.add(p.id);
+    for (const p of shared) ids.add(p.id);
     return [...ids];
 }

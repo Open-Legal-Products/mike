@@ -1,8 +1,10 @@
 import crypto from "crypto";
-import { createServerSupabase } from "./supabase";
+import { and, eq } from "drizzle-orm";
+
+import { db } from "./db";
+import { userApiKeys } from "../db/schema";
 import type { UserApiKeys } from "./llm";
 
-type Db = ReturnType<typeof createServerSupabase>;
 export type ApiKeyProvider = "claude" | "gemini" | "openai";
 export type ApiKeySource = "user" | "env" | null;
 export type ApiKeyStatus = Record<ApiKeyProvider, boolean> & {
@@ -93,7 +95,7 @@ export function normalizeApiKeyProvider(value: string): ApiKeyProvider | null {
 
 export async function getUserApiKeyStatus(
     userId: string,
-    db: Db = createServerSupabase(),
+    _db?: unknown,
 ): Promise<ApiKeyStatus> {
     const status: ApiKeyStatus = {
         claude: false,
@@ -113,13 +115,12 @@ export async function getUserApiKeyStatus(
         }
     }
 
-    const { data, error } = await db
-        .from("user_api_keys")
-        .select("provider")
-        .eq("user_id", userId);
-    if (error) throw error;
+    const rows = await db
+        .select({ provider: userApiKeys.provider })
+        .from(userApiKeys)
+        .where(eq(userApiKeys.userId, userId));
 
-    for (const row of data ?? []) {
+    for (const row of rows) {
         const provider = normalizeApiKeyProvider(String(row.provider));
         if (provider && !status[provider]) {
             status[provider] = true;
@@ -132,7 +133,7 @@ export async function getUserApiKeyStatus(
 
 export async function getUserApiKeys(
     userId: string,
-    db: Db = createServerSupabase(),
+    _db?: unknown,
 ): Promise<UserApiKeys> {
     const apiKeys: UserApiKeys = {
         claude: envApiKey("claude"),
@@ -140,17 +141,21 @@ export async function getUserApiKeys(
         openai: envApiKey("openai"),
     };
 
-    const { data, error } = await db
-        .from("user_api_keys")
-        .select("provider, encrypted_key, iv, auth_tag")
-        .eq("user_id", userId);
-    if (error) throw error;
+    const rows = await db
+        .select({
+            provider: userApiKeys.provider,
+            encrypted_key: userApiKeys.encryptedKey,
+            iv: userApiKeys.iv,
+            auth_tag: userApiKeys.authTag,
+        })
+        .from(userApiKeys)
+        .where(eq(userApiKeys.userId, userId));
 
-    for (const row of (data ?? []) as EncryptedKeyRow[]) {
+    for (const row of rows) {
         const provider = normalizeApiKeyProvider(row.provider);
         if (!provider) continue;
         if (apiKeys[provider]?.trim()) continue;
-        apiKeys[provider] = decrypt(row);
+        apiKeys[provider] = decrypt({ ...row, provider });
     }
 
     return apiKeys;
@@ -160,27 +165,38 @@ export async function saveUserApiKey(
     userId: string,
     provider: ApiKeyProvider,
     value: string | null,
-    db: Db = createServerSupabase(),
+    _db?: unknown,
 ): Promise<void> {
     const normalized = value?.trim() || null;
     if (!normalized) {
-        const { error } = await db
-            .from("user_api_keys")
-            .delete()
-            .eq("user_id", userId)
-            .eq("provider", provider);
-        if (error) throw error;
+        await db
+            .delete(userApiKeys)
+            .where(
+                and(
+                    eq(userApiKeys.userId, userId),
+                    eq(userApiKeys.provider, provider),
+                ),
+            );
         return;
     }
 
-    const { error } = await db.from("user_api_keys").upsert(
-        {
-            user_id: userId,
+    const enc = encrypt(normalized);
+    await db
+        .insert(userApiKeys)
+        .values({
+            userId,
             provider,
-            ...encrypt(normalized),
-            updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,provider" },
-    );
-    if (error) throw error;
+            encryptedKey: enc.encrypted_key,
+            iv: enc.iv,
+            authTag: enc.auth_tag,
+        })
+        .onConflictDoUpdate({
+            target: [userApiKeys.userId, userApiKeys.provider],
+            set: {
+                encryptedKey: enc.encrypted_key,
+                iv: enc.iv,
+                authTag: enc.auth_tag,
+                updatedAt: new Date(),
+            },
+        });
 }
