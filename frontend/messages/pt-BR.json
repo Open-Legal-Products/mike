@@ -7,7 +7,48 @@
     "password": "Senha",
     "forgotPassword": "Esqueceu a senha?",
     "noAccount": "Não tem uma conta?",
-    "hasAccount": "Já tem uma conta?"
+    "hasAccount": "Já tem uma conta?",
+    "login": {
+      "titulo": "Entrar",
+      "tabEntrar": "Entrar",
+      "tabCadastrar": "Cadastrar",
+      "labelEmail": "E-mail",
+      "placeholderEmail": "Digite seu e-mail",
+      "labelSenha": "Senha",
+      "placeholderSenha": "Digite sua senha",
+      "erroPadrao": "Ocorreu um erro ao entrar",
+      "botaoEntrando": "Entrando...",
+      "botaoEntrar": "Entrar",
+      "avisoDemo": "O Mike hospedado em MikeOSS.com é atualmente um serviço de demonstração. Por favor, não envie, submeta ou armazene documentos sensíveis, confidenciais, privilegiados, de clientes ou que contenham dados pessoais identificáveis."
+    },
+    "signup": {
+      "titulo": "Criar Conta",
+      "tabEntrar": "Entrar",
+      "tabCadastrar": "Cadastrar",
+      "labelNome": "Nome",
+      "opcional": "(opcional)",
+      "placeholderNome": "Seu nome",
+      "labelOrganizacao": "Organização",
+      "placeholderOrganizacao": "Sua organização",
+      "labelEmail": "E-mail",
+      "placeholderEmail": "Digite seu e-mail",
+      "labelSenha": "Senha",
+      "placeholderSenha": "Crie uma senha (mín. 6 caracteres)",
+      "labelConfirmarSenha": "Confirmar Senha",
+      "placeholderConfirmarSenha": "Confirme sua senha",
+      "erroSenhaNaoCoincidem": "As senhas não coincidem",
+      "erroSenhaCurta": "A senha deve ter pelo menos 6 caracteres",
+      "erroPadrao": "Ocorreu um erro ao criar a conta",
+      "botaoCriando": "Criando conta...",
+      "botaoCadastrar": "Cadastrar",
+      "termos": "Ao se cadastrar, você concorda com nossos",
+      "termosDeUso": "Termos de Uso",
+      "e": "e",
+      "politicaPrivacidade": "Política de Privacidade",
+      "avisoDemo": "O Mike hospedado em MikeOSS.com é atualmente um serviço de demonstração. Por favor, não envie, submeta ou armazene documentos sensíveis, confidenciais, privilegiados, de clientes ou que contenham dados pessoais identificáveis.",
+      "contaCriada": "Conta criada!",
+      "redirecionando": "Redirecionando para a página inicial..."
+    }
   },
   "common": {
     "save": "Salvar",
@@ -29,11 +70,71 @@
   "documents": {
     "title": "Documentos",
     "upload": "Enviar Documento",
-    "noDocuments": "Nenhum documento encontrado"
+    "noDocuments": "Nenhum documento encontrado",
+    "excluir": "Excluir",
+    "desmarcarTodos": "Desmarcar todos",
+    "selecionarTodos": "Selecionar todos",
+    "projetos": "Projetos",
+    "pastaVazia": "Vazio",
+    "headingPadrao": "Documentos",
+    "nenhumDocumentoPadrao": "Nenhum documento ainda",
+    "acoes": {
+      "novaSubpasta": "Nova subpasta",
+      "renomear": "Renomear",
+      "excluir": "Excluir",
+      "editarReferencia": "Editar referência",
+      "baixar": "Baixar",
+      "verTodasVersoes": "Ver todas as versões",
+      "enviarNovaVersao": "Enviar nova versão",
+      "removerSubpasta": "Remover da subpasta",
+      "mostrar": "Mostrar",
+      "ocultar": "Ocultar"
+    }
   },
   "assistant": {
     "title": "Assistente",
     "placeholder": "Digite sua mensagem...",
-    "send": "Enviar"
+    "send": "Enviar",
+    "conversaSemTitulo": "Conversa sem título",
+    "renomearConversa": "renomear esta conversa",
+    "excluirConversa": "excluir esta conversa",
+    "renomear": "Renomear",
+    "excluir": "Excluir"
+  },
+  "modals": {
+    "addDocuments": {
+      "buscar": "Buscar…",
+      "nenhumResultado": "Nenhum resultado encontrado",
+      "nenhumDocumento": "Nenhum documento ainda",
+      "enviando": "Enviando…",
+      "enviarArquivo": "Enviar arquivo",
+      "selecionados": "{count} selecionado(s)",
+      "cancelar": "Cancelar",
+      "salvando": "Salvando…",
+      "confirmar": "Confirmar",
+      "avisoOwnerSingular": "excluir estes documentos — apenas o criador do documento pode excluí-lo",
+      "avisoOwnerParcial": "excluir {count} dos documentos selecionados — apenas o criador do documento pode excluí-lo",
+      "nenhumDocumentoProjeto": "Nenhum documento neste projeto",
+      "jaAdicionado": "Já adicionado"
+    },
+    "novaVersao": {
+      "cabecalho": "Enviar nova versão · {filename}",
+      "labelNome": "Nome da nova versão",
+      "placeholderNome": "Nome da versão",
+      "versaoAtual": "Versão atual:",
+      "arquivoNovaVersao": "Arquivo da nova versão:",
+      "trocarArquivo": "Trocar arquivo",
+      "enviarArquivo": "Enviar arquivo",
+      "cancelar": "Cancelar",
+      "salvando": "Salvando…",
+      "salvar": "Salvar"
+    },
+    "apiKeyMissing": {
+      "titulo": "Chave de API necessária",
+      "provedorPadrao": "este provedor",
+      "corpo": "Você ainda não adicionou uma chave de API da {providerName}. Adicione uma nas configurações da sua conta para usar este modelo.",
+      "cancelar": "Cancelar",
+      "irConfiguracoes": "Ir para configurações da conta"
+    }
   }
 }
