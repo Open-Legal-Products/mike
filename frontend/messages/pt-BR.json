@@ -356,6 +356,18 @@
       "novaConversa": "Nova Conversa",
       "cancelado": "Cancelado pelo usuário",
       "erroGenerico": "Desculpe, algo deu errado."
+    },
+    "appSidebar": {
+      "navAssistente": "Assistente",
+      "navProjetos": "Projetos",
+      "navRevisoesTabulares": "Revisões Tabulares",
+      "navWorkflows": "Workflows",
+      "fecharMenu": "Fechar menu lateral",
+      "abrirMenu": "Abrir menu lateral",
+      "historicoAssistente": "Histórico do Assistente",
+      "nenhumaConversa": "Nenhuma conversa ainda",
+      "configConta": "Configurações da Conta",
+      "nomeApp": "Sistema"
     }
   },
   "pages": {
