@@ -857,11 +857,15 @@ function MarkdownContent({
         >
             <ReactMarkdown
                 key={isStreaming ? "streaming" : "done"}
-                remarkPlugins={[
-                    [remarkMath, { singleDollarTextMath: false }],
-                    remarkGfm,
-                ]}
-                rehypePlugins={[rehypeKatex]}
+                remarkPlugins={
+                    isStreaming
+                        ? []
+                        : [
+                              [remarkMath, { singleDollarTextMath: false }],
+                              remarkGfm,
+                          ]
+                }
+                rehypePlugins={isStreaming ? [] : [rehypeKatex]}
                 components={{
                     table: ({ node, ...props }) => (
                         <div className="overflow-x-auto my-4">
