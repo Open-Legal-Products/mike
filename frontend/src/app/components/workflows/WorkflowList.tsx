@@ -362,7 +362,7 @@ export function WorkflowList() {
             {/* Page header */}
             <div className="flex items-center justify-between px-8 py-4 shrink-0">
                 <h1 className="text-2xl font-medium font-serif text-gray-900">
-                    Workflows
+                    {t("titulo")}
                 </h1>
                 <div className="flex items-center gap-2">
                     <HeaderSearchBtn
@@ -372,9 +372,10 @@ export function WorkflowList() {
                     />
                     <button
                         onClick={() => setNewModalOpen(true)}
-                        className="flex items-center justify-center p-1.5 text-gray-500 hover:text-gray-900 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
                     >
                         <Plus className="h-4 w-4" />
+                        {t("criarFluxo")}
                     </button>
                 </div>
             </div>
