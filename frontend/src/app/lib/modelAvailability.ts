@@ -1,9 +1,14 @@
 import { MODELS, type ModelOption } from "../components/assistant/ModelToggle";
-import type { ApiKeyState } from "@/app/lib/mikeApi";
+import type { ApiKeyState, OllamaModel } from "@/app/lib/mikeApi";
 
-export type ModelProvider = "claude" | "gemini" | "openai";
+export type ModelProvider = "claude" | "gemini" | "openai" | "ollama";
 
-export function getModelProvider(modelId: string): ModelProvider | null {
+export function getModelProvider(
+    modelId: string,
+    ollamaModels?: OllamaModel[],
+): ModelProvider | null {
+    if (modelId.startsWith("ollama/")) return "ollama";
+    if (ollamaModels?.some((m) => m.name === modelId)) return "ollama";
     const model = MODELS.find((m) => m.id === modelId);
     if (!model) return null;
     return modelGroupToProvider(model.group);
@@ -12,9 +17,16 @@ export function getModelProvider(modelId: string): ModelProvider | null {
 export function isModelAvailable(
     modelId: string,
     apiKeys: ApiKeyState,
+    ollamaModels?: OllamaModel[],
 ): boolean {
-    const provider = getModelProvider(modelId);
+    const provider = getModelProvider(modelId, ollamaModels);
     if (!provider) return false;
+    if (provider === "ollama") {
+        // If ollamaModels list is provided, check membership; otherwise assume available
+        // so callers without the list don't accidentally block Ollama models.
+        if (ollamaModels) return ollamaModels.some((m) => m.name === modelId);
+        return true;
+    }
     return isProviderAvailable(provider, apiKeys);
 }
 
@@ -22,12 +34,14 @@ export function isProviderAvailable(
     provider: ModelProvider,
     apiKeys: ApiKeyState,
 ): boolean {
-    return !!apiKeys[provider]?.configured;
+    if (provider === "ollama") return true;
+    return !!apiKeys[provider as "claude" | "gemini" | "openai"]?.configured;
 }
 
 export function providerLabel(provider: ModelProvider): string {
     if (provider === "claude") return "Anthropic (Claude)";
     if (provider === "openai") return "OpenAI";
+    if (provider === "ollama") return "Local (Ollama)";
     return "Google (Gemini)";
 }
 

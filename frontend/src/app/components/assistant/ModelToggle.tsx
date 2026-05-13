@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChevronDown, Check, AlertCircle } from "lucide-react";
 import {
     DropdownMenu,
@@ -11,6 +11,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { isModelAvailable } from "@/app/lib/modelAvailability";
+import { fetchOllamaModels, type OllamaModel } from "@/app/lib/mikeApi";
 import type { ApiKeyState } from "@/app/lib/mikeApi";
 
 export interface ModelOption {
@@ -42,10 +43,17 @@ interface Props {
 
 export function ModelToggle({ value, onChange, apiKeys }: Props) {
     const [isOpen, setIsOpen] = useState(false);
+    const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
+
+    useEffect(() => {
+        fetchOllamaModels().then(({ models }) => setOllamaModels(models));
+    }, []);
+
     const selected = MODELS.find((m) => m.id === value);
-    const selectedLabel = selected?.label ?? "Model";
+    const selectedOllama = ollamaModels.find((m) => m.name === value);
+    const selectedLabel = selected?.label ?? selectedOllama?.label ?? value;
     const selectedAvailable = apiKeys
-        ? isModelAvailable(value, apiKeys)
+        ? isModelAvailable(value, apiKeys, ollamaModels)
         : true;
 
     return (
@@ -81,7 +89,7 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                             </DropdownMenuLabel>
                             {items.map((m) => {
                                 const available = apiKeys
-                                    ? isModelAvailable(m.id, apiKeys)
+                                    ? isModelAvailable(m.id, apiKeys, ollamaModels)
                                     : true;
                                 return (
                                     <DropdownMenuItem
@@ -109,6 +117,27 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                         </div>
                     );
                 })}
+
+                {ollamaModels.length > 0 && (
+                    <div>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-gray-400">
+                            Local (Ollama)
+                        </DropdownMenuLabel>
+                        {ollamaModels.map((m) => (
+                            <DropdownMenuItem
+                                key={m.name}
+                                className="cursor-pointer"
+                                onSelect={() => onChange(m.name)}
+                            >
+                                <span className="flex-1">{m.label}</span>
+                                {m.name === value && (
+                                    <Check className="h-3.5 w-3.5 text-gray-600 ml-1" />
+                                )}
+                            </DropdownMenuItem>
+                        ))}
+                    </div>
+                )}
             </DropdownMenuContent>
         </DropdownMenu>
     );

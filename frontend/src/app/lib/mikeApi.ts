@@ -863,3 +863,22 @@ export async function deleteWorkflowShare(
         method: "DELETE",
     });
 }
+
+// ---------------------------------------------------------------------------
+// Ollama
+// ---------------------------------------------------------------------------
+
+export type OllamaModel = { name: string; label: string };
+
+export async function fetchOllamaModels(): Promise<{
+    models: OllamaModel[];
+    available: boolean;
+}> {
+    try {
+        return await apiRequest<{ models: OllamaModel[]; available: boolean }>(
+            "/ollama/models",
+        );
+    } catch {
+        return { models: [], available: false };
+    }
+}

@@ -46,10 +46,13 @@ export function providerForModel(model: string): Provider {
     if (model.startsWith("claude")) return "claude";
     if (model.startsWith("gemini")) return "gemini";
     if (model.startsWith("gpt-")) return "openai";
+    if (model.startsWith("ollama/")) return "ollama";
     throw new Error(`Unknown model id: ${model}`);
 }
 
 export function resolveModel(id: string | null | undefined, fallback: string): string {
-    if (id && ALL_MODELS.has(id)) return id;
+    if (!id) return fallback;
+    if (id.startsWith("ollama/")) return id;
+    if (ALL_MODELS.has(id)) return id;
     return fallback;
 }
