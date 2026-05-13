@@ -26,6 +26,7 @@ import { singleFileUpload } from "../lib/upload";
 
 export const documentsRouter = Router();
 const ALLOWED_TYPES = new Set(["pdf", "docx", "doc"]);
+const MAX_ZIP_DOCUMENTS = 50;
 
 // GET /single-documents
 documentsRouter.get("/", requireAuth, async (req, res) => {
@@ -160,6 +161,11 @@ documentsRouter.post("/download-zip", requireAuth, async (req, res) => {
 
   if (!Array.isArray(document_ids) || document_ids.length === 0)
     return void res.status(400).json({ detail: "document_ids is required" });
+
+  if (document_ids.length > MAX_ZIP_DOCUMENTS)
+    return void res.status(400).json({
+      detail: `Cannot download more than ${MAX_ZIP_DOCUMENTS} documents at once.`,
+    });
 
   const db = createServerSupabase();
   const { data: rawDocs, error } = await db
