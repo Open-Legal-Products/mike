@@ -201,9 +201,9 @@
     "chatInput": {
       "placeholder": "Faça uma pergunta sobre seus documentos...",
       "projetos": "Projetos",
-      "workflows": "Workflows",
+      "workflows": "Fluxos de trabalho",
       "abrirProjetos": "Abrir projetos",
-      "abrirWorkflows": "Abrir workflows",
+      "abrirWorkflows": "Abrir fluxos de trabalho",
       "adicionarDocumentos": "Adicionar Documentos"
     },
     "selecionarProjetoModal": {
