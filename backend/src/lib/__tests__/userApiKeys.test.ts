@@ -1,9 +1,12 @@
 import crypto from "crypto";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
-// Set required env before importing the module
 beforeEach(() => {
     process.env.USER_API_KEYS_ENCRYPTION_SECRET = "test-secret-32-bytes-long-enough!!";
+});
+
+afterEach(() => {
+    delete process.env.USER_API_KEYS_ENCRYPTION_SECRET;
 });
 
 // Import after env is set via dynamic import in each test suite
