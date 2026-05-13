@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 beforeEach(() => {
@@ -39,5 +40,15 @@ describe("downloadTokens", () => {
         const { signDownload, verifyDownload } = await import("../downloadTokens.js");
         const token = signDownload("path", "file.pdf", 3600);
         expect(verifyDownload(token)).not.toBeNull();
+    });
+
+    it("verifyDownload accepts legacy tokens without exp field (backward compat)", async () => {
+        const { verifyDownload } = await import("../downloadTokens.js");
+        const secret = process.env.DOWNLOAD_SIGNING_SECRET!;
+        const payload = Buffer.from(JSON.stringify({ p: "legacy/path.pdf", f: "legacy.pdf" }));
+        const enc = payload.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+        const sig = crypto.createHmac("sha256", secret).update(enc).digest("base64")
+            .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+        expect(verifyDownload(`${enc}.${sig}`)).toEqual({ path: "legacy/path.pdf", filename: "legacy.pdf" });
     });
 });
