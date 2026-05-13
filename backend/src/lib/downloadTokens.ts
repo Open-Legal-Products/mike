@@ -5,12 +5,10 @@ import crypto from "crypto";
 const DEFAULT_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 function getSecret(): string {
-    const secret =
-        process.env.DOWNLOAD_SIGNING_SECRET ??
-        process.env.SUPABASE_SECRET_KEY;
+    const secret = process.env.DOWNLOAD_SIGNING_SECRET;
     if (!secret) {
         throw new Error(
-            "DOWNLOAD_SIGNING_SECRET (or SUPABASE_SECRET_KEY as a fallback) must be set. " +
+            "DOWNLOAD_SIGNING_SECRET must be set. " +
                 "Generate a strong random value (e.g. `openssl rand -hex 32`) and set it in the environment.",
         );
     }
