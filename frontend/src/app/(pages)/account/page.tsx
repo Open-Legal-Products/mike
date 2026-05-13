@@ -47,7 +47,7 @@ export default function AccountPage() {
         } catch {
             setIsDeleting(false);
             setDeleteConfirm(false);
-            alert("Failed to delete account. Please try again.");
+            alert(t("erroExcluirConta"));
         }
     };
 
@@ -60,7 +60,7 @@ export default function AccountPage() {
             setSaved(true);
             setTimeout(() => setSaved(false), 2000);
         } else {
-            alert("Failed to update display name. Please try again.");
+            alert(t("erroSalvarNome"));
         }
     };
 
@@ -73,7 +73,7 @@ export default function AccountPage() {
             setOrgSaved(true);
             setTimeout(() => setOrgSaved(false), 2000);
         } else {
-            alert("Failed to update organisation. Please try again.");
+            alert(t("erroSalvarOrganizacao"));
         }
     };
 

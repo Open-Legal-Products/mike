@@ -22,22 +22,10 @@ import {
     providerLabel,
 } from "@/app/lib/modelAvailability";
 
-const API_KEY_FIELDS = [
-    {
-        provider: "claude",
-        label: "Anthropic (Claude) API Key",
-        placeholder: "sk-ant-…",
-    },
-    {
-        provider: "gemini",
-        label: "Google (Gemini) API Key",
-        placeholder: "AI…",
-    },
-    {
-        provider: "openai",
-        label: "OpenAI API Key",
-        placeholder: "sk-…",
-    },
+const API_KEY_PROVIDERS = [
+    { provider: "claude", labelKey: "labelAnthropicKey", placeholder: "sk-ant-…" },
+    { provider: "gemini", labelKey: "labelGeminiKey",   placeholder: "AI…"      },
+    { provider: "openai", labelKey: "labelOpenAIKey",   placeholder: "sk-…"     },
 ] as const;
 
 export default function ModelsAndApiKeysPage() {
@@ -89,10 +77,10 @@ export default function ModelsAndApiKeysPage() {
                     {t("notaRoteamento")}
                 </p>
                 <div className="space-y-4 max-w-xl">
-                    {API_KEY_FIELDS.map((field) => (
+                    {API_KEY_PROVIDERS.map((field) => (
                         <ApiKeyField
                             key={field.provider}
-                            label={field.label}
+                            label={t(field.labelKey)}
                             placeholder={field.placeholder}
                             hasSavedKey={
                                 !!profile?.apiKeys[field.provider].configured
@@ -245,7 +233,7 @@ function ApiKeyField({
             setSaved(true);
             setTimeout(() => setSaved(false), 2000);
         } else {
-            alert(`Failed to save ${label}.`);
+            alert(t("erroSalvarChave"));
         }
     };
 
@@ -253,7 +241,7 @@ function ApiKeyField({
         setIsSaving(true);
         const ok = await onRemove();
         setIsSaving(false);
-        if (!ok) alert(`Failed to remove ${label}.`);
+        if (!ok) alert(t("erroRemoverChave"));
     };
 
     return (

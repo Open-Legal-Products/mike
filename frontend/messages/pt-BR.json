@@ -411,6 +411,11 @@
     }
   },
   "pages": {
+    "configLayout": {
+      "titulo": "Configurações",
+      "tabGeral": "Geral",
+      "tabModelos": "Modelos e Chaves de API"
+    },
     "modelos": {
       "preferenciasTitulo": "Preferências de Modelo",
       "modeloTabular": "Modelo de revisão tabular",
@@ -430,7 +435,12 @@
       "salvando": "Salvando…",
       "salvo": "Salvo",
       "salvar": "Salvar",
-      "remover": "Remover"
+      "remover": "Remover",
+      "labelAnthropicKey": "Chave de API — Anthropic (Claude)",
+      "labelGeminiKey": "Chave de API — Google (Gemini)",
+      "labelOpenAIKey": "Chave de API — OpenAI",
+      "erroSalvarChave": "Falha ao salvar a chave. Tente novamente.",
+      "erroRemoverChave": "Falha ao remover a chave. Tente novamente."
     },
     "conta": {
       "perfilTitulo": "Perfil",
@@ -450,7 +460,10 @@
       "excluirConta": "Excluir Conta",
       "salvando": "Salvando…",
       "salvo": "Salvo",
-      "salvar": "Salvar"
+      "salvar": "Salvar",
+      "erroExcluirConta": "Falha ao excluir a conta. Tente novamente.",
+      "erroSalvarNome": "Falha ao atualizar o nome. Tente novamente.",
+      "erroSalvarOrganizacao": "Falha ao atualizar a organização. Tente novamente."
     },
     "workflowDetalhe": {
       "naoEncontrado": "Workflow não encontrado.",
