@@ -1,6 +1,15 @@
 import { Router } from "express";
+import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
+
 import { requireAuth } from "../middleware/auth";
-import { createServerSupabase } from "../lib/supabase";
+import { db } from "../lib/db";
+import {
+    chatMessages,
+    chats,
+    documentEdits,
+    documentVersions,
+    projects,
+} from "../db/schema";
 import {
     buildDocContext,
     buildMessages,
@@ -16,7 +25,6 @@ import { checkProjectAccess } from "../lib/access";
 
 export const chatRouter = Router();
 
-type Db = ReturnType<typeof createServerSupabase>;
 const isDev = process.env.NODE_ENV !== "production";
 const devLog = (...args: Parameters<typeof console.log>) => {
     if (isDev) console.log(...args);
@@ -27,7 +35,16 @@ type AccessibleChat = {
     title: string | null;
     user_id: string;
     project_id: string | null;
-} & Record<string, unknown>;
+    created_at: Date;
+};
+
+const CHAT_COLUMNS = {
+    id: chats.id,
+    project_id: chats.projectId,
+    user_id: chats.userId,
+    title: chats.title,
+    created_at: chats.createdAt,
+} as const;
 
 function parseOptionalProjectId(value: unknown):
     | { ok: true; provided: boolean; projectId: string | null }
@@ -94,10 +111,9 @@ async function validateAccessibleProjectId(
     projectId: string | null,
     userId: string,
     userEmail: string | null | undefined,
-    db: Db,
 ): Promise<{ ok: true } | { ok: false; status: number; detail: string }> {
     if (!projectId) return { ok: true };
-    const access = await checkProjectAccess(projectId, userId, userEmail, db);
+    const access = await checkProjectAccess(projectId, userId, userEmail);
     if (!access.ok)
         return { ok: false, status: 404, detail: "Project not found" };
     return { ok: true };
@@ -107,26 +123,23 @@ async function getAccessibleChat(
     chatId: string,
     userId: string,
     userEmail: string | null | undefined,
-    db: Db,
 ): Promise<AccessibleChat | null> {
-    const { data: chat, error } = await db
-        .from("chats")
-        .select("*")
-        .eq("id", chatId)
-        .maybeSingle();
-    if (error || !chat) return null;
+    const [chat] = await db
+        .select(CHAT_COLUMNS)
+        .from(chats)
+        .where(eq(chats.id, chatId))
+        .limit(1);
+    if (!chat) return null;
 
-    const row = chat as AccessibleChat;
-    if (row.user_id === userId) return row;
+    if (chat.user_id === userId) return chat as AccessibleChat;
 
-    if (row.project_id) {
+    if (chat.project_id) {
         const access = await checkProjectAccess(
-            row.project_id,
+            chat.project_id,
             userId,
             userEmail,
-            db,
         );
-        if (access.ok) return row;
+        if (access.ok) return chat as AccessibleChat;
     }
 
     return null;
@@ -140,29 +153,27 @@ async function getAccessibleChat(
 // listed per-project via GET /projects/:projectId/chats.
 chatRouter.get("/", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
-    const db = createServerSupabase();
 
-    const { data: ownProjects, error: projErr } = await db
-        .from("projects")
-        .select("id")
-        .eq("user_id", userId);
-    if (projErr) return void res.status(500).json({ detail: projErr.message });
-    const ownProjectIds = ((ownProjects ?? []) as { id: string }[]).map(
-        (p) => p.id,
-    );
+    const ownProjects = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.userId, userId));
+    const ownProjectIds = ownProjects.map((p) => p.id);
 
-    const filter =
+    const condition =
         ownProjectIds.length > 0
-            ? `user_id.eq.${userId},project_id.in.(${ownProjectIds.join(",")})`
-            : `user_id.eq.${userId}`;
+            ? or(
+                  eq(chats.userId, userId),
+                  inArray(chats.projectId, ownProjectIds),
+              )
+            : eq(chats.userId, userId);
 
-    const { data, error } = await db
-        .from("chats")
-        .select("*")
-        .or(filter)
-        .order("created_at", { ascending: false });
-    if (error) return void res.status(500).json({ detail: error.message });
-    res.json(data ?? []);
+    const data = await db
+        .select(CHAT_COLUMNS)
+        .from(chats)
+        .where(condition)
+        .orderBy(desc(chats.createdAt));
+    res.json(data);
 });
 
 // POST /chat/create
@@ -174,25 +185,22 @@ chatRouter.post("/create", requireAuth, async (req, res) => {
         return void res.status(400).json({ detail: parsedProjectId.detail });
     }
     const projectId = parsedProjectId.projectId;
-    const db = createServerSupabase();
     const projectAccess = await validateAccessibleProjectId(
         projectId,
         userId,
         userEmail,
-        db,
     );
     if (!projectAccess.ok)
         return void res
             .status(projectAccess.status)
             .json({ detail: projectAccess.detail });
 
-    const { data, error } = await db
-        .from("chats")
-        .insert({ user_id: userId, project_id: projectId ?? null })
-        .select("id")
-        .single();
-
-    if (error) return void res.status(500).json({ detail: error.message });
+    const [data] = await db
+        .insert(chats)
+        .values({ userId, projectId: projectId ?? null })
+        .returning({ id: chats.id });
+    if (!data)
+        return void res.status(500).json({ detail: "Failed to create chat" });
     res.json({ id: data.id });
 });
 
@@ -201,19 +209,26 @@ chatRouter.get("/:chatId", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
     const userEmail = res.locals.userEmail as string | undefined;
     const { chatId } = req.params;
-    const db = createServerSupabase();
 
-    const chat = await getAccessibleChat(chatId, userId, userEmail, db);
+    const chat = await getAccessibleChat(chatId, userId, userEmail);
     if (!chat)
         return void res.status(404).json({ detail: "Chat not found" });
 
-    const { data: messages } = await db
-        .from("chat_messages")
-        .select("*")
-        .eq("chat_id", chatId)
-        .order("created_at", { ascending: true });
+    const messages = await db
+        .select({
+            id: chatMessages.id,
+            chat_id: chatMessages.chatId,
+            role: chatMessages.role,
+            content: chatMessages.content,
+            files: chatMessages.files,
+            annotations: chatMessages.annotations,
+            created_at: chatMessages.createdAt,
+        })
+        .from(chatMessages)
+        .where(eq(chatMessages.chatId, chatId))
+        .orderBy(asc(chatMessages.createdAt));
 
-    const hydrated = await hydrateEditStatuses(messages ?? [], db);
+    const hydrated = await hydrateEditStatuses(messages);
     res.json({ chat, messages: hydrated });
 });
 
@@ -224,7 +239,6 @@ chatRouter.get("/:chatId", requireAuth, async (req, res) => {
 // EditCards render with the real state.
 async function hydrateEditStatuses(
     messages: Record<string, unknown>[],
-    db: ReturnType<typeof createServerSupabase>,
 ): Promise<Record<string, unknown>[]> {
     const editIds = new Set<string>();
     const versionIds = new Set<string>();
@@ -254,11 +268,14 @@ async function hydrateEditStatuses(
     // Edit status patch.
     const statusById = new Map<string, "pending" | "accepted" | "rejected">();
     if (editIds.size > 0) {
-        const { data: rows } = await db
-            .from("document_edits")
-            .select("id, status")
-            .in("id", Array.from(editIds));
-        for (const r of (rows ?? []) as { id: string; status: string }[]) {
+        const rows = await db
+            .select({
+                id: documentEdits.id,
+                status: documentEdits.status,
+            })
+            .from(documentEdits)
+            .where(inArray(documentEdits.id, Array.from(editIds)));
+        for (const r of rows) {
             if (
                 r.status === "pending" ||
                 r.status === "accepted" ||
@@ -274,14 +291,14 @@ async function hydrateEditStatuses(
     // document_versions so the UI can render "V3" chips + download filenames.
     const versionNumberById = new Map<string, number | null>();
     if (versionIds.size > 0) {
-        const { data: vrows } = await db
-            .from("document_versions")
-            .select("id, version_number")
-            .in("id", Array.from(versionIds));
-        for (const r of (vrows ?? []) as {
-            id: string;
-            version_number: number | null;
-        }[]) {
+        const vrows = await db
+            .select({
+                id: documentVersions.id,
+                version_number: documentVersions.versionNumber,
+            })
+            .from(documentVersions)
+            .where(inArray(documentVersions.id, Array.from(versionIds)));
+        for (const r of vrows) {
             versionNumberById.set(r.id, r.version_number ?? null);
         }
     }
@@ -342,16 +359,13 @@ chatRouter.patch("/:chatId", requireAuth, async (req, res) => {
     if (!title)
         return void res.status(400).json({ detail: "title is required" });
 
-    const db = createServerSupabase();
-    const { data, error } = await db
-        .from("chats")
-        .update({ title })
-        .eq("id", chatId)
-        .eq("user_id", userId)
-        .select("id, title")
-        .single();
+    const [data] = await db
+        .update(chats)
+        .set({ title })
+        .where(and(eq(chats.id, chatId), eq(chats.userId, userId)))
+        .returning({ id: chats.id, title: chats.title });
 
-    if (error || !data)
+    if (!data)
         return void res.status(404).json({ detail: "Chat not found" });
     res.json(data);
 });
@@ -360,14 +374,9 @@ chatRouter.patch("/:chatId", requireAuth, async (req, res) => {
 chatRouter.delete("/:chatId", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
     const { chatId } = req.params;
-    const db = createServerSupabase();
-    const { error } = await db
-        .from("chats")
-        .delete()
-        .eq("id", chatId)
-        .eq("user_id", userId);
-
-    if (error) return void res.status(500).json({ detail: error.message });
+    await db
+        .delete(chats)
+        .where(and(eq(chats.id, chatId), eq(chats.userId, userId)));
     res.status(204).send();
 });
 
@@ -381,16 +390,12 @@ chatRouter.post("/:chatId/generate-title", requireAuth, async (req, res) => {
     if (!message)
         return void res.status(400).json({ detail: "message is required" });
 
-    const db = createServerSupabase();
-    const chat = await getAccessibleChat(chatId, userId, userEmail, db);
+    const chat = await getAccessibleChat(chatId, userId, userEmail);
     if (!chat)
         return void res.status(404).json({ detail: "Chat not found" });
 
     try {
-        const { title_model, api_keys } = await getUserModelSettings(
-            userId,
-            db,
-        );
+        const { title_model, api_keys } = await getUserModelSettings(userId);
         const titleText = await completeText({
             model: title_model,
             user: `Generate a concise title (3–6 words) for a chat in an AI Legal Platform that starts with this message. The title should describe the topic or document — do NOT include words like "Legal Assistant", "AI", "Chat", or any similar prefix. Return only the title, no quotes or punctuation.\n\nMessage: ${message.slice(0, 500)}`,
@@ -399,10 +404,7 @@ chatRouter.post("/:chatId/generate-title", requireAuth, async (req, res) => {
         });
         const title = titleText.trim() || message.slice(0, 60);
 
-        await db
-            .from("chats")
-            .update({ title })
-            .eq("id", chatId);
+        await db.update(chats).set({ title }).where(eq(chats.id, chatId));
 
         res.json({ title });
     } catch (err) {
@@ -449,13 +451,12 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     });
 
     const userEmail = res.locals.userEmail as string | undefined;
-    const db = createServerSupabase();
     let chatId = chat_id ?? null;
     let chatTitle: string | null = null;
     let resolvedProjectId: string | null = parsedProjectId.projectId;
 
     if (chatId) {
-        const existing = await getAccessibleChat(chatId, userId, userEmail, db);
+        const existing = await getAccessibleChat(chatId, userId, userEmail);
         if (!existing)
             return void res.status(404).json({ detail: "Chat not found" });
 
@@ -479,25 +480,23 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             resolvedProjectId,
             userId,
             userEmail,
-            db,
         );
         if (!projectAccess.ok)
             return void res
                 .status(projectAccess.status)
                 .json({ detail: projectAccess.detail });
 
-        const { data: newChat, error } = await db
-            .from("chats")
-            .insert({ user_id: userId, project_id: resolvedProjectId })
-            .select("id, title")
-            .single();
-        if (error || !newChat) {
-            console.error("[chat/stream] failed to create chat", error);
+        const [newChat] = await db
+            .insert(chats)
+            .values({ userId, projectId: resolvedProjectId })
+            .returning({ id: chats.id, title: chats.title });
+        if (!newChat) {
+            console.error("[chat/stream] failed to create chat");
             return void res
                 .status(500)
                 .json({ detail: "Failed to create chat" });
         }
-        chatId = newChat.id as string;
+        chatId = newChat.id;
         chatTitle = newChat.title;
     }
 
@@ -505,12 +504,11 @@ chatRouter.post("/", requireAuth, async (req, res) => {
 
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (lastUser) {
-        await db.from("chat_messages").insert({
-            chat_id: chatId,
+        await db.insert(chatMessages).values({
+            chatId,
             role: "user",
-            content: lastUser.content,
-            files: lastUser.files ?? null,
-            workflow: lastUser.workflow ?? null,
+            content: lastUser.content as any,
+            files: (lastUser.files ?? null) as any,
         });
     }
 
@@ -548,7 +546,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
 
     const write = (line: string) => res.write(line);
 
-    const apiKeys = await getUserApiKeys(userId, db);
+    const apiKeys = await getUserApiKeys(userId);
 
     try {
         write(`data: ${JSON.stringify({ type: "chat_id", chatId })}\n\n`);
@@ -572,18 +570,18 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         });
 
         const annotations = extractAnnotations(fullText, docIndex, events);
-        await db.from("chat_messages").insert({
-            chat_id: chatId,
+        await db.insert(chatMessages).values({
+            chatId,
             role: "assistant",
-            content: events.length ? events : null,
-            annotations: annotations.length ? annotations : null,
+            content: (events.length ? events : null) as any,
+            annotations: (annotations.length ? annotations : null) as any,
         });
 
         if (!chatTitle && lastUser?.content) {
             await db
-                .from("chats")
-                .update({ title: lastUser.content.slice(0, 120) })
-                .eq("id", chatId);
+                .update(chats)
+                .set({ title: lastUser.content.slice(0, 120) })
+                .where(eq(chats.id, chatId));
         }
     } catch (err) {
         console.error("[chat/stream] error:", err);
@@ -599,3 +597,4 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         res.end();
     }
 });
+

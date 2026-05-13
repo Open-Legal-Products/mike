@@ -1,6 +1,7 @@
-import type { createServerSupabase } from "./supabase";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 
-type Supa = ReturnType<typeof createServerSupabase>;
+import { db } from "./db";
+import { documents, documentVersions } from "../db/schema";
 
 interface DocRow {
     id: string;
@@ -37,35 +38,40 @@ export interface ActiveVersion {
  */
 export async function loadActiveVersion(
     documentId: string,
-    db: Supa,
     versionId?: string | null,
 ): Promise<ActiveVersion | null> {
-    const { data: doc } = await db
-        .from("documents")
-        .select("current_version_id")
-        .eq("id", documentId)
-        .single();
+    const [doc] = await db
+        .select({ current_version_id: documents.currentVersionId })
+        .from(documents)
+        .where(eq(documents.id, documentId))
+        .limit(1);
     const targetVersionId =
         (typeof versionId === "string" && versionId) ||
-        (doc?.current_version_id as string | undefined) ||
+        doc?.current_version_id ||
         null;
     if (!targetVersionId) return null;
 
-    const { data: v } = await db
-        .from("document_versions")
-        .select(
-            "id, document_id, storage_path, pdf_storage_path, version_number, display_name, source",
-        )
-        .eq("id", targetVersionId)
-        .single();
+    const [v] = await db
+        .select({
+            id: documentVersions.id,
+            document_id: documentVersions.documentId,
+            storage_path: documentVersions.storagePath,
+            pdf_storage_path: documentVersions.pdfStoragePath,
+            version_number: documentVersions.versionNumber,
+            display_name: documentVersions.displayName,
+            source: documentVersions.source,
+        })
+        .from(documentVersions)
+        .where(eq(documentVersions.id, targetVersionId))
+        .limit(1);
     if (!v || v.document_id !== documentId || !v.storage_path) return null;
     return {
-        id: v.id as string,
-        storage_path: v.storage_path as string,
-        pdf_storage_path: (v.pdf_storage_path as string | null) ?? null,
-        version_number: (v.version_number as number | null) ?? null,
-        display_name: (v.display_name as string | null) ?? null,
-        source: (v.source as string | null) ?? null,
+        id: v.id,
+        storage_path: v.storage_path,
+        pdf_storage_path: v.pdf_storage_path ?? null,
+        version_number: v.version_number ?? null,
+        display_name: v.display_name ?? null,
+        source: v.source ?? null,
     };
 }
 
@@ -76,7 +82,6 @@ export async function loadActiveVersion(
  * null paths.
  */
 export async function attachActiveVersionPaths<T extends VersionPathRow>(
-    db: Supa,
     docs: T[],
 ): Promise<T[]> {
     if (docs.length === 0) return docs;
@@ -90,10 +95,15 @@ export async function attachActiveVersionPaths<T extends VersionPathRow>(
         }
         return docs;
     }
-    const { data: rows } = await db
-        .from("document_versions")
-        .select("id, storage_path, pdf_storage_path, version_number")
-        .in("id", versionIds);
+    const rows = await db
+        .select({
+            id: documentVersions.id,
+            storage_path: documentVersions.storagePath,
+            pdf_storage_path: documentVersions.pdfStoragePath,
+            version_number: documentVersions.versionNumber,
+        })
+        .from(documentVersions)
+        .where(inArray(documentVersions.id, versionIds));
     const byId = new Map<
         string,
         {
@@ -102,12 +112,7 @@ export async function attachActiveVersionPaths<T extends VersionPathRow>(
             version_number: number | null;
         }
     >();
-    for (const r of (rows ?? []) as {
-        id: string;
-        storage_path: string | null;
-        pdf_storage_path: string | null;
-        version_number: number | null;
-    }[]) {
+    for (const r of rows) {
         byId.set(r.id, {
             storage_path: r.storage_path ?? null,
             pdf_storage_path: r.pdf_storage_path ?? null,
@@ -130,23 +135,26 @@ export async function attachActiveVersionPaths<T extends VersionPathRow>(
  * One extra query regardless of list size.
  */
 export async function attachLatestVersionNumbers<T extends DocRow>(
-    db: Supa,
     docs: T[],
 ): Promise<T[]> {
     if (docs.length === 0) return docs;
     const ids = docs.map((d) => d.id);
-    const { data: rows } = await db
-        .from("document_versions")
-        .select("document_id, version_number")
-        .in("document_id", ids)
-        .eq("source", "assistant_edit")
-        .not("version_number", "is", null);
+    const rows = await db
+        .select({
+            document_id: documentVersions.documentId,
+            version_number: documentVersions.versionNumber,
+        })
+        .from(documentVersions)
+        .where(
+            and(
+                inArray(documentVersions.documentId, ids),
+                eq(documentVersions.source, "assistant_edit"),
+                isNotNull(documentVersions.versionNumber),
+            ),
+        );
 
     const latestByDoc = new Map<string, number>();
-    for (const r of (rows ?? []) as {
-        document_id: string;
-        version_number: number | null;
-    }[]) {
+    for (const r of rows) {
         if (r.version_number == null) continue;
         const prev = latestByDoc.get(r.document_id) ?? 0;
         if (r.version_number > prev)

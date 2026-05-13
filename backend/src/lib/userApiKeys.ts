@@ -95,7 +95,6 @@ export function normalizeApiKeyProvider(value: string): ApiKeyProvider | null {
 
 export async function getUserApiKeyStatus(
     userId: string,
-    _db?: unknown,
 ): Promise<ApiKeyStatus> {
     const status: ApiKeyStatus = {
         claude: false,
@@ -133,7 +132,6 @@ export async function getUserApiKeyStatus(
 
 export async function getUserApiKeys(
     userId: string,
-    _db?: unknown,
 ): Promise<UserApiKeys> {
     const apiKeys: UserApiKeys = {
         claude: envApiKey("claude"),
@@ -165,7 +163,6 @@ export async function saveUserApiKey(
     userId: string,
     provider: ApiKeyProvider,
     value: string | null,
-    _db?: unknown,
 ): Promise<void> {
     const normalized = value?.trim() || null;
     if (!normalized) {

@@ -30,7 +30,6 @@ function resolveTitleModel(apiKeys: UserApiKeys): string {
 
 export async function getUserModelSettings(
     userId: string,
-    _db?: unknown,
 ): Promise<UserModelSettings> {
     const [row] = await db
         .select({ tabular_model: userProfiles.tabularModel })
@@ -48,7 +47,6 @@ export async function getUserModelSettings(
 
 export async function getUserApiKeys(
     userId: string,
-    _db?: unknown,
 ): Promise<UserApiKeys> {
     return getStoredUserApiKeys(userId);
 }

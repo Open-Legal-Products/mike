@@ -32,7 +32,6 @@ export async function checkProjectAccess(
     projectId: string,
     userId: string,
     userEmail: string | null | undefined,
-    _db?: unknown,
 ): Promise<ProjectAccess> {
     const [row] = await db
         .select({
@@ -75,7 +74,6 @@ export async function ensureDocAccess(
     doc: { user_id: string; project_id: string | null },
     userId: string,
     userEmail: string | null | undefined,
-    _db?: unknown,
 ): Promise<{ ok: true; isOwner: boolean } | { ok: false }> {
     if (doc.user_id === userId) return { ok: true, isOwner: true };
     if (!doc.project_id) return { ok: false };
@@ -101,7 +99,6 @@ export async function ensureReviewAccess(
     },
     userId: string,
     userEmail: string | null | undefined,
-    _db?: unknown,
 ): Promise<{ ok: true; isOwner: boolean } | { ok: false }> {
     if (review.user_id === userId) return { ok: true, isOwner: true };
     const email = (userEmail ?? "").toLowerCase();
@@ -131,7 +128,6 @@ export async function filterAccessibleDocumentIds(
     documentIds: string[],
     userId: string,
     userEmail: string | null | undefined,
-    _db?: unknown,
 ): Promise<string[]> {
     if (documentIds.length === 0) return [];
     const rows = await db
@@ -169,7 +165,6 @@ export async function filterAccessibleDocumentIds(
 export async function listAccessibleProjectIds(
     userId: string,
     userEmail: string | null | undefined,
-    _db?: unknown,
 ): Promise<string[]> {
     const [own, shared] = await Promise.all([
         db
