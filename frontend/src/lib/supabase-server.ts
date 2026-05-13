@@ -24,8 +24,8 @@ export async function getUserIdFromRequest(req: Request): Promise<string> {
     }
     const token = auth.slice(7).trim();
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-    const serviceKey = process.env.SUPABASE_SECRET_KEY || "";
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SECRET_KEY;
 
     if (!supabaseUrl || !serviceKey) {
         throw new Response("Server auth is not configured", { status: 500 });

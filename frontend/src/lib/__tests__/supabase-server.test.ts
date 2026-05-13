@@ -13,6 +13,38 @@ vi.mock("@supabase/supabase-js", () => ({
     })),
 }));
 
+describe("createServerSupabase", () => {
+    beforeEach(() => {
+        vi.resetModules();
+        delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+        delete process.env.SUPABASE_SECRET_KEY;
+    });
+
+    it("throws when NEXT_PUBLIC_SUPABASE_URL is missing", async () => {
+        process.env.SUPABASE_SECRET_KEY = "some-key";
+        const { createServerSupabase } = await import("../supabase-server");
+        expect(() => createServerSupabase()).toThrow("NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SECRET_KEY must be set");
+    });
+
+    it("throws when SUPABASE_SECRET_KEY is missing", async () => {
+        process.env.NEXT_PUBLIC_SUPABASE_URL = "https://project.supabase.co";
+        const { createServerSupabase } = await import("../supabase-server");
+        expect(() => createServerSupabase()).toThrow("NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SECRET_KEY must be set");
+    });
+
+    it("throws when both env vars are missing", async () => {
+        const { createServerSupabase } = await import("../supabase-server");
+        expect(() => createServerSupabase()).toThrow();
+    });
+
+    it("returns a client when both env vars are set", async () => {
+        process.env.NEXT_PUBLIC_SUPABASE_URL = "https://project.supabase.co";
+        process.env.SUPABASE_SECRET_KEY = "service-key";
+        const { createServerSupabase } = await import("../supabase-server");
+        expect(() => createServerSupabase()).not.toThrow();
+    });
+});
+
 describe("getUserIdFromRequest", () => {
     beforeEach(() => {
         vi.resetModules();
