@@ -9,6 +9,7 @@ import {
 import { downloadFile, uploadFile, storageKey } from "../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../lib/convert";
 import { checkProjectAccess } from "../lib/access";
+import { normalizeSharedWith, emailInSharedWith } from "../lib/projectAccess";
 import { singleFileUpload } from "../lib/upload";
 
 export const projectsRouter = Router();
@@ -98,7 +99,7 @@ projectsRouter.post("/", requireAuth, async (req, res) => {
       user_id: userId,
       name: name.trim(),
       cm_number: cm_number ?? null,
-      shared_with: shared_with ?? [],
+      shared_with: normalizeSharedWith(shared_with ?? []),
     })
     .select("*")
     .single();
@@ -123,9 +124,8 @@ projectsRouter.get("/:projectId", requireAuth, async (req, res) => {
 
   const canAccess =
     project.user_id === userId ||
-    (userEmail &&
-      Array.isArray(project.shared_with) &&
-      project.shared_with.includes(userEmail));
+    (Array.isArray(project.shared_with) &&
+      emailInSharedWith(project.shared_with as string[], userEmail));
   if (!canAccess)
     return void res.status(404).json({ detail: "Project not found" });
 
