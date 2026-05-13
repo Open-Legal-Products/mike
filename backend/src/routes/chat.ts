@@ -147,9 +147,11 @@ chatRouter.get("/", requireAuth, async (req, res) => {
     const limit = Number.isFinite(rawLimit) && rawLimit > 0
         ? Math.min(rawLimit, 200)
         : 50;
-    const before = typeof req.query.before === "string" && req.query.before
-        ? req.query.before
-        : null;
+    const rawBefore = typeof req.query.before === "string" ? req.query.before : null;
+    if (rawBefore !== null && Number.isNaN(new Date(rawBefore).getTime())) {
+        return void res.status(400).json({ detail: "before must be a valid ISO 8601 timestamp" });
+    }
+    const before = rawBefore;
 
     const { data: ownProjects, error: projErr } = await db
         .from("projects")
