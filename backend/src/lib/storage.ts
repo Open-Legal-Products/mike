@@ -1,12 +1,14 @@
 /**
- * Cloudflare R2 storage utilities for Mike document management.
- * R2 is S3-compatible — uses @aws-sdk/client-s3.
+ * AWS S3 storage utilities for Mike document management.
  *
  * Required env vars:
- *   R2_ENDPOINT_URL     — https://<account-id>.r2.cloudflarestorage.com
- *   R2_ACCESS_KEY_ID    — R2 API token (Access Key ID)
- *   R2_SECRET_ACCESS_KEY — R2 API token (Secret Access Key)
- *   R2_BUCKET_NAME      — bucket name (default: "mike")
+ *   S3_BUCKET_NAME — bucket name (default: "mike"; falls back to
+ *                    R2_BUCKET_NAME as a transitional convenience)
+ *   AWS_REGION     — AWS region (default: "us-east-1"; provided automatically
+ *                    when running on Fargate / Lambda)
+ *
+ * Credentials are resolved from the default AWS credential chain — the
+ * Fargate task role on AWS, or `~/.aws/credentials` / env vars locally.
  */
 
 import {
@@ -19,22 +21,14 @@ import { getSignedUrl as awsGetSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 function getClient(): S3Client {
   return new S3Client({
-    region: "auto",
-    endpoint: process.env.R2_ENDPOINT_URL!,
-    forcePathStyle: true,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    },
+    region: process.env.AWS_REGION ?? "us-east-1",
   });
 }
 
-const BUCKET = process.env.R2_BUCKET_NAME ?? "mike";
+const BUCKET = process.env.S3_BUCKET_NAME ?? process.env.R2_BUCKET_NAME ?? "mike";
 
 export const storageEnabled = Boolean(
-  process.env.R2_ENDPOINT_URL &&
-  process.env.R2_ACCESS_KEY_ID &&
-  process.env.R2_SECRET_ACCESS_KEY,
+  process.env.S3_BUCKET_NAME ?? process.env.R2_BUCKET_NAME,
 );
 
 // ---------------------------------------------------------------------------
@@ -99,7 +93,7 @@ export async function getSignedUrl(
   try {
     const client = getClient();
     // Override the response Content-Disposition so the browser uses this
-    // filename on download, instead of the last path segment of the R2 key
+    // filename on download, instead of the last path segment of the S3 key
     // (which includes the document UUID). The `download` attribute on <a>
     // is ignored for cross-origin URLs, so we have to set it server-side.
     const responseContentDisposition = downloadFilename
