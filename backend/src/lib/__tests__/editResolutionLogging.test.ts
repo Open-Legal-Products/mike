@@ -15,8 +15,8 @@ describe("edit-resolution handler logging", () => {
         "utf8",
     );
 
-    // Isolate the resolveEditHandler function body
-    const handlerStart = src.indexOf("async function resolveEditHandler");
+    // Isolate the handleEditResolution function body
+    const handlerStart = src.indexOf("async function handleEditResolution");
     const handlerEnd = src.indexOf('"/:documentId/edits/:editId/accept"');
     const handlerSrc =
         handlerStart !== -1 && handlerEnd !== -1
