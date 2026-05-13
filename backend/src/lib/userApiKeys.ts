@@ -39,8 +39,7 @@ export function hasEnvApiKey(provider: ApiKeyProvider): boolean {
 function encryptionKey(): Buffer {
     const secret =
         process.env.USER_API_KEYS_ENCRYPTION_SECRET ||
-        process.env.API_KEYS_ENCRYPTION_SECRET ||
-        process.env.SUPABASE_SECRET_KEY;
+        process.env.API_KEYS_ENCRYPTION_SECRET;
     if (!secret) {
         throw new Error("API key encryption secret is not configured");
     }
