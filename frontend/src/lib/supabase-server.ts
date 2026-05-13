@@ -25,8 +25,7 @@ export async function getUserIdFromRequest(req: Request): Promise<string> {
     const serviceKey = process.env.SUPABASE_SECRET_KEY || "";
 
     if (!supabaseUrl || !serviceKey) {
-        // Dev fallback — accept raw token as user ID
-        return token;
+        throw new Response("Server auth is not configured", { status: 500 });
     }
 
     const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
