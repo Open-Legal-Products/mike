@@ -1,38 +1,44 @@
 # Mike
 
-Mike is a legal document assistant with a Next.js frontend, an Express backend, Supabase Auth/Postgres, and Cloudflare R2-compatible object storage.
+Mike is a legal document assistant with a Next.js frontend and an Express backend, deployed AWS-native via SST.
 
 Website: [mikeoss.com](https://mikeoss.com)
 
 ## Contents
 
-- `frontend/` - Next.js application
-- `backend/` - Express API, Supabase access, document processing, and database schema
-- `backend/schema.sql` - Supabase schema for fresh databases
-- `backend/migrations/` - incremental database updates for existing deployments
+- `frontend/` — Next.js application (App Router, React 19)
+- `backend/` — Express API, document processing, Drizzle schema
+- `backend/src/db/schema.ts` — Drizzle schema (source of truth)
+- `backend/drizzle/` — generated SQL migrations
+- `sst.config.ts` — single-file SST v3 infrastructure definition
+- `infra/UPSTREAM.md` — upstream-merge protocol for this fork
+
+## Stack
+
+- **Frontend**: Next.js 16, deployed via SST → OpenNext-AWS (CloudFront + Lambda + S3)
+- **Backend**: Express + TypeScript, containerized, runs on Fargate behind an ALB
+- **Database**: Aurora Serverless v2 Postgres + RDS Proxy, accessed via Drizzle ORM
+- **Auth**: Clerk (`@clerk/nextjs`, `@clerk/backend`)
+- **Object storage**: S3
+- **Email**: SES (SESv2)
+- **IaC**: SST v3 (single `sst.config.ts` at the repo root)
 
 ## Prerequisites
 
-- Node.js 20 or newer
+- Node.js 20 or newer (see `.nvmrc`)
 - npm
-- git
-- A Supabase project
-- A Cloudflare R2 bucket, MinIO bucket, or another S3-compatible bucket
-- At least one supported model provider API key: Anthropic, Google Gemini, or OpenAI
-- LibreOffice installed locally if you need DOC/DOCX to PDF conversion
+- An AWS account with credentials configured (e.g. `aws configure`)
+- A Clerk account/application (publishable + secret keys)
+- At least one model provider key: Anthropic, Google Gemini, or OpenAI
+- LibreOffice installed locally if you want DOC/DOCX → PDF conversion in dev. The Fargate image installs it automatically; locally it needs to be on `PATH`.
 
-## Database Setup
+## Install
 
-For a new Supabase database, open the Supabase SQL editor and run:
-
-```sql
--- copy and run the contents of:
--- backend/schema.sql
+```bash
+npm install --prefix backend
+npm install --prefix frontend --legacy-peer-deps   # Clerk peer-dep nit
+npm install                                        # installs the sst CLI at root
 ```
-
-The schema file is based on `supabase-migration.sql` and folds in the later files in `backend/migrations/`.
-
-For an existing database, do not run the full schema file over production data. Apply the incremental files in `backend/migrations/` instead.
 
 ## Environment
 
@@ -43,83 +49,112 @@ touch backend/.env
 touch frontend/.env.local
 ```
 
-Create `backend/.env`:
+`backend/.env`:
 
 ```bash
 PORT=3001
 FRONTEND_URL=http://localhost:3000
+
+# Database (any reachable Postgres URL works locally)
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/mike
+
+# Auth
+CLERK_SECRET_KEY=sk_test_...
+CLERK_PUBLISHABLE_KEY=pk_test_...
+# Optional: pin the JWT key to skip the JWKS round-trip
+CLERK_JWT_KEY=
+
+# Object storage (S3 in prod; for local dev set the bucket name only and
+# rely on AWS credentials in your environment)
+S3_BUCKET_NAME=mike-dev
+# Transitional fallback while the rename rolls through call-sites:
+# R2_BUCKET_NAME=mike-dev
+AWS_REGION=us-east-1
+
+# Email (SESv2)
+SES_FROM_ADDRESS=no-reply@example.com
+
+# Secrets
 DOWNLOAD_SIGNING_SECRET=replace-with-a-random-32-byte-hex-string
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SECRET_KEY=your-supabase-service-role-key
+USER_API_KEYS_ENCRYPTION_SECRET=replace-with-a-long-random-secret
 
-R2_ENDPOINT_URL=https://your-account-id.r2.cloudflarestorage.com
-R2_ACCESS_KEY_ID=your-r2-access-key
-R2_SECRET_ACCESS_KEY=your-r2-secret-key
-R2_BUCKET_NAME=mike
-
-GEMINI_API_KEY=your-gemini-key
-ANTHROPIC_API_KEY=your-anthropic-key
-OPENAI_API_KEY=your-openai-key
-RESEND_API_KEY=your-resend-key
-USER_API_KEYS_ENCRYPTION_SECRET=your-long-random-secret
+# Model providers (any subset; users can also supply their own in-app)
+ANTHROPIC_API_KEY=
+GEMINI_API_KEY=
+OPENAI_API_KEY=
 ```
 
-Create `frontend/.env.local`:
+`frontend/.env.local`:
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your-supabase-anon-key
-SUPABASE_SECRET_KEY=your-supabase-service-role-key
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
 NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
 ```
 
-Supabase values come from the project dashboard. Use the project URL for `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL`, the service role key for `SUPABASE_SECRET_KEY`, and the anon/public key for `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY`. If your Supabase project shows multiple key formats, use the legacy JWT-style anon and service role keys expected by the Supabase client libraries.
+Provider keys are only needed for the models you plan to use. A user-supplied key entered in **Account > Models & API Keys** overrides the server-side key for that user.
 
-Provider keys are only needed for the models and email features you plan to use. Model provider keys can be configured in `backend/.env` for the whole instance, or per user in **Account > Models & API Keys**. If a provider key is present in `backend/.env`, that provider is available by default and the matching browser API key field is read-only.
+## Local Development
 
-## Install
+1. Start a local Postgres (Docker, Homebrew, or your preferred flavour) and point `DATABASE_URL` at it.
+2. Apply the schema:
 
-Install each app package:
+   ```bash
+   npm run db:push --prefix backend
+   ```
 
-```bash
-npm install --prefix backend
-npm install --prefix frontend
-```
+3. In separate terminals:
 
-## Run Locally
+   ```bash
+   npm run dev --prefix backend     # tsx watch on :3001
+   npm run dev --prefix frontend    # next dev on :3000
+   ```
 
-Start the backend:
+4. Open `http://localhost:3000`, sign up via Clerk, and open a project to start chatting.
 
-```bash
-npm run dev --prefix backend
-```
+## AWS Deployment
 
-Start the main app:
+SST v3 owns all AWS infrastructure: VPC, Aurora Serverless v2 + RDS Proxy, S3 bucket, Fargate service for the API, and OpenNext-AWS for the Next.js app.
 
-```bash
-npm run dev --prefix frontend
-```
+1. Configure AWS credentials (`aws configure` or `AWS_PROFILE`).
+2. Set every secret declared in `sst.config.ts` for your target stage:
 
-Open `http://localhost:3000`.
+   ```bash
+   npx sst secret set ClerkSecretKey               sk_live_...    --stage production
+   npx sst secret set ClerkPublishableKey          pk_live_...    --stage production
+   npx sst secret set ClerkJwtKey                  ""             --stage production
+   npx sst secret set AnthropicApiKey              ...            --stage production
+   npx sst secret set GeminiApiKey                 ...            --stage production
+   npx sst secret set OpenAIApiKey                 ...            --stage production
+   npx sst secret set UserApiKeysEncryptionSecret  ...            --stage production
+   npx sst secret set DownloadSigningSecret        ...            --stage production
+   npx sst secret set SesFromAddress               no-reply@...   --stage production
+   ```
 
-## First Run
+3. Deploy:
 
-1. Sign up in the app.
-2. If you did not set provider keys in `backend/.env`, open **Account > Models & API Keys** and add an Anthropic, Gemini, or OpenAI API key.
-3. Create or open a project and start chatting with documents.
+   ```bash
+   npx sst deploy --stage production
+   ```
 
-## Troubleshooting
-
-**Sign-up confirmation email never arrives.** Confirmation emails are sent by Supabase Auth, not by Mike. For local development, the simplest fix is to disable email confirmation in **Supabase > Authentication > Providers > Email**. For production, configure custom SMTP in Supabase; the built-in mailer is heavily rate-limited and may be restricted on newer projects.
-
-**The model picker shows a missing-key warning.** Add a key for that provider in **Account > Models & API Keys**, or configure the provider key in `backend/.env` and restart the backend.
-
-**DOC or DOCX conversion fails.** Install LibreOffice locally and restart the backend so document conversion commands are available on the process path.
+4. First-time database setup: connect to the RDS instance via the bastion/SSM session SST provisions, then either run `backend/drizzle/0000_init.sql` directly, or point `drizzle-kit migrate` at the RDS URL.
 
 ## Useful Checks
 
 ```bash
-npm run build --prefix backend
-npm run build --prefix frontend
-npm run lint --prefix frontend
+npm run build --prefix backend     # tsc, emits to dist/
+npm run build --prefix frontend    # next build
+npm run lint  --prefix frontend    # eslint
 ```
+
+There is no test runner configured in either package.
+
+## Troubleshooting
+
+**The model picker shows a missing-key warning.** Add a key in **Account > Models & API Keys**, or configure the provider key in `backend/.env` (or via `sst secret set` in prod) and restart the backend.
+
+**DOC or DOCX conversion fails.** Install LibreOffice locally and restart the backend so `libreoffice` is on the process `PATH`. The Fargate image installs it automatically.
+
+## Upstream Fork
+
+This is an AWS-native fork of `mikeoss/mike`, which targets Cloudflare + Supabase. See `infra/UPSTREAM.md` for the merge protocol and the list of files where conflicts are expected when syncing upstream changes.
