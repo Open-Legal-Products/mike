@@ -1,12 +1,12 @@
 import crypto from "crypto";
 
 /**
- * HMAC-signed, non-expiring download tokens.
+ * HMAC-signed download tokens with a configurable TTL (default 30 days).
  *
- * The token encodes the R2 storage path + filename; the backend route
- * `/download/:token` validates the signature and streams the file. This
- * gives persistent links safe to store in chat history without signed-URL
- * expiry or R2 CORS headaches.
+ * The token encodes the R2 storage path, filename, and expiration time; the
+ * backend route `/download/:token` validates the signature and expiry before
+ * streaming the file. This gives persistent links safe to store in chat
+ * history without signed-URL expiry or R2 CORS headaches.
  */
 
 function getSecret(): string {
