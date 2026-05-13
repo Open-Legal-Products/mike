@@ -4,5 +4,6 @@ export default defineConfig({
   test: {
     environment: "node",
     isolate: true,
+    include: ["src/**/__tests__/**/*.test.ts"],
   },
 });
