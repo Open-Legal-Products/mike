@@ -8,7 +8,6 @@ import { LogOut, Check } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { deleteAccount } from "@/app/lib/mikeApi";
-import { supabase } from "@/lib/supabase";
 
 export default function AccountPage() {
     const router = useRouter();
@@ -22,11 +21,6 @@ export default function AccountPage() {
     const [orgSaved, setOrgSaved] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
-    const [newPassword, setNewPassword] = useState("");
-    const [confirmPassword, setConfirmPassword] = useState("");
-    const [passwordLoading, setPasswordLoading] = useState(false);
-    const [passwordError, setPasswordError] = useState("");
-    const [passwordSaved, setPasswordSaved] = useState(false);
 
     useEffect(() => {
         if (profile?.displayName) {
@@ -65,30 +59,6 @@ export default function AccountPage() {
             setTimeout(() => setSaved(false), 2000);
         } else {
             alert("Failed to update display name. Please try again.");
-        }
-    };
-
-    const handleChangePassword = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setPasswordError("");
-        if (newPassword.length < 8) {
-            setPasswordError("Password must be at least 8 characters.");
-            return;
-        }
-        if (newPassword !== confirmPassword) {
-            setPasswordError("Passwords do not match.");
-            return;
-        }
-        setPasswordLoading(true);
-        const { error } = await supabase.auth.updateUser({ password: newPassword });
-        setPasswordLoading(false);
-        if (error) {
-            setPasswordError(error.message);
-        } else {
-            setNewPassword("");
-            setConfirmPassword("");
-            setPasswordSaved(true);
-            setTimeout(() => setPasswordSaved(false), 2500);
         }
     };
 
@@ -205,56 +175,6 @@ export default function AccountPage() {
                         {profile?.tier || "Free"}
                     </p>
                 </div>
-            </div>
-
-            {/* Security */}
-            <div className="py-6">
-                <h2 className="text-3xl font-bold font-sans mb-4">Security</h2>
-                <form onSubmit={handleChangePassword} className="space-y-3 max-w-sm">
-                    <div>
-                        <label className="text-sm text-[#292629]/60 block mb-2">
-                            New Password
-                        </label>
-                        <Input
-                            type="password"
-                            value={newPassword}
-                            onChange={(e) => setNewPassword(e.target.value)}
-                            placeholder="At least 8 characters"
-                            autoComplete="new-password"
-                        />
-                    </div>
-                    <div>
-                        <label className="text-sm text-[#292629]/60 block mb-2">
-                            Confirm New Password
-                        </label>
-                        <Input
-                            type="password"
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
-                            placeholder="Repeat new password"
-                            autoComplete="new-password"
-                        />
-                    </div>
-                    {passwordError && (
-                        <p className="text-red-500 text-sm">{passwordError}</p>
-                    )}
-                    <Button
-                        type="submit"
-                        disabled={passwordLoading || passwordSaved || !newPassword}
-                        className="bg-[#292629] hover:bg-[#292629]/90 text-white min-w-[140px] transition-all"
-                    >
-                        {passwordLoading ? (
-                            "Saving…"
-                        ) : passwordSaved ? (
-                            <>
-                                <Check className="h-4 w-4 mr-1" />
-                                Password Updated
-                            </>
-                        ) : (
-                            "Change Password"
-                        )}
-                    </Button>
-                </form>
             </div>
 
             {/* Actions */}
