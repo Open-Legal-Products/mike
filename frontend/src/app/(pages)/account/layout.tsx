@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@clerk/nextjs";
 
 interface TabDef {
     id: string;
@@ -23,7 +23,9 @@ export default function AccountLayout({
 }) {
     const router = useRouter();
     const pathname = usePathname();
-    const { isAuthenticated, authLoading } = useAuth();
+    const { isSignedIn, isLoaded } = useAuth();
+    const isAuthenticated = !!isSignedIn;
+    const authLoading = !isLoaded;
 
     useEffect(() => {
         if (!authLoading && !isAuthenticated) {

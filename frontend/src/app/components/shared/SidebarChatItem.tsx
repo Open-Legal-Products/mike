@@ -9,7 +9,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useChatHistoryContext } from "@/app/contexts/ChatHistoryContext";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@clerk/nextjs";
 import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
 import type { MikeChat } from "@/app/components/shared/types";
 
@@ -22,14 +22,14 @@ interface Props {
 
 export function SidebarChatItem({ chat, isActive, onSelect, projectName }: Props) {
     const { renameChat, deleteChat } = useChatHistoryContext();
-    const { user } = useAuth();
+    const { userId } = useAuth();
     const [isRenaming, setIsRenaming] = useState(false);
     const [editTitle, setEditTitle] = useState(chat.title ?? "");
     const [ownerOnlyAction, setOwnerOnlyAction] = useState<string | null>(null);
     const editInputRef = useRef<HTMLInputElement>(null);
     // Sidebar can show collaborator chats from projects the user owns;
     // rename/delete are still creator-only on the backend, so guard here.
-    const isChatOwner = !!user?.id && chat.user_id === user.id;
+    const isChatOwner = !!userId && chat.user_id === userId;
 
     useEffect(() => {
         if (isRenaming) editInputRef.current?.focus();

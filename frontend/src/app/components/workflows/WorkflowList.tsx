@@ -26,7 +26,7 @@ import { NewWorkflowModal } from "./NewWorkflowModal";
 import { ToolbarTabs } from "../shared/ToolbarTabs";
 import { RowActions } from "../shared/RowActions";
 import { MikeIcon } from "@/components/chat/mike-icon";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@clerk/nextjs";
 
 type Tab = "all" | "builtin" | "custom" | "hidden";
 
@@ -42,7 +42,8 @@ const TABS: { id: Tab; label: string }[] = [
 
 export function WorkflowList() {
     const router = useRouter();
-    const { user } = useAuth();
+    const { userId } = useAuth();
+    const user = userId ? { id: userId } : null;
     const [custom, setCustom] = useState<MikeWorkflow[]>([]);
     const [loading, setLoading] = useState(true);
     const [selected, setSelected] = useState<MikeWorkflow | null>(null);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useUser } from "@clerk/nextjs";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { MikeIcon } from "@/components/chat/mike-icon";
 import { ChatInput } from "./ChatInput";
@@ -16,7 +16,8 @@ const ICON_SIZE = 35;
 const GAP = 16; // gap-4 = 1rem = 16px
 
 export function InitialView({ onSubmit }: InitialViewProps) {
-    const { user } = useAuth();
+    const { user: clerkUser } = useUser();
+    const userEmail = clerkUser?.primaryEmailAddress?.emailAddress ?? null;
     const { profile } = useUserProfile();
     const [loaded, setLoaded] = useState(false);
     const [projectModalOpen, setProjectModalOpen] = useState(false);
@@ -25,7 +26,7 @@ export function InitialView({ onSubmit }: InitialViewProps) {
     const textRef = useRef<HTMLHeadingElement>(null);
 
     const username =
-        profile?.displayName?.trim() || user?.email?.split("@")[0] || "there";
+        profile?.displayName?.trim() || userEmail?.split("@")[0] || "there";
 
     useLayoutEffect(() => {
         if (!profile || !textRef.current) return;

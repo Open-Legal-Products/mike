@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, Loader2 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { useAuth } from "@clerk/nextjs";
 import { applyOptimisticResolution } from "../assistant/EditCard";
 import { DocView } from "./DocView";
 import { DocxView } from "./DocxView";
@@ -321,6 +321,7 @@ function EditResolveButtons({
         message: string;
     }) => void;
 }) {
+    const { getToken } = useAuth();
     const [busy, setBusy] = useState(false);
     const [status, setStatus] = useState<"pending" | "accepted" | "rejected">(
         edit.status,
@@ -355,10 +356,7 @@ function EditResolveButtons({
                 );
             }
             try {
-                const {
-                    data: { session },
-                } = await supabase.auth.getSession();
-                const token = session?.access_token;
+                const token = await getToken();
                 const apiBase =
                     process.env.NEXT_PUBLIC_API_BASE_URL ??
                     "http://localhost:3001";
@@ -412,7 +410,7 @@ function EditResolveButtons({
                 setBusy(false);
             }
         },
-        [busy, resolved, edit, onResolveStart, onResolved, onError],
+        [busy, resolved, edit, onResolveStart, onResolved, onError, getToken],
     );
 
     const inFlight = busy || !!isReloading;
@@ -451,16 +449,14 @@ function DownloadButton({
     filename: string;
     isReloading?: boolean;
 }) {
+    const { getToken } = useAuth();
     const [busy, setBusy] = useState(false);
 
     const handleClick = async () => {
         if (busy || isReloading) return;
         setBusy(true);
         try {
-            const {
-                data: { session },
-            } = await supabase.auth.getSession();
-            const token = session?.access_token;
+            const token = await getToken();
             const apiBase =
                 process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
             const qs = versionId

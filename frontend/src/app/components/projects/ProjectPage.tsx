@@ -62,7 +62,7 @@ import {
 import { AddDocumentsModal } from "@/app/components/shared/AddDocumentsModal";
 import { PeopleModal } from "@/app/components/shared/PeopleModal";
 import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
-import { useAuth } from "@/contexts/AuthContext";
+import { useUser } from "@clerk/nextjs";
 import { UploadNewVersionModal } from "@/app/components/shared/UploadNewVersionModal";
 import { DocViewModal } from "@/app/components/shared/DocViewModal";
 import { AddNewTRModal } from "@/app/components/tabular/AddNewTRModal";
@@ -316,7 +316,13 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
     const [addDocsOpen, setAddDocsOpen] = useState(false);
     const [peopleModalOpen, setPeopleModalOpen] = useState(false);
     const [ownerOnlyAction, setOwnerOnlyAction] = useState<string | null>(null);
-    const { user } = useAuth();
+    const { user: clerkUser } = useUser();
+    const user = clerkUser
+        ? {
+              id: clerkUser.id,
+              email: clerkUser.primaryEmailAddress?.emailAddress ?? null,
+          }
+        : null;
     const [uploadVersionDoc, setUploadVersionDoc] =
         useState<MikeDocument | null>(null);
     const [viewingDoc, setViewingDoc] = useState<MikeDocument | null>(null);

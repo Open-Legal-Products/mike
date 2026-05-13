@@ -16,7 +16,7 @@ import type {
 } from "../shared/types";
 import { EditCard, applyOptimisticResolution } from "./EditCard";
 import { PreResponseWrapper } from "../shared/PreResponseWrapper";
-import { supabase } from "@/lib/supabase";
+import { useAuth } from "@clerk/nextjs";
 
 function toolCallLabel(name: string): string {
     if (name === "generate_docx") return "Creating document...";
@@ -75,6 +75,7 @@ function BulkEditActions({
         message: string;
     }) => void;
 }) {
+    const { getToken } = useAuth();
     const [busy, setBusy] = useState<"accept" | "reject" | null>(null);
     const [progress, setProgress] = useState<{
         done: number;
@@ -88,10 +89,7 @@ function BulkEditActions({
         setBusy(verb);
         setProgress({ done: 0, total: pending.length });
         try {
-            const {
-                data: { session },
-            } = await supabase.auth.getSession();
-            const token = session?.access_token;
+            const token = await getToken();
             const apiBase =
                 process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
 
@@ -622,6 +620,7 @@ function DocDownloadBlock({
         process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
     const isSafeHref = download_url.startsWith("/");
     const href = isSafeHref ? `${API_BASE}${download_url}` : null;
+    const { getToken } = useAuth();
     const [busy, setBusy] = useState(false);
 
     const handleDownload = async (e?: {
@@ -633,10 +632,7 @@ function DocDownloadBlock({
         if (busy || isReloading || !href) return;
         setBusy(true);
         try {
-            const {
-                data: { session },
-            } = await supabase.auth.getSession();
-            const token = session?.access_token;
+            const token = await getToken();
             const resp = await fetch(href, {
                 headers: token ? { Authorization: `Bearer ${token}` } : {},
             });

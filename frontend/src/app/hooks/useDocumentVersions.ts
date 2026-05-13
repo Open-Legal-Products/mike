@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { useAuth } from "@clerk/nextjs";
 
 export interface DocumentVersionRow {
     id: string;
@@ -32,6 +32,7 @@ export function useDocumentVersions(
     documentId: string | null | undefined,
     refreshKey?: number,
 ): DocumentVersionsResult {
+    const { getToken } = useAuth();
     const [versions, setVersions] = useState<DocumentVersionRow[]>([]);
     const [currentVersionId, setCurrentVersionId] = useState<string | null>(
         null,
@@ -52,10 +53,7 @@ export function useDocumentVersions(
 
         (async () => {
             try {
-                const {
-                    data: { session },
-                } = await supabase.auth.getSession();
-                const token = session?.access_token;
+                const token = await getToken();
                 const apiBase =
                     process.env.NEXT_PUBLIC_API_BASE_URL ??
                     "http://localhost:3001";
@@ -86,7 +84,7 @@ export function useDocumentVersions(
         return () => {
             cancelled = true;
         };
-    }, [documentId, refreshKey, tick]);
+    }, [documentId, refreshKey, tick, getToken]);
 
     return {
         versions,

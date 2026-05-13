@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { MikeIcon } from "@/components/chat/mike-icon";
 import { useFetchDocxBytes } from "@/app/hooks/useFetchDocxBytes";
-import { supabase } from "@/lib/supabase";
 import {
     clearDocxQuoteHighlights,
     highlightDocxQuote,
@@ -142,12 +142,9 @@ async function tagWIdsOnRenderedDom(
     container: HTMLElement,
     documentId: string,
     versionId: string | null | undefined,
+    token: string | null,
 ): Promise<void> {
     try {
-        const {
-            data: { session },
-        } = await supabase.auth.getSession();
-        const token = session?.access_token;
         const apiBase =
             process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
         const qs = versionId
@@ -208,6 +205,7 @@ export function DocxView({
     rounded = true,
     bordered = true,
 }: Props) {
+    const { getToken } = useAuth();
     const scrollRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const lastScrollTopRef = useRef(0);
@@ -371,10 +369,13 @@ export function DocxView({
                     experimental: true,
                 });
                 if (cancelled) return;
+                const tagToken = await getToken();
+                if (cancelled) return;
                 await tagWIdsOnRenderedDom(
                     containerEl,
                     documentId,
                     versionId ?? null,
+                    tagToken,
                 );
                 if (cancelled) return;
                 // Scale to fit before scrolling so offsets are computed
@@ -424,7 +425,7 @@ export function DocxView({
         return () => {
             cancelled = true;
         };
-    }, [bytes]);
+    }, [bytes, documentId, versionId, getToken]);
 
     // Re-scroll/highlight if the target edit changes without a re-render
     // (e.g. same doc, different edit clicked).

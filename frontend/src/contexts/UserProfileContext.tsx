@@ -8,7 +8,7 @@ import React, {
     ReactNode,
     useCallback,
 } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@clerk/nextjs";
 import {
     type ApiKeyState,
     type ApiKeyProvider,
@@ -79,7 +79,7 @@ function toProfile(data: ApiUserProfile): UserProfile {
 }
 
 export function UserProfileProvider({ children }: { children: ReactNode }) {
-    const { user, isAuthenticated } = useAuth();
+    const { userId, isSignedIn } = useAuth();
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -109,18 +109,18 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
     }, []);
 
     useEffect(() => {
-        if (isAuthenticated && user) {
+        if (isSignedIn && userId) {
             setLoading(true);
             loadProfile();
         } else {
             setProfile(null);
             setLoading(false);
         }
-    }, [isAuthenticated, user, loadProfile]);
+    }, [isSignedIn, userId, loadProfile]);
 
     const updateDisplayName = useCallback(
         async (displayName: string): Promise<boolean> => {
-            if (!user) {
+            if (!userId) {
                 return false;
             }
 
@@ -134,12 +134,12 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 return false;
             }
         },
-        [user],
+        [userId],
     );
 
     const updateOrganisation = useCallback(
         async (organisation: string): Promise<boolean> => {
-            if (!user) return false;
+            if (!userId) return false;
             try {
                 const updated = await updateUserProfile({ organisation });
                 setProfile((prev) =>
@@ -150,12 +150,12 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 return false;
             }
         },
-        [user],
+        [userId],
     );
 
     const updateModelPreference = useCallback(
         async (field: "tabularModel", value: string): Promise<boolean> => {
-            if (!user) return false;
+            if (!userId) return false;
             if (field !== "tabularModel") return false;
             try {
                 const updated = await updateUserProfile({
@@ -169,7 +169,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 return false;
             }
         },
-        [user],
+        [userId],
     );
 
     const updateApiKey = useCallback(
@@ -177,7 +177,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
             provider: ApiKeyProvider,
             value: string | null,
         ): Promise<boolean> => {
-            if (!user) return false;
+            if (!userId) return false;
             const normalized = value?.trim() ? value.trim() : null;
             try {
                 await saveApiKey(provider, normalized);
@@ -200,17 +200,17 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 return false;
             }
         },
-        [user],
+        [userId],
     );
 
     const reloadProfile = useCallback(async () => {
-        if (user) {
+        if (userId) {
             await loadProfile();
         }
-    }, [user, loadProfile]);
+    }, [userId, loadProfile]);
 
     const incrementMessageCredits = useCallback(async (): Promise<boolean> => {
-        if (!user || !profile) {
+        if (!userId || !profile) {
             return false;
         }
 
@@ -220,7 +220,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
         }
 
         return false;
-    }, [user, profile]);
+    }, [userId, profile]);
 
     return (
         <UserProfileContext.Provider

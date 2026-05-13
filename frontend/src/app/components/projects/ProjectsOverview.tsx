@@ -6,7 +6,7 @@ import { Plus, FolderOpen, ChevronDown } from "lucide-react";
 import { HeaderSearchBtn } from "@/app/components/shared/HeaderSearchBtn";
 import { listProjects, updateProject, deleteProject } from "@/app/lib/mikeApi";
 import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@clerk/nextjs";
 import type { MikeProject } from "@/app/components/shared/types";
 import { NewProjectModal } from "./NewProjectModal";
 import { ToolbarTabs } from "@/app/components/shared/ToolbarTabs";
@@ -40,7 +40,8 @@ export function ProjectsOverview() {
     const [ownerOnlyAction, setOwnerOnlyAction] = useState<string | null>(null);
     const actionsRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
-    const { user } = useAuth();
+    const { userId } = useAuth();
+    const user = userId ? { id: userId } : null;
 
     useEffect(() => {
         listProjects()

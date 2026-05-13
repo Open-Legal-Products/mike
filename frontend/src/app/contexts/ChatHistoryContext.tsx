@@ -9,7 +9,7 @@ import {
     useState,
     type ReactNode,
 } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@clerk/nextjs";
 import {
     createChat,
     deleteChat,
@@ -40,7 +40,7 @@ const ChatHistoryContext = createContext<ChatHistoryContextType | undefined>(
 );
 
 export function ChatHistoryProvider({ children }: { children: ReactNode }) {
-    const { user } = useAuth();
+    const { userId } = useAuth();
     const [chats, setChats] = useState<MikeChat[] | null>(null);
     const [currentChatId, setCurrentChatId] = useState<string | null>(null);
     const [newChatMessages, setNewChatMessages] = useState<
@@ -48,7 +48,7 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
     >(null);
 
     const loadChats = useCallback(async () => {
-        if (!user) {
+        if (!userId) {
             setChats([]);
             return;
         }
@@ -59,17 +59,17 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
         } catch {
             setChats([]);
         }
-    }, [user]);
+    }, [userId]);
 
     useEffect(() => {
-        if (!user) {
+        if (!userId) {
             setChats([]);
             setCurrentChatId(null);
             return;
         }
 
         void loadChats();
-    }, [user, loadChats]);
+    }, [userId, loadChats]);
 
     const replaceChatId = useCallback(
         (oldChatId: string, newChatId: string, title?: string) => {
@@ -109,7 +109,7 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
                 const newChat: MikeChat = {
                     id,
                     project_id: projectId ?? null,
-                    user_id: user?.id ?? "",
+                    user_id: userId ?? "",
                     title: null,
                     created_at: now,
                 };
@@ -119,7 +119,7 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
                 return null;
             }
         },
-        [user],
+        [userId],
     );
 
     const renameChatFn = useCallback(

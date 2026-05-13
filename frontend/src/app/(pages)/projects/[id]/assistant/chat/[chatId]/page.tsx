@@ -43,7 +43,7 @@ import { DocView } from "@/app/components/shared/DocView";
 import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
 import { DocxView } from "@/app/components/shared/DocxView";
 import { MikeIcon } from "@/components/chat/mike-icon";
-import { useAuth } from "@/contexts/AuthContext";
+import { useUser } from "@clerk/nextjs";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useSidebar } from "@/app/contexts/SidebarContext";
 import type {
@@ -200,7 +200,13 @@ export default function ProjectAssistantChatPage({ params }: Props) {
     const router = useRouter();
 
     const { setSidebarOpen } = useSidebar();
-    const { user } = useAuth();
+    const { user: clerkUser } = useUser();
+    const user = clerkUser
+        ? {
+              id: clerkUser.id,
+              email: clerkUser.primaryEmailAddress?.emailAddress ?? null,
+          }
+        : null;
     const { profile } = useUserProfile();
     const username =
         profile?.displayName?.trim() || user?.email?.split("@")[0] || "there";

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Menu } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@clerk/nextjs";
 import { ChatHistoryProvider } from "@/app/contexts/ChatHistoryContext";
 import { SidebarContext } from "@/app/contexts/SidebarContext";
 import { AppSidebar } from "@/app/components/shared/AppSidebar";
@@ -13,7 +13,9 @@ export default function MikeLayout({
 }: {
     children: React.ReactNode;
 }) {
-    const { isAuthenticated, authLoading } = useAuth();
+    const { isSignedIn, isLoaded } = useAuth();
+    const isAuthenticated = !!isSignedIn;
+    const authLoading = !isLoaded;
     const router = useRouter();
 
     const [isSidebarOpenDesktop, setIsSidebarOpenDesktop] = useState(() => {

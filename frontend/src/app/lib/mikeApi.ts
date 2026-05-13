@@ -1,9 +1,8 @@
 /**
  * Mike API client — all requests to the Node.js backend.
- * Attaches the Supabase auth token for user authentication.
+ * Attaches the Clerk session token for user authentication.
  */
 
-import { supabase } from "@/lib/supabase";
 import type {
     AssistantEvent,
     MikeChat,
@@ -38,11 +37,13 @@ const API_BASE =
     process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
 
 async function getAuthHeader(): Promise<Record<string, string>> {
-    const {
-        data: { session },
-    } = await supabase.auth.getSession();
-    if (!session?.access_token) return {};
-    return { Authorization: `Bearer ${session.access_token}` };
+    if (typeof window === "undefined") return {};
+    try {
+        const token = (await window.Clerk?.session?.getToken?.()) ?? null;
+        return token ? { Authorization: `Bearer ${token}` } : {};
+    } catch {
+        return {};
+    }
 }
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {

@@ -5,13 +5,20 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LogOut, Check } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { deleteAccount } from "@/app/lib/mikeApi";
 
 export default function AccountPage() {
     const router = useRouter();
-    const { user, signOut } = useAuth();
+    const { signOut } = useAuth();
+    const { user: clerkUser } = useUser();
+    const user = clerkUser
+        ? {
+              id: clerkUser.id,
+              email: clerkUser.primaryEmailAddress?.emailAddress ?? "",
+          }
+        : null;
     const { profile, updateDisplayName, updateOrganisation } = useUserProfile();
     const [displayName, setDisplayName] = useState("");
     const [isSavingName, setIsSavingName] = useState(false);

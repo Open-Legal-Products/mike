@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { useAuth } from "@clerk/nextjs";
 
 export interface FetchDocxResult {
     bytes: ArrayBuffer | null;
@@ -37,6 +37,7 @@ export function useFetchDocxBytes(
     versionId?: string | null,
     refetchKey?: number,
 ): FetchDocxResult {
+    const { getToken } = useAuth();
     const initialKey = documentId
         ? cacheKey(documentId, versionId, refetchKey)
         : null;
@@ -87,10 +88,7 @@ export function useFetchDocxBytes(
         const pending =
             inFlight.get(key) ??
             (async () => {
-                const {
-                    data: { session },
-                } = await supabase.auth.getSession();
-                const token = session?.access_token;
+                const token = await getToken();
                 // Stream bytes through the backend (avoids CORS on R2
                 // signed URLs).
                 const bin = await fetch(url, {
@@ -121,7 +119,7 @@ export function useFetchDocxBytes(
         return () => {
             cancelled = true;
         };
-    }, [documentId, versionId, refetchKey]);
+    }, [documentId, versionId, refetchKey, getToken]);
 
     return { bytes, downloadUrl, loading, error };
 }

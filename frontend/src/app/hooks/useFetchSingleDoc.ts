@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { useAuth } from "@clerk/nextjs";
 
 /**
  * /display returns either PDF bytes (when the active version has a PDF
@@ -18,6 +18,7 @@ export function useFetchSingleDoc(
     documentId: string | null | undefined,
     versionId?: string | null,
 ) {
+    const { getToken } = useAuth();
     const [result, setResult] = useState<DocResult>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -37,10 +38,7 @@ export function useFetchSingleDoc(
 
         (async () => {
             try {
-                const {
-                    data: { session },
-                } = await supabase.auth.getSession();
-                const token = session?.access_token;
+                const token = await getToken();
                 if (cancelled) return;
 
                 const apiBase =
@@ -83,7 +81,7 @@ export function useFetchSingleDoc(
             cancelled = true;
             prevKeyRef.current = null;
         };
-    }, [documentId, versionId]);
+    }, [documentId, versionId, getToken]);
 
     return { result, loading, error };
 }

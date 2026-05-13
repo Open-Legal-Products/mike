@@ -13,7 +13,7 @@ import type { MikeDocument } from "./types";
 import { FileDirectory } from "./FileDirectory";
 import { useDirectoryData, invalidateDirectoryCache } from "./useDirectoryData";
 import { OwnerOnlyModal } from "./OwnerOnlyModal";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@clerk/nextjs";
 
 export { invalidateDirectoryCache };
 
@@ -35,7 +35,8 @@ export function AddDocumentsModal({
     projectId,
 }: Props) {
     const { loading, standaloneDocuments, projects } = useDirectoryData(open);
-    const { user } = useAuth();
+    const { userId } = useAuth();
+    const user = userId ? { id: userId } : null;
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [uploading, setUploading] = useState(false);
     const [search, setSearch] = useState("");

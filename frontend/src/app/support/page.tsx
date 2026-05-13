@@ -3,13 +3,21 @@
 import { useState, useEffect } from "react";
 import { Send, CheckCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, useUser } from "@clerk/nextjs";
 
 type FeedbackType = "bug" | "feature" | "question" | "other";
 
 export default function SupportPage() {
     const router = useRouter();
-    const { user, isAuthenticated, authLoading } = useAuth();
+    const { isSignedIn, isLoaded } = useAuth();
+    const { user: clerkUser } = useUser();
+    const isAuthenticated = !!isSignedIn;
+    const authLoading = !isLoaded;
+    const user = clerkUser
+        ? {
+              email: clerkUser.primaryEmailAddress?.emailAddress ?? null,
+          }
+        : null;
 
     useEffect(() => {
         if (!authLoading && !isAuthenticated) {

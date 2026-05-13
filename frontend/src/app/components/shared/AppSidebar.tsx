@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
     PanelLeft,
     MessageSquare,
@@ -11,7 +11,7 @@ import {
     ChevronsUpDown,
     ChevronDown,
 } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useUser } from "@clerk/nextjs";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useChatHistoryContext } from "@/app/contexts/ChatHistoryContext";
 import { useRouter, usePathname } from "next/navigation";
@@ -33,7 +33,18 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
-    const { user } = useAuth();
+    const { user: clerkUser } = useUser();
+    const user = useMemo(
+        () =>
+            clerkUser
+                ? {
+                      id: clerkUser.id,
+                      email:
+                          clerkUser.primaryEmailAddress?.emailAddress ?? "",
+                  }
+                : null,
+        [clerkUser],
+    );
     const { profile } = useUserProfile();
     const { chats, currentChatId, setCurrentChatId } = useChatHistoryContext();
     const router = useRouter();

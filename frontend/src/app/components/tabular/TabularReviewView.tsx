@@ -28,7 +28,7 @@ import { PeopleModal } from "../shared/PeopleModal";
 import { OwnerOnlyModal } from "../shared/OwnerOnlyModal";
 import { ApiKeyMissingModal } from "../shared/ApiKeyMissingModal";
 import { RenameableTitle } from "../shared/RenameableTitle";
-import { useAuth } from "@/contexts/AuthContext";
+import { useUser } from "@clerk/nextjs";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import {
     getModelProvider,
@@ -62,7 +62,12 @@ export function TRView({ reviewId, projectId }: Props) {
     const [addDocsOpen, setAddDocsOpen] = useState(false);
     const [peopleModalOpen, setPeopleModalOpen] = useState(false);
     const [ownerOnlyAction, setOwnerOnlyAction] = useState<string | null>(null);
-    const { user } = useAuth();
+    const { user: clerkUser } = useUser();
+    const user = clerkUser
+        ? {
+              email: clerkUser.primaryEmailAddress?.emailAddress ?? null,
+          }
+        : null;
     const [expandedCell, setExpandedCell] = useState<TabularCell | null>(null);
     const [expandedCellCitation, setExpandedCellCitation] = useState<
         { quote: string; page: number } | undefined
