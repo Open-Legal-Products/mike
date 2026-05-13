@@ -37,11 +37,12 @@ projectsRouter.get("/", requireAuth, async (req, res) => {
     .order("created_at", { ascending: false });
   if (ownError) return void res.status(500).json({ detail: ownError.message });
 
-  const { data: sharedProjects, error: sharedError } = userEmail
+  const normalizedEmail = userEmail?.toLowerCase();
+  const { data: sharedProjects, error: sharedError } = normalizedEmail
     ? await db
         .from("projects")
         .select("*")
-        .filter("shared_with", "cs", JSON.stringify([userEmail]))
+        .filter("shared_with", "cs", JSON.stringify([normalizedEmail]))
         .neq("user_id", userId)
         .order("created_at", { ascending: false })
     : { data: [], error: null };
