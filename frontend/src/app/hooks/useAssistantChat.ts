@@ -385,6 +385,7 @@ export function useAssistantChat({
 
             const decoder = new TextDecoder();
             let buffer = "";
+            let streamError: string | null = null;
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -412,11 +413,22 @@ export function useAssistantChat({
                         }
 
                         if (data.type === "error") {
-                            throw new Error(
-                                typeof data.message === "string" && data.message
-                                    ? data.message
-                                    : t("erroGenerico"),
-                            );
+                            const code = typeof data.code === "string" ? data.code : "unknown";
+                            const knownCodes = [
+                                "insufficient_credits",
+                                "invalid_api_key",
+                                "rate_limit",
+                                "context_length",
+                                "timeout",
+                                "overloaded",
+                                "unknown",
+                            ];
+                            streamError = knownCodes.includes(code)
+                                ? t(`erros.${code}`)
+                                : typeof data.message === "string" && data.message
+                                  ? data.message
+                                  : t("erroGenerico");
+                            continue;
                         }
 
                         if (data.type === "content_done") {
@@ -819,6 +831,8 @@ export function useAssistantChat({
             finalizeStreamingReasoning();
             setIsResponseLoading(false);
             setIsLoadingCitations(false);
+
+            if (streamError) throw new Error(streamError);
 
             const finalChatId = streamedChatId || chatId || null;
             if (finalChatId && finalChatId !== chatId) {

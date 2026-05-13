@@ -22,20 +22,39 @@ const devLog = (...args: Parameters<typeof console.log>) => {
     if (isDev) console.log(...args);
 };
 
-/** Extract a human-readable message from any thrown value. */
-function extractErrorMessage(err: unknown): string {
+type StreamError = { code: string; message: string };
+
+/** Extract a structured error (code + raw message) from any thrown value. */
+function extractError(err: unknown): StreamError {
+    let message = "Unexpected stream error";
+
     if (err && typeof err === "object") {
-        // Anthropic / OpenAI SDK errors nest the real message inside
-        // err.error.error.message or err.error.message
         const e = err as Record<string, unknown>;
         const inner = e.error as Record<string, unknown> | undefined;
         const innerInner = inner?.error as Record<string, unknown> | undefined;
-        if (typeof innerInner?.message === "string") return innerInner.message;
-        if (typeof inner?.message === "string") return inner.message;
-        if (err instanceof Error) return err.message;
+        if (typeof innerInner?.message === "string") message = innerInner.message;
+        else if (typeof inner?.message === "string") message = inner.message;
+        else if (err instanceof Error) message = err.message;
+    } else if (err instanceof Error) {
+        message = err.message;
     }
-    if (err instanceof Error) return err.message;
-    return "Unexpected stream error";
+
+    const m = message.toLowerCase();
+    let code = "unknown";
+    if (m.includes("credit balance") || m.includes("insufficient_quota") || m.includes("billing"))
+        code = "insufficient_credits";
+    else if (m.includes("invalid api key") || m.includes("invalid_api_key") || m.includes("incorrect api key") || m.includes("authentication"))
+        code = "invalid_api_key";
+    else if (m.includes("rate limit") || m.includes("rate_limit") || m.includes("too many requests"))
+        code = "rate_limit";
+    else if (m.includes("context length") || m.includes("maximum context") || m.includes("token limit"))
+        code = "context_length";
+    else if (m.includes("timeout") || m.includes("timed out"))
+        code = "timeout";
+    else if (m.includes("overloaded") || m.includes("capacity"))
+        code = "overloaded";
+
+    return { code, message };
 }
 
 type AccessibleChat = {
@@ -605,7 +624,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         console.error("[chat/stream] error:", err);
         try {
             write(
-                `data: ${JSON.stringify({ type: "error", message: extractErrorMessage(err) })}\n\n`,
+                `data: ${JSON.stringify({ type: "error", ...extractError(err) })}\n\n`,
             );
             write("data: [DONE]\n\n");
         } catch {

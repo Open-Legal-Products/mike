@@ -358,7 +358,16 @@
     "assistantChat": {
       "novaConversa": "Nova Conversa",
       "cancelado": "Cancelado pelo usuário",
-      "erroGenerico": "Desculpe, algo deu errado."
+      "erroGenerico": "Desculpe, algo deu errado.",
+      "erros": {
+        "insufficient_credits": "Saldo insuficiente para usar a API. Verifique o plano de cobrança do provedor.",
+        "invalid_api_key": "Chave de API inválida. Verifique suas configurações em Conta → Modelos e Chaves de API.",
+        "rate_limit": "Limite de requisições atingido. Aguarde alguns instantes e tente novamente.",
+        "context_length": "A conversa está longa demais para ser processada. Tente iniciar uma nova conversa.",
+        "timeout": "A resposta demorou tempo demais. Tente novamente.",
+        "overloaded": "O serviço está sobrecarregado no momento. Tente novamente em alguns instantes.",
+        "unknown": "Desculpe, algo deu errado. Tente novamente."
+      }
     },
     "trackedChanges": {
       "criarDocumento": "Criando documento...",
