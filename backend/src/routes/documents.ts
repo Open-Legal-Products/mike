@@ -632,43 +632,29 @@ async function handleEditResolution(
   const { documentId, editId } = req.params;
   const db = createServerSupabase();
 
-  console.log(`[edit-resolution] incoming ${mode}`, {
-    userId,
-    documentId,
-    editId,
-  });
-
-  const { data: edit, error: editErr } = await db
+  const { data: edit } = await db
     .from("document_edits")
     .select("id, document_id, change_id, del_w_id, ins_w_id, status")
     .eq("id", editId)
     .eq("document_id", documentId)
     .single();
-  console.log(`[edit-resolution] fetched edit row`, { edit, editErr });
   if (!edit) {
-    console.log(`[edit-resolution] edit not found, returning 404`);
     return void res.status(404).json({ detail: "Edit not found" });
   }
   // Idempotent: if the edit is already resolved, return the current doc
   // state so stale UI (e.g. an old chat reloaded in a new session) can
   // reconcile without throwing.
   if (edit.status !== "pending") {
-    console.log(`[edit-resolution] edit already resolved`, {
-      editId,
-      status: edit.status,
-    });
     const { data: doc } = await db
       .from("documents")
       .select("current_version_id, filename, user_id, project_id")
       .eq("id", documentId)
       .single();
     if (!doc) {
-      console.log(`[edit-resolution] doc not found for resolved edit`);
       return void res.status(404).json({ detail: "Document not found" });
     }
     const accessResolved = await ensureDocAccess(doc, userId, userEmail, db);
     if (!accessResolved.ok) {
-      console.log(`[edit-resolution] doc access denied for resolved edit`);
       return void res.status(404).json({ detail: "Document not found" });
     }
     const activeForResolved = await loadActiveVersion(documentId, db);
@@ -685,16 +671,14 @@ async function handleEditResolution(
         : null,
       remaining_pending: 0,
     };
-    console.log(`[edit-resolution] returning already-resolved payload`, payload);
     return void res.status(200).json(payload);
   }
 
-  const { data: doc, error: docErr } = await db
+  const { data: doc } = await db
     .from("documents")
     .select("id, current_version_id, user_id, project_id")
     .eq("id", documentId)
     .single();
-  console.log(`[edit-resolution] fetched doc`, { doc, docErr });
   if (!doc)
     return void res.status(404).json({ detail: "Document not found" });
   const access = await ensureDocAccess(doc, userId, userEmail, db);
@@ -703,17 +687,10 @@ async function handleEditResolution(
 
   const active = await loadActiveVersion(documentId, db);
   const latestPath = active?.storage_path ?? null;
-  console.log(`[edit-resolution] resolved latestPath`, {
-    latestPath,
-    current_version_id: doc.current_version_id,
-  });
   if (!latestPath)
     return void res.status(404).json({ detail: "No file to edit" });
 
   const raw = await downloadFile(latestPath);
-  console.log(`[edit-resolution] downloaded bytes`, {
-    byteLength: raw?.byteLength ?? 0,
-  });
   if (!raw)
     return void res.status(404).json({ detail: "Document bytes not available" });
 
@@ -725,24 +702,13 @@ async function handleEditResolution(
     wIds,
     mode,
   );
-  console.log(`[edit-resolution] resolveTrackedChange result`, {
-    mode,
-    change_id: edit.change_id,
-    wIds,
-    found,
-    resolvedByteLength: resolvedBytes?.byteLength ?? 0,
-  });
   if (!found) {
-    console.log(
-      `[edit-resolution] change_id not found in docx — updating status only`,
-    );
     // Still update DB status so the UI reflects the decision — the change
     // may have been auto-consumed by a previous accept/reject pass.
-    const { error: updErr } = await db
+    await db
       .from("document_edits")
       .update({ status: mode === "accept" ? "accepted" : "rejected", resolved_at: new Date().toISOString() })
       .eq("id", editId);
-    console.log(`[edit-resolution] status-only update`, { updErr });
     const { data: filenameRow } = await db
       .from("documents")
       .select("filename")
@@ -757,7 +723,6 @@ async function handleEditResolution(
       ),
       remaining_pending: 0,
     };
-    console.log(`[edit-resolution] returning not-found payload`, payload);
     return void res.status(200).json(payload);
   }
 
@@ -770,35 +735,25 @@ async function handleEditResolution(
     resolvedBytes.byteOffset,
     resolvedBytes.byteOffset + resolvedBytes.byteLength,
   ) as ArrayBuffer;
-  console.log(`[edit-resolution] overwriting bytes in place`, {
-    latestPath,
-    byteLength: ab.byteLength,
-  });
   await uploadFile(
     latestPath,
     ab,
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   );
 
-  const { error: statusErr } = await db
+  await db
     .from("document_edits")
     .update({
       status: mode === "accept" ? "accepted" : "rejected",
       resolved_at: new Date().toISOString(),
     })
     .eq("id", editId);
-  console.log(`[edit-resolution] updated document_edits status`, {
-    editId,
-    newStatus: mode === "accept" ? "accepted" : "rejected",
-    statusErr,
-  });
 
   const { count: remainingPending } = await db
     .from("document_edits")
     .select("id", { count: "exact", head: true })
     .eq("document_id", documentId)
     .eq("status", "pending");
-  console.log(`[edit-resolution] remaining pending count`, { remainingPending });
 
   const { data: filenameRow } = await db
     .from("documents")
@@ -814,7 +769,6 @@ async function handleEditResolution(
     ),
     remaining_pending: remainingPending ?? 0,
   };
-  console.log(`[edit-resolution] returning success payload`, payload);
   res.json(payload);
 }
 
