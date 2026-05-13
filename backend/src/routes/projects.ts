@@ -244,17 +244,7 @@ projectsRouter.patch("/:projectId", requireAuth, async (req, res) => {
   if (req.body.name != null) updates.name = req.body.name;
   if (req.body.cm_number != null) updates.cm_number = req.body.cm_number;
   if (Array.isArray(req.body.shared_with)) {
-    // Normalise: lowercase + dedupe + drop empties.
-    const seen = new Set<string>();
-    const cleaned: string[] = [];
-    for (const raw of req.body.shared_with) {
-      if (typeof raw !== "string") continue;
-      const e = raw.trim().toLowerCase();
-      if (!e || seen.has(e)) continue;
-      seen.add(e);
-      cleaned.push(e);
-    }
-    updates.shared_with = cleaned;
+    updates.shared_with = normalizeSharedWith(req.body.shared_with);
   }
 
   const db = createServerSupabase();
