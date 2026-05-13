@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
-    "diagnose:supabase": "node scripts/diagnose-supabase.js"
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
