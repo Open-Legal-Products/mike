@@ -46,10 +46,49 @@ async function createConfirmedUserViaAdmin(email: string, password: string): Pro
 }
 
 /**
- * Creates a confirmed user via the admin API and logs them in through the
- * normal /login form.  This is the helper that 99 % of tests want — it
- * proves the login UI works without burning a public-signup-rate-limit
- * quota per test.
+ * Hits Supabase's password-grant endpoint and returns a full session
+ * payload that mirrors what the JS client stores in localStorage.
+ */
+async function fetchSessionViaPasswordGrant(
+  email: string,
+  password: string,
+): Promise<Record<string, unknown>> {
+  const url = process.env.TEST_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  const anonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) {
+    throw new Error(
+      "fetchSessionViaPasswordGrant: TEST_SUPABASE_URL and an anon/publishable key must be set",
+    );
+  }
+
+  const res = await fetch(`${url}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: {
+      apikey: anonKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      `Supabase password grant failed: ${res.status} ${await res.text()}`,
+    );
+  }
+  return (await res.json()) as Record<string, unknown>;
+}
+
+/**
+ * Creates a confirmed user via the admin API, fetches a real session from
+ * Supabase via the password grant, then injects that session into the
+ * browser's localStorage *before any navigation*.  When we then visit
+ * /assistant, AuthContext reads the session synchronously on first render
+ * and the route stays put — no UI login, no race with onAuthStateChange.
+ *
+ * This is the helper that 99 % of tests want.  Only the dedicated
+ * "log-in via the UI" test in auth.spec.ts uses the real form flow.
  */
 export async function createAndLoginTestUser(
   page: Page,
@@ -61,7 +100,22 @@ export async function createAndLoginTestUser(
     name: `Test ${prefix}`,
   };
   await createConfirmedUserViaAdmin(user.email, user.password);
-  await logInExistingUser(page, user);
+  const session = await fetchSessionViaPasswordGrant(user.email, user.password);
+
+  // Supabase stores sessions under `sb-<projectRef>-auth-token`.
+  const url = process.env.TEST_SUPABASE_URL ?? process.env.SUPABASE_URL!;
+  const projectRef = new URL(url).hostname.split(".")[0];
+  const storageKey = `sb-${projectRef}-auth-token`;
+
+  await page.addInitScript(
+    ({ key, value }: { key: string; value: string }) => {
+      localStorage.setItem(key, value);
+    },
+    { key: storageKey, value: JSON.stringify(session) },
+  );
+
+  await page.goto("/assistant");
+  await page.waitForURL(/\/assistant/, { timeout: 15_000 });
   return user;
 }
 
@@ -98,6 +152,22 @@ export async function logInExistingUser(page: Page, user: Pick<TestUser, "email"
   await page.locator("#email").fill(user.email);
   await page.locator("#password").fill(user.password);
   await page.getByRole("button", { name: /log in/i }).click();
+
+  // The /login page calls router.push('/assistant') the instant
+  // signInWithPassword resolves, which races AuthContext's
+  // onAuthStateChange listener — /assistant occasionally renders before
+  // isAuthenticated flips to true and bounces back to /login.
+  //
+  // Wait for the Supabase session to land in localStorage first (proof
+  // that auth completed) before asserting on the URL.
+  await page.waitForFunction(
+    () =>
+      Object.keys(localStorage).some(
+        (k) => k.startsWith("sb-") && k.endsWith("-auth-token"),
+      ),
+    null,
+    { timeout: 10_000 },
+  );
   await page.waitForURL(/\/assistant/, { timeout: 15_000 });
 }
 
