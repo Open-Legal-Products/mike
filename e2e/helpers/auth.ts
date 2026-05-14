@@ -103,13 +103,19 @@ export async function createAndLoginTestUser(
   const projectRef = new URL(url).hostname.split(".")[0];
   const storageKey = `sb-${projectRef}-auth-token`;
 
-  await page.addInitScript(
+  // Land on the marketing root first to get a live document on the app
+  // origin, then set localStorage in-page via evaluate.  We intentionally
+  // do NOT use page.addInitScript here — that registers a script that
+  // runs on every subsequent navigation, which means a later logOut() in
+  // the same test followed by goto("/login") would silently re-inject
+  // the stale session and auto-redirect away from the login form.
+  await page.goto("/");
+  await page.evaluate(
     ({ key, value }: { key: string; value: string }) => {
       localStorage.setItem(key, value);
     },
     { key: storageKey, value: JSON.stringify(session) },
   );
-
   await page.goto("/assistant");
   await page.waitForURL(/\/assistant/, { timeout: 15_000 });
   return user;
