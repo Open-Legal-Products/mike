@@ -148,22 +148,6 @@ export async function logInExistingUser(page: Page, user: Pick<TestUser, "email"
   await page.locator("#email").fill(user.email);
   await page.locator("#password").fill(user.password);
   await page.getByRole("button", { name: /log in/i }).click();
-
-  // The /login page calls router.push('/assistant') the instant
-  // signInWithPassword resolves, which races AuthContext's
-  // onAuthStateChange listener — /assistant occasionally renders before
-  // isAuthenticated flips to true and bounces back to /login.
-  //
-  // Wait for the Supabase session to land in localStorage first (proof
-  // that auth completed) before asserting on the URL.
-  await page.waitForFunction(
-    () =>
-      Object.keys(localStorage).some(
-        (k) => k.startsWith("sb-") && k.endsWith("-auth-token"),
-      ),
-    null,
-    { timeout: 10_000 },
-  );
   await page.waitForURL(/\/assistant/, { timeout: 15_000 });
 }
 

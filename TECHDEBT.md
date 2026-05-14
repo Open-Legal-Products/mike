@@ -11,28 +11,31 @@ permissive rule / workaround it references.
 
 ## High priority
 
-### Login page redirect race condition
-**File:** `frontend/src/app/login/page.tsx`
+### Login & logout race conditions — patched, not properly fixed
+**File:** `frontend/src/app/(pages)/layout.tsx`
 
-After `supabase.auth.signInWithPassword` resolves, the handler calls
-`router.push("/assistant")` immediately. AuthContext's
-`onAuthStateChange` listener fires asynchronously, so `/assistant`
-sometimes renders before `isAuthenticated` flips to `true` and the auth
-guard bounces the user back to `/login`. Signup hides this by chance —
-it shows a 2-second "Account created!" success screen first, which gives
-the context time to update.
+The `(pages)` route group's auth guard does
+`useEffect(() => { if (!authLoading && !isAuthenticated) router.push("/login") }, ...)`.
+This races every other code path that does an explicit redirect:
 
-Real impact: users on slow connections or under React concurrent renders
-can experience a "login → bounce back to login" loop on first try.
+- **Login:** `login/page.tsx::handleLogin` calls `router.push("/assistant")`
+  immediately after `signInWithPassword` resolves. AuthContext's
+  `onAuthStateChange` listener hasn't fired yet, so the layout sees
+  `isAuthenticated:false` and pushes `/login` first.
+- **Logout:** `account/page.tsx::handleLogout` calls `router.push("/")`
+  after `signOut()`. AuthContext flips `isAuthenticated:false`, the
+  layout pushes `/login`, which races the explicit push to `/`.
 
-Suggested fix:
-- After `signInWithPassword` succeeds, `await supabase.auth.getSession()`
-  to confirm the session is fully persisted before pushing.
-- Or use `useAuth()`'s `authLoading` / `isAuthenticated` in a small
-  `useEffect` instead of an imperative `router.push`.
+**Current workaround:** the layout's redirect is debounced by 100 ms so
+explicit `router.push` calls win. The cleanup clears the timer if the
+component unmounts or auth state changes again. Works, but a real fix
+would coordinate the redirects properly — e.g. expose a `signingOut`
+flag from `AuthContext`, or move the auth guard to a Next.js
+middleware / `redirect()` call so the race window doesn't exist.
 
-When fixed, remove the `waitForFunction(localStorage)` workaround in
-`e2e/helpers/auth.ts::logInExistingUser`.
+Anyone touching auth flow should be aware of this and either remove the
+debounce + fix it properly, or preserve the debounce when adding new
+redirect paths.
 
 ---
 
