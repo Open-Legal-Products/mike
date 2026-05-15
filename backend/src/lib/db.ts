@@ -105,7 +105,7 @@ function applyFilter(query: any, filter: Filter): any {
   throw new Error(`Unsupported filter operator: ${filter.operator}`);
 }
 
-class KyselyCompatQuery<T = unknown> implements PromiseLike<DbResult<T>> {
+class KyselyResultQuery<T = unknown> implements PromiseLike<DbResult<T>> {
   private action: "select" | "insert" | "update" | "delete" | "upsert" =
     "select";
   private columns = "*";
@@ -432,20 +432,20 @@ async function deleteUser(id: string): Promise<DbResult<null>> {
 export function createServerDb(): any {
   return {
     selectFrom(table: string): any {
-      return new KyselyCompatQuery(snakeCase(table));
+      return new KyselyResultQuery(snakeCase(table));
     },
     insertInto(table: string): any {
-      const query = new KyselyCompatQuery(snakeCase(table));
+      const query = new KyselyResultQuery(snakeCase(table));
       query.insert([]);
       return query;
     },
     updateTable(table: string): any {
-      const query = new KyselyCompatQuery(snakeCase(table));
+      const query = new KyselyResultQuery(snakeCase(table));
       query.update({});
       return query;
     },
     deleteFrom(table: string): any {
-      const query = new KyselyCompatQuery(snakeCase(table));
+      const query = new KyselyResultQuery(snakeCase(table));
       query.delete();
       return query;
     },
