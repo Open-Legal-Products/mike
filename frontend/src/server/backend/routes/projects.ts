@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router } from "../http/compat";
 import { requireAuth } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
 import { createClient } from "@supabase/supabase-js";
@@ -663,8 +663,8 @@ async function loadProjectFolder(
 }
 
 export async function handleDocumentUpload(
-  req: import("express").Request,
-  res: import("express").Response,
+  req: import("../http/compat").Request,
+  res: import("../http/compat").Response,
   userId: string,
   projectId: string | null,
   db: ReturnType<typeof createServerSupabase>,

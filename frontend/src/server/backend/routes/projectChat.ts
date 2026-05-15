@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router } from "../http/compat";
 import { requireAuth } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
 import {

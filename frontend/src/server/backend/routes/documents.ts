@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router } from "../http/compat";
 import { requireAuth } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
 import {
@@ -623,8 +623,8 @@ documentsRouter.get(
 // POST /single-documents/:documentId/edits/:editId/accept
 // POST /single-documents/:documentId/edits/:editId/reject
 async function handleEditResolution(
-  req: import("express").Request,
-  res: import("express").Response,
+  req: import("../http/compat").Request,
+  res: import("../http/compat").Response,
   mode: "accept" | "reject",
 ) {
   const userId = res.locals.userId as string;
@@ -831,8 +831,8 @@ documentsRouter.post(
 );
 
 async function handleDocumentUpload(
-  req: import("express").Request,
-  res: import("express").Response,
+  req: import("../http/compat").Request,
+  res: import("../http/compat").Response,
   userId: string,
   projectId: string | null,
   db: ReturnType<typeof createServerSupabase>,

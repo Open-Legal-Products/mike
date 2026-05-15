@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
  * Bypasses RLS — only use in API routes after verifying the user.
  */
 export function createServerSupabase() {
-  const url = process.env.SUPABASE_URL || "";
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const key = process.env.SUPABASE_SECRET_KEY || "";
   return createClient(url, key, { auth: { persistSession: false } });
 }
@@ -23,7 +23,7 @@ export async function getUserIdFromRequest(req: Request): Promise<string> {
   }
   const token = auth.slice(7).trim();
 
-  const supabaseUrl = process.env.SUPABASE_URL || "";
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const serviceKey = process.env.SUPABASE_SECRET_KEY || "";
 
   if (!supabaseUrl || !serviceKey) {

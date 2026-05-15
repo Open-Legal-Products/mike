@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import { Request, Response, NextFunction } from "../http/compat";
 import { createClient } from "@supabase/supabase-js";
 
 export async function requireAuth(
@@ -13,7 +13,8 @@ export async function requireAuth(
   }
   const token = auth.slice(7).trim();
 
-  const supabaseUrl = process.env.SUPABASE_URL ?? "";
+  const supabaseUrl =
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const serviceKey = process.env.SUPABASE_SECRET_KEY ?? "";
 
   if (!supabaseUrl || !serviceKey) {

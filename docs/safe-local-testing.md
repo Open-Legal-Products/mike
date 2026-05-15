@@ -26,17 +26,12 @@ For frontend testing, `frontend/.env.local` should normally contain only:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your-supabase-anon-key
-NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
-```
-
-Keep the Supabase service-role key in `backend/.env` only:
-
-```env
+NEXT_PUBLIC_API_BASE_URL=/api/backend
 SUPABASE_SECRET_KEY=your-supabase-service-role-key
 ```
 
 Model-provider keys such as `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, and
-`OPENROUTER_API_KEY` should also stay in `backend/.env`.
+`OPENAI_API_KEY` should also stay server-side in `frontend/.env.local`.
 
 ## Test With Synthetic Documents
 
