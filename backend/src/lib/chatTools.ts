@@ -1,4 +1,5 @@
 import path from "path";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import {
     downloadFile,
     generatedDocKey,
@@ -6,7 +7,16 @@ import {
     uploadFile,
 } from "./storage";
 import { convertedPdfKey } from "./convert";
-import { createServerSupabase } from "./supabase";
+import { type Db } from "../db";
+import {
+    chat_messages,
+    document_edits,
+    document_versions,
+    documents,
+    project_subfolders,
+    workflow_shares,
+    workflows,
+} from "../db/schema";
 import {
     applyTrackedEdits,
     extractDocxBodyText,
@@ -544,19 +554,26 @@ function citationReminder(docLabel: string, filename: string): string {
 export async function enrichWithPriorEvents(
     messages: ChatMessage[],
     chatId: string | null | undefined,
-    db: ReturnType<typeof createServerSupabase>,
+    db: Db,
     docIndex: DocIndex,
 ): Promise<ChatMessage[]> {
     if (!chatId) return messages;
-    const { data: rows } = await db
-        .from("chat_messages")
-        .select("content, created_at")
-        .eq("chat_id", chatId)
-        .eq("role", "assistant")
-        .order("created_at", { ascending: false })
+    const rows = await db
+        .select({
+            content: chat_messages.content,
+            created_at: chat_messages.created_at,
+        })
+        .from(chat_messages)
+        .where(
+            and(
+                eq(chat_messages.chat_id, chatId),
+                eq(chat_messages.role, "assistant"),
+            ),
+        )
+        .orderBy(desc(chat_messages.created_at))
         .limit(1);
 
-    const lastRow = rows?.[0] as { content?: unknown } | undefined;
+    const lastRow = rows[0] as { content?: unknown } | undefined;
     const content = lastRow?.content;
     if (!Array.isArray(content)) return messages;
 
@@ -731,7 +748,7 @@ export async function generateDocx(
     title: string,
     sections: unknown[],
     userId: string,
-    db: ReturnType<typeof createServerSupabase>,
+    db: Db,
     options?: { landscape?: boolean; projectId?: string | null },
 ) {
     try {
@@ -1187,47 +1204,59 @@ export async function generateDocx(
         // project chats we attach to the project so it appears in the
         // sidebar; in the general chat we leave project_id null and it
         // stays a standalone document.
-        const { data: docRow, error: docErr } = await db
-            .from("documents")
-            .insert({
-                project_id: options?.projectId ?? null,
-                user_id: userId,
-                filename,
-                file_type: "docx",
-                size_bytes: buf.byteLength,
-                status: "ready",
-            })
-            .select("id")
-            .single();
-        if (docErr || !docRow) {
+        let documentId: string;
+        try {
+            const [docRow] = await db
+                .insert(documents)
+                .values({
+                    project_id: options?.projectId ?? null,
+                    user_id: userId,
+                    filename,
+                    file_type: "docx",
+                    size_bytes: buf.byteLength,
+                    status: "ready",
+                })
+                .returning({ id: documents.id });
+            if (!docRow) {
+                return {
+                    error: `Failed to record generated document: no row returned`,
+                };
+            }
+            documentId = docRow.id;
+        } catch (err) {
             return {
-                error: `Failed to record generated document: ${docErr?.message ?? "unknown"}`,
+                error: `Failed to record generated document: ${err instanceof Error ? err.message : "unknown"}`,
             };
         }
-        const documentId = docRow.id as string;
 
-        const { data: versionRow, error: verErr } = await db
-            .from("document_versions")
-            .insert({
-                document_id: documentId,
-                storage_path: key,
-                source: "generated",
-                version_number: 1,
-                display_name: filename,
-            })
-            .select("id")
-            .single();
-        if (verErr || !versionRow) {
+        let versionId: string;
+        try {
+            const [versionRow] = await db
+                .insert(document_versions)
+                .values({
+                    document_id: documentId,
+                    storage_path: key,
+                    source: "generated",
+                    version_number: 1,
+                    display_name: filename,
+                })
+                .returning({ id: document_versions.id });
+            if (!versionRow) {
+                return {
+                    error: `Failed to record generated document version: no row returned`,
+                };
+            }
+            versionId = versionRow.id;
+        } catch (err) {
             return {
-                error: `Failed to record generated document version: ${verErr?.message ?? "unknown"}`,
+                error: `Failed to record generated document version: ${err instanceof Error ? err.message : "unknown"}`,
             };
         }
-        const versionId = versionRow.id as string;
 
         await db
-            .from("documents")
-            .update({ current_version_id: versionId })
-            .eq("id", documentId);
+            .update(documents)
+            .set({ current_version_id: versionId })
+            .where(eq(documents.id, documentId));
 
         return {
             filename,
@@ -1253,7 +1282,7 @@ export async function generateDocx(
  */
 export async function loadCurrentVersionBytes(
     documentId: string,
-    db: ReturnType<typeof createServerSupabase>,
+    db: Db,
 ): Promise<{ bytes: Buffer; storage_path: string } | null> {
     const active = await loadActiveVersion(documentId, db);
     if (!active) return null;
@@ -1271,7 +1300,7 @@ export async function runEditDocument(params: {
     documentId: string;
     userId: string;
     edits: EditInput[];
-    db: ReturnType<typeof createServerSupabase>;
+    db: Db;
     /**
      * If provided, append these edits to the existing turn-scoped version
      * (overwrites the file at storagePath and reuses the document_versions
@@ -1298,11 +1327,10 @@ export async function runEditDocument(params: {
 > {
     const { documentId, userId, edits, db, reuseVersion } = params;
 
-    const { data: doc } = await db
-        .from("documents")
-        .select("id, filename")
-        .eq("id", documentId)
-        .single();
+    const doc = await db.query.documents.findFirst({
+        where: eq(documents.id, documentId),
+        columns: { id: true, filename: true },
+    });
     if (!doc) return { ok: false, error: "Document not found." };
 
     const current = await loadCurrentVersionBytes(documentId, db);
@@ -1355,16 +1383,23 @@ export async function runEditDocument(params: {
         // Per-document sequential number for the new assistant_edit
         // version. The counter spans upload + user_upload + assistant_edit
         // so the original upload is V1 and the first assistant edit is V2.
-        const { data: maxRow } = await db
-            .from("document_versions")
-            .select("version_number")
-            .eq("document_id", documentId)
-            .in("source", ["upload", "user_upload", "assistant_edit"])
-            .order("version_number", { ascending: false, nullsFirst: false })
-            .limit(1)
-            .maybeSingle();
-        nextVersionNumber =
-            ((maxRow?.version_number as number | null) ?? 1) + 1;
+        const maxRows = await db
+            .select({ version_number: document_versions.version_number })
+            .from(document_versions)
+            .where(
+                and(
+                    eq(document_versions.document_id, documentId),
+                    inArray(document_versions.source, [
+                        "upload",
+                        "user_upload",
+                        "assistant_edit",
+                    ]),
+                ),
+            )
+            .orderBy(desc(document_versions.version_number))
+            .limit(1);
+        const maxRow = maxRows[0];
+        nextVersionNumber = ((maxRow?.version_number ?? 1) as number) + 1;
 
         // Inherit the display name from the most recent prior version so
         // user-applied renames carry forward through further edits. Falls
@@ -1372,33 +1407,37 @@ export async function runEditDocument(params: {
         // a display name (e.g. the first assistant edit of a pre-existing
         // doc). We intentionally do NOT append "[Edited Vn]" — the version
         // number is surfaced separately as a tag in the UI.
-        const { data: prevRow } = await db
-            .from("document_versions")
-            .select("display_name, created_at")
-            .eq("document_id", documentId)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+        const prevRow = await db.query.document_versions.findFirst({
+            where: eq(document_versions.document_id, documentId),
+            columns: { display_name: true, created_at: true },
+            orderBy: desc(document_versions.created_at),
+        });
         const inheritedDisplayName =
-            (prevRow?.display_name as string | null) ??
+            prevRow?.display_name ??
             (doc.filename as string | null) ??
             null;
 
-        const { data: versionRow, error: verErr } = await db
-            .from("document_versions")
-            .insert({
-                document_id: documentId,
-                storage_path: newPath,
-                source: "assistant_edit",
-                version_number: nextVersionNumber,
-                display_name: inheritedDisplayName,
-            })
-            .select("id")
-            .single();
-        if (verErr || !versionRow) {
+        try {
+            const [versionRow] = await db
+                .insert(document_versions)
+                .values({
+                    document_id: documentId,
+                    storage_path: newPath,
+                    source: "assistant_edit",
+                    version_number: nextVersionNumber,
+                    display_name: inheritedDisplayName,
+                })
+                .returning({ id: document_versions.id });
+            if (!versionRow) {
+                return {
+                    ok: false,
+                    error: "Failed to record document version.",
+                };
+            }
+            versionRowId = versionRow.id;
+        } catch {
             return { ok: false, error: "Failed to record document version." };
         }
-        versionRowId = versionRow.id as string;
     }
 
     // Insert one row per change
@@ -1414,21 +1453,41 @@ export async function runEditDocument(params: {
         context_after: c.contextAfter ?? "",
         status: "pending" as const,
     }));
-    const { data: insertedEdits, error: editsErr } = await db
-        .from("document_edits")
-        .insert(editRows)
-        .select(
-            "id, change_id, del_w_id, ins_w_id, deleted_text, inserted_text, context_before, context_after",
-        );
-
-    if (editsErr || !insertedEdits) {
+    let insertedEdits: {
+        id: string;
+        change_id: string;
+        del_w_id: string | null;
+        ins_w_id: string | null;
+        deleted_text: string;
+        inserted_text: string;
+        context_before: string | null;
+        context_after: string | null;
+    }[];
+    try {
+        insertedEdits = await db
+            .insert(document_edits)
+            .values(editRows)
+            .returning({
+                id: document_edits.id,
+                change_id: document_edits.change_id,
+                del_w_id: document_edits.del_w_id,
+                ins_w_id: document_edits.ins_w_id,
+                deleted_text: document_edits.deleted_text,
+                inserted_text: document_edits.inserted_text,
+                context_before: document_edits.context_before,
+                context_after: document_edits.context_after,
+            });
+    } catch {
+        return { ok: false, error: "Failed to record edits." };
+    }
+    if (!insertedEdits || insertedEdits.length === 0) {
         return { ok: false, error: "Failed to record edits." };
     }
 
     await db
-        .from("documents")
-        .update({ current_version_id: versionRowId })
-        .eq("id", documentId);
+        .update(documents)
+        .set({ current_version_id: versionRowId })
+        .where(eq(documents.id, documentId));
 
     const annotations: EditAnnotation[] = insertedEdits.map(
         (r: {
@@ -1483,7 +1542,7 @@ async function readDocumentContent(
     docStore: DocStore,
     write: (s: string) => void,
     docIndex?: DocIndex,
-    db?: ReturnType<typeof createServerSupabase>,
+    db?: Db,
     opts?: { emitEvents?: boolean },
 ): Promise<string> {
     const emitEvents = opts?.emitEvents ?? true;
@@ -1669,7 +1728,7 @@ async function findInDocumentContent(params: {
     docStore: DocStore;
     write: (s: string) => void;
     docIndex?: DocIndex;
-    db?: ReturnType<typeof createServerSupabase>;
+    db?: Db;
 }): Promise<string> {
     const {
         docLabel,
@@ -1838,7 +1897,7 @@ export async function runToolCalls(
     toolCalls: ToolCall[],
     docStore: DocStore,
     userId: string,
-    db: ReturnType<typeof createServerSupabase>,
+    db: Db,
     write: (s: string) => void,
     workflowStore?: WorkflowStore,
     tabularStore?: TabularCellStore,
@@ -2318,27 +2377,37 @@ export async function runToolCalls(
                             size_bytes: raw.byteLength,
                             status: "ready",
                         }));
-                        const { data: insertedDocs, error: docErr } = await db
-                            .from("documents")
-                            .insert(docRows)
-                            .select("id, filename");
+                        let insertedDocs: {
+                            id: string;
+                            filename: string;
+                        }[] = [];
+                        let docInsertError: string | null = null;
+                        try {
+                            insertedDocs = await db
+                                .insert(documents)
+                                .values(docRows)
+                                .returning({
+                                    id: documents.id,
+                                    filename: documents.filename,
+                                });
+                        } catch (err) {
+                            docInsertError =
+                                err instanceof Error ? err.message : "unknown";
+                        }
                         if (
-                            docErr ||
+                            docInsertError ||
                             !insertedDocs ||
                             insertedDocs.length === 0
                         ) {
                             fail(
-                                `Failed to record replicated documents: ${docErr?.message ?? "unknown"}`,
+                                `Failed to record replicated documents: ${docInsertError ?? "unknown"}`,
                             );
                         } else {
                             // Preserve the request order so each row pairs
-                            // with the right filename. Supabase returns
+                            // with the right filename. Drizzle returns
                             // inserted rows in the same order as the
                             // payload.
-                            const newDocs = insertedDocs as {
-                                id: string;
-                                filename: string;
-                            }[];
+                            const newDocs = insertedDocs;
                             const contentType =
                                 sourceInfo.file_type === "pdf"
                                     ? "application/pdf"
@@ -2387,28 +2456,40 @@ export async function runToolCalls(
                                 version_number: 1,
                                 display_name: d.filename,
                             }));
-                            const { data: insertedVersions, error: verErr } =
-                                await db
-                                    .from("document_versions")
-                                    .insert(versionRows)
-                                    .select("id, document_id");
+                            let insertedVersions: {
+                                id: string;
+                                document_id: string;
+                            }[] = [];
+                            let verInsertError: string | null = null;
+                            try {
+                                insertedVersions = await db
+                                    .insert(document_versions)
+                                    .values(versionRows)
+                                    .returning({
+                                        id: document_versions.id,
+                                        document_id:
+                                            document_versions.document_id,
+                                    });
+                            } catch (err) {
+                                verInsertError =
+                                    err instanceof Error
+                                        ? err.message
+                                        : "unknown";
+                            }
                             if (
-                                verErr ||
+                                verInsertError ||
                                 !insertedVersions ||
                                 insertedVersions.length !== newDocs.length
                             ) {
                                 fail(
-                                    `Failed to record replicated document versions: ${verErr?.message ?? "unknown"}`,
+                                    `Failed to record replicated document versions: ${verInsertError ?? "unknown"}`,
                                 );
                             } else {
                                 const versionByDocId = new Map<
                                     string,
                                     string
                                 >();
-                                for (const v of insertedVersions as {
-                                    id: string;
-                                    document_id: string;
-                                }[]) {
+                                for (const v of insertedVersions) {
                                     versionByDocId.set(v.document_id, v.id);
                                 }
 
@@ -2419,12 +2500,12 @@ export async function runToolCalls(
                                 await Promise.all(
                                     newDocs.map((d) =>
                                         db
-                                            .from("documents")
-                                            .update({
+                                            .update(documents)
+                                            .set({
                                                 current_version_id:
                                                     versionByDocId.get(d.id),
                                             })
-                                            .eq("id", d.id),
+                                            .where(eq(documents.id, d.id)),
                                     ),
                                 );
 
@@ -2715,7 +2796,7 @@ export async function runLLMStream(params: {
     docStore: DocStore;
     docIndex: DocIndex;
     userId: string;
-    db: ReturnType<typeof createServerSupabase>;
+    db: Db;
     write: (s: string) => void;
     extraTools?: unknown[];
     workflowStore?: WorkflowStore;
@@ -3049,7 +3130,7 @@ export function extractAnnotations(
 export async function buildDocContext(
     messages: ChatMessage[],
     userId: string,
-    db: ReturnType<typeof createServerSupabase>,
+    db: Db,
     chatId?: string | null,
 ): Promise<{ docIndex: DocIndex; docStore: DocStore }> {
     const docIndex: DocIndex = {};
@@ -3069,13 +3150,17 @@ export async function buildDocContext(
     // the model loses access to generated docs after the turn that created
     // them, and can't call edit_document / read_document on them.
     if (chatId) {
-        const { data: rows } = await db
-            .from("chat_messages")
-            .select("content")
-            .eq("chat_id", chatId)
-            .eq("role", "assistant");
-        for (const row of rows ?? []) {
-            const content = (row as { content?: unknown }).content;
+        const rows = await db
+            .select({ content: chat_messages.content })
+            .from(chat_messages)
+            .where(
+                and(
+                    eq(chat_messages.chat_id, chatId),
+                    eq(chat_messages.role, "assistant"),
+                ),
+            );
+        for (const row of rows) {
+            const content = row.content;
             if (!Array.isArray(content)) continue;
             for (const ev of content as Record<string, unknown>[]) {
                 if (
@@ -3090,12 +3175,22 @@ export async function buildDocContext(
 
     const ids = [...documentIds];
     if (ids.length > 0) {
-        const { data: docs } = await db
-            .from("documents")
-            .select("id, filename, file_type, current_version_id, status")
-            .in("id", ids)
-            .eq("user_id", userId)
-            .eq("status", "ready");
+        const docs = await db
+            .select({
+                id: documents.id,
+                filename: documents.filename,
+                file_type: documents.file_type,
+                current_version_id: documents.current_version_id,
+                status: documents.status,
+            })
+            .from(documents)
+            .where(
+                and(
+                    inArray(documents.id, ids),
+                    eq(documents.user_id, userId),
+                    eq(documents.status, "ready"),
+                ),
+            );
 
         const docList = (docs ?? []) as unknown as {
             id: string;
@@ -3138,7 +3233,7 @@ export async function buildDocContext(
 export async function buildProjectDocContext(
     projectId: string,
     _userId: string,
-    db: ReturnType<typeof createServerSupabase>,
+    db: Db,
 ): Promise<{
     docIndex: DocIndex;
     docStore: DocStore;
@@ -3147,19 +3242,32 @@ export async function buildProjectDocContext(
     const docIndex: DocIndex = {};
     const docStore: DocStore = new Map();
 
-    const [{ data: docs }, { data: folders }] = await Promise.all([
+    const [docs, folders] = await Promise.all([
         db
-            .from("documents")
-            .select(
-                "id, filename, file_type, current_version_id, status, folder_id",
+            .select({
+                id: documents.id,
+                filename: documents.filename,
+                file_type: documents.file_type,
+                current_version_id: documents.current_version_id,
+                status: documents.status,
+                folder_id: documents.folder_id,
+            })
+            .from(documents)
+            .where(
+                and(
+                    eq(documents.project_id, projectId),
+                    eq(documents.status, "ready"),
+                ),
             )
-            .eq("project_id", projectId)
-            .eq("status", "ready")
-            .order("created_at", { ascending: true }),
+            .orderBy(documents.created_at),
         db
-            .from("project_subfolders")
-            .select("id, name, parent_folder_id")
-            .eq("project_id", projectId),
+            .select({
+                id: project_subfolders.id,
+                name: project_subfolders.name,
+                parent_folder_id: project_subfolders.parent_folder_id,
+            })
+            .from(project_subfolders)
+            .where(eq(project_subfolders.project_id, projectId)),
     ]);
     const docList = (docs ?? []) as unknown as {
         id: string;
@@ -3232,7 +3340,7 @@ export async function buildProjectDocContext(
 export async function buildWorkflowStore(
     userId: string,
     userEmail: string | null | undefined,
-    db: ReturnType<typeof createServerSupabase>,
+    db: Db,
 ): Promise<WorkflowStore> {
     const { BUILTIN_WORKFLOWS } = await import("./builtinWorkflows");
     const store: WorkflowStore = new Map();
@@ -3244,12 +3352,17 @@ export async function buildWorkflowStore(
     }
 
     // Then overlay user-owned assistant workflows.
-    const { data: workflows } = await db
-        .from("workflows")
-        .select("id, title, prompt_md")
-        .eq("user_id", userId)
-        .eq("type", "assistant");
-    for (const wf of workflows ?? []) {
+    const userWorkflows = await db
+        .select({
+            id: workflows.id,
+            title: workflows.title,
+            prompt_md: workflows.prompt_md,
+        })
+        .from(workflows)
+        .where(
+            and(eq(workflows.user_id, userId), eq(workflows.type, "assistant")),
+        );
+    for (const wf of userWorkflows) {
         if (wf.prompt_md) {
             store.set(wf.id, { title: wf.title, prompt_md: wf.prompt_md });
         }
@@ -3257,20 +3370,30 @@ export async function buildWorkflowStore(
 
     // Shared assistant workflows must also be readable by workflow tools.
     if (normalizedUserEmail) {
-        const { data: shares } = await db
-            .from("workflow_shares")
-            .select("workflow_id")
-            .eq("shared_with_email", normalizedUserEmail);
+        const shares = await db
+            .select({ workflow_id: workflow_shares.workflow_id })
+            .from(workflow_shares)
+            .where(
+                eq(workflow_shares.shared_with_email, normalizedUserEmail),
+            );
         const sharedIds = [
-            ...new Set((shares ?? []).map((share) => share.workflow_id)),
+            ...new Set(shares.map((share) => share.workflow_id)),
         ];
         if (sharedIds.length > 0) {
-            const { data: sharedWorkflows } = await db
-                .from("workflows")
-                .select("id, title, prompt_md")
-                .in("id", sharedIds)
-                .eq("type", "assistant");
-            for (const wf of sharedWorkflows ?? []) {
+            const sharedWorkflows = await db
+                .select({
+                    id: workflows.id,
+                    title: workflows.title,
+                    prompt_md: workflows.prompt_md,
+                })
+                .from(workflows)
+                .where(
+                    and(
+                        inArray(workflows.id, sharedIds),
+                        eq(workflows.type, "assistant"),
+                    ),
+                );
+            for (const wf of sharedWorkflows) {
                 if (wf.prompt_md) {
                     store.set(wf.id, {
                         title: wf.title,

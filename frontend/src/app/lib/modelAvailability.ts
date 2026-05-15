@@ -22,6 +22,9 @@ export function isProviderAvailable(
     provider: ModelProvider,
     apiKeys: ApiKeyState,
 ): boolean {
+    // Claude runs on AWS Bedrock with the backend's IAM credentials — always
+    // available, never needs a per-user API key.
+    if (provider === "claude") return true;
     return !!apiKeys[provider]?.configured;
 }
 

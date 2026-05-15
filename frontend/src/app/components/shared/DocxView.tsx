@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { MikeIcon } from "@/components/chat/mike-icon";
 import { useFetchDocxBytes } from "@/app/hooks/useFetchDocxBytes";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/auth/cognito";
 import {
     clearDocxQuoteHighlights,
     highlightDocxQuote,

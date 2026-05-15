@@ -50,11 +50,11 @@ const UserProfileContext = createContext<UserProfileContextType | undefined>(
     undefined,
 );
 
-const API_KEY_PROVIDERS: ApiKeyProvider[] = ["claude", "gemini", "openai"];
+// Claude is served by Bedrock with IAM credentials — no per-user key.
+const API_KEY_PROVIDERS: ApiKeyProvider[] = ["gemini", "openai"];
 
 function emptyApiKeys(): ApiKeyState {
     return {
-        claude: { configured: false, source: null },
         gemini: { configured: false, source: null },
         openai: { configured: false, source: null },
     };

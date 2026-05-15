@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/auth/cognito";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -11,85 +11,109 @@ import { CheckCircle2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { updateUserProfile } from "@/app/lib/mikeApi";
 
+type Step = "form" | "confirm" | "success";
+
 export default function SignupPage() {
     const router = useRouter();
     const { isAuthenticated, authLoading } = useAuth();
+    const [step, setStep] = useState<Step>("form");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [name, setName] = useState("");
     const [organisation, setOrganisation] = useState("");
+    const [code, setCode] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [success, setSuccess] = useState(false);
 
     useEffect(() => {
-        if (!authLoading && isAuthenticated && !success) {
+        if (!authLoading && isAuthenticated && step === "form") {
             router.replace("/assistant");
         }
-    }, [authLoading, isAuthenticated, router, success]);
+    }, [authLoading, isAuthenticated, router, step]);
 
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setError(null);
 
-        // Validate passwords match
         if (password !== confirmPassword) {
             setError("Passwords do not match");
             setLoading(false);
             return;
         }
-
-        // Validate password length
         if (password.length < 6) {
             setError("Password must be at least 6 characters");
             setLoading(false);
             return;
         }
 
-        try {
-            const { data, error } = await supabase.auth.signUp({
-                email,
-                password,
-            });
-
-            if (error) throw error;
-
-            if (data.session) {
-                const trimmedName = name.trim();
-                const trimmedOrg = organisation.trim();
-                if (trimmedName || trimmedOrg) {
-                    try {
-                        await updateUserProfile({
-                            ...(trimmedName && { displayName: trimmedName }),
-                            ...(trimmedOrg && { organisation: trimmedOrg }),
-                        });
-                    } catch (profileError) {
-                        console.error(
-                            "[signup] failed to persist profile fields",
-                            profileError,
-                        );
-                    }
-                }
-            }
-            setSuccess(true);
-            setTimeout(() => {
-                router.push("/assistant");
-            }, 2000);
-        } catch (error: unknown) {
-            setError(
-                error instanceof Error
-                    ? error.message
-                    : "An error occurred during signup",
-            );
-        } finally {
-            setLoading(false);
+        const { error: signUpError } = await supabase.auth.signUp({
+            email,
+            password,
+        });
+        setLoading(false);
+        if (signUpError) {
+            setError(signUpError.message);
+            return;
         }
+        setStep("confirm");
     };
 
-    // Success View
-    if (success) {
+    const handleConfirm = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        setError(null);
+
+        const { error: confirmError } = await supabase.auth.confirmSignUp({
+            email,
+            code: code.trim(),
+        });
+        if (confirmError) {
+            setError(confirmError.message);
+            setLoading(false);
+            return;
+        }
+
+        const { data: signInData, error: signInError } =
+            await supabase.auth.signInWithPassword({ email, password });
+        if (signInError || !signInData.session) {
+            setError(
+                signInError?.message ??
+                    "Confirmed, but could not sign in automatically. Please log in.",
+            );
+            setLoading(false);
+            return;
+        }
+
+        const trimmedName = name.trim();
+        const trimmedOrg = organisation.trim();
+        if (trimmedName || trimmedOrg) {
+            try {
+                await updateUserProfile({
+                    ...(trimmedName && { displayName: trimmedName }),
+                    ...(trimmedOrg && { organisation: trimmedOrg }),
+                });
+            } catch (profileError) {
+                console.error(
+                    "[signup] failed to persist profile fields",
+                    profileError,
+                );
+            }
+        }
+
+        setStep("success");
+        setTimeout(() => router.push("/assistant"), 2000);
+    };
+
+    const handleResend = async () => {
+        setError(null);
+        const { error: resendError } =
+            await supabase.auth.resendConfirmationCode({ email });
+        if (resendError) setError(resendError.message);
+    };
+
+    if (step === "success") {
         return (
             <div className="min-h-dvh bg-white flex items-start justify-center px-6 pt-32 md:pt-40 pb-10 relative">
                 <div className="absolute top-4 md:top-8 left-1/2 -translate-x-1/2">
@@ -112,7 +136,67 @@ export default function SignupPage() {
         );
     }
 
-    // Default Signup Form View
+    if (step === "confirm") {
+        return (
+            <div className="min-h-dvh bg-white flex items-start justify-center px-6 pt-32 md:pt-40 pb-10 relative">
+                <div className="absolute top-4 md:top-8 left-1/2 -translate-x-1/2">
+                    <SiteLogo size="md" className="md:text-4xl" asLink />
+                </div>
+                <div className="w-full max-w-md">
+                    <div className="bg-white border border-gray-200 rounded-2xl p-8 mb-4">
+                        <h2 className="text-left text-2xl font-serif mb-2">
+                            Confirm your email
+                        </h2>
+                        <p className="text-sm text-gray-600 mb-6">
+                            We sent a confirmation code to{" "}
+                            <span className="font-medium">{email}</span>.
+                        </p>
+                        <form onSubmit={handleConfirm} className="space-y-4">
+                            <div>
+                                <label
+                                    htmlFor="code"
+                                    className="block text-sm font-medium text-gray-700 mb-2"
+                                >
+                                    Confirmation code
+                                </label>
+                                <Input
+                                    id="code"
+                                    type="text"
+                                    inputMode="numeric"
+                                    autoComplete="one-time-code"
+                                    value={code}
+                                    onChange={(e) => setCode(e.target.value)}
+                                    placeholder="6-digit code"
+                                    required
+                                    className="w-full"
+                                />
+                            </div>
+                            {error && (
+                                <div className="text-red-600 text-sm bg-red-50 p-3 rounded">
+                                    {error}
+                                </div>
+                            )}
+                            <Button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full bg-black hover:bg-gray-900 text-white"
+                            >
+                                {loading ? "Confirming..." : "Confirm"}
+                            </Button>
+                        </form>
+                        <button
+                            type="button"
+                            onClick={handleResend}
+                            className="mt-4 text-sm text-blue-600 hover:underline"
+                        >
+                            Resend code
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="min-h-dvh bg-white flex items-start justify-center px-6 pt-32 md:pt-40 pb-10 relative">
             <div className="absolute top-4 md:top-8 left-1/2 -translate-x-1/2">
@@ -251,7 +335,6 @@ export default function SignupPage() {
                         </Button>
                     </form>
 
-                    {/* Terms and Privacy */}
                     <div className="mt-4 text-center text-xs text-gray-500">
                         By signing up, you agree to our{" "}
                         <Link

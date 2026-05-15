@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/auth/cognito";
 
 /**
  * /display returns either PDF bytes (when the active version has a PDF

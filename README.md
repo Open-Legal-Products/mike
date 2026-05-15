@@ -1,125 +1,149 @@
 # Mike
 
-Mike is a legal document assistant with a Next.js frontend, an Express backend, Supabase Auth/Postgres, and Cloudflare R2-compatible object storage.
+Mike is a legal document assistant — Next.js frontend, Express backend, Postgres
+data, S3 file storage, Cognito auth, and AWS Bedrock for Claude (with optional
+direct OpenAI/Gemini for the other model families).
 
 Website: [mikeoss.com](https://mikeoss.com)
 
 ## Contents
 
-- `frontend/` - Next.js application
-- `backend/` - Express API, Supabase access, document processing, and database schema
-- `backend/schema.sql` - Supabase schema for fresh databases
-- `backend/migrations/` - incremental database updates for existing deployments
+- `frontend/` — Next.js application (standalone output, runs as `node server.js`)
+- `backend/` — Express API + document processing
+- `backend/src/db/` — Drizzle schema + Postgres client
+- `backend/drizzle/` — generated SQL migrations
+- `docker-compose.yml` — full local stack: Postgres, Cognito Local, MinIO,
+  smtp4dev, plus optionally the built frontend/backend containers
+- `scripts/bootstrap-local.sh` — one-shot local provisioning
+- `.github/workflows/` — CI + multi-arch image publishing to ghcr.io
 
 ## Prerequisites
 
-- Node.js 20 or newer
-- npm
-- git
-- A Supabase project
-- A Cloudflare R2 bucket, MinIO bucket, or another S3-compatible bucket
-- At least one supported model provider API key: Anthropic, Google Gemini, or OpenAI
-- LibreOffice installed locally if you need DOC/DOCX to PDF conversion
+- Docker Desktop (or any local Docker engine + `docker compose`)
+- Node.js 20+ and npm (for running app code outside of docker)
 
-## Database Setup
+For production:
 
-For a new Supabase database, open the Supabase SQL editor and run:
+- An AWS account with **Bedrock** access enabled for the Claude models you intend to use
+- A **Cognito User Pool** + App Client
+- An **RDS Postgres** instance (or any Postgres 14+)
+- An **S3 bucket**
+- A verified **SES identity** (wired into the Cognito User Pool as the email source)
+- An **ECS Fargate task role** with permissions: `bedrock:InvokeModel`,
+  `bedrock:InvokeModelWithResponseStream`, `s3:GetObject`/`PutObject`/`DeleteObject`
+  on the bucket, `ses:SendEmail` on the identity, `cognito-idp:AdminDeleteUser`
+  on the user pool
+- **ALB** + **Route 53** for traffic; ECS services for `mike-frontend` and
+  `mike-backend` pulling images from ghcr.io (or re-tagged into your own ECR)
 
-```sql
--- copy and run the contents of:
--- backend/schema.sql
-```
+## Local development
 
-The schema file is based on `supabase-migration.sql` and folds in the later files in `backend/migrations/`.
-
-For an existing database, do not run the full schema file over production data. Apply the incremental files in `backend/migrations/` instead.
-
-## Environment
-
-Create local env files:
+The fast path:
 
 ```bash
-touch backend/.env
-touch frontend/.env.local
-```
+cp backend/.env.example backend/.env
+cp frontend/.env.local.example frontend/.env.local
+cp .env.example .env
 
-Create `backend/.env`:
+# Bring up the local AWS-equivalent stack:
+docker compose up -d postgres auth minio smtp
 
-```bash
-PORT=3001
-FRONTEND_URL=http://localhost:3000
-DOWNLOAD_SIGNING_SECRET=replace-with-a-random-32-byte-hex-string
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SECRET_KEY=your-supabase-service-role-key
+# Provision cognito-local user pool, create MinIO bucket, run Drizzle migrations:
+./scripts/bootstrap-local.sh
 
-R2_ENDPOINT_URL=https://your-account-id.r2.cloudflarestorage.com
-R2_ACCESS_KEY_ID=your-r2-access-key
-R2_SECRET_ACCESS_KEY=your-r2-secret-key
-R2_BUCKET_NAME=mike
-
-GEMINI_API_KEY=your-gemini-key
-ANTHROPIC_API_KEY=your-anthropic-key
-OPENAI_API_KEY=your-openai-key
-RESEND_API_KEY=your-resend-key
-USER_API_KEYS_ENCRYPTION_SECRET=your-long-random-secret
-```
-
-Create `frontend/.env.local`:
-
-```bash
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your-supabase-anon-key
-SUPABASE_SECRET_KEY=your-supabase-service-role-key
-NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
-```
-
-Supabase values come from the project dashboard. Use the project URL for `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL`, the service role key for `SUPABASE_SECRET_KEY`, and the anon/public key for `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY`. If your Supabase project shows multiple key formats, use the legacy JWT-style anon and service role keys expected by the Supabase client libraries.
-
-Provider keys are only needed for the models and email features you plan to use. Model provider keys can be configured in `backend/.env` for the whole instance, or per user in **Account > Models & API Keys**. If a provider key is present in `backend/.env`, that provider is available by default and the matching browser API key field is read-only.
-
-## Install
-
-Install each app package:
-
-```bash
+# Run the apps locally (two terminals):
 npm install --prefix backend
 npm install --prefix frontend
-```
-
-## Run Locally
-
-Start the backend:
-
-```bash
-npm run dev --prefix backend
-```
-
-Start the main app:
-
-```bash
-npm run dev --prefix frontend
+npm run dev --prefix backend     # :3001
+npm run dev --prefix frontend    # :3000
 ```
 
 Open `http://localhost:3000`.
 
-## First Run
+Notes:
 
-1. Sign up in the app.
-2. If you did not set provider keys in `backend/.env`, open **Account > Models & API Keys** and add an Anthropic, Gemini, or OpenAI API key.
-3. Create or open a project and start chatting with documents.
+- Cognito Local does not deliver real emails. After signing up, get the
+  confirmation code with `docker compose logs -f auth | grep -i code`.
+- MinIO console is at `http://localhost:9101` (user/pass `minioadmin/minioadmin`).
+- smtp4dev web UI is at `http://localhost:8003`. The app does not currently
+  send any transactional email; the container is kept for future use.
+- AWS Bedrock has no local emulator. To exercise Claude models locally, set
+  `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in your shell with credentials
+  that have Bedrock invoke permissions. Otherwise, use Gemini or OpenAI models
+  (per-user API keys are entered under **Account > Models & API Keys**).
 
-## Troubleshooting
+To exercise the full containerised stack:
 
-**Sign-up confirmation email never arrives.** Confirmation emails are sent by Supabase Auth, not by Mike. For local development, the simplest fix is to disable email confirmation in **Supabase > Authentication > Providers > Email**. For production, configure custom SMTP in Supabase; the built-in mailer is heavily rate-limited and may be restricted on newer projects.
+```bash
+docker compose up -d --build
+# wait for healthchecks
+open http://localhost:3000
+```
 
-**The model picker shows a missing-key warning.** Add a key for that provider in **Account > Models & API Keys**, or configure the provider key in `backend/.env` and restart the backend.
+## Production deployment
 
-**DOC or DOCX conversion fails.** Install LibreOffice locally and restart the backend so document conversion commands are available on the process path.
+Images are published to `ghcr.io/<owner>/mike-frontend` and
+`ghcr.io/<owner>/mike-backend` on every push to `main` and on every `v*` tag.
+You can pull them directly into ECS or re-tag into ECR:
 
-## Useful Checks
+```bash
+docker pull ghcr.io/<owner>/mike-backend:latest
+docker tag  ghcr.io/<owner>/mike-backend:latest \
+            <account>.dkr.ecr.<region>.amazonaws.com/mike-backend:latest
+docker push <account>.dkr.ecr.<region>.amazonaws.com/mike-backend:latest
+```
+
+Database migrations: run `npm run db:migrate` (in the backend container, with
+`DATABASE_URL` set) once per deploy. The included CI job runs the same command
+against a fresh Postgres service container so a broken migration is caught
+before merge.
+
+## Configuration reference
+
+See `backend/.env.example` and `frontend/.env.local.example` for the full env
+var list. Highlights:
+
+| Var | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Postgres connection string (RDS in prod) |
+| `COGNITO_USER_POOL_ID` / `COGNITO_CLIENT_ID` | Cognito identity |
+| `COGNITO_JWKS_URI` | Only set for cognito-local — real AWS Cognito auto-resolves the JWKS URL |
+| `S3_BUCKET_NAME` | The S3 bucket holding uploaded documents |
+| `S3_ENDPOINT_URL` | Only set for MinIO — unset for real AWS S3 |
+| `AWS_REGION` / `BEDROCK_REGION` | Defaults to `us-east-1` |
+| `GEMINI_API_KEY` / `OPENAI_API_KEY` | Server-wide keys (optional; users can supply their own in-app) |
+| `USER_API_KEYS_ENCRYPTION_SECRET` | Required. AES-256-GCM key for user-stored provider keys |
+
+## Useful commands
 
 ```bash
 npm run build --prefix backend
 npm run build --prefix frontend
-npm run lint --prefix frontend
+npm run lint  --prefix frontend
+npm run db:generate --prefix backend   # generate a new Drizzle migration
+npm run db:migrate  --prefix backend   # apply pending migrations
 ```
+
+## Troubleshooting
+
+**Cognito signup confirmation code never arrives.** In local dev, cognito-local
+prints the code to its container stdout — `docker compose logs -f auth`.
+In production, configure the Cognito User Pool's "Email configuration" to use
+SES and verify the FROM address in SES.
+
+**Bedrock invocation returns AccessDenied.** Confirm the IAM role or local
+credentials have `bedrock:InvokeModel` + `bedrock:InvokeModelWithResponseStream`
+on the model ARN. Bedrock model access also has to be opt-in requested per
+model family in the AWS console.
+
+**DOC/DOCX upload conversion fails.** The backend image includes LibreOffice;
+if running outside Docker, install LibreOffice locally and restart the backend.
+
+**Postgres connection refused.** Confirm `DATABASE_URL` and that postgres is
+healthy — `docker compose ps` should show `(healthy)`. For RDS in production,
+TLS is required: the included pool config opts into `ssl` automatically when
+`NODE_ENV=production`.
+
+## License
+
+AGPL-3.0-only. See `LICENSE`.

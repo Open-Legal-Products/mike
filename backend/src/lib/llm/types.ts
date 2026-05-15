@@ -36,8 +36,9 @@ export type StreamCallbacks = {
     onToolCallStart?: (call: NormalizedToolCall) => void;
 };
 
+// Claude is served by Bedrock with IAM credentials — no per-user key
+// is accepted any more. Gemini and OpenAI still use direct API keys.
 export type UserApiKeys = {
-    claude?: string | null;
     gemini?: string | null;
     openai?: string | null;
 };

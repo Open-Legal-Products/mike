@@ -1,6 +1,8 @@
 import { Router } from "express";
+import { eq } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
-import { createServerSupabase } from "../lib/supabase";
+import { db } from "../db";
+import { chats, chat_messages } from "../db/schema";
 import {
     buildProjectDocContext,
     buildMessages,
@@ -38,8 +40,6 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             attached_documents?: { filename: string; document_id: string }[];
         };
 
-    const db = createServerSupabase();
-
     // Verify the user has access to the project (owner or shared member).
     const projectAccess = await checkProjectAccess(
         projectId,
@@ -54,38 +54,35 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
     let chatTitle: string | null = null;
 
     if (chatId) {
-        const { data: existing } = await db
-            .from("chats")
-            .select("id, title, project_id")
-            .eq("id", chatId)
-            .single();
+        const existing = await db.query.chats.findFirst({
+            where: eq(chats.id, chatId),
+            columns: { id: true, title: true, project_id: true },
+        });
         const canUse = !!existing && existing.project_id === projectId;
         if (!canUse) chatId = null;
         else chatTitle = existing!.title;
     }
 
     if (!chatId) {
-        const { data: newChat, error } = await db
-            .from("chats")
-            .insert({ user_id: userId, project_id: projectId })
-            .select("id, title")
-            .single();
-        if (error || !newChat)
+        const [newChat] = await db
+            .insert(chats)
+            .values({ user_id: userId, project_id: projectId })
+            .returning({ id: chats.id, title: chats.title });
+        if (!newChat)
             return void res
                 .status(500)
                 .json({ detail: "Failed to create chat" });
-        chatId = newChat.id as string;
+        chatId = newChat.id;
         chatTitle = newChat.title;
     }
 
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (lastUser) {
-        await db.from("chat_messages").insert({
+        await db.insert(chat_messages).values({
             chat_id: chatId,
             role: "user",
             content: lastUser.content,
             files: lastUser.files ?? null,
-            workflow: lastUser.workflow ?? null,
         });
     }
 
@@ -117,11 +114,6 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
           })
         : enrichedMessages;
 
-    // The user-attached docs for this turn (dragged into / picked from
-    // the chat input) come in as a request-level field. Surface them in
-    // the system prompt with the current-turn doc_id slugs so the model
-    // knows which docs the user is highlighting *now*, distinct from
-    // the broader project doc list.
     let systemPromptExtra = PROJECT_SYSTEM_PROMPT_EXTRA;
     if (attached_documents?.length) {
         const slugByDocumentId = new Map<string, string>();
@@ -172,7 +164,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         });
 
         const annotations = extractAnnotations(fullText, docIndex, events);
-        await db.from("chat_messages").insert({
+        await db.insert(chat_messages).values({
             chat_id: chatId,
             role: "assistant",
             content: events.length ? events : null,
@@ -181,9 +173,9 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
 
         if (!chatTitle && lastUser?.content) {
             await db
-                .from("chats")
-                .update({ title: lastUser.content.slice(0, 120) })
-                .eq("id", chatId);
+                .update(chats)
+                .set({ title: lastUser.content.slice(0, 120) })
+                .where(eq(chats.id, chatId));
         }
     } catch (err) {
         console.error("[project-chat/stream] error:", err);

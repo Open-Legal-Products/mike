@@ -1,12 +1,19 @@
 /**
- * Cloudflare R2 storage utilities for Mike document management.
- * R2 is S3-compatible — uses @aws-sdk/client-s3.
+ * S3 storage utilities for Mike document management.
+ *
+ * In production: AWS S3 with credentials from the ECS task role
+ * (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY must NOT be set in env —
+ *  the default credential chain resolves them from IMDS).
+ *
+ * In local dev: MinIO with `S3_ENDPOINT_URL=http://localhost:9100` plus
+ * static AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY env vars.
  *
  * Required env vars:
- *   R2_ENDPOINT_URL     — https://<account-id>.r2.cloudflarestorage.com
- *   R2_ACCESS_KEY_ID    — R2 API token (Access Key ID)
- *   R2_SECRET_ACCESS_KEY — R2 API token (Secret Access Key)
- *   R2_BUCKET_NAME      — bucket name (default: "mike")
+ *   AWS_REGION          — e.g. us-east-1
+ *   S3_BUCKET_NAME      — bucket name
+ *   S3_ENDPOINT_URL     — only set for MinIO; leave unset for real AWS
+ *   AWS_ACCESS_KEY_ID   — only set locally; ECS provides creds via task role
+ *   AWS_SECRET_ACCESS_KEY — same
  */
 
 import {
@@ -14,28 +21,34 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl as awsGetSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 function getClient(): S3Client {
-  return new S3Client({
-    region: "auto",
-    endpoint: process.env.R2_ENDPOINT_URL!,
-    forcePathStyle: true,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    },
-  });
+  const endpoint = process.env.S3_ENDPOINT_URL;
+  const config: S3ClientConfig = {
+    region: process.env.AWS_REGION ?? "us-east-1",
+  };
+  if (endpoint) {
+    // MinIO / non-AWS S3 — force path-style addressing and pass explicit creds.
+    config.endpoint = endpoint;
+    config.forcePathStyle = true;
+    if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+      config.credentials = {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      };
+    }
+  }
+  // No endpoint → real AWS. Leave credentials unset so the SDK uses the
+  // default chain (IMDS / task role / shared config / env).
+  return new S3Client(config);
 }
 
-const BUCKET = process.env.R2_BUCKET_NAME ?? "mike";
+const BUCKET = process.env.S3_BUCKET_NAME ?? "mike";
 
-export const storageEnabled = Boolean(
-  process.env.R2_ENDPOINT_URL &&
-  process.env.R2_ACCESS_KEY_ID &&
-  process.env.R2_SECRET_ACCESS_KEY,
-);
+export const storageEnabled = Boolean(process.env.S3_BUCKET_NAME);
 
 // ---------------------------------------------------------------------------
 // Upload
@@ -99,7 +112,7 @@ export async function getSignedUrl(
   try {
     const client = getClient();
     // Override the response Content-Disposition so the browser uses this
-    // filename on download, instead of the last path segment of the R2 key
+    // filename on download, instead of the last path segment of the S3 key
     // (which includes the document UUID). The `download` attribute on <a>
     // is ignored for cross-origin URLs, so we have to set it server-side.
     const responseContentDisposition = downloadFilename

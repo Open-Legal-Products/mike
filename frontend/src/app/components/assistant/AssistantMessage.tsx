@@ -16,7 +16,7 @@ import type {
 } from "../shared/types";
 import { EditCard, applyOptimisticResolution } from "./EditCard";
 import { PreResponseWrapper } from "../shared/PreResponseWrapper";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/auth/cognito";
 
 function toolCallLabel(name: string): string {
     if (name === "generate_docx") return "Creating document...";

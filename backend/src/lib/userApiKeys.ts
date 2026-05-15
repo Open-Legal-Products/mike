@@ -1,9 +1,12 @@
 import crypto from "crypto";
-import { createServerSupabase } from "./supabase";
+import { and, eq } from "drizzle-orm";
+import { db as defaultDb, type Db } from "../db";
+import { user_api_keys } from "../db/schema";
 import type { UserApiKeys } from "./llm";
 
-type Db = ReturnType<typeof createServerSupabase>;
-export type ApiKeyProvider = "claude" | "gemini" | "openai";
+// Claude is served by Bedrock with IAM creds, so user-supplied Claude keys
+// are no longer accepted. Per-user keys remain for Gemini and OpenAI only.
+export type ApiKeyProvider = "gemini" | "openai";
 export type ApiKeySource = "user" | "env" | null;
 export type ApiKeyStatus = Record<ApiKeyProvider, boolean> & {
     sources: Record<ApiKeyProvider, ApiKeySource>;
@@ -16,16 +19,9 @@ type EncryptedKeyRow = {
     auth_tag: string;
 };
 
-const PROVIDERS: ApiKeyProvider[] = ["claude", "gemini", "openai"];
+const PROVIDERS: ApiKeyProvider[] = ["gemini", "openai"];
 
 function envApiKey(provider: ApiKeyProvider): string | null {
-    if (provider === "claude") {
-        return (
-            process.env.ANTHROPIC_API_KEY?.trim() ||
-            process.env.CLAUDE_API_KEY?.trim() ||
-            null
-        );
-    }
     if (provider === "openai") {
         return process.env.OPENAI_API_KEY?.trim() || null;
     }
@@ -37,12 +33,11 @@ export function hasEnvApiKey(provider: ApiKeyProvider): boolean {
 }
 
 function encryptionKey(): Buffer {
-    const secret =
-        process.env.USER_API_KEYS_ENCRYPTION_SECRET ||
-        process.env.API_KEYS_ENCRYPTION_SECRET ||
-        process.env.SUPABASE_SECRET_KEY;
+    const secret = process.env.USER_API_KEYS_ENCRYPTION_SECRET;
     if (!secret) {
-        throw new Error("API key encryption secret is not configured");
+        throw new Error(
+            "USER_API_KEYS_ENCRYPTION_SECRET is required to read/write user-stored API keys",
+        );
     }
     return crypto.createHash("sha256").update(secret).digest();
 }
@@ -93,14 +88,12 @@ export function normalizeApiKeyProvider(value: string): ApiKeyProvider | null {
 
 export async function getUserApiKeyStatus(
     userId: string,
-    db: Db = createServerSupabase(),
+    client: Db = defaultDb,
 ): Promise<ApiKeyStatus> {
     const status: ApiKeyStatus = {
-        claude: false,
         gemini: false,
         openai: false,
         sources: {
-            claude: null,
             gemini: null,
             openai: null,
         },
@@ -113,13 +106,12 @@ export async function getUserApiKeyStatus(
         }
     }
 
-    const { data, error } = await db
-        .from("user_api_keys")
-        .select("provider")
-        .eq("user_id", userId);
-    if (error) throw error;
+    const rows = await client
+        .select({ provider: user_api_keys.provider })
+        .from(user_api_keys)
+        .where(eq(user_api_keys.user_id, userId));
 
-    for (const row of data ?? []) {
+    for (const row of rows) {
         const provider = normalizeApiKeyProvider(String(row.provider));
         if (provider && !status[provider]) {
             status[provider] = true;
@@ -132,25 +124,28 @@ export async function getUserApiKeyStatus(
 
 export async function getUserApiKeys(
     userId: string,
-    db: Db = createServerSupabase(),
+    client: Db = defaultDb,
 ): Promise<UserApiKeys> {
     const apiKeys: UserApiKeys = {
-        claude: envApiKey("claude"),
         gemini: envApiKey("gemini"),
         openai: envApiKey("openai"),
     };
 
-    const { data, error } = await db
-        .from("user_api_keys")
-        .select("provider, encrypted_key, iv, auth_tag")
-        .eq("user_id", userId);
-    if (error) throw error;
+    const rows = await client
+        .select({
+            provider: user_api_keys.provider,
+            encrypted_key: user_api_keys.encrypted_key,
+            iv: user_api_keys.iv,
+            auth_tag: user_api_keys.auth_tag,
+        })
+        .from(user_api_keys)
+        .where(eq(user_api_keys.user_id, userId));
 
-    for (const row of (data ?? []) as EncryptedKeyRow[]) {
+    for (const row of rows) {
         const provider = normalizeApiKeyProvider(row.provider);
         if (!provider) continue;
         if (apiKeys[provider]?.trim()) continue;
-        apiKeys[provider] = decrypt(row);
+        apiKeys[provider] = decrypt(row as EncryptedKeyRow);
     }
 
     return apiKeys;
@@ -160,27 +155,39 @@ export async function saveUserApiKey(
     userId: string,
     provider: ApiKeyProvider,
     value: string | null,
-    db: Db = createServerSupabase(),
+    client: Db = defaultDb,
 ): Promise<void> {
     const normalized = value?.trim() || null;
     if (!normalized) {
-        const { error } = await db
-            .from("user_api_keys")
-            .delete()
-            .eq("user_id", userId)
-            .eq("provider", provider);
-        if (error) throw error;
+        await client
+            .delete(user_api_keys)
+            .where(
+                and(
+                    eq(user_api_keys.user_id, userId),
+                    eq(user_api_keys.provider, provider),
+                ),
+            );
         return;
     }
 
-    const { error } = await db.from("user_api_keys").upsert(
-        {
+    const enc = encrypt(normalized);
+    await client
+        .insert(user_api_keys)
+        .values({
             user_id: userId,
             provider,
-            ...encrypt(normalized),
-            updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,provider" },
-    );
-    if (error) throw error;
+            encrypted_key: enc.encrypted_key,
+            iv: enc.iv,
+            auth_tag: enc.auth_tag,
+            updated_at: new Date(),
+        })
+        .onConflictDoUpdate({
+            target: [user_api_keys.user_id, user_api_keys.provider],
+            set: {
+                encrypted_key: enc.encrypted_key,
+                iv: enc.iv,
+                auth_tag: enc.auth_tag,
+                updated_at: new Date(),
+            },
+        });
 }

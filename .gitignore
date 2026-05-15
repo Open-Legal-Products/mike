@@ -4,6 +4,7 @@ dist
 out
 build
 .open-next
+temp/
 
 .env
 .env.*

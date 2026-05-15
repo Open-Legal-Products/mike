@@ -7,7 +7,7 @@ import React, {
     useState,
     ReactNode,
 } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/auth/cognito";
 
 interface User {
     id: string;

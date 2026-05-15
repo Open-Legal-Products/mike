@@ -1,0 +1,152 @@
+name: mike-aws
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mike-aws-postgres
+    environment:
+      POSTGRES_DB: mike
+      POSTGRES_USER: mike
+      POSTGRES_PASSWORD: mike
+    ports:
+      - "5432:5432"
+    volumes:
+      - "./temp/postgres:/var/lib/postgresql/data"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mike -d mike"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - mike
+
+  auth:
+    image: ghcr.io/amaingot/cognito-local:latest
+    container_name: mike-aws-auth
+    ports:
+      - "9229:9229"
+    environment:
+      - DATA_DIR=/temp-data
+    volumes:
+      - "./temp/auth:/temp-data"
+    healthcheck:
+      # The cognito-local image's /etc/hosts has no `localhost` entry, so we
+      # use 127.0.0.1 explicitly. Probes the OIDC discovery doc to verify the
+      # pool exists (the bootstrap script creates it).
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:9229/us-east-1_localDev01/.well-known/openid-configuration"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - mike
+
+  minio:
+    image: minio/minio:latest
+    container_name: mike-aws-minio
+    command: server /data --address :9000 --console-address :9001
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9100:9000"
+      - "9101:9001"
+    volumes:
+      - "./temp/minio:/data"
+    healthcheck:
+      # MinIO's image has neither wget nor curl. `mc` is the official client and
+      # is present at /usr/bin/mc.
+      test: ["CMD-SHELL", "mc alias set local http://localhost:9000 minioadmin minioadmin >/dev/null 2>&1 && mc ready local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - mike
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: mike-aws-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/mike &&
+      echo 'MinIO bucket mike ready'
+      "
+    networks:
+      - mike
+
+  smtp:
+    image: rnwood/smtp4dev:v3
+    container_name: mike-aws-smtp
+    ports:
+      - "8003:80"
+      - "8004:25"
+      - "8005:143"
+    volumes:
+      - "./temp/smtp:/smtp4dev"
+    environment:
+      ServerOptions__Urls: "http://*:80"
+      ServerOptions__HostName: "smtp"
+      ServerOptions__DisableMessageSanitisation: "true"
+    networks:
+      - mike
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mike-aws-backend
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      PORT: "3001"
+      NODE_ENV: "production"
+      FRONTEND_URL: "http://localhost:3000"
+      DATABASE_URL: "postgres://mike:mike@postgres:5432/mike"
+      DOWNLOAD_SIGNING_SECRET: "${DOWNLOAD_SIGNING_SECRET:-dev-replace-me-with-a-real-secret}"
+      USER_API_KEYS_ENCRYPTION_SECRET: "${USER_API_KEYS_ENCRYPTION_SECRET:-dev-replace-me-with-a-real-secret}"
+      AWS_REGION: "${AWS_REGION:-us-east-1}"
+      COGNITO_USER_POOL_ID: "${COGNITO_USER_POOL_ID:-us-east-1_localDev01}"
+      COGNITO_CLIENT_ID: "${COGNITO_CLIENT_ID:-local-client-id}"
+      COGNITO_JWKS_URI: "http://auth:9229/${COGNITO_USER_POOL_ID:-us-east-1_localDev01}/.well-known/jwks.json"
+      COGNITO_ENDPOINT: "http://auth:9229"
+      S3_BUCKET_NAME: "${S3_BUCKET_NAME:-mike}"
+      S3_ENDPOINT_URL: "http://minio:9000"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-minioadmin}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-minioadmin}"
+      BEDROCK_REGION: "${BEDROCK_REGION:-us-east-1}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+    networks:
+      - mike
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mike-aws-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: "http://localhost:3001"
+      NEXT_PUBLIC_AWS_REGION: "${AWS_REGION:-us-east-1}"
+      NEXT_PUBLIC_COGNITO_USER_POOL_ID: "${COGNITO_USER_POOL_ID:-us-east-1_localDev01}"
+      NEXT_PUBLIC_COGNITO_CLIENT_ID: "${COGNITO_CLIENT_ID:-local-client-id}"
+      NEXT_PUBLIC_COGNITO_ENDPOINT: "http://localhost:9229"
+    networks:
+      - mike
+
+networks:
+  mike:
+    driver: bridge

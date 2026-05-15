@@ -3,7 +3,7 @@
  * Attaches the Supabase auth token for user authentication.
  */
 
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/auth/cognito";
 import type {
     AssistantEvent,
     MikeChat,
@@ -124,7 +124,7 @@ export async function updateUserProfile(payload: {
     });
 }
 
-export type ApiKeyProvider = "claude" | "gemini" | "openai";
+export type ApiKeyProvider = "gemini" | "openai";
 export type ApiKeySource = "user" | "env" | null;
 export type ApiKeyState = Record<
     ApiKeyProvider,

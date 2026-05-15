@@ -21,12 +21,9 @@ import {
     providerLabel,
 } from "@/app/lib/modelAvailability";
 
+// Claude is served by AWS Bedrock using the backend's IAM credentials, so it
+// is always available and never needs a per-user API key.
 const API_KEY_FIELDS = [
-    {
-        provider: "claude",
-        label: "Anthropic (Claude) API Key",
-        placeholder: "sk-ant-…",
-    },
     {
         provider: "gemini",
         label: "Google (Gemini) API Key",
