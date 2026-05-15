@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router } from "../http/compat";
 import { requireAuth } from "../middleware/auth";
 import { createServerDb } from "../lib/db";
 import { DEFAULT_TABULAR_MODEL, resolveModel } from "../lib/llm";

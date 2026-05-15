@@ -361,7 +361,7 @@ function EditResolveButtons({
                 const token = session?.access_token;
                 const apiBase =
                     process.env.NEXT_PUBLIC_API_BASE_URL ??
-                    "http://localhost:3001";
+                    "/api/v1";
                 const resp = await fetch(
                     `${apiBase}/single-documents/${edit.document_id}/edits/${edit.edit_id}/${verb}`,
                     {
@@ -463,7 +463,7 @@ function DownloadButton({
             } = await authSession.auth.getSession();
             const token = session?.access_token;
             const apiBase =
-                process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+                process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api/v1";
             const qs = versionId
                 ? `?version_id=${encodeURIComponent(versionId)}`
                 : "";

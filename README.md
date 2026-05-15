@@ -1,15 +1,13 @@
 # Mike
 
-Mike is a legal document assistant with a Next.js frontend, an Express backend, Better Auth, Postgres, and Cloudflare R2-compatible object storage.
+Mike is a legal document assistant built on Next.js route handlers, Better Auth, Postgres, and Cloudflare R2-compatible object storage.
 
 Website: [mikeoss.com](https://mikeoss.com)
 
 ## Contents
 
-- `frontend/` - Next.js application
-- `backend/` - Express API, Postgres access, document processing, and database schema
-- `backend/schema.sql` - Postgres schema for fresh databases
-- `backend/migrations/` - incremental database updates for existing deployments
+- `frontend/` - Next.js app, route handlers, oRPC, Postgres access, and document processing
+- `docs/db/schema.sql` - Postgres schema for fresh databases
 
 ## Prerequisites
 
@@ -27,15 +25,15 @@ For a new Postgres database, run:
 
 ```sql
 -- copy and run the contents of:
--- backend/schema.sql
+-- docs/db/schema.sql
 ```
 
-For an existing database, do not run the full schema file over production data. Apply the incremental files in `backend/migrations/` instead.
+For an existing database, do not run the full schema file over production data.
 
 Regenerate Kysely DB types after schema changes:
 
 ```bash
-npm run db:codegen --prefix backend
+npm run db:codegen --prefix frontend
 ```
 
 ## Environment
@@ -43,18 +41,17 @@ npm run db:codegen --prefix backend
 Create local env files:
 
 ```bash
-touch backend/.env
 touch frontend/.env.local
 ```
 
-Create `backend/.env`:
+Create `frontend/.env.local`:
 
 ```bash
-PORT=3001
-FRONTEND_URL=http://localhost:3000
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3000/api/v1
 DOWNLOAD_SIGNING_SECRET=replace-with-a-random-32-byte-hex-string
 BETTER_AUTH_SECRET=replace-with-a-random-32-byte-hex-string
-BETTER_AUTH_URL=http://localhost:3001
+BETTER_AUTH_URL=http://localhost:3000/api/v1/auth
+FRONTEND_URL=http://localhost:3000
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/mike
 
 R2_ENDPOINT_URL=https://your-account-id.r2.cloudflarestorage.com
@@ -71,13 +68,7 @@ RESEND_API_KEY=your-resend-key
 USER_API_KEYS_ENCRYPTION_SECRET=your-long-random-secret
 ```
 
-Create `frontend/.env.local`:
-
-```bash
-NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
-```
-
-Provider keys are only needed for the cloud models and email features you plan to use. Model provider keys can be configured in `backend/.env` for the whole instance, or per user in **Account > Models & API Keys**. If a provider key is present in `backend/.env`, that provider is available by default and the matching browser API key field is read-only.
+Provider keys are only needed for the cloud models and email features you plan to use. Model provider keys can be configured in `frontend/.env.local` for the whole instance, or per user in **Account > Models & API Keys**. If a provider key is present in `frontend/.env.local`, that provider is available by default and the matching browser API key field is read-only.
 
 To run fully local model inference, install Ollama, pull one of the listed models, and enable it:
 
@@ -87,26 +78,19 @@ ollama pull qwen3:8b
 ollama pull qwen3:4b
 ```
 
-Then set `OLLAMA_ENABLED=true` in `backend/.env`. `OLLAMA_BASE_URL` defaults to `http://localhost:11434`.
+Then set `OLLAMA_ENABLED=true` in `frontend/.env.local`. `OLLAMA_BASE_URL` defaults to `http://localhost:11434`.
 
 ## Install
 
-Install each app package:
+Install the app package:
 
 ```bash
-npm install --prefix backend
 npm install --prefix frontend
 ```
 
 ## Run Locally
 
-Start the backend:
-
-```bash
-npm run dev --prefix backend
-```
-
-Start the main app:
+Start the app:
 
 ```bash
 npm run dev --prefix frontend
@@ -117,19 +101,18 @@ Open `http://localhost:3000`.
 ## First Run
 
 1. Sign up in the app.
-2. If you did not enable Ollama or set provider keys in `backend/.env`, open **Account > Models & API Keys** and add an Anthropic, Gemini, or OpenAI API key.
+2. If you did not enable Ollama or set provider keys in `frontend/.env.local`, open **Account > Models & API Keys** and add an Anthropic, Gemini, or OpenAI API key.
 3. Create or open a project and start chatting with documents.
 
 ## Troubleshooting
 
-**The model picker shows a missing-key warning.** Add a key for that provider in **Account > Models & API Keys**, or configure the provider key in `backend/.env` and restart the backend. For Ollama, set `OLLAMA_ENABLED=true` or `OLLAMA_BASE_URL`.
+**The model picker shows a missing-key warning.** Add a key for that provider in **Account > Models & API Keys**, or configure the provider key in `frontend/.env.local` and restart Next. For Ollama, set `OLLAMA_ENABLED=true` or `OLLAMA_BASE_URL`.
 
-**DOC or DOCX conversion fails.** Install LibreOffice locally and restart the backend so document conversion commands are available on the process path.
+**DOC or DOCX conversion fails.** Install LibreOffice locally and restart Next so document conversion commands are available on the process path.
 
 ## Useful Checks
 
 ```bash
-npm run build --prefix backend
 npm run build --prefix frontend
 npm run lint --prefix frontend
 ```

@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import { Request, Response, NextFunction } from "../http/compat";
 import { fromNodeHeaders } from "better-auth/node";
 import { auth } from "../lib/auth";
 

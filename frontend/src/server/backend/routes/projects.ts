@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router } from "../http/compat";
 import { requireAuth } from "../middleware/auth";
 import { createServerDb } from "../lib/db";
 import {
@@ -660,8 +660,8 @@ async function loadProjectFolder(
 }
 
 export async function handleDocumentUpload(
-  req: import("express").Request,
-  res: import("express").Response,
+  req: import("../http/compat").Request,
+  res: import("../http/compat").Response,
   userId: string,
   projectId: string | null,
   db: ReturnType<typeof createServerDb>,

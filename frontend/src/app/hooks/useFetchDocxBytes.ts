@@ -64,7 +64,7 @@ export function useFetchDocxBytes(
 
         const key = cacheKey(documentId, versionId, refetchKey);
         const apiBase =
-            process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+            process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api/v1";
         const qs = versionId
             ? `?version_id=${encodeURIComponent(versionId)}`
             : "";

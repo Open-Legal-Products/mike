@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router } from "../http/compat";
 import { requireAuth } from "../middleware/auth";
 import { createServerDb } from "../lib/db";
 import { buildContentDisposition, downloadFile } from "../lib/storage";

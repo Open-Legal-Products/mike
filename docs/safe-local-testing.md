@@ -21,21 +21,16 @@ keys, or real client documents for initial testing.
 Only variables prefixed with `NEXT_PUBLIC_` should be assumed safe to expose to
 the browser. Service-role keys and model-provider keys should stay server-side.
 
-For frontend testing, `frontend/.env.local` should normally contain only:
+For local testing, keep server secrets in `frontend/.env.local` only:
 
 ```env
-NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
-```
-
-Keep database and auth secrets in `backend/.env` only:
-
-```env
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3000/api/v1
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/mike
 BETTER_AUTH_SECRET=replace-with-a-random-32-byte-hex-string
 ```
 
 Model-provider keys such as `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, and
-`OPENROUTER_API_KEY` should also stay in `backend/.env`.
+`OPENAI_API_KEY` should also stay in `frontend/.env.local`.
 
 ## Test With Synthetic Documents
 

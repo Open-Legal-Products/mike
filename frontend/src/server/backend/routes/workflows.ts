@@ -1,4 +1,4 @@
-import { Router, type NextFunction, type Request, type Response } from "express";
+import { Router, type NextFunction, type Request, type Response } from "../http/compat";
 import { requireAuth } from "../middleware/auth";
 import { createServerDb } from "../lib/db";
 
