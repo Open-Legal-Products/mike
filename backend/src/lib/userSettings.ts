@@ -3,9 +3,11 @@ import {
     resolveModel,
     DEFAULT_TITLE_MODEL,
     DEFAULT_TABULAR_MODEL,
+    OLLAMA_LOW_MODELS,
     OPENAI_LOW_MODELS,
     type UserApiKeys,
 } from "./llm";
+import { isOllamaConfigured } from "./llm/ollama";
 import { getUserApiKeys as getStoredUserApiKeys } from "./userApiKeys";
 
 export type UserModelSettings = {
@@ -19,6 +21,7 @@ export type UserModelSettings = {
 // available, otherwise OpenAI nano, otherwise Claude Haiku. With no user keys
 // set, defaults to Gemini (the dev-mode env fallback).
 function resolveTitleModel(apiKeys: UserApiKeys): string {
+    if (isOllamaConfigured()) return OLLAMA_LOW_MODELS[0];
     if (apiKeys.gemini?.trim()) return DEFAULT_TITLE_MODEL;
     if (apiKeys.openai?.trim()) return OPENAI_LOW_MODELS[0];
     if (apiKeys.claude?.trim()) return "claude-haiku-4-5";

@@ -84,7 +84,8 @@ export default function ModelsAndApiKeysPage() {
                 <p className="text-sm text-gray-500 mb-4 max-w-xl">
                     You must provide your own API keys for the app to work or
                     add your API keys into the .env file if you are running your
-                    own instance of Mike.
+                    own instance of Mike. Ollama models run locally and do not
+                    use API keys.
                 </p>
                 <p className="text-xs text-gray-400 mb-4 max-w-xl">
                     Title generation automatically routes to the cheapest
@@ -132,7 +133,8 @@ function TabularModelDropdown({
     const [isOpen, setIsOpen] = useState(false);
     const selected = MODELS.find((m) => m.id === value);
     const selectedAvailable = apiKeys ? isModelAvailable(value, apiKeys) : true;
-    const groups: ("Anthropic" | "Google" | "OpenAI")[] = [
+    const groups: ("Local" | "Anthropic" | "Google" | "OpenAI")[] = [
+        "Local",
         "Anthropic",
         "Google",
         "OpenAI",

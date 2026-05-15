@@ -1,9 +1,10 @@
 import crypto from "crypto";
 import { createServerSupabase } from "./supabase";
 import type { UserApiKeys } from "./llm";
+import { isOllamaConfigured } from "./llm/ollama";
 
 type Db = ReturnType<typeof createServerSupabase>;
-export type ApiKeyProvider = "claude" | "gemini" | "openai";
+export type ApiKeyProvider = "claude" | "gemini" | "openai" | "ollama";
 export type ApiKeySource = "user" | "env" | null;
 export type ApiKeyStatus = Record<ApiKeyProvider, boolean> & {
     sources: Record<ApiKeyProvider, ApiKeySource>;
@@ -16,9 +17,12 @@ type EncryptedKeyRow = {
     auth_tag: string;
 };
 
-const PROVIDERS: ApiKeyProvider[] = ["claude", "gemini", "openai"];
+const PROVIDERS: ApiKeyProvider[] = ["claude", "gemini", "openai", "ollama"];
 
 function envApiKey(provider: ApiKeyProvider): string | null {
+    if (provider === "ollama") {
+        return isOllamaConfigured() ? "local" : null;
+    }
     if (provider === "claude") {
         return (
             process.env.ANTHROPIC_API_KEY?.trim() ||
@@ -99,10 +103,12 @@ export async function getUserApiKeyStatus(
         claude: false,
         gemini: false,
         openai: false,
+        ollama: false,
         sources: {
             claude: null,
             gemini: null,
             openai: null,
+            ollama: null,
         },
     };
 
@@ -162,6 +168,8 @@ export async function saveUserApiKey(
     value: string | null,
     db: Db = createServerSupabase(),
 ): Promise<void> {
+    if (provider === "ollama") return;
+
     const normalized = value?.trim() || null;
     if (!normalized) {
         const { error } = await db

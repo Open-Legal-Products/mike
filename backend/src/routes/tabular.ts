@@ -55,11 +55,13 @@ export const tabularRouter = Router();
 function providerLabel(provider: Provider): string {
     if (provider === "claude") return "Anthropic";
     if (provider === "openai") return "OpenAI";
+    if (provider === "ollama") return "Ollama";
     return "Gemini";
 }
 
 function missingModelApiKey(model: string, apiKeys: UserApiKeys) {
     const provider = providerForModel(model);
+    if (provider === "ollama") return null;
     if (apiKeys[provider]?.trim()) return null;
     return {
         provider,
