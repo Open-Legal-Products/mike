@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AlertCircle, Check, ChevronDown, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -227,9 +227,14 @@ function ApiKeyField({
     const [isSaving, setIsSaving] = useState(false);
     const [saved, setSaved] = useState(false);
 
-    useEffect(() => {
+    // Clear the input when the saved-key state changes (e.g. parent refetch
+    // discovers the key was added or removed). Uses the React "adjusting
+    // state during render" pattern so we avoid a cascading effect render.
+    const [prevHasSavedKey, setPrevHasSavedKey] = useState(hasSavedKey);
+    if (prevHasSavedKey !== hasSavedKey) {
+        setPrevHasSavedKey(hasSavedKey);
         setValue("");
-    }, [hasSavedKey]);
+    }
 
     const dirty = value.trim().length > 0;
 

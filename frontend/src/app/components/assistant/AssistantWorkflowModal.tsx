@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, Search, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -26,34 +26,57 @@ export function AssistantWorkflowModal({
     projectCmNumber,
     initialWorkflowId,
 }: Props) {
+    const builtins = useMemo(
+        () => BUILT_IN_WORKFLOWS.filter((w) => w.type === "assistant"),
+        [],
+    );
+
     const [workflows, setWorkflows] = useState<MikeWorkflow[]>([]);
     const [loading, setLoading] = useState(false);
     const [selected, setSelected] = useState<MikeWorkflow | null>(null);
     const [search, setSearch] = useState("");
     const [rightVisible, setRightVisible] = useState(false);
 
-    useEffect(() => {
-        if (!selected) {
-            setRightVisible(false);
-            return;
+    // Reset selected/search and seed workflows when the modal opens, using
+    // the "adjusting state during render" pattern so we don't cascade through
+    // an effect.
+    const [prevOpen, setPrevOpen] = useState(open);
+    const [prevInitialId, setPrevInitialId] = useState(initialWorkflowId);
+    if (open !== prevOpen || initialWorkflowId !== prevInitialId) {
+        setPrevOpen(open);
+        setPrevInitialId(initialWorkflowId);
+        if (!open) {
+            setSelected(null);
+            setSearch("");
+        } else {
+            setWorkflows(builtins);
+            setLoading(true);
+            if (initialWorkflowId) {
+                const match = builtins.find((w) => w.id === initialWorkflowId);
+                setSelected(match ?? null);
+            }
         }
+    }
+
+    // Hide the right panel synchronously when nothing is selected; fade it in
+    // on the next frame after a selection.
+    const [prevSelected, setPrevSelected] = useState(selected);
+    if (selected !== prevSelected) {
+        setPrevSelected(selected);
+        if (!selected) setRightVisible(false);
+    }
+    useEffect(() => {
+        if (!selected) return;
         const frame = requestAnimationFrame(() => setRightVisible(true));
         return () => cancelAnimationFrame(frame);
     }, [selected]);
 
     useEffect(() => {
-        if (!open) {
-            setSelected(null);
-            setSearch("");
-            return;
-        }
-        const builtins = BUILT_IN_WORKFLOWS.filter(
-            (w) => w.type === "assistant",
-        );
-        setWorkflows(builtins);
-        setLoading(true);
+        if (!open) return;
+        let cancelled = false;
         listWorkflows("assistant")
             .then((custom) => {
+                if (cancelled) return;
                 const all = [...builtins, ...custom];
                 setWorkflows(all);
                 if (initialWorkflowId) {
@@ -62,18 +85,15 @@ export function AssistantWorkflowModal({
                 }
             })
             .catch(() => {
-                if (initialWorkflowId) {
-                    const match = builtins.find((w) => w.id === initialWorkflowId);
-                    if (match) setSelected(match);
-                }
+                /* built-ins already loaded into state above */
             })
-            .finally(() => setLoading(false));
-        // Pre-select from builtins immediately if possible
-        if (initialWorkflowId) {
-            const match = builtins.find((w) => w.id === initialWorkflowId);
-            if (match) setSelected(match);
-        }
-    }, [open, initialWorkflowId]);
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [open, initialWorkflowId, builtins]);
 
     if (!open) return null;
 

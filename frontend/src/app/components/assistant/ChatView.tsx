@@ -328,8 +328,8 @@ export function ChatView({
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const latestUserMessageRef = useRef<HTMLDivElement>(null);
     const chatInputRef = useRef<HTMLDivElement>(null);
-    const hasScrolledRef = useRef(false);
-    const [messagesVisible, setMessagesVisible] = useState(false);
+    const [hasScrolled, setHasScrolled] = useState(false);
+    const messagesVisible = hasScrolled && messages.length > 0;
     const [showScrollButton, setShowScrollButton] = useState(false);
     const [inputHeight, setInputHeight] = useState(0);
     const [minHeight, setMinHeight] = useState("0px");
@@ -356,7 +356,7 @@ export function ChatView({
                 `calc(100dvh - ${headerHeight + gap + userMessageHeight + paddingBottom + marginBottom}px)`,
             );
         }
-    }, [messages.length, latestUserMessageRef.current]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [messages.length]);
 
     const updateScrollButton = useCallback(() => {
         const c = messagesContainerRef.current;
@@ -369,8 +369,13 @@ export function ChatView({
         const c = messagesContainerRef.current;
         if (!c) return;
         c.addEventListener("scroll", updateScrollButton);
-        updateScrollButton();
-        return () => c.removeEventListener("scroll", updateScrollButton);
+        // Defer the initial measurement so the setState inside
+        // updateScrollButton isn't reachable synchronously from this effect.
+        const id = requestAnimationFrame(updateScrollButton);
+        return () => {
+            cancelAnimationFrame(id);
+            c.removeEventListener("scroll", updateScrollButton);
+        };
     }, [messages, updateScrollButton]);
 
     const scrollToBottom = () => {
@@ -400,37 +405,40 @@ export function ChatView({
         if (isResponseLoading) scrollLatestUserToTop();
     }, [isResponseLoading, scrollLatestUserToTop]);
 
+    // Reset scroll-tracking synchronously when messages clear, so the
+    // overlay re-hides without going through an effect cascade.
+    const [prevMessagesLen, setPrevMessagesLen] = useState(messages.length);
+    if (messages.length !== prevMessagesLen) {
+        setPrevMessagesLen(messages.length);
+        if (messages.length === 0) setHasScrolled(false);
+    }
+
     useEffect(() => {
-        if (messages.length === 0) {
-            hasScrolledRef.current = false;
-            setMessagesVisible(false);
-        } else if (!hasScrolledRef.current) {
-            const userMsgCount = messages.filter(
-                (m) => m.role === "user",
-            ).length;
-            if (
-                userMsgCount >= 2 &&
-                latestUserMessageRef.current &&
-                messagesContainerRef.current
-            ) {
-                setTimeout(() => {
-                    const container = messagesContainerRef.current;
-                    const element = latestUserMessageRef.current;
-                    if (container && element) {
-                        container.scrollTo({
-                            top: element.offsetTop - 24,
-                            behavior: "instant",
-                        });
-                    }
-                    hasScrolledRef.current = true;
-                    setMessagesVisible(true);
-                }, 100);
-            } else {
-                hasScrolledRef.current = true;
-                setMessagesVisible(true);
-            }
+        if (messages.length === 0 || hasScrolled) return;
+        const userMsgCount = messages.filter((m) => m.role === "user").length;
+        if (
+            userMsgCount >= 2 &&
+            latestUserMessageRef.current &&
+            messagesContainerRef.current
+        ) {
+            const id = setTimeout(() => {
+                const container = messagesContainerRef.current;
+                const element = latestUserMessageRef.current;
+                if (container && element) {
+                    container.scrollTo({
+                        top: element.offsetTop - 24,
+                        behavior: "instant",
+                    });
+                }
+                setHasScrolled(true);
+            }, 100);
+            return () => clearTimeout(id);
         }
-    }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
+        // No scroll needed; reveal on the next microtask so the setState
+        // isn't reachable synchronously from the effect body.
+        const id = setTimeout(() => setHasScrolled(true), 0);
+        return () => clearTimeout(id);
+    }, [messages, hasScrolled]);
 
     useEffect(() => {
         if (panelMounted && window.innerWidth < 768) {
@@ -494,8 +502,8 @@ export function ChatView({
                                         {msg.role === "user" ? (
                                             <UserMessage
                                                 content={msg.content ?? ""}
-                                                files={(msg as any).files}
-                                                workflow={(msg as any).workflow}
+                                                files={msg.files}
+                                                workflow={msg.workflow}
                                             />
                                         ) : (
                                             <AssistantMessage
@@ -505,11 +513,11 @@ export function ChatView({
                                                     i === messages.length - 1 &&
                                                     isResponseLoading
                                                 }
-                                                isError={!!(msg as any).error}
+                                                isError={!!msg.error}
                                                 errorMessage={
-                                                    typeof (msg as any).error ===
+                                                    typeof msg.error ===
                                                     "string"
-                                                        ? (msg as any).error
+                                                        ? msg.error
                                                         : undefined
                                                 }
                                                 annotations={msg.annotations}

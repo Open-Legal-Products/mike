@@ -37,13 +37,21 @@ export function useFetchDocxBytes(
     versionId?: string | null,
     refetchKey?: number,
 ): FetchDocxResult {
-    const initialKey = documentId
+    const key = documentId
         ? cacheKey(documentId, versionId, refetchKey)
         : null;
-    const [bytes, setBytes] = useState<ArrayBuffer | null>(
-        initialKey ? (bytesCache.get(initialKey) ?? null) : null,
+    const apiBase =
+        process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+    const qs = versionId ? `?version_id=${encodeURIComponent(versionId)}` : "";
+    const url = documentId
+        ? `${apiBase}/single-documents/${documentId}/docx${qs}`
+        : null;
+    const cached = key ? (bytesCache.get(key) ?? null) : null;
+
+    const [bytes, setBytes] = useState<ArrayBuffer | null>(cached);
+    const [downloadUrl, setDownloadUrl] = useState<string | null>(
+        cached ? url : null,
     );
-    const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -51,38 +59,37 @@ export function useFetchDocxBytes(
         documentId,
         versionId,
         refetchKey,
-        initialKey,
-        cacheHit: initialKey ? bytesCache.has(initialKey) : null,
+        key,
+        cacheHit: key ? bytesCache.has(key) : null,
     });
 
-    useEffect(() => {
-        if (!documentId) {
+    // Re-seed state synchronously when the cache key changes (instead of
+    // doing it from inside the effect).
+    const [prevKey, setPrevKey] = useState(key);
+    if (key !== prevKey) {
+        setPrevKey(key);
+        if (!key) {
             setBytes(null);
             setDownloadUrl(null);
-            return;
-        }
-
-        const key = cacheKey(documentId, versionId, refetchKey);
-        const apiBase =
-            process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
-        const qs = versionId
-            ? `?version_id=${encodeURIComponent(versionId)}`
-            : "";
-        const url = `${apiBase}/single-documents/${documentId}/docx${qs}`;
-
-        // Cache hit: reuse bytes synchronously, no network, no spinner.
-        const cached = bytesCache.get(key);
-        if (cached) {
+            setLoading(false);
+            setError(null);
+        } else if (cached) {
             setBytes(cached);
             setDownloadUrl(url);
             setLoading(false);
             setError(null);
-            return;
+        } else {
+            setLoading(true);
+            setError(null);
         }
+    }
+
+    useEffect(() => {
+        if (!documentId || !key || !url) return;
+        // Cache hit was already handled synchronously above.
+        if (bytesCache.has(key)) return;
 
         let cancelled = false;
-        setLoading(true);
-        setError(null);
 
         const pending =
             inFlight.get(key) ??

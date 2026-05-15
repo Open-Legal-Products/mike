@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // One-off CJS conversion scripts, not part of the app bundle.
+    "src/scripts/**",
   ]),
 ]);
 

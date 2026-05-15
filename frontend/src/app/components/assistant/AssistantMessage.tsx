@@ -322,23 +322,30 @@ type StatusState = "active" | "error" | null;
 function ResponseStatus({ status }: { status: StatusState }) {
     const [showDone, setShowDone] = useState(false);
     const [doneVisible, setDoneVisible] = useState(false);
-    const wasActiveRef = useRef(false);
 
     const isActive = status === "active";
     const isError = status === "error";
 
-    useEffect(() => {
-        if (wasActiveRef.current && !isActive) {
+    // Detect the active→inactive transition during render so we can flip the
+    // "done" badge synchronously without an effect-driven cascade.
+    const [prevActive, setPrevActive] = useState(isActive);
+    if (isActive !== prevActive) {
+        setPrevActive(isActive);
+        if (prevActive && !isActive) {
             setShowDone(true);
             setDoneVisible(true);
-            const t = setTimeout(() => setDoneVisible(false), 1500);
-            return () => clearTimeout(t);
-        } else if (!wasActiveRef.current && isActive) {
+        } else if (!prevActive && isActive) {
             setShowDone(false);
             setDoneVisible(false);
         }
-        wasActiveRef.current = isActive;
-    }, [isActive]);
+    }
+
+    // Auto-hide the badge 1.5s after it appears.
+    useEffect(() => {
+        if (!doneVisible) return;
+        const t = setTimeout(() => setDoneVisible(false), 1500);
+        return () => clearTimeout(t);
+    }, [doneVisible]);
 
     return (
         <div className="w-full h-9 flex items-center mb-2">
@@ -906,7 +913,8 @@ function MarkdownContent({
                         />
                     ),
                     p: ({ node, ...props }) => {
-                        const parent = (node as any)?.parent;
+                        const parent = (node as { parent?: { type?: string } })
+                            ?.parent;
                         if (parent?.type === "listItem") {
                             return (
                                 <p

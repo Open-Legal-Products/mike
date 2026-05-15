@@ -76,10 +76,22 @@ export function WorkflowList() {
             .finally(() => setLoading(false));
     }, []);
 
-    useEffect(() => {
+    // Reset selection + close the actions menu when any filter changes,
+    // using the adjusting-state-during-render pattern.
+    const [prevFilters, setPrevFilters] = useState({
+        activeTab,
+        practiceFilter,
+        typeFilter,
+    });
+    if (
+        prevFilters.activeTab !== activeTab ||
+        prevFilters.practiceFilter !== practiceFilter ||
+        prevFilters.typeFilter !== typeFilter
+    ) {
+        setPrevFilters({ activeTab, practiceFilter, typeFilter });
         setSelectedIds([]);
         setActionsOpen(false);
-    }, [activeTab, practiceFilter, typeFilter]);
+    }
 
     useEffect(() => {
         function handleClick(e: MouseEvent) {
@@ -462,9 +474,9 @@ export function WorkflowList() {
                                         Hidden Workflows
                                     </p>
                                     <p className="mt-1 text-xs text-gray-400 text-left">
-                                        Built-in workflows you've hidden will
-                                        appear here. You can unhide them at any
-                                        time.
+                                        Built-in workflows you&apos;ve hidden
+                                        will appear here. You can unhide them
+                                        at any time.
                                     </p>
                                 </>
                             ) : (

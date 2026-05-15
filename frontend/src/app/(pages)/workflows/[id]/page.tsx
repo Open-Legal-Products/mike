@@ -41,11 +41,19 @@ export default function WorkflowDetailPage({ params }: Props) {
     const { id } = use(params);
     const router = useRouter();
 
-    const [workflow, setWorkflow] = useState<MikeWorkflow | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [notFound, setNotFound] = useState(false);
-
     const isBuiltin = BUILT_IN_IDS.has(id);
+    // Resolve built-in workflows synchronously so we don't need an effect to
+    // hydrate state for them. Async-loaded workflows still start with null.
+    const initialBuiltin = isBuiltin
+        ? (BUILT_IN_WORKFLOWS.find((w) => w.id === id) ?? null)
+        : null;
+
+    const [workflow, setWorkflow] = useState<MikeWorkflow | null>(
+        initialBuiltin,
+    );
+    const [loading, setLoading] = useState(!isBuiltin);
+    const [notFound, setNotFound] = useState(isBuiltin && !initialBuiltin);
+
     const readOnly =
         isBuiltin ||
         (workflow?.is_system ?? false) ||
@@ -53,8 +61,10 @@ export default function WorkflowDetailPage({ params }: Props) {
     const canShare = !readOnly && (workflow?.is_owner ?? true);
 
     // Editor state
-    const [promptMd, setPromptMd] = useState("");
-    const [columns, setColumns] = useState<ColumnConfig[]>([]);
+    const [promptMd, setPromptMd] = useState(initialBuiltin?.prompt_md ?? "");
+    const [columns, setColumns] = useState<ColumnConfig[]>(
+        initialBuiltin?.columns_config ?? [],
+    );
 
     // Save status
     const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
@@ -86,21 +96,11 @@ export default function WorkflowDetailPage({ params }: Props) {
     }, [colActionsOpen]);
 
     // ---------------------------------------------------------------------------
-    // Load workflow
+    // Load workflow (async path only; built-ins are resolved synchronously
+    // via the lazy useState initializers above)
     // ---------------------------------------------------------------------------
     useEffect(() => {
-        if (isBuiltin) {
-            const wf = BUILT_IN_WORKFLOWS.find((w) => w.id === id) ?? null;
-            if (!wf) {
-                setNotFound(true);
-            } else {
-                setWorkflow(wf);
-                setPromptMd(wf.prompt_md ?? "");
-                setColumns(wf.columns_config ?? []);
-            }
-            setLoading(false);
-            return;
-        }
+        if (isBuiltin) return;
 
         getWorkflow(id)
             .then((wf) => {

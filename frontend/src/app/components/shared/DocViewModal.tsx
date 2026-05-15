@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { Download, Trash2, X } from "lucide-react";
 import { DocView } from "./DocView";
@@ -24,8 +24,11 @@ export function DocViewModal({
     onClose,
     onDelete,
 }: Props) {
-    const [mounted, setMounted] = useState(false);
-    useEffect(() => setMounted(true), []);
+    const mounted = useSyncExternalStore(
+        () => () => {},
+        () => true,
+        () => false,
+    );
 
     if (!doc || !mounted) return null;
 

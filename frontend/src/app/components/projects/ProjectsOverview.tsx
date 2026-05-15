@@ -49,9 +49,13 @@ export function ProjectsOverview() {
             .finally(() => setLoading(false));
     }, []);
 
-    useEffect(() => {
+    // Clear selection when the active tab changes, using the adjusting-state-
+    // during-render pattern so we avoid a cascading effect render.
+    const [prevActiveTab, setPrevActiveTab] = useState(activeTab);
+    if (activeTab !== prevActiveTab) {
+        setPrevActiveTab(activeTab);
         setSelectedIds([]);
-    }, [activeTab]);
+    }
 
     useEffect(() => {
         function handleClick(e: MouseEvent) {

@@ -48,11 +48,7 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
     >(null);
 
     const loadChats = useCallback(async () => {
-        if (!user) {
-            setChats([]);
-            return;
-        }
-
+        if (!user) return;
         try {
             const data = await listChats();
             setChats(data);
@@ -61,15 +57,33 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
         }
     }, [user]);
 
-    useEffect(() => {
-        if (!user) {
+    // Clear chat state synchronously when the user logs out so we don't
+    // leak the previous user's chats during a navigation.
+    const [prevUserId, setPrevUserId] = useState(user?.id ?? null);
+    const currentUserId = user?.id ?? null;
+    if (currentUserId !== prevUserId) {
+        setPrevUserId(currentUserId);
+        if (!currentUserId) {
             setChats([]);
             setCurrentChatId(null);
-            return;
         }
+    }
 
-        void loadChats();
-    }, [user, loadChats]);
+    useEffect(() => {
+        if (!user) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const data = await listChats();
+                if (!cancelled) setChats(data);
+            } catch {
+                if (!cancelled) setChats([]);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [user]);
 
     const replaceChatId = useCallback(
         (oldChatId: string, newChatId: string, title?: string) => {

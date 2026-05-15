@@ -56,9 +56,13 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
             .catch(() => {});
     }, [user]);
 
-    useEffect(() => {
+    // Enable animation as soon as the sidebar is closed, so it animates back
+    // open on the next toggle.
+    const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+    if (isOpen !== prevIsOpen) {
+        setPrevIsOpen(isOpen);
         if (!isOpen) setShouldAnimate(true);
-    }, [isOpen]);
+    }
 
     useEffect(() => {
         const handleClickOutside = () => setIsDropdownOpen(false);

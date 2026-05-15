@@ -1,5 +1,6 @@
 "use client";
 
+import { createElement } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -13,7 +14,6 @@ interface Props {
 }
 
 export function WFColumnViewModal({ col, onClose }: Props) {
-    const FormatIcon = formatIcon(col.format ?? "text");
     return createPortal(
         <div className="fixed inset-0 z-[101] flex items-center justify-center bg-black/20 backdrop-blur-xs">
             <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col h-[600px]">
@@ -35,7 +35,9 @@ export function WFColumnViewModal({ col, onClose }: Props) {
                     <div>
                         <p className="text-sm font-medium text-gray-500 mb-2">Format</p>
                         <span className="inline-flex items-center gap-1.5 text-sm text-gray-700">
-                            <FormatIcon className="h-3.5 w-3.5 text-gray-400" />
+                            {createElement(formatIcon(col.format ?? "text"), {
+                                className: "h-3.5 w-3.5 text-gray-400",
+                            })}
                             {formatLabel(col.format ?? "text")}
                         </span>
                     </div>

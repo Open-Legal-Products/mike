@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 
 export function PreResponseWrapper({
@@ -17,19 +17,27 @@ export function PreResponseWrapper({
     /** Tighter typography + child gap for narrow side panels (e.g. TR chat). */
     compact?: boolean;
 }) {
-    const [userToggled, setUserToggled] = useState(false);
-    const [isOpen, setIsOpen] = useState(!shouldMinimize);
     // Once content has streamed in (shouldMinimize=true even once), stay
     // minimized even if a later render briefly evaluates shouldMinimize=false.
     // Without this latch, the wrapper visibly pops open when isStreaming
-    // flips off at the end of the response.
-    const hasMinimizedRef = useRef(shouldMinimize);
+    // flips off at the end of the response. Latch via state (not a ref) so
+    // it's compatible with react-hooks render-purity rules.
+    const [hasEverMinimized, setHasEverMinimized] = useState(shouldMinimize);
+    const [prevShouldMinimize, setPrevShouldMinimize] = useState(shouldMinimize);
+    if (shouldMinimize !== prevShouldMinimize) {
+        setPrevShouldMinimize(shouldMinimize);
+        if (shouldMinimize) setHasEverMinimized(true);
+    }
 
-    useEffect(() => {
-        if (shouldMinimize) hasMinimizedRef.current = true;
-        if (userToggled) return;
-        setIsOpen(!shouldMinimize && !hasMinimizedRef.current);
-    }, [shouldMinimize, userToggled]);
+    // Null = follow the latched signal; boolean = the user explicitly opened
+    // or closed it.
+    const [userOpenOverride, setUserOpenOverride] = useState<boolean | null>(
+        null,
+    );
+    const isOpen =
+        userOpenOverride !== null
+            ? userOpenOverride
+            : !shouldMinimize && !hasEverMinimized;
 
     const stepWord = `step${stepCount === 1 ? "" : "s"}`;
     const label = isStreaming
@@ -43,10 +51,7 @@ export function PreResponseWrapper({
         <div className="border border-gray-200 rounded-lg px-3 py-2">
             <button
                 type="button"
-                onClick={() => {
-                    setUserToggled(true);
-                    setIsOpen((v) => !v);
-                }}
+                onClick={() => setUserOpenOverride(!isOpen)}
                 className={`w-full flex items-center justify-between font-serif text-gray-500 hover:text-gray-700 transition-colors ${buttonTextClass}`}
             >
                 <span className="flex items-baseline min-w-0">

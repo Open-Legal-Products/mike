@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,14 +22,19 @@ export default function AccountPage() {
     const [deleteConfirm, setDeleteConfirm] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
-    useEffect(() => {
-        if (profile?.displayName) {
-            setDisplayName(profile.displayName);
-        }
-        if (profile?.organisation) {
-            setOrganisation(profile.organisation);
-        }
-    }, [profile]);
+    // Initialize inputs from the loaded profile. Track the previous profile
+    // values so we only overwrite the input when the profile actually changes
+    // (not on every re-render of the parent).
+    const [prevProfileName, setPrevProfileName] = useState(profile?.displayName);
+    const [prevProfileOrg, setPrevProfileOrg] = useState(profile?.organisation);
+    if (profile?.displayName && profile.displayName !== prevProfileName) {
+        setPrevProfileName(profile.displayName);
+        setDisplayName(profile.displayName);
+    }
+    if (profile?.organisation && profile.organisation !== prevProfileOrg) {
+        setPrevProfileOrg(profile.organisation);
+        setOrganisation(profile.organisation);
+    }
 
     const handleLogout = async () => {
         await signOut();
