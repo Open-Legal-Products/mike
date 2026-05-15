@@ -9,6 +9,7 @@ import {
 import { downloadFile, uploadFile, storageKey } from "../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../lib/convert";
 import { checkProjectAccess } from "../lib/access";
+import { normalizeSharedWith, emailInSharedWith } from "../lib/projectAccess";
 import { singleFileUpload } from "../lib/upload";
 
 export const projectsRouter = Router();
@@ -36,11 +37,12 @@ projectsRouter.get("/", requireAuth, async (req, res) => {
     .order("created_at", { ascending: false });
   if (ownError) return void res.status(500).json({ detail: ownError.message });
 
-  const { data: sharedProjects, error: sharedError } = userEmail
+  const normalizedEmail = userEmail?.toLowerCase();
+  const { data: sharedProjects, error: sharedError } = normalizedEmail
     ? await db
         .from("projects")
         .select("*")
-        .filter("shared_with", "cs", JSON.stringify([userEmail]))
+        .filter("shared_with", "cs", JSON.stringify([normalizedEmail]))
         .neq("user_id", userId)
         .order("created_at", { ascending: false })
     : { data: [], error: null };
@@ -98,7 +100,7 @@ projectsRouter.post("/", requireAuth, async (req, res) => {
       user_id: userId,
       name: name.trim(),
       cm_number: cm_number ?? null,
-      shared_with: shared_with ?? [],
+      shared_with: normalizeSharedWith(shared_with ?? []),
     })
     .select("*")
     .single();
@@ -123,9 +125,8 @@ projectsRouter.get("/:projectId", requireAuth, async (req, res) => {
 
   const canAccess =
     project.user_id === userId ||
-    (userEmail &&
-      Array.isArray(project.shared_with) &&
-      project.shared_with.includes(userEmail));
+    (Array.isArray(project.shared_with) &&
+      emailInSharedWith(project.shared_with as string[], userEmail));
   if (!canAccess)
     return void res.status(404).json({ detail: "Project not found" });
 
@@ -243,17 +244,7 @@ projectsRouter.patch("/:projectId", requireAuth, async (req, res) => {
   if (req.body.name != null) updates.name = req.body.name;
   if (req.body.cm_number != null) updates.cm_number = req.body.cm_number;
   if (Array.isArray(req.body.shared_with)) {
-    // Normalise: lowercase + dedupe + drop empties.
-    const seen = new Set<string>();
-    const cleaned: string[] = [];
-    for (const raw of req.body.shared_with) {
-      if (typeof raw !== "string") continue;
-      const e = raw.trim().toLowerCase();
-      if (!e || seen.has(e)) continue;
-      seen.add(e);
-      cleaned.push(e);
-    }
-    updates.shared_with = cleaned;
+    updates.shared_with = normalizeSharedWith(req.body.shared_with);
   }
 
   const db = createServerSupabase();
