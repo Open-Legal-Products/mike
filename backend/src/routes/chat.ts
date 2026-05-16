@@ -142,6 +142,17 @@ chatRouter.get("/", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
     const db = createServerSupabase();
 
+    // Parse pagination params
+    const rawLimit = Number(req.query.limit);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0
+        ? Math.min(rawLimit, 200)
+        : 50;
+    const rawBefore = typeof req.query.before === "string" ? req.query.before : null;
+    if (rawBefore !== null && Number.isNaN(new Date(rawBefore).getTime())) {
+        return void res.status(400).json({ detail: "before must be a valid ISO 8601 timestamp" });
+    }
+    const before = rawBefore;
+
     const { data: ownProjects, error: projErr } = await db
         .from("projects")
         .select("id")
@@ -156,11 +167,18 @@ chatRouter.get("/", requireAuth, async (req, res) => {
             ? `user_id.eq.${userId},project_id.in.(${ownProjectIds.join(",")})`
             : `user_id.eq.${userId}`;
 
-    const { data, error } = await db
+    let query = db
         .from("chats")
         .select("*")
         .or(filter)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(limit);
+
+    if (before) {
+        query = query.lt("created_at", before);
+    }
+
+    const { data, error } = await query;
     if (error) return void res.status(500).json({ detail: error.message });
     res.json(data ?? []);
 });
