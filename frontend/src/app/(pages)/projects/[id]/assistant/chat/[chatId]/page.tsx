@@ -236,6 +236,12 @@ export default function ProjectAssistantChatPage({ params }: Props) {
     const [reloadingDocIds, setReloadingDocIds] = useState<Set<string>>(
         () => new Set(),
     );
+    const [resolvedEditStatuses, setResolvedEditStatuses] = useState<
+        Record<string, "accepted" | "rejected">
+    >({});
+    const [reloadingEditIds, setReloadingEditIds] = useState<Set<string>>(
+        () => new Set(),
+    );
 
     const activeTab = tabs.find((t) => t.documentId === activeTabId) ?? null;
     const tabBarRef = useRef<HTMLDivElement | null>(null);
@@ -515,18 +521,73 @@ export default function ProjectAssistantChatPage({ params }: Props) {
         });
     };
 
-    const handleEditResolved = (_args: {
+    const handleEditResolveStart = (args: {
+        editId: string;
+        documentId: string;
+        verb: "accept" | "reject";
+    }) => {
+        setReloadingDocIds((prev) => {
+            if (prev.has(args.documentId)) return prev;
+            const next = new Set(prev);
+            next.add(args.documentId);
+            return next;
+        });
+        setReloadingEditIds((prev) => {
+            if (prev.has(args.editId)) return prev;
+            const next = new Set(prev);
+            next.add(args.editId);
+            return next;
+        });
+    };
+
+    const handleEditResolved = (args: {
         editId: string;
         documentId: string;
         status: "accepted" | "rejected";
         versionId: string | null;
         downloadUrl: string | null;
+        isBulk?: boolean;
     }) => {
-        // Re-render after accept/reject is disabled while we verify the
-        // client-side optimistic mutation works on its own. Re-enable by
-        // bumping versionId + refetchKey on the matching tab and marking
-        // it reloading like before.
-        void _args;
+        // Mark edit as resolved so EditCard UI updates
+        setResolvedEditStatuses((prev) => ({
+            ...prev,
+            [args.editId]: args.status,
+        }));
+        // Clear loading states
+        setReloadingDocIds((prev) => {
+            if (!prev.has(args.documentId)) return prev;
+            const next = new Set(prev);
+            next.delete(args.documentId);
+            return next;
+        });
+        setReloadingEditIds((prev) => {
+            if (!prev.has(args.editId)) return prev;
+            const next = new Set(prev);
+            next.delete(args.editId);
+            return next;
+        });
+        // For bulk operations, skip refetchKey bump (handled by handleBulkComplete)
+        if (args.isBulk) return;
+        // Bump refetchKey to invalidate the cached docx bytes and re-render
+        // with the resolved changes.
+        setTabs((prev) =>
+            prev.map((t) =>
+                t.documentId === args.documentId
+                    ? { ...t, refetchKey: (t.refetchKey ?? 0) + 1 }
+                    : t,
+            ),
+        );
+    };
+
+    const handleBulkComplete = (documentIds: string[]) => {
+        // Bump refetchKey once for all affected documents after bulk operation
+        setTabs((prev) =>
+            prev.map((t) =>
+                documentIds.includes(t.documentId)
+                    ? { ...t, refetchKey: (t.refetchKey ?? 0) + 1 }
+                    : t,
+            ),
+        );
     };
 
     const patchTab = (documentId: string, patch: Partial<DocTab>) => {
@@ -1058,7 +1119,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                         {activeTab ? (
                             isDocxTab(activeTab.filename) ? (
                                 <DocxView
-                                    key={activeTab.documentId}
+                                    key={`${activeTab.documentId}-${activeTab.refetchKey ?? 0}`}
                                     documentId={activeTab.documentId}
                                     versionId={activeTab.versionId}
                                     refetchKey={activeTab.refetchKey}
@@ -1203,10 +1264,20 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                                                 handleEditViewClick
                                             }
                                             onOpenDocument={handleOpenDocument}
+                                            onEditResolveStart={
+                                                handleEditResolveStart
+                                            }
                                             onEditResolved={handleEditResolved}
+                                            onBulkComplete={handleBulkComplete}
                                             onEditError={handleEditError}
                                             isDocReloading={(docId) =>
                                                 reloadingDocIds.has(docId)
+                                            }
+                                            isEditReloading={(editId) =>
+                                                reloadingEditIds.has(editId)
+                                            }
+                                            resolvedEditStatuses={
+                                                resolvedEditStatuses
                                             }
                                         />
                                     ),

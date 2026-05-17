@@ -220,6 +220,7 @@ export function ChatView({
             status: "accepted" | "rejected";
             versionId: string | null;
             downloadUrl: string | null;
+            isBulk?: boolean;
         }) => {
             setResolvedEditStatuses((prev) => ({
                 ...prev,
@@ -243,22 +244,48 @@ export function ChatView({
             // resolve triggered from the inline EditCard or BulkEditActions
             // leaves the panel buttons looking live.
             setTabs((prev) =>
-                prev.map((t) =>
-                    t.kind === "edit" && t.edit.edit_id === args.editId
-                        ? {
-                              ...t,
-                              edit: { ...t.edit, status: args.status },
-                          }
-                        : t,
-                ),
+                prev.map((t) => {
+                    if (t.documentId !== args.documentId) return t;
+                    // For bulk operations, skip refetchKey bump (handled by onBulkComplete)
+                    if (args.isBulk) {
+                        if (t.kind === "edit" && t.edit.edit_id === args.editId) {
+                            return { ...t, edit: { ...t.edit, status: args.status } };
+                        }
+                        return t;
+                    }
+                    // Single edit: bump refetchKey immediately
+                    const refetchKey = (t.refetchKey ?? 0) + 1;
+                    if (t.kind === "edit" && t.edit.edit_id === args.editId) {
+                        return {
+                            ...t,
+                            edit: { ...t.edit, status: args.status },
+                            refetchKey,
+                        };
+                    }
+                    return { ...t, refetchKey };
+                }),
             );
-            // Accept/reject mutates bytes for this document's current
-            // version; drop the cache so the next DocxView render (or an
-            // explicit re-open) fetches the fresh file.
-            invalidateDocxBytes(args.documentId);
+            // For single edits, invalidate cache immediately
+            if (!args.isBulk) {
+                invalidateDocxBytes(args.documentId);
+            }
         },
         [],
     );
+
+    const handleBulkComplete = useCallback((documentIds: string[]) => {
+        // Bump refetchKey once for all affected documents after bulk operation
+        setTabs((prev) =>
+            prev.map((t) => {
+                if (!documentIds.includes(t.documentId)) return t;
+                return { ...t, refetchKey: (t.refetchKey ?? 0) + 1 };
+            }),
+        );
+        // Invalidate cache for all affected documents
+        for (const docId of documentIds) {
+            invalidateDocxBytes(docId);
+        }
+    }, []);
 
 
     const patchTab = useCallback(
@@ -532,6 +559,9 @@ export function ChatView({
                                                 }
                                                 onEditResolved={
                                                     handleEditResolved
+                                                }
+                                                onBulkComplete={
+                                                    handleBulkComplete
                                                 }
                                                 onEditError={handleEditError}
                                                 isDocReloading={(docId) =>
