@@ -8,7 +8,7 @@ on:
 
 jobs:
   frontend:
-    name: Frontend build + lint
+    name: Frontend checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,9 +19,17 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
         working-directory: frontend
-      - run: npm run lint
+      - name: Format check (Prettier)
+        run: npm run format:check
         working-directory: frontend
-      - run: npm run build
+      - name: Lint (ESLint)
+        run: npm run lint
+        working-directory: frontend
+      - name: Type check (tsc)
+        run: npm run typecheck
+        working-directory: frontend
+      - name: Build (Next.js)
+        run: npm run build
         working-directory: frontend
         env:
           NEXT_TELEMETRY_DISABLED: "1"
@@ -31,7 +39,7 @@ jobs:
           NEXT_PUBLIC_COGNITO_CLIENT_ID: "ci-client"
 
   backend:
-    name: Backend build + migrate
+    name: Backend checks
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -56,7 +64,17 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
         working-directory: backend
-      - run: npm run build
+      - name: Format check (Prettier)
+        run: npm run format:check
+        working-directory: backend
+      - name: Lint (ESLint)
+        run: npm run lint
+        working-directory: backend
+      - name: Type check (tsc)
+        run: npm run typecheck
+        working-directory: backend
+      - name: Build (tsc)
+        run: npm run build
         working-directory: backend
       - name: Run Drizzle migrations
         run: npm run db:migrate

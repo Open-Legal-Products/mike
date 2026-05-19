@@ -6,6 +6,9 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "format:check": "prettier --check .",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts"
   },
@@ -33,15 +36,18 @@
     "pg": "^8.13.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.18.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/multer": "^1.4.12",
     "@types/node": "^22.14.1",
     "@types/pg": "^8.11.0",
     "drizzle-kit": "^0.28.0",
+    "eslint": "^9.18.0",
     "prettier": "^3.8.1",
     "tsx": "^4.19.3",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.20.0"
   },
   "license": "AGPL-3.0-only"
 }
