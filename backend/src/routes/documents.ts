@@ -23,6 +23,7 @@ import {
 } from "../lib/documentVersions";
 import { ensureDocAccess } from "../lib/access";
 import { singleFileUpload } from "../lib/upload";
+import { validateMagicBytes } from "../lib/magicBytes";
 
 export const documentsRouter = Router();
 const ALLOWED_TYPES = new Set(["pdf", "docx", "doc"]);
@@ -411,6 +412,9 @@ documentsRouter.post(
         detail: `Uploaded file type (${suffix}) does not match document type (${doc.file_type}).`,
       });
     }
+
+    if (suffix && !validateMagicBytes(file.buffer, suffix))
+      return void res.status(400).json({ detail: "File content does not match the declared type." });
 
     // Peg the new version into a predictable /versions/:id path under the
     // existing document folder so ops can spot the history in storage.
@@ -850,6 +854,9 @@ async function handleDocumentUpload(
       .json({
         detail: `Unsupported file type: ${suffix}. Allowed: pdf, docx, doc`,
       });
+
+  if (!validateMagicBytes(file.buffer, suffix))
+    return void res.status(400).json({ detail: "File content does not match the declared type." });
 
   const content = file.buffer;
   const { data: doc, error: insertErr } = await db
