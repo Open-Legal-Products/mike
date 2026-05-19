@@ -4,138 +4,138 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --color-background: var(--background);
-    --color-foreground: var(--foreground);
-    --font-sans: var(--font-inter);
-    --font-serif: var(--font-eb-garamond);
-    --color-blue: rgb(0, 136, 255);
-    --color-blue-50: rgba(0, 136, 255, 0.05);
-    --color-blue-100: rgba(0, 136, 255, 0.1);
-    --color-blue-200: rgba(0, 136, 255, 0.3);
-    --color-blue-600: rgb(0, 136, 255);
-    --color-blue-700: rgb(0, 120, 230);
-    --color-sidebar-ring: var(--sidebar-ring);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
-    --color-ring: var(--ring);
-    --color-input: var(--input);
-    --color-border: var(--border);
-    --color-destructive: var(--destructive);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-accent: var(--accent);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-muted: var(--muted);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-secondary: var(--secondary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-primary: var(--primary);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-popover: var(--popover);
-    --color-card-foreground: var(--card-foreground);
-    --color-card: var(--card);
-    --radius-sm: calc(var(--radius) - 4px);
-    --radius-md: calc(var(--radius) - 2px);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-eb-garamond);
+  --color-blue: rgb(0, 136, 255);
+  --color-blue-50: rgba(0, 136, 255, 0.05);
+  --color-blue-100: rgba(0, 136, 255, 0.1);
+  --color-blue-200: rgba(0, 136, 255, 0.3);
+  --color-blue-600: rgb(0, 136, 255);
+  --color-blue-700: rgb(0, 120, 230);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
 :root {
-    --radius: 0.625rem;
-    --color-azure: 0, 136, 255;
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.646 0.222 41.116);
-    --chart-2: oklch(0.6 0.118 184.704);
-    --chart-3: oklch(0.398 0.07 227.392);
-    --chart-4: oklch(0.828 0.189 84.429);
-    --chart-5: oklch(0.769 0.188 70.08);
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+  --radius: 0.625rem;
+  --color-azure: 0, 136, 255;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.488 0.243 264.376);
-    --chart-2: oklch(0.696 0.17 162.48);
-    --chart-3: oklch(0.769 0.188 70.08);
-    --chart-4: oklch(0.627 0.265 303.9);
-    --chart-5: oklch(0.645 0.246 16.439);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
 }
 
 @layer base {
-    * {
-        @apply border-border outline-ring/50;
-    }
+  * {
+    @apply border-border outline-ring/50;
+  }
 
-    body {
-        @apply bg-background text-foreground;
-    }
+  body {
+    @apply bg-background text-foreground;
+  }
 
-    button {
-        cursor: pointer;
-    }
+  button {
+    cursor: pointer;
+  }
 }
 
 .usc-section {
-    font-family: var(--font-serif);
-    line-height: 1.6;
+  font-family: var(--font-serif);
+  line-height: 1.6;
 }
 
 .usc-section h1,
@@ -144,70 +144,70 @@
 .usc-section h4,
 .usc-section h5,
 .usc-section h6 {
-    font-family: var(--font-serif);
-    font-weight: 600;
-    margin-top: 1.5em;
-    margin-bottom: 0.5em;
-    line-height: 1.2;
+  font-family: var(--font-serif);
+  font-weight: 600;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  line-height: 1.2;
 }
 
 .usc-section h1 {
-    font-size: 1.5em;
+  font-size: 1.5em;
 }
 
 .usc-section h2 {
-    font-size: 1.25em;
+  font-size: 1.25em;
 }
 
 .usc-section h3 {
-    font-size: 1.125em;
+  font-size: 1.125em;
 }
 
 .usc-section p {
-    margin-bottom: 1em;
+  margin-bottom: 1em;
 }
 
 /* Inline cross-reference links within section text */
 .usc-xref,
 .usc-section a {
-    color: rgb(var(--color-azure));
-    text-decoration: none;
-    border-bottom: 1px dotted rgba(var(--color-azure), 0.4);
-    transition: border-bottom-color 0.2s;
+  color: rgb(var(--color-azure));
+  text-decoration: none;
+  border-bottom: 1px dotted rgba(var(--color-azure), 0.4);
+  transition: border-bottom-color 0.2s;
 }
 
 .usc-xref:hover,
 .usc-section a:hover {
-    border-bottom-color: rgb(var(--color-azure));
+  border-bottom-color: rgb(var(--color-azure));
 }
 
 /* Remove automatic list styling for USC section content */
 /* The labels are already embedded in the HTML content */
 .usc-section ol,
 .usc-section ul {
-    list-style: none !important;
-    padding-left: 0 !important;
-    margin: 0;
+  list-style: none !important;
+  padding-left: 0 !important;
+  margin: 0;
 }
 
 .usc-section li {
-    margin-bottom: 0.125em;
-    text-indent: -1.25em;
-    padding-left: 1.25em;
+  margin-bottom: 0.125em;
+  text-indent: -1.25em;
+  padding-left: 1.25em;
 }
 
 /* Add indentation for nested lists */
 .usc-section ol ol,
 .usc-section ol ul,
 .usc-section ul ol {
-    padding-left: 0.75em !important;
-    margin-top: 0;
+  padding-left: 0.75em !important;
+  margin-top: 0;
 }
 
 /* ─── CFR (Code of Federal Regulations) ────────────────────────── */
 .cfr-section {
-    font-family: var(--font-serif);
-    line-height: 1.6;
+  font-family: var(--font-serif);
+  line-height: 1.6;
 }
 
 .cfr-section h1,
@@ -216,282 +216,283 @@
 .cfr-section h4,
 .cfr-section h5,
 .cfr-section h6 {
-    font-family: var(--font-serif);
-    font-weight: 600;
-    margin-top: 1.5em;
-    margin-bottom: 0.5em;
-    line-height: 1.2;
+  font-family: var(--font-serif);
+  font-weight: 600;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  line-height: 1.2;
 }
 
 .cfr-section h1 {
-    font-size: 1.5em;
+  font-size: 1.5em;
 }
 .cfr-section h2 {
-    font-size: 1.25em;
+  font-size: 1.25em;
 }
 .cfr-section h3 {
-    font-size: 1.125em;
+  font-size: 1.125em;
 }
 
 .cfr-section p {
-    margin-bottom: 0.75em;
+  margin-bottom: 0.75em;
 }
 
 .cfr-section a {
-    color: rgb(var(--color-azure));
-    text-decoration: none;
-    border-bottom: 1px dotted rgba(var(--color-azure), 0.4);
-    transition: border-bottom-color 0.2s;
+  color: rgb(var(--color-azure));
+  text-decoration: none;
+  border-bottom: 1px dotted rgba(var(--color-azure), 0.4);
+  transition: border-bottom-color 0.2s;
 }
 
 .cfr-section a:hover {
-    border-bottom-color: rgb(var(--color-azure));
+  border-bottom-color: rgb(var(--color-azure));
 }
 
 .cfr-section table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 1em 0;
-    font-size: 0.875em;
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 0.875em;
 }
 
 .cfr-section th,
 .cfr-section td {
-    border: 1px solid #e2e8f0;
-    padding: 0.5em 0.75em;
-    text-align: left;
+  border: 1px solid #e2e8f0;
+  padding: 0.5em 0.75em;
+  text-align: left;
 }
 
 .cfr-section th {
-    background: #f8fafc;
-    font-weight: 600;
+  background: #f8fafc;
+  font-weight: 600;
 }
 
 .cfr-section .authority-section,
 .cfr-section .source-section {
-    font-size: 0.875em;
-    color: #64748b;
-    margin: 1em 0;
-    padding: 0.75em;
-    border-left: 3px solid #e2e8f0;
+  font-size: 0.875em;
+  color: #64748b;
+  margin: 1em 0;
+  padding: 0.75em;
+  border-left: 3px solid #e2e8f0;
 }
 
 @layer utilities {
-    .font-eb-garamond {
-        font-family: var(--font-eb-garamond);
-    }
+  .font-eb-garamond {
+    font-family: var(--font-eb-garamond);
+  }
 
-    .sidebar-fade-in {
-        animation: sidebarFadeIn 0.3s ease-out forwards;
-        animation-delay: 0.1s;
-        opacity: 0;
-    }
+  .sidebar-fade-in {
+    animation: sidebarFadeIn 0.3s ease-out forwards;
+    animation-delay: 0.1s;
+    opacity: 0;
+  }
 
-    .sidebar-fade-in-2 {
-        animation: sidebarFadeIn 0.3s ease-out forwards;
-        animation-delay: 0.2s;
-        opacity: 0;
-    }
+  .sidebar-fade-in-2 {
+    animation: sidebarFadeIn 0.3s ease-out forwards;
+    animation-delay: 0.2s;
+    opacity: 0;
+  }
 
-    .sidebar-fade-in-3 {
-        animation: sidebarFadeIn 0.3s ease-out forwards;
-        animation-delay: 0.25s;
-        opacity: 0;
-    }
+  .sidebar-fade-in-3 {
+    animation: sidebarFadeIn 0.3s ease-out forwards;
+    animation-delay: 0.25s;
+    opacity: 0;
+  }
 
-    @keyframes sidebarFadeIn {
-        from {
-            opacity: 0;
-        }
-        to {
-            opacity: 1;
-        }
+  @keyframes sidebarFadeIn {
+    from {
+      opacity: 0;
     }
+    to {
+      opacity: 1;
+    }
+  }
 
-    @keyframes scroll-left {
-        0% {
-            transform: translateX(0);
-        }
-        100% {
-            transform: translateX(calc(-100% + 100px));
-        }
+  @keyframes scroll-left {
+    0% {
+      transform: translateX(0);
     }
+    100% {
+      transform: translateX(calc(-100% + 100px));
+    }
+  }
 
-    @keyframes shimmer {
-        from {
-            background-position: 0 0;
-        }
-        to {
-            background-position: -200% 0;
-        }
+  @keyframes shimmer {
+    from {
+      background-position: 0 0;
     }
+    to {
+      background-position: -200% 0;
+    }
+  }
 
-    .animate-shimmer {
-        animation: shimmer 8s linear infinite;
-    }
+  .animate-shimmer {
+    animation: shimmer 8s linear infinite;
+  }
 }
 
 /* ─── Tiptap WYSIWYG workflow editor ────────────────────────────── */
 .workflow-editor-content {
-    min-height: 100%;
-    padding: 1rem 1.25rem;
-    outline: none;
-    font-size: 0.875rem;
-    color: #374151;
-    line-height: 1.65;
-    font-family: var(--font-serif);
+  min-height: 100%;
+  padding: 1rem 1.25rem;
+  outline: none;
+  font-size: 0.875rem;
+  color: #374151;
+  line-height: 1.65;
+  font-family: var(--font-serif);
 }
 
 .workflow-editor-content h1 {
-    font-size: 1rem;
-    font-weight: 600;
-    color: #111827;
-    margin-top: 1.25rem;
-    margin-bottom: 0.375rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 1.25rem;
+  margin-bottom: 0.375rem;
 }
 
 .workflow-editor-content h2 {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: #111827;
-    margin-top: 0.875rem;
-    margin-bottom: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 0.875rem;
+  margin-bottom: 0.25rem;
 }
 
 .workflow-editor-content h3 {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: #111827;
-    margin-top: 0.625rem;
-    margin-bottom: 0.125rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 0.625rem;
+  margin-bottom: 0.125rem;
 }
 
 .workflow-editor-content h1:first-child,
 .workflow-editor-content h2:first-child,
 .workflow-editor-content h3:first-child {
-    margin-top: 0;
+  margin-top: 0;
 }
 
 .workflow-editor-content p {
-    margin-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .workflow-editor-content p:last-child {
-    margin-bottom: 0;
+  margin-bottom: 0;
 }
 
 .workflow-editor-content ul {
-    list-style-type: disc;
-    padding-left: 1.375rem;
-    margin-bottom: 0.5rem;
+  list-style-type: disc;
+  padding-left: 1.375rem;
+  margin-bottom: 0.5rem;
 }
 
 .workflow-editor-content ol {
-    list-style-type: decimal;
-    padding-left: 1.375rem;
-    margin-bottom: 0.5rem;
+  list-style-type: decimal;
+  padding-left: 1.375rem;
+  margin-bottom: 0.5rem;
 }
 
 .workflow-editor-content li {
-    margin-bottom: 0.125rem;
+  margin-bottom: 0.125rem;
 }
 
 .workflow-editor-content li > p {
-    margin-bottom: 0;
+  margin-bottom: 0;
 }
 
 .workflow-editor-content strong {
-    font-weight: 600;
-    color: #1f2937;
+  font-weight: 600;
+  color: #1f2937;
 }
 
 .workflow-editor-content em {
-    font-style: italic;
+  font-style: italic;
 }
 
 /* ChatBox Animation Styles */
 
 /* PDF text layer */
 .pdf-text-layer {
-    overflow: hidden;
-    opacity: 1;
-    line-height: 1;
-    user-select: none;
-    pointer-events: none;
+  overflow: hidden;
+  opacity: 1;
+  line-height: 1;
+  user-select: none;
+  pointer-events: none;
 }
 
 .pdf-text-layer > span {
-    color: transparent;
-    position: absolute;
-    white-space: pre;
-    cursor: text;
-    transform-origin: 0% 0%;
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
 }
 
 .pdf-text-layer .pdf-text-highlight {
-    background-color: rgba(37, 99, 235, 0.2);
-    border-radius: 2px;
-    position: static;
+  background-color: rgba(37, 99, 235, 0.2);
+  border-radius: 2px;
+  position: static;
 }
 
 .docx-view-container span.docx-text-highlight,
 .docx-view-container .docx-text-highlight {
-    background-color: rgba(37, 99, 235, 0.35) !important;
-    border-radius: 2px;
-    padding: 0 1px;
-    color: inherit !important;
+  background-color: rgba(37, 99, 235, 0.35) !important;
+  border-radius: 2px;
+  padding: 0 1px;
+  color: inherit !important;
 }
 
 /* docx-preview tracked-change styling */
 .docx-view-container ins {
-    color: #16a34a;
-    text-decoration: none;
-    background-color: rgba(22, 163, 74, 0.08);
+  color: #16a34a;
+  text-decoration: none;
+  background-color: rgba(22, 163, 74, 0.08);
 }
 
 .docx-view-container del {
-    color: #dc2626;
-    text-decoration: line-through;
-    background-color: rgba(220, 38, 38, 0.08);
+  color: #dc2626;
+  text-decoration: line-through;
+  background-color: rgba(220, 38, 38, 0.08);
 }
 
 /* Kill docx-preview's default dark-gray wrapper chrome — let the scroll
    container's own bg show through. */
 .docx-view-container .docx-wrapper {
-    background: transparent !important;
-    padding: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
 }
 
 .docx-view-container .docx-wrapper > section.docx {
-    margin: 0 auto 16px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  margin: 0 auto 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .docx-view-container .docx-edit-flash {
-    animation: docxEditFlash 2s ease-out;
-    border-radius: 2px;
+  animation: docxEditFlash 2s ease-out;
+  border-radius: 2px;
 }
 
 /* Optimistic Accept/Reject: instantly hide rejected side / de-style kept side.
    These are ephemeral DOM mutations; the real re-render replaces the markup. */
 .docx-view-container .docx-edit-hidden {
-    display: none !important;
+  display: none !important;
 }
 
 .docx-view-container ins.docx-edit-kept,
 .docx-view-container del.docx-edit-kept {
-    color: inherit !important;
-    background-color: transparent !important;
-    text-decoration: none !important;
+  color: inherit !important;
+  background-color: transparent !important;
+  text-decoration: none !important;
 }
 
 @keyframes docxEditFlash {
-    0%, 20% {
-        background-color: rgba(59, 130, 246, 0.45);
-        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.45);
-    }
-    100% {
-        background-color: rgba(59, 130, 246, 0);
-        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0);
-    }
+  0%,
+  20% {
+    background-color: rgba(59, 130, 246, 0.45);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.45);
+  }
+  100% {
+    background-color: rgba(59, 130, 246, 0);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0);
+  }
 }

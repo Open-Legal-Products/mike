@@ -3,19 +3,16 @@
  * This mirrors the backend format_lineage_label function.
  */
 
-const STRUCTURE_NODE_TYPES = [
-  "subtitle",
-  "division",
-  "chapter",
-  "subchapter",
-  "part",
-  "subpart",
-  "article",
-  "subarticle",
-  "appendix",
-] as const;
-
-type StructureNodeType = (typeof STRUCTURE_NODE_TYPES)[number];
+type StructureNodeType =
+  | "subtitle"
+  | "division"
+  | "chapter"
+  | "subchapter"
+  | "part"
+  | "subpart"
+  | "article"
+  | "subarticle"
+  | "appendix";
 type CodeType = "title" | "section" | StructureNodeType | string;
 
 export interface NodeComponents {

@@ -203,10 +203,7 @@ userRouter.patch("/profile", requireAuth, async (req, res) => {
 
   try {
     await ensureProfileRow(db, userId);
-    await db
-      .update(user_profiles)
-      .set(parsed.update)
-      .where(eq(user_profiles.user_id, userId));
+    await db.update(user_profiles).set(parsed.update).where(eq(user_profiles.user_id, userId));
   } catch (err) {
     return void res.status(500).json({
       detail: err instanceof Error ? err.message : "Failed to update profile",
@@ -230,8 +227,7 @@ userRouter.get("/api-keys", requireAuth, async (_req, res) => {
 userRouter.put("/api-keys/:provider", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
   const provider = normalizeApiKeyProvider(req.params.provider);
-  if (!provider)
-    return void res.status(400).json({ detail: "Unsupported provider" });
+  if (!provider) return void res.status(400).json({ detail: "Unsupported provider" });
 
   const body = req.body as { api_key?: unknown } | undefined;
   const apiKey = typeof body?.api_key === "string" ? body.api_key : null;
@@ -265,9 +261,7 @@ userRouter.delete("/account", requireAuth, async (_req, res) => {
   try {
     const cognito = new CognitoIdentityProviderClient({
       region: process.env.AWS_REGION ?? "us-east-1",
-      ...(process.env.COGNITO_ENDPOINT
-        ? { endpoint: process.env.COGNITO_ENDPOINT }
-        : {}),
+      ...(process.env.COGNITO_ENDPOINT ? { endpoint: process.env.COGNITO_ENDPOINT } : {}),
     });
     await cognito.send(
       new AdminDeleteUserCommand({
@@ -280,8 +274,7 @@ userRouter.delete("/account", requireAuth, async (_req, res) => {
     res.status(204).send();
   } catch (err) {
     res.status(500).json({
-      detail:
-        err instanceof Error ? err.message : "Failed to delete account",
+      detail: err instanceof Error ? err.message : "Failed to delete account",
     });
   }
 });

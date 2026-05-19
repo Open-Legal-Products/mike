@@ -39,8 +39,8 @@ export function DocumentCard({ document, onRemove, onClick, selected }: Props) {
         selected
           ? "border-blue-500 bg-blue-50"
           : isError
-          ? "border-red-200 bg-red-50"
-          : "border-gray-200 bg-white hover:border-gray-300",
+            ? "border-red-200 bg-red-50"
+            : "border-gray-200 bg-white hover:border-gray-300",
       ].join(" ")}
     >
       {isProcessing ? (
@@ -59,13 +59,13 @@ export function DocumentCard({ document, onRemove, onClick, selected }: Props) {
           {isProcessing
             ? "Processing…"
             : isError
-            ? "Upload failed"
-            : [
-                document.size_bytes != null ? formatBytes(document.size_bytes) : null,
-                document.page_count ? `${document.page_count}p` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+              ? "Upload failed"
+              : [
+                  document.size_bytes != null ? formatBytes(document.size_bytes) : null,
+                  document.page_count ? `${document.page_count}p` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
         </p>
       </div>
 

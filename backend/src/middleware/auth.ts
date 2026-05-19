@@ -6,8 +6,7 @@ import { SimpleJwksCache } from "aws-jwt-verify/jwk";
 import type { Fetcher } from "aws-jwt-verify/https";
 import { ensureUserRow } from "../lib/users";
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Real Cognito issues a UUIDv4 in the `sub` claim. cognito-local uses the
@@ -52,16 +51,12 @@ function getVerifier(): MikeVerifier {
   const userPoolId = process.env.COGNITO_USER_POOL_ID;
   const clientId = process.env.COGNITO_CLIENT_ID;
   if (!userPoolId || !clientId) {
-    throw new Error(
-      "COGNITO_USER_POOL_ID and COGNITO_CLIENT_ID must be set on the backend",
-    );
+    throw new Error("COGNITO_USER_POOL_ID and COGNITO_CLIENT_ID must be set on the backend");
   }
 
   const jwksUri = process.env.COGNITO_JWKS_URI;
   if (jwksUri) {
-    const issuer =
-      process.env.COGNITO_ISSUER ??
-      jwksUri.replace("/.well-known/jwks.json", "");
+    const issuer = process.env.COGNITO_ISSUER ?? jwksUri.replace("/.well-known/jwks.json", "");
     // Dev path: cognito-local serves JWKS over plain HTTP. Wire in our
     // custom fetcher via a fresh JwksCache so the HTTPS-only default is
     // bypassed.
@@ -79,11 +74,7 @@ function getVerifier(): MikeVerifier {
   return _verifier;
 }
 
-export async function requireAuth(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
+export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   const auth = req.headers.authorization ?? "";
   if (!auth.startsWith("Bearer ")) {
     res.status(401).json({ detail: "Missing or invalid Authorization header" });
@@ -106,10 +97,7 @@ export async function requireAuth(
     await ensureUserRow(sub, email);
     next();
   } catch (err) {
-    console.warn(
-      "[auth] token verification failed:",
-      err instanceof Error ? err.message : err,
-    );
+    console.warn("[auth] token verification failed:", err instanceof Error ? err.message : err);
     res.status(401).json({ detail: "Invalid or expired token" });
   }
 }

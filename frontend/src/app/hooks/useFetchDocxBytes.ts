@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/auth/cognito";
 
 export interface FetchDocxResult {
-    bytes: ArrayBuffer | null;
-    downloadUrl: string | null;
-    loading: boolean;
-    error: string | null;
+  bytes: ArrayBuffer | null;
+  downloadUrl: string | null;
+  loading: boolean;
+  error: string | null;
 }
 
 // Module-level cache keyed by `${documentId}:${versionId}:${refetchKey}`.
@@ -19,12 +19,8 @@ export interface FetchDocxResult {
 const bytesCache = new Map<string, ArrayBuffer>();
 const inFlight = new Map<string, Promise<ArrayBuffer>>();
 
-function cacheKey(
-    documentId: string,
-    versionId?: string | null,
-    refetchKey?: number,
-): string {
-    return `${documentId}:${versionId ?? ""}:${refetchKey ?? ""}`;
+function cacheKey(documentId: string, versionId?: string | null, refetchKey?: number): string {
+  return `${documentId}:${versionId ?? ""}:${refetchKey ?? ""}`;
 }
 
 /**
@@ -33,104 +29,100 @@ function cacheKey(
  * cheaply when switching between versions, and tab switches don't refetch.
  */
 export function useFetchDocxBytes(
-    documentId: string | null | undefined,
-    versionId?: string | null,
-    refetchKey?: number,
+  documentId: string | null | undefined,
+  versionId?: string | null,
+  refetchKey?: number,
 ): FetchDocxResult {
-    const key = documentId
-        ? cacheKey(documentId, versionId, refetchKey)
-        : null;
-    const apiBase =
-        process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
-    const qs = versionId ? `?version_id=${encodeURIComponent(versionId)}` : "";
-    const url = documentId
-        ? `${apiBase}/single-documents/${documentId}/docx${qs}`
-        : null;
-    const cached = key ? (bytesCache.get(key) ?? null) : null;
+  const key = documentId ? cacheKey(documentId, versionId, refetchKey) : null;
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+  const qs = versionId ? `?version_id=${encodeURIComponent(versionId)}` : "";
+  const url = documentId ? `${apiBase}/single-documents/${documentId}/docx${qs}` : null;
+  const cached = key ? (bytesCache.get(key) ?? null) : null;
 
-    const [bytes, setBytes] = useState<ArrayBuffer | null>(cached);
-    const [downloadUrl, setDownloadUrl] = useState<string | null>(
-        cached ? url : null,
-    );
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+  const [bytes, setBytes] = useState<ArrayBuffer | null>(cached);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(cached ? url : null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-    console.log("[useFetchDocxBytes] init", {
-        documentId,
-        versionId,
-        refetchKey,
-        key,
-        cacheHit: key ? bytesCache.has(key) : null,
-    });
+  console.log("[useFetchDocxBytes] init", {
+    documentId,
+    versionId,
+    refetchKey,
+    key,
+    cacheHit: key ? bytesCache.has(key) : null,
+  });
 
-    // Re-seed state synchronously when the cache key changes (instead of
-    // doing it from inside the effect).
-    const [prevKey, setPrevKey] = useState(key);
-    if (key !== prevKey) {
-        setPrevKey(key);
-        if (!key) {
-            setBytes(null);
-            setDownloadUrl(null);
-            setLoading(false);
-            setError(null);
-        } else if (cached) {
-            setBytes(cached);
-            setDownloadUrl(url);
-            setLoading(false);
-            setError(null);
-        } else {
-            setLoading(true);
-            setError(null);
-        }
+  // Re-seed state synchronously when the cache key changes (instead of
+  // doing it from inside the effect).
+  const [prevKey, setPrevKey] = useState(key);
+  if (key !== prevKey) {
+    setPrevKey(key);
+    if (!key) {
+      setBytes(null);
+      setDownloadUrl(null);
+      setLoading(false);
+      setError(null);
+    } else if (cached) {
+      setBytes(cached);
+      setDownloadUrl(url);
+      setLoading(false);
+      setError(null);
+    } else {
+      setLoading(true);
+      setError(null);
     }
+  }
 
-    useEffect(() => {
-        if (!documentId || !key || !url) return;
-        // Cache hit was already handled synchronously above.
-        if (bytesCache.has(key)) return;
+  useEffect(() => {
+    if (!documentId || !key || !url) return;
+    // Cache hit was already handled synchronously above.
+    if (bytesCache.has(key)) return;
 
-        let cancelled = false;
+    let cancelled = false;
 
-        const pending =
-            inFlight.get(key) ??
-            (async () => {
-                const {
-                    data: { session },
-                } = await supabase.auth.getSession();
-                const token = session?.access_token;
-                // Stream bytes through the backend (avoids CORS on R2
-                // signed URLs).
-                const bin = await fetch(url, {
-                    headers: token ? { Authorization: `Bearer ${token}` } : {},
-                });
-                if (!bin.ok) throw new Error(`HTTP ${bin.status}`);
-                const buf = await bin.arrayBuffer();
-                bytesCache.set(key, buf);
-                return buf;
-            })();
-        if (!inFlight.has(key)) inFlight.set(key, pending);
+    const pending =
+      inFlight.get(key) ??
+      (async () => {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        // Stream bytes through the backend (avoids CORS on R2
+        // signed URLs).
+        const bin = await fetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!bin.ok) throw new Error(`HTTP ${bin.status}`);
+        const buf = await bin.arrayBuffer();
+        bytesCache.set(key, buf);
+        return buf;
+      })();
+    if (!inFlight.has(key)) inFlight.set(key, pending);
 
-        pending
-            .then((buf) => {
-                if (cancelled) return;
-                setBytes(buf);
-                setDownloadUrl(url);
-            })
-            .catch((e: unknown) => {
-                if (cancelled) return;
-                setError(e instanceof Error ? e.message : String(e));
-            })
-            .finally(() => {
-                inFlight.delete(key);
-                if (!cancelled) setLoading(false);
-            });
+    pending
+      .then((buf) => {
+        if (cancelled) return;
+        setBytes(buf);
+        setDownloadUrl(url);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        inFlight.delete(key);
+        if (!cancelled) setLoading(false);
+      });
 
-        return () => {
-            cancelled = true;
-        };
-    }, [documentId, versionId, refetchKey]);
+    return () => {
+      cancelled = true;
+    };
+    // Refetch is keyed off documentId/versionId/refetchKey; `key` and `url` are
+    // derived from those upstream and would cause redundant fetches if added.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documentId, versionId, refetchKey]);
 
-    return { bytes, downloadUrl, loading, error };
+  return { bytes, downloadUrl, loading, error };
 }
 
 /**
@@ -139,19 +131,16 @@ export function useFetchDocxBytes(
  * version). Pass a versionId to scope eviction; omit to clear every
  * cached version for that document.
  */
-export function invalidateDocxBytes(
-    documentId: string,
-    versionId?: string | null,
-): void {
-    if (versionId !== undefined) {
-        for (const key of Array.from(bytesCache.keys())) {
-            if (key.startsWith(`${documentId}:${versionId ?? ""}:`)) {
-                bytesCache.delete(key);
-            }
-        }
-        return;
-    }
+export function invalidateDocxBytes(documentId: string, versionId?: string | null): void {
+  if (versionId !== undefined) {
     for (const key of Array.from(bytesCache.keys())) {
-        if (key.startsWith(`${documentId}:`)) bytesCache.delete(key);
+      if (key.startsWith(`${documentId}:${versionId ?? ""}:`)) {
+        bytesCache.delete(key);
+      }
     }
+    return;
+  }
+  for (const key of Array.from(bytesCache.keys())) {
+    if (key.startsWith(`${documentId}:`)) bytesCache.delete(key);
+  }
 }

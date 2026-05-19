@@ -1,8 +1,6 @@
 import JSZip from "jszip";
 
-let _convert:
-  | ((buf: Buffer, ext: string, filter: undefined) => Promise<Buffer>)
-  | null = null;
+let _convert: ((buf: Buffer, ext: string, filter: undefined) => Promise<Buffer>) | null = null;
 
 async function getConvert() {
   if (!_convert) {
