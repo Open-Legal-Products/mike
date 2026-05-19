@@ -2,20 +2,16 @@
 
 import { useEffect } from "react";
 
-export default function GlobalError({
-    error,
-}: {
-    error: Error & { digest?: string };
-}) {
-    useEffect(() => {
-        console.error("Global error:", error);
-    }, [error]);
+export default function GlobalError({ error }: { error: Error & { digest?: string } }) {
+  useEffect(() => {
+    console.error("Global error:", error);
+  }, [error]);
 
-    return (
-        <html lang="en">
-            <head>
-                <title>Something went wrong – Mike</title>
-                <style>{`
+  return (
+    <html lang="en">
+      <head>
+        <title>Something went wrong – Mike</title>
+        <style>{`
                     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=EB+Garamond:wght@400;500&display=swap');
                     
                     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -76,22 +72,18 @@ export default function GlobalError({
                         transform: scale(0.98);
                     }
                 `}</style>
-            </head>
-            <body>
-                <div className="error-container">
-                    <h1 className="error-title">Something went wrong</h1>
-                    <p className="error-message">
-                        We encountered an unexpected error. This has been logged
-                        and our team will look into it.
-                    </p>
-                    <button
-                        className="btn-back"
-                        onClick={() => window.history.back()}
-                    >
-                        Back
-                    </button>
-                </div>
-            </body>
-        </html>
-    );
+      </head>
+      <body>
+        <div className="error-container">
+          <h1 className="error-title">Something went wrong</h1>
+          <p className="error-message">
+            We encountered an unexpected error. This has been logged and our team will look into it.
+          </p>
+          <button className="btn-back" onClick={() => window.history.back()}>
+            Back
+          </button>
+        </div>
+      </body>
+    </html>
+  );
 }

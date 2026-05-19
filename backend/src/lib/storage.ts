@@ -56,9 +56,7 @@ export const storageEnabled = Boolean(process.env.S3_BUCKET_NAME);
 
 function requireStorageConfig(): void {
   if (!storageEnabled) {
-    throw new Error(
-      "R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY must be set",
-    );
+    throw new Error("R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY must be set");
   }
 }
 
@@ -91,9 +89,7 @@ export async function downloadFile(key: string): Promise<ArrayBuffer | null> {
   if (!storageEnabled) return null;
   try {
     const client = getClient();
-    const response = await client.send(
-      new GetObjectCommand({ Bucket: BUCKET, Key: key }),
-    );
+    const response = await client.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
     if (!response.Body) return null;
     const bytes = await response.Body.transformToByteArray();
     return bytes.buffer as ArrayBuffer;
@@ -145,6 +141,8 @@ export async function getSignedUrl(
 export function normalizeDownloadFilename(name: string): string {
   const trimmed = name.trim();
   const base = trimmed || "download";
+  // Filename sanitization: strip control chars (incl. NUL, DEL) and path separators.
+  // eslint-disable-next-line no-control-regex
   return base.replace(/[\x00-\x1F\x7F]/g, "_").replace(/[\\/]/g, "_");
 }
 
@@ -161,10 +159,7 @@ export function encodeRFC5987(str: string): string {
   );
 }
 
-export function buildContentDisposition(
-  kind: "inline" | "attachment",
-  filename: string,
-): string {
+export function buildContentDisposition(kind: "inline" | "attachment", filename: string): string {
   const normalized = normalizeDownloadFilename(filename);
   return `${kind}; filename="${sanitizeDispositionFilename(normalized)}"; filename*=UTF-8''${encodeRFC5987(normalized)}`;
 }
@@ -173,27 +168,15 @@ export function buildContentDisposition(
 // Storage key helpers
 // ---------------------------------------------------------------------------
 
-export function storageKey(
-  userId: string,
-  docId: string,
-  filename: string,
-): string {
+export function storageKey(userId: string, docId: string, filename: string): string {
   return `documents/${userId}/${docId}/source${storageExtension(filename, ".bin")}`;
 }
 
-export function pdfStorageKey(
-  userId: string,
-  docId: string,
-  stem: string,
-): string {
+export function pdfStorageKey(userId: string, docId: string, stem: string): string {
   return `documents/${userId}/${docId}/${stem}.pdf`;
 }
 
-export function generatedDocKey(
-  userId: string,
-  docId: string,
-  filename: string,
-): string {
+export function generatedDocKey(userId: string, docId: string, filename: string): string {
   return `generated/${userId}/${docId}/generated${storageExtension(filename, ".docx")}`;
 }
 

@@ -22,9 +22,7 @@ import {
 export const users = pgTable("users", {
   id: uuid("id").primaryKey(), // Cognito sub
   email: text("email").notNull().unique(),
-  created_at: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ---------------------------------------------------------------------------
@@ -44,23 +42,15 @@ export const user_profiles = pgTable(
     display_name: text("display_name"),
     organisation: text("organisation"),
     tier: text("tier").notNull().default("Free"),
-    message_credits_used: integer("message_credits_used")
-      .notNull()
-      .default(0),
+    message_credits_used: integer("message_credits_used").notNull().default(0),
     credits_reset_date: timestamp("credits_reset_date", {
       withTimezone: true,
     })
       .notNull()
       .default(sql`(now() + interval '30 days')`),
-    tabular_model: text("tabular_model")
-      .notNull()
-      .default("gemini-3-flash-preview"),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updated_at: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    tabular_model: text("tabular_model").notNull().default("gemini-3-flash-preview"),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("idx_user_profiles_user").on(table.user_id)],
 );
@@ -82,23 +72,13 @@ export const user_api_keys = pgTable(
     encrypted_key: text("encrypted_key").notNull(),
     iv: text("iv").notNull(),
     auth_tag: text("auth_tag").notNull(),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updated_at: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    unique("user_api_keys_user_provider_unique").on(
-      table.user_id,
-      table.provider,
-    ),
+    unique("user_api_keys_user_provider_unique").on(table.user_id, table.provider),
     index("idx_user_api_keys_user").on(table.user_id),
-    check(
-      "user_api_keys_provider_check",
-      sql`${table.provider} in ('gemini', 'openai')`,
-    ),
+    check("user_api_keys_provider_check", sql`${table.provider} in ('gemini', 'openai')`),
   ],
 );
 
@@ -120,12 +100,8 @@ export const projects = pgTable(
       .$type<string[]>()
       .notNull()
       .default(sql`'[]'::jsonb`),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updated_at: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("idx_projects_user").on(table.user_id),
@@ -152,12 +128,8 @@ export const project_subfolders = pgTable(
       (): AnyPgColumn => project_subfolders.id,
       { onDelete: "cascade" },
     ),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updated_at: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("idx_project_subfolders_project").on(table.project_id)],
 );
@@ -190,12 +162,8 @@ export const documents = pgTable(
       (): AnyPgColumn => document_versions.id,
       { onDelete: "set null" },
     ),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updated_at: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("idx_documents_user_project").on(table.user_id, table.project_id),
@@ -221,19 +189,11 @@ export const document_versions = pgTable(
     source: text("source").notNull().default("upload"),
     version_number: integer("version_number"),
     display_name: text("display_name"),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index("document_versions_document_id_idx").on(
-      table.document_id,
-      table.created_at.desc(),
-    ),
-    index("document_versions_doc_vnum_idx").on(
-      table.document_id,
-      table.version_number,
-    ),
+    index("document_versions_document_id_idx").on(table.document_id, table.created_at.desc()),
+    index("document_versions_doc_vnum_idx").on(table.document_id, table.version_number),
     check(
       "document_versions_source_check",
       sql`${table.source} = any (array['upload'::text, 'user_upload'::text, 'assistant_edit'::text, 'user_accept'::text, 'user_reject'::text, 'generated'::text])`,
@@ -256,9 +216,7 @@ export const chats = pgTable(
     }),
     user_id: text("user_id").notNull(),
     title: text("title"),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("idx_chats_user").on(table.user_id),
@@ -279,9 +237,7 @@ export const chat_messages = pgTable(
     content: jsonb("content"),
     files: jsonb("files"),
     annotations: jsonb("annotations"),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("idx_chat_messages_chat").on(table.chat_id)],
 );
@@ -299,10 +255,9 @@ export const document_edits = pgTable(
     document_id: uuid("document_id")
       .notNull()
       .references(() => documents.id, { onDelete: "cascade" }),
-    chat_message_id: uuid("chat_message_id").references(
-      () => chat_messages.id,
-      { onDelete: "set null" },
-    ),
+    chat_message_id: uuid("chat_message_id").references(() => chat_messages.id, {
+      onDelete: "set null",
+    }),
     version_id: uuid("version_id")
       .notNull()
       .references(() => document_versions.id, { onDelete: "cascade" }),
@@ -314,16 +269,11 @@ export const document_edits = pgTable(
     context_before: text("context_before"),
     context_after: text("context_after"),
     status: text("status").notNull().default("pending"),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     resolved_at: timestamp("resolved_at", { withTimezone: true }),
   },
   (table) => [
-    index("document_edits_document_id_idx").on(
-      table.document_id,
-      table.created_at.desc(),
-    ),
+    index("document_edits_document_id_idx").on(table.document_id, table.created_at.desc()),
     index("document_edits_message_id_idx").on(table.chat_message_id),
     index("document_edits_version_id_idx").on(table.version_id),
     check(
@@ -350,9 +300,7 @@ export const workflows = pgTable(
     columns_config: jsonb("columns_config"),
     practice: text("practice"),
     is_system: boolean("is_system").notNull().default(false),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("idx_workflows_user").on(table.user_id)],
 );
@@ -365,15 +313,10 @@ export const hidden_workflows = pgTable(
       .default(sql`gen_random_uuid()`),
     user_id: text("user_id").notNull(),
     workflow_id: text("workflow_id").notNull(),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    unique("hidden_workflows_user_workflow_unique").on(
-      table.user_id,
-      table.workflow_id,
-    ),
+    unique("hidden_workflows_user_workflow_unique").on(table.user_id, table.workflow_id),
     index("idx_hidden_workflows_user").on(table.user_id),
   ],
 );
@@ -390,15 +333,10 @@ export const workflow_shares = pgTable(
     shared_by_user_id: text("shared_by_user_id").notNull(),
     shared_with_email: text("shared_with_email").notNull(),
     allow_edit: boolean("allow_edit").notNull().default(false),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    unique("workflow_shares_workflow_email_unique").on(
-      table.workflow_id,
-      table.shared_with_email,
-    ),
+    unique("workflow_shares_workflow_email_unique").on(table.workflow_id, table.shared_with_email),
     index("workflow_shares_workflow_id_idx").on(table.workflow_id),
     index("workflow_shares_email_idx").on(table.shared_with_email),
   ],
@@ -428,12 +366,8 @@ export const tabular_reviews = pgTable(
       .$type<string[]>()
       .notNull()
       .default(sql`'[]'::jsonb`),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updated_at: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("idx_tabular_reviews_user").on(table.user_id),
@@ -458,16 +392,10 @@ export const tabular_cells = pgTable(
     content: text("content"),
     citations: jsonb("citations"),
     status: text("status").notNull().default("pending"),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index("idx_tabular_cells_review").on(
-      table.review_id,
-      table.document_id,
-      table.column_index,
-    ),
+    index("idx_tabular_cells_review").on(table.review_id, table.document_id, table.column_index),
   ],
 );
 
@@ -482,18 +410,11 @@ export const tabular_review_chats = pgTable(
       .references(() => tabular_reviews.id, { onDelete: "cascade" }),
     user_id: text("user_id").notNull(),
     title: text("title"),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updated_at: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index("tabular_review_chats_review_idx").on(
-      table.review_id,
-      table.updated_at.desc(),
-    ),
+    index("tabular_review_chats_review_idx").on(table.review_id, table.updated_at.desc()),
     index("tabular_review_chats_user_idx").on(table.user_id),
   ],
 );
@@ -510,14 +431,7 @@ export const tabular_review_chat_messages = pgTable(
     role: text("role").notNull(),
     content: jsonb("content"),
     annotations: jsonb("annotations"),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [
-    index("tabular_review_chat_messages_chat_idx").on(
-      table.chat_id,
-      table.created_at,
-    ),
-  ],
+  (table) => [index("tabular_review_chat_messages_chat_idx").on(table.chat_id, table.created_at)],
 );

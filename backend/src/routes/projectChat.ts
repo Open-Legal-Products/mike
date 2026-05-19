@@ -4,14 +4,14 @@ import { requireAuth } from "../middleware/auth";
 import { db } from "../db";
 import { chats, chat_messages } from "../db/schema";
 import {
-    buildProjectDocContext,
-    buildMessages,
-    buildWorkflowStore,
-    enrichWithPriorEvents,
-    extractAnnotations,
-    runLLMStream,
-    PROJECT_EXTRA_TOOLS,
-    type ChatMessage,
+  buildProjectDocContext,
+  buildMessages,
+  buildWorkflowStore,
+  enrichWithPriorEvents,
+  extractAnnotations,
+  runLLMStream,
+  PROJECT_EXTRA_TOOLS,
+  type ChatMessage,
 } from "../lib/chatTools";
 import { getUserApiKeys } from "../lib/userSettings";
 import { checkProjectAccess } from "../lib/access";
@@ -28,166 +28,139 @@ export const projectChatRouter = Router({ mergeParams: true });
 
 // POST /projects/:projectId/chat — streaming
 projectChatRouter.post("/", requireAuth, async (req, res) => {
-    const userId = res.locals.userId as string;
-    const userEmail = res.locals.userEmail as string | undefined;
-    const { projectId } = req.params;
-    const { messages, chat_id, model, displayed_doc, attached_documents } =
-        req.body as {
-            messages: ChatMessage[];
-            chat_id?: string;
-            model?: string;
-            displayed_doc?: { filename: string; document_id: string };
-            attached_documents?: { filename: string; document_id: string }[];
+  const userId = res.locals.userId as string;
+  const userEmail = res.locals.userEmail as string | undefined;
+  const { projectId } = req.params;
+  const { messages, chat_id, model, displayed_doc, attached_documents } = req.body as {
+    messages: ChatMessage[];
+    chat_id?: string;
+    model?: string;
+    displayed_doc?: { filename: string; document_id: string };
+    attached_documents?: { filename: string; document_id: string }[];
+  };
+
+  // Verify the user has access to the project (owner or shared member).
+  const projectAccess = await checkProjectAccess(projectId, userId, userEmail, db);
+  if (!projectAccess.ok) return void res.status(404).json({ detail: "Project not found" });
+
+  let chatId = chat_id ?? null;
+  let chatTitle: string | null = null;
+
+  if (chatId) {
+    const existing = await db.query.chats.findFirst({
+      where: eq(chats.id, chatId),
+      columns: { id: true, title: true, project_id: true },
+    });
+    const canUse = !!existing && existing.project_id === projectId;
+    if (!canUse) chatId = null;
+    else chatTitle = existing!.title;
+  }
+
+  if (!chatId) {
+    const [newChat] = await db
+      .insert(chats)
+      .values({ user_id: userId, project_id: projectId })
+      .returning({ id: chats.id, title: chats.title });
+    if (!newChat) return void res.status(500).json({ detail: "Failed to create chat" });
+    chatId = newChat.id;
+    chatTitle = newChat.title;
+  }
+
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  if (lastUser) {
+    await db.insert(chat_messages).values({
+      chat_id: chatId,
+      role: "user",
+      content: lastUser.content,
+      files: lastUser.files ?? null,
+    });
+  }
+
+  const { docIndex, docStore, folderPaths } = await buildProjectDocContext(projectId, userId, db);
+  const docAvailability = Object.entries(docIndex).map(([doc_id, info]) => ({
+    doc_id,
+    filename: info.filename,
+    folder_path: folderPaths.get(doc_id),
+  }));
+
+  const enrichedMessages = await enrichWithPriorEvents(messages, chatId, db, docIndex);
+  const messagesForLLM: ChatMessage[] = displayed_doc
+    ? enrichedMessages.map((m, i) => {
+        if (i !== enrichedMessages.length - 1 || m.role !== "user") return m;
+        return {
+          ...m,
+          content: `${m.content}\n\ndisplayed_doc: ${displayed_doc.filename}, displayed_doc_id: ${displayed_doc.document_id}`,
         };
+      })
+    : enrichedMessages;
 
-    // Verify the user has access to the project (owner or shared member).
-    const projectAccess = await checkProjectAccess(
-        projectId,
-        userId,
-        userEmail,
-        db,
-    );
-    if (!projectAccess.ok)
-        return void res.status(404).json({ detail: "Project not found" });
-
-    let chatId = chat_id ?? null;
-    let chatTitle: string | null = null;
-
-    if (chatId) {
-        const existing = await db.query.chats.findFirst({
-            where: eq(chats.id, chatId),
-            columns: { id: true, title: true, project_id: true },
-        });
-        const canUse = !!existing && existing.project_id === projectId;
-        if (!canUse) chatId = null;
-        else chatTitle = existing!.title;
+  let systemPromptExtra = PROJECT_SYSTEM_PROMPT_EXTRA;
+  if (attached_documents?.length) {
+    const slugByDocumentId = new Map<string, string>();
+    for (const [slug, info] of Object.entries(docIndex)) {
+      if (info.document_id) slugByDocumentId.set(info.document_id, slug);
     }
+    const lines = attached_documents.map((d) => {
+      const slug = slugByDocumentId.get(d.document_id);
+      return slug ? `- ${slug}: ${d.filename}` : `- ${d.filename}`;
+    });
+    systemPromptExtra += `\n\nUSER-ATTACHED DOCUMENTS FOR THIS TURN:\nThe user has attached the following document(s) directly to their latest message. Treat these as the primary focus of the request unless their message clearly says otherwise.\n${lines.join("\n")}`;
+  }
 
-    if (!chatId) {
-        const [newChat] = await db
-            .insert(chats)
-            .values({ user_id: userId, project_id: projectId })
-            .returning({ id: chats.id, title: chats.title });
-        if (!newChat)
-            return void res
-                .status(500)
-                .json({ detail: "Failed to create chat" });
-        chatId = newChat.id;
-        chatTitle = newChat.title;
+  const apiMessages = buildMessages(messagesForLLM, docAvailability, systemPromptExtra);
+
+  const workflowStore = await buildWorkflowStore(userId, userEmail, db);
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const write = (line: string) => res.write(line);
+
+  const apiKeys = await getUserApiKeys(userId, db);
+
+  try {
+    write(`data: ${JSON.stringify({ type: "chat_id", chatId })}\n\n`);
+
+    const { fullText, events } = await runLLMStream({
+      apiMessages,
+      docStore,
+      docIndex,
+      userId,
+      db,
+      write,
+      extraTools: PROJECT_EXTRA_TOOLS,
+      workflowStore,
+      model,
+      apiKeys,
+      projectId,
+    });
+
+    const annotations = extractAnnotations(fullText, docIndex, events);
+    await db.insert(chat_messages).values({
+      chat_id: chatId,
+      role: "assistant",
+      content: events.length ? events : null,
+      annotations: annotations.length ? annotations : null,
+    });
+
+    if (!chatTitle && lastUser?.content) {
+      await db
+        .update(chats)
+        .set({ title: lastUser.content.slice(0, 120) })
+        .where(eq(chats.id, chatId));
     }
-
-    const lastUser = [...messages].reverse().find((m) => m.role === "user");
-    if (lastUser) {
-        await db.insert(chat_messages).values({
-            chat_id: chatId,
-            role: "user",
-            content: lastUser.content,
-            files: lastUser.files ?? null,
-        });
-    }
-
-    const { docIndex, docStore, folderPaths } = await buildProjectDocContext(
-        projectId,
-        userId,
-        db,
-    );
-    const docAvailability = Object.entries(docIndex).map(([doc_id, info]) => ({
-        doc_id,
-        filename: info.filename,
-        folder_path: folderPaths.get(doc_id),
-    }));
-
-    const enrichedMessages = await enrichWithPriorEvents(
-        messages,
-        chatId,
-        db,
-        docIndex,
-    );
-    const messagesForLLM: ChatMessage[] = displayed_doc
-        ? enrichedMessages.map((m, i) => {
-              if (i !== enrichedMessages.length - 1 || m.role !== "user")
-                  return m;
-              return {
-                  ...m,
-                  content: `${m.content}\n\ndisplayed_doc: ${displayed_doc.filename}, displayed_doc_id: ${displayed_doc.document_id}`,
-              };
-          })
-        : enrichedMessages;
-
-    let systemPromptExtra = PROJECT_SYSTEM_PROMPT_EXTRA;
-    if (attached_documents?.length) {
-        const slugByDocumentId = new Map<string, string>();
-        for (const [slug, info] of Object.entries(docIndex)) {
-            if (info.document_id)
-                slugByDocumentId.set(info.document_id, slug);
-        }
-        const lines = attached_documents.map((d) => {
-            const slug = slugByDocumentId.get(d.document_id);
-            return slug ? `- ${slug}: ${d.filename}` : `- ${d.filename}`;
-        });
-        systemPromptExtra += `\n\nUSER-ATTACHED DOCUMENTS FOR THIS TURN:\nThe user has attached the following document(s) directly to their latest message. Treat these as the primary focus of the request unless their message clearly says otherwise.\n${lines.join("\n")}`;
-    }
-
-    const apiMessages = buildMessages(
-        messagesForLLM,
-        docAvailability,
-        systemPromptExtra,
-    );
-
-    const workflowStore = await buildWorkflowStore(userId, userEmail, db);
-
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no");
-    res.flushHeaders();
-
-    const write = (line: string) => res.write(line);
-
-    const apiKeys = await getUserApiKeys(userId, db);
-
+  } catch (err) {
+    console.error("[project-chat/stream] error:", err);
     try {
-        write(`data: ${JSON.stringify({ type: "chat_id", chatId })}\n\n`);
-
-        const { fullText, events } = await runLLMStream({
-            apiMessages,
-            docStore,
-            docIndex,
-            userId,
-            db,
-            write,
-            extraTools: PROJECT_EXTRA_TOOLS,
-            workflowStore,
-            model,
-            apiKeys,
-            projectId,
-        });
-
-        const annotations = extractAnnotations(fullText, docIndex, events);
-        await db.insert(chat_messages).values({
-            chat_id: chatId,
-            role: "assistant",
-            content: events.length ? events : null,
-            annotations: annotations.length ? annotations : null,
-        });
-
-        if (!chatTitle && lastUser?.content) {
-            await db
-                .update(chats)
-                .set({ title: lastUser.content.slice(0, 120) })
-                .where(eq(chats.id, chatId));
-        }
-    } catch (err) {
-        console.error("[project-chat/stream] error:", err);
-        try {
-            write(
-                `data: ${JSON.stringify({ type: "error", message: "Stream error" })}\n\n`,
-            );
-            write("data: [DONE]\n\n");
-        } catch {
-            /* ignore */
-        }
-    } finally {
-        res.end();
+      write(`data: ${JSON.stringify({ type: "error", message: "Stream error" })}\n\n`);
+      write("data: [DONE]\n\n");
+    } catch {
+      /* ignore */
     }
+  } finally {
+    res.end();
+  }
 });

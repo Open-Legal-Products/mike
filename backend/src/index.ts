@@ -31,11 +31,7 @@ function hours(value: number): number {
   return minutes(value * 60);
 }
 
-function makeLimiter(options: {
-  windowMs: number;
-  max: number;
-  message?: string;
-}) {
+function makeLimiter(options: { windowMs: number; max: number; message?: string }) {
   return rateLimit({
     windowMs: options.windowMs,
     max: options.max,
@@ -43,8 +39,7 @@ function makeLimiter(options: {
     legacyHeaders: false,
     skip: (req) => req.method === "OPTIONS",
     message: {
-      detail:
-        options.message ?? "Too many requests. Please try again later.",
+      detail: options.message ?? "Too many requests. Please try again later.",
     },
   });
 }

@@ -8,8 +8,8 @@ const content = fs.readFileSync(jsonPath, "utf8");
 // Remove comments from JSON (simple approach - remove lines starting with //)
 const lines = content.split("\n");
 const cleanedLines = lines.filter((line) => {
-    const trimmed = line.trim();
-    return !trimmed.startsWith("//");
+  const trimmed = line.trim();
+  return !trimmed.startsWith("//");
 });
 
 // Also remove trailing commas before closing braces/brackets (common JSON issue)

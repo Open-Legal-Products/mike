@@ -83,62 +83,62 @@ export interface MikeEditAnnotation {
 export type AssistantEvent =
   | { type: "reasoning"; text: string; isStreaming?: boolean }
   | {
-        type: "tool_call_start";
-        name: string;
-        isStreaming?: boolean;
+      type: "tool_call_start";
+      name: string;
+      isStreaming?: boolean;
     }
   | { type: "thinking"; isStreaming?: boolean }
   | {
-        type: "doc_read";
-        filename: string;
-        document_id?: string;
-        isStreaming?: boolean;
+      type: "doc_read";
+      filename: string;
+      document_id?: string;
+      isStreaming?: boolean;
     }
   | {
-        type: "doc_find";
-        filename: string;
-        query: string;
-        total_matches: number;
-        isStreaming?: boolean;
+      type: "doc_find";
+      filename: string;
+      query: string;
+      total_matches: number;
+      isStreaming?: boolean;
     }
   | {
-        type: "doc_created";
-        filename: string;
-        download_url: string;
-        /** Set when the generated doc is persisted as a first-class document. */
-        document_id?: string;
-        version_id?: string;
-        version_number?: number | null;
-        isStreaming?: boolean;
+      type: "doc_created";
+      filename: string;
+      download_url: string;
+      /** Set when the generated doc is persisted as a first-class document. */
+      document_id?: string;
+      version_id?: string;
+      version_number?: number | null;
+      isStreaming?: boolean;
     }
   | { type: "doc_download"; filename: string; download_url: string }
   | {
-        type: "doc_replicated";
-        /** Source document filename. */
-        filename: string;
-        /** How many copies were produced in this single tool call. */
-        count: number;
-        /** One entry per new copy. Empty while streaming. */
-        copies?: {
-            new_filename: string;
-            document_id: string;
-            version_id: string;
-        }[];
-        error?: string;
-        isStreaming?: boolean;
+      type: "doc_replicated";
+      /** Source document filename. */
+      filename: string;
+      /** How many copies were produced in this single tool call. */
+      count: number;
+      /** One entry per new copy. Empty while streaming. */
+      copies?: {
+        new_filename: string;
+        document_id: string;
+        version_id: string;
+      }[];
+      error?: string;
+      isStreaming?: boolean;
     }
   | { type: "workflow_applied"; workflow_id: string; title: string }
   | {
-        type: "doc_edited";
-        filename: string;
-        document_id: string;
-        version_id: string;
-        /** Per-document monotonic Vn written at emit time. */
-        version_number?: number | null;
-        download_url: string;
-        annotations: MikeEditAnnotation[];
-        error?: string;
-        isStreaming?: boolean;
+      type: "doc_edited";
+      filename: string;
+      document_id: string;
+      version_id: string;
+      /** Per-document monotonic Vn written at emit time. */
+      version_number?: number | null;
+      download_url: string;
+      annotations: MikeEditAnnotation[];
+      error?: string;
+      isStreaming?: boolean;
     }
   | { type: "content"; text: string; isStreaming?: boolean };
 
@@ -185,13 +185,8 @@ const PAGE_BREAK_SENTINEL = "[[PAGE_BREAK]]";
  * highlighting in the PDF viewer. A single-page citation yields one entry; a
  * cross-page citation with page "N-M" and a `[[PAGE_BREAK]]` split yields two.
  */
-export function expandCitationToEntries(
-  a: MikeCitationAnnotation,
-): CitationQuote[] {
-  const rangeMatch =
-    typeof a.page === "string"
-      ? a.page.match(/^(\d+)\s*-\s*(\d+)$/)
-      : null;
+export function expandCitationToEntries(a: MikeCitationAnnotation): CitationQuote[] {
+  const rangeMatch = typeof a.page === "string" ? a.page.match(/^(\d+)\s*-\s*(\d+)$/) : null;
   if (rangeMatch && a.quote.includes(PAGE_BREAK_SENTINEL)) {
     const startPage = parseInt(rangeMatch[1], 10);
     const endPage = parseInt(rangeMatch[2], 10);
@@ -201,8 +196,7 @@ export function expandCitationToEntries(
       { page: endPage, quote: after.trim() },
     ].filter((e) => e.quote.length > 0);
   }
-  const pageNum =
-    typeof a.page === "number" ? a.page : parseInt(String(a.page), 10);
+  const pageNum = typeof a.page === "number" ? a.page : parseInt(String(a.page), 10);
   if (!Number.isFinite(pageNum)) return [];
   return [{ page: pageNum, quote: a.quote }];
 }
@@ -221,22 +215,22 @@ export function displayCitationQuote(a: MikeCitationAnnotation): string {
 // Tabular Review
 
 export type ColumnFormat =
-    | "text"
-    | "bulleted_list"
-    | "number"
-    | "currency"
-    | "yes_no"
-    | "date"
-    | "tag"
-    | "percentage"
-    | "monetary_amount";
+  | "text"
+  | "bulleted_list"
+  | "number"
+  | "currency"
+  | "yes_no"
+  | "date"
+  | "tag"
+  | "percentage"
+  | "monetary_amount";
 
 export interface ColumnConfig {
-    index: number;
-    name: string;
-    prompt: string;
-    format?: ColumnFormat;
-    tags?: string[];
+  index: number;
+  name: string;
+  prompt: string;
+  format?: ColumnFormat;
+  tags?: string[];
 }
 
 export interface TabularReview {

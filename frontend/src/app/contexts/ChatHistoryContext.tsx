@@ -1,231 +1,201 @@
 "use client";
 
 import {
-    createContext,
-    useCallback,
-    useContext,
-    useEffect,
-    useMemo,
-    useState,
-    type ReactNode,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
 } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-    createChat,
-    deleteChat,
-    listChats,
-    renameChat,
-} from "@/app/lib/mikeApi";
+import { createChat, deleteChat, listChats, renameChat } from "@/app/lib/mikeApi";
 import type { MikeChat, MikeMessage } from "@/app/components/shared/types";
 
 interface ChatHistoryContextType {
-    chats: MikeChat[] | null;
-    hasMoreChats: boolean;
-    currentChatId: string | null;
-    setCurrentChatId: (chatId: string | null) => void;
-    loadChats: () => Promise<void>;
-    loadMoreChats: () => void;
-    saveChat: (projectId?: string) => Promise<string | null>;
-    renameChat: (chatId: string, title: string) => Promise<void>;
-    newChatMessages: MikeMessage[] | null;
-    setNewChatMessages: (messages: MikeMessage[] | null) => void;
-    replaceChatId: (
-        oldChatId: string,
-        newChatId: string,
-        title?: string,
-    ) => void;
-    deleteChat: (chatId: string) => Promise<void>;
+  chats: MikeChat[] | null;
+  hasMoreChats: boolean;
+  currentChatId: string | null;
+  setCurrentChatId: (chatId: string | null) => void;
+  loadChats: () => Promise<void>;
+  loadMoreChats: () => void;
+  saveChat: (projectId?: string) => Promise<string | null>;
+  renameChat: (chatId: string, title: string) => Promise<void>;
+  newChatMessages: MikeMessage[] | null;
+  setNewChatMessages: (messages: MikeMessage[] | null) => void;
+  replaceChatId: (oldChatId: string, newChatId: string, title?: string) => void;
+  deleteChat: (chatId: string) => Promise<void>;
 }
 
-const ChatHistoryContext = createContext<ChatHistoryContextType | undefined>(
-    undefined,
-);
+const ChatHistoryContext = createContext<ChatHistoryContextType | undefined>(undefined);
 
 const INITIAL_CHAT_LIMIT = 20;
 const CHAT_LIMIT_INCREMENT = 10;
 
 export function ChatHistoryProvider({ children }: { children: ReactNode }) {
-    const { user } = useAuth();
-    const [chats, setChats] = useState<MikeChat[] | null>(null);
-    const [chatLimit, setChatLimit] = useState(INITIAL_CHAT_LIMIT);
-    const [hasMoreChats, setHasMoreChats] = useState(false);
-    const [currentChatId, setCurrentChatId] = useState<string | null>(null);
-    const [newChatMessages, setNewChatMessages] = useState<
-        MikeMessage[] | null
-    >(null);
+  const { user } = useAuth();
+  const [chats, setChats] = useState<MikeChat[] | null>(null);
+  const [chatLimit, setChatLimit] = useState(INITIAL_CHAT_LIMIT);
+  const [hasMoreChats, setHasMoreChats] = useState(false);
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [newChatMessages, setNewChatMessages] = useState<MikeMessage[] | null>(null);
 
-    const loadChats = useCallback(async () => {
-        if (!user) {
-            setChats([]);
-            setHasMoreChats(false);
-            return;
-        }
-        try {
-            const data = await listChats({ limit: chatLimit + 1 });
-            setChats(data.slice(0, chatLimit));
-            setHasMoreChats(data.length > chatLimit);
-        } catch {
-            setChats([]);
-            setHasMoreChats(false);
-        }
-    }, [chatLimit, user]);
+  const loadChats = useCallback(async () => {
+    if (!user) {
+      setChats([]);
+      setHasMoreChats(false);
+      return;
+    }
+    try {
+      const data = await listChats({ limit: chatLimit + 1 });
+      setChats(data.slice(0, chatLimit));
+      setHasMoreChats(data.length > chatLimit);
+    } catch {
+      setChats([]);
+      setHasMoreChats(false);
+    }
+  }, [chatLimit, user]);
 
-    // Clear chat state synchronously when the user logs out so we don't
-    // leak the previous user's chats during a navigation.
-    const [prevUserId, setPrevUserId] = useState(user?.id ?? null);
-    const currentUserId = user?.id ?? null;
-    if (currentUserId !== prevUserId) {
-        setPrevUserId(currentUserId);
-        if (!currentUserId) {
-            setChats([]);
-            setChatLimit(INITIAL_CHAT_LIMIT);
-            setHasMoreChats(false);
-            setCurrentChatId(null);
-        }
+  // Clear chat state synchronously when the user logs out so we don't
+  // leak the previous user's chats during a navigation.
+  const [prevUserId, setPrevUserId] = useState(user?.id ?? null);
+  const currentUserId = user?.id ?? null;
+  if (currentUserId !== prevUserId) {
+    setPrevUserId(currentUserId);
+    if (!currentUserId) {
+      setChats([]);
+      setChatLimit(INITIAL_CHAT_LIMIT);
+      setHasMoreChats(false);
+      setCurrentChatId(null);
+    }
+  }
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await listChats();
+        if (!cancelled) setChats(data);
+      } catch {
+        if (!cancelled) setChats([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const loadMoreChats = useCallback(() => {
+    setChatLimit((prev) => prev + CHAT_LIMIT_INCREMENT);
+  }, []);
+
+  const replaceChatId = useCallback((oldChatId: string, newChatId: string, title?: string) => {
+    if (!oldChatId || !newChatId || oldChatId === newChatId) {
+      setCurrentChatId(newChatId || oldChatId || null);
+      return;
     }
 
-    useEffect(() => {
-        if (!user) return;
-        let cancelled = false;
-        (async () => {
-            try {
-                const data = await listChats();
-                if (!cancelled) setChats(data);
-            } catch {
-                if (!cancelled) setChats([]);
-            }
-        })();
-        return () => {
-            cancelled = true;
+    setChats((prev) => {
+      if (!prev) return prev;
+
+      const nextChats = prev.map((chat) =>
+        chat.id === oldChatId ? { ...chat, id: newChatId, title: title ?? chat.title } : chat,
+      );
+
+      const seen = new Set<string>();
+      return nextChats.filter((chat) => {
+        if (seen.has(chat.id)) return false;
+        seen.add(chat.id);
+        return true;
+      });
+    });
+    setCurrentChatId(newChatId);
+  }, []);
+
+  const saveChat = useCallback(
+    async (projectId?: string): Promise<string | null> => {
+      try {
+        const { id } = await createChat(projectId ? { project_id: projectId } : undefined);
+        const now = new Date().toISOString();
+        const newChat: MikeChat = {
+          id,
+          project_id: projectId ?? null,
+          user_id: user?.id ?? "",
+          title: null,
+          created_at: now,
         };
-    }, [user]);
+        setChats((prev) => [newChat, ...(prev ?? [])]);
+        return id;
+      } catch {
+        return null;
+      }
+    },
+    [user],
+  );
 
-    const loadMoreChats = useCallback(() => {
-        setChatLimit((prev) => prev + CHAT_LIMIT_INCREMENT);
-    }, []);
+  const renameChatFn = useCallback(
+    async (chatId: string, title: string) => {
+      setChats((prev) => (prev ?? []).map((c) => (c.id === chatId ? { ...c, title } : c)));
+      try {
+        await renameChat(chatId, title);
+      } catch {
+        void loadChats();
+      }
+    },
+    [loadChats],
+  );
 
-    const replaceChatId = useCallback(
-        (oldChatId: string, newChatId: string, title?: string) => {
-            if (!oldChatId || !newChatId || oldChatId === newChatId) {
-                setCurrentChatId(newChatId || oldChatId || null);
-                return;
-            }
+  const deleteChatFn = useCallback(
+    async (chatId: string) => {
+      setChats((prev) => (prev ?? []).filter((c) => c.id !== chatId));
+      if (currentChatId === chatId) setCurrentChatId(null);
+      try {
+        await deleteChat(chatId);
+      } catch {
+        void loadChats();
+      }
+    },
+    [currentChatId, loadChats],
+  );
 
-            setChats((prev) => {
-                if (!prev) return prev;
+  const value = useMemo(
+    () => ({
+      chats,
+      hasMoreChats,
+      currentChatId,
+      setCurrentChatId,
+      loadChats,
+      loadMoreChats,
+      saveChat,
+      renameChat: renameChatFn,
+      newChatMessages,
+      setNewChatMessages,
+      replaceChatId,
+      deleteChat: deleteChatFn,
+    }),
+    [
+      chats,
+      hasMoreChats,
+      currentChatId,
+      loadChats,
+      loadMoreChats,
+      saveChat,
+      renameChatFn,
+      newChatMessages,
+      replaceChatId,
+      deleteChatFn,
+    ],
+  );
 
-                const nextChats = prev.map((chat) =>
-                    chat.id === oldChatId
-                        ? { ...chat, id: newChatId, title: title ?? chat.title }
-                        : chat,
-                );
-
-                const seen = new Set<string>();
-                return nextChats.filter((chat) => {
-                    if (seen.has(chat.id)) return false;
-                    seen.add(chat.id);
-                    return true;
-                });
-            });
-            setCurrentChatId(newChatId);
-        },
-        [],
-    );
-
-    const saveChat = useCallback(
-        async (projectId?: string): Promise<string | null> => {
-            try {
-                const { id } = await createChat(
-                    projectId ? { project_id: projectId } : undefined,
-                );
-                const now = new Date().toISOString();
-                const newChat: MikeChat = {
-                    id,
-                    project_id: projectId ?? null,
-                    user_id: user?.id ?? "",
-                    title: null,
-                    created_at: now,
-                };
-                setChats((prev) => [newChat, ...(prev ?? [])]);
-                return id;
-            } catch {
-                return null;
-            }
-        },
-        [user],
-    );
-
-    const renameChatFn = useCallback(
-        async (chatId: string, title: string) => {
-            setChats((prev) =>
-                (prev ?? []).map((c) =>
-                    c.id === chatId ? { ...c, title } : c,
-                ),
-            );
-            try {
-                await renameChat(chatId, title);
-            } catch {
-                void loadChats();
-            }
-        },
-        [loadChats],
-    );
-
-    const deleteChatFn = useCallback(
-        async (chatId: string) => {
-            setChats((prev) => (prev ?? []).filter((c) => c.id !== chatId));
-            if (currentChatId === chatId) setCurrentChatId(null);
-            try {
-                await deleteChat(chatId);
-            } catch {
-                void loadChats();
-            }
-        },
-        [currentChatId, loadChats],
-    );
-
-    const value = useMemo(
-        () => ({
-            chats,
-            hasMoreChats,
-            currentChatId,
-            setCurrentChatId,
-            loadChats,
-            loadMoreChats,
-            saveChat,
-            renameChat: renameChatFn,
-            newChatMessages,
-            setNewChatMessages,
-            replaceChatId,
-            deleteChat: deleteChatFn,
-        }),
-        [
-            chats,
-            hasMoreChats,
-            currentChatId,
-            loadChats,
-            loadMoreChats,
-            saveChat,
-            renameChatFn,
-            newChatMessages,
-            replaceChatId,
-            deleteChatFn,
-        ],
-    );
-
-    return (
-        <ChatHistoryContext.Provider value={value}>
-            {children}
-        </ChatHistoryContext.Provider>
-    );
+  return <ChatHistoryContext.Provider value={value}>{children}</ChatHistoryContext.Provider>;
 }
 
 export function useChatHistoryContext() {
-    const context = useContext(ChatHistoryContext);
-    if (!context) {
-        throw new Error(
-            "useChatHistoryContext must be used within a ChatHistoryProvider",
-        );
-    }
-    return context;
+  const context = useContext(ChatHistoryContext);
+  if (!context) {
+    throw new Error("useChatHistoryContext must be used within a ChatHistoryProvider");
+  }
+  return context;
 }
