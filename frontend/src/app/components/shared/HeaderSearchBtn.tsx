@@ -47,7 +47,7 @@ export function HeaderSearchBtn({ value, onChange, placeholder = "Search…" }: 
             ) : (
                 <button
                     onClick={() => setOpen(true)}
-                    className="flex items-center justify-center p-1.5 text-gray-500 hover:text-gray-900 transition-colors"
+                    className="flex h-8 w-8 items-center justify-center text-gray-500 hover:text-gray-900 transition-colors"
                 >
                     <Search className="h-4 w-4" />
                 </button>

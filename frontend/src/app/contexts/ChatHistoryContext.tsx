@@ -20,9 +20,11 @@ import type { MikeChat, MikeMessage } from "@/app/components/shared/types";
 
 interface ChatHistoryContextType {
     chats: MikeChat[] | null;
+    hasMoreChats: boolean;
     currentChatId: string | null;
     setCurrentChatId: (chatId: string | null) => void;
     loadChats: () => Promise<void>;
+    loadMoreChats: () => void;
     saveChat: (projectId?: string) => Promise<string | null>;
     renameChat: (chatId: string, title: string) => Promise<void>;
     newChatMessages: MikeMessage[] | null;
@@ -39,23 +41,34 @@ const ChatHistoryContext = createContext<ChatHistoryContextType | undefined>(
     undefined,
 );
 
+const INITIAL_CHAT_LIMIT = 20;
+const CHAT_LIMIT_INCREMENT = 10;
+
 export function ChatHistoryProvider({ children }: { children: ReactNode }) {
     const { user } = useAuth();
     const [chats, setChats] = useState<MikeChat[] | null>(null);
+    const [chatLimit, setChatLimit] = useState(INITIAL_CHAT_LIMIT);
+    const [hasMoreChats, setHasMoreChats] = useState(false);
     const [currentChatId, setCurrentChatId] = useState<string | null>(null);
     const [newChatMessages, setNewChatMessages] = useState<
         MikeMessage[] | null
     >(null);
 
     const loadChats = useCallback(async () => {
-        if (!user) return;
+        if (!user) {
+            setChats([]);
+            setHasMoreChats(false);
+            return;
+        }
         try {
-            const data = await listChats();
-            setChats(data);
+            const data = await listChats({ limit: chatLimit + 1 });
+            setChats(data.slice(0, chatLimit));
+            setHasMoreChats(data.length > chatLimit);
         } catch {
             setChats([]);
+            setHasMoreChats(false);
         }
-    }, [user]);
+    }, [chatLimit, user]);
 
     // Clear chat state synchronously when the user logs out so we don't
     // leak the previous user's chats during a navigation.
@@ -65,6 +78,8 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
         setPrevUserId(currentUserId);
         if (!currentUserId) {
             setChats([]);
+            setChatLimit(INITIAL_CHAT_LIMIT);
+            setHasMoreChats(false);
             setCurrentChatId(null);
         }
     }
@@ -84,6 +99,10 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
             cancelled = true;
         };
     }, [user]);
+
+    const loadMoreChats = useCallback(() => {
+        setChatLimit((prev) => prev + CHAT_LIMIT_INCREMENT);
+    }, []);
 
     const replaceChatId = useCallback(
         (oldChatId: string, newChatId: string, title?: string) => {
@@ -168,9 +187,11 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
     const value = useMemo(
         () => ({
             chats,
+            hasMoreChats,
             currentChatId,
             setCurrentChatId,
             loadChats,
+            loadMoreChats,
             saveChat,
             renameChat: renameChatFn,
             newChatMessages,
@@ -180,8 +201,10 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
         }),
         [
             chats,
+            hasMoreChats,
             currentChatId,
             loadChats,
+            loadMoreChats,
             saveChat,
             renameChatFn,
             newChatMessages,

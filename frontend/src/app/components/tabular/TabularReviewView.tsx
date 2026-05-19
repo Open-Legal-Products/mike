@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Plus, Loader2, Play, ChevronDown, MessageSquare, Download, Users } from "lucide-react";
+import { Plus, Loader2, Play, ChevronDown, MessageSquare, Download, Users, Upload } from "lucide-react";
 import { HeaderSearchBtn } from "../shared/HeaderSearchBtn";
 
 import {
@@ -13,6 +13,7 @@ import {
     regenerateTabularCell,
     streamTabularGeneration,
     updateTabularReview,
+    uploadReviewDocument,
 } from "@/app/lib/mikeApi";
 import type {
     ColumnConfig,
@@ -70,6 +71,10 @@ export function TRView({ reviewId, projectId }: Props) {
     const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
     const [actionsOpen, setActionsOpen] = useState(false);
     const [search, setSearch] = useState("");
+    const [dragOverReviewFiles, setDragOverReviewFiles] = useState(false);
+    const [uploadingDroppedFilenames, setUploadingDroppedFilenames] = useState<
+        string[]
+    >([]);
     const searchParams = useSearchParams();
     const initialChatParamRef = useRef<string | null>(
         searchParams.get("chat"),
@@ -188,7 +193,39 @@ export function TRView({ reviewId, projectId }: Props) {
         }
     }
 
+    function hasFilePayload(dt: DataTransfer): boolean {
+        return Array.from(dt.types).includes("Files");
+    }
+
+    async function handleDropReviewFiles(files: File[]) {
+        if (files.length === 0) return;
+        setUploadingDroppedFilenames(files.map((file) => file.name));
+        try {
+            const uploaded: MikeDocument[] = [];
+            const documentIds = documents.map((document) => document.id);
+            for (const file of files) {
+                const document = await uploadReviewDocument(reviewId, file, {
+                    projectId,
+                    documentIds,
+                    columnsConfig: columns,
+                });
+                uploaded.push(document);
+                documentIds.push(document.id);
+            }
+            await handleAddDocuments(uploaded);
+        } catch (err) {
+            console.error("Tabular review document drop upload failed", err);
+        } finally {
+            setUploadingDroppedFilenames([]);
+        }
+    }
+
     async function handleRegenerateCell(docId: string, colIndex: number) {
+        if (apiKeys && !isModelAvailable(tabularModel, apiKeys)) {
+            setApiKeyModalProvider(getModelProvider(tabularModel));
+            return;
+        }
+
         setCells((prev) =>
             prev.map((c) =>
                 c.document_id === docId && c.column_index === colIndex
@@ -247,40 +284,54 @@ export function TRView({ reviewId, projectId }: Props) {
 
         setGenerating(true);
 
-        // Optimistically set empty/pending/error cells to generating (skip done cells)
-        setCells((prev) =>
-            documents.flatMap((doc) =>
-                columns.map((col) => {
-                    const existing = prev.find(
-                        (c) =>
-                            c.document_id === doc.id &&
-                            c.column_index === col.index,
-                    );
-                    if (existing?.status === "done" && existing?.content) {
-                        return existing;
-                    }
-                    return existing
-                        ? {
-                              ...existing,
-                              status: "generating" as const,
-                              content: null,
-                          }
-                        : {
-                              id: `${doc.id}-${col.index}`,
-                              review_id: reviewId,
-                              document_id: doc.id,
-                              column_index: col.index,
-                              content: null,
-                              status: "generating" as const,
-                              created_at: new Date().toISOString(),
-                          };
-                }),
-            ),
-        );
-
         try {
             const response = await streamTabularGeneration(reviewId);
+            if (!response.ok) {
+                const payload = await response.json().catch(() => null);
+                const provider =
+                    payload &&
+                    ["claude", "gemini", "openai"].includes(payload.provider)
+                        ? (payload.provider as ModelProvider)
+                        : getModelProvider(tabularModel);
+                if (payload?.code === "missing_api_key" && provider) {
+                    setApiKeyModalProvider(provider);
+                }
+                throw new Error(
+                    payload?.detail ?? `Generation failed: ${response.status}`,
+                );
+            }
             if (!response.body) throw new Error("No body");
+
+            // Optimistically set empty/pending/error cells to generating (skip done cells)
+            setCells((prev) =>
+                documents.flatMap((doc) =>
+                    columns.map((col) => {
+                        const existing = prev.find(
+                            (c) =>
+                                c.document_id === doc.id &&
+                                c.column_index === col.index,
+                        );
+                        if (existing?.status === "done" && existing?.content) {
+                            return existing;
+                        }
+                        return existing
+                            ? {
+                                  ...existing,
+                                  status: "generating" as const,
+                                  content: null,
+                              }
+                            : {
+                                  id: `${doc.id}-${col.index}`,
+                                  review_id: reviewId,
+                                  document_id: doc.id,
+                                  column_index: col.index,
+                                  content: null,
+                                  status: "generating" as const,
+                                  created_at: new Date().toISOString(),
+                              };
+                    }),
+                ),
+            );
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
@@ -422,19 +473,30 @@ export function TRView({ reviewId, projectId }: Props) {
     }
 
     async function handleDeleteDocuments() {
+        const idsToDelete = [...selectedDocIds];
+        if (idsToDelete.length === 0) return;
+        const previousDocuments = documents;
+        const previousCells = cells;
         const remaining = documents.filter(
-            (d) => !selectedDocIds.includes(d.id),
+            (d) => !idsToDelete.includes(d.id),
         );
         setDocuments(remaining);
         setCells((prev) =>
-            prev.filter((c) => !selectedDocIds.includes(c.document_id)),
+            prev.filter((c) => !idsToDelete.includes(c.document_id)),
         );
         setSelectedDocIds([]);
         setActionsOpen(false);
-        await updateTabularReview(reviewId, {
-            document_ids: remaining.map((d) => d.id),
-            columns_config: columns,
-        });
+        try {
+            await updateTabularReview(reviewId, {
+                document_ids: remaining.map((d) => d.id),
+                columns_config: columns,
+            });
+        } catch (err) {
+            setDocuments(previousDocuments);
+            setCells(previousCells);
+            setSelectedDocIds(idsToDelete);
+            console.error("Failed to delete tabular review documents", err);
+        }
     }
 
     async function handleClearResults() {
@@ -467,7 +529,7 @@ export function TRView({ reviewId, projectId }: Props) {
         <div className="flex h-full overflow-hidden bg-white">
             <div className="flex flex-1 flex-col overflow-hidden">
                 {/* Header */}
-                <div className="bg-white px-8 py-4 flex items-start justify-between shrink-0 gap-4">
+                <div className="mb-1 bg-white px-4 py-3 md:px-10 flex items-start justify-between shrink-0 gap-4">
                     <div className="flex items-center gap-1.5 text-2xl font-medium font-serif">
                         {projectId && (
                             <>
@@ -595,7 +657,7 @@ export function TRView({ reviewId, projectId }: Props) {
                 </div>
 
                 {/* Toolbar */}
-                <div className="flex items-center h-10 px-8 border-b border-gray-200 gap-4">
+                <div className="flex items-center h-10 px-4 md:px-10 border-b border-gray-200 gap-4">
                     <button
                         onClick={() => {
                             if (!chatOpen) setSidebarOpen(false);
@@ -612,8 +674,14 @@ export function TRView({ reviewId, projectId }: Props) {
                         <MessageSquare className="h-3.5 w-3.5" />
                         Assistant in Tabular Review
                     </button>
-                    <div className="ml-auto flex items-center gap-4">
-                        {selectedDocIds.length > 0 && (
+                    <div className="ml-auto flex items-center gap-5">
+                        {loading ? (
+                            <>
+                                <div className="h-3 w-24 rounded bg-gray-100 animate-pulse" />
+                                <div className="h-3 w-20 rounded bg-gray-100 animate-pulse" />
+                            </>
+                        ) : null}
+                        {!loading && selectedDocIds.length > 0 && (
                             <div ref={actionsRef} className="relative">
                                 <button
                                     onClick={() => setActionsOpen((v) => !v)}
@@ -640,32 +708,34 @@ export function TRView({ reviewId, projectId }: Props) {
                                 )}
                             </div>
                         )}
-                        <button
-                            onClick={() => setAddDocsOpen(true)}
-                            disabled={loading || savingColumnsConfig}
-                            className={`flex items-center gap-1 text-xs font-medium transition-colors ${
-                                loading || savingColumnsConfig
-                                    ? "text-gray-300 cursor-default"
-                                    : "text-gray-700 hover:text-gray-900"
-                            }`}
-                        >
-                            <Plus className="h-3.5 w-3.5" />
-                            Add Documents
-                        </button>
-                        <button
-                            onClick={() => setAddColOpen(true)}
-                            disabled={
-                                loading || savingColumn || savingColumnsConfig
-                            }
-                            className={`flex items-center gap-1 text-xs font-medium transition-colors ${
-                                loading || savingColumn || savingColumnsConfig
-                                    ? "text-gray-300 cursor-default"
-                                    : "text-gray-700 hover:text-gray-900"
-                            }`}
-                        >
-                            <Plus className="h-3.5 w-3.5" />
-                            Add Columns
-                        </button>
+                        {!loading && (
+                            <>
+                                <button
+                                    onClick={() => setAddDocsOpen(true)}
+                                    disabled={savingColumnsConfig}
+                                    className={`flex items-center gap-1 text-xs font-medium transition-colors ${
+                                        savingColumnsConfig
+                                            ? "text-gray-300 cursor-default"
+                                            : "text-gray-700 hover:text-gray-900"
+                                    }`}
+                                >
+                                    <Upload className="h-3.5 w-3.5" />
+                                    Add Documents
+                                </button>
+                                <button
+                                    onClick={() => setAddColOpen(true)}
+                                    disabled={savingColumn || savingColumnsConfig}
+                                    className={`flex items-center gap-1 text-xs font-medium transition-colors ${
+                                        savingColumn || savingColumnsConfig
+                                            ? "text-gray-300 cursor-default"
+                                            : "text-gray-700 hover:text-gray-900"
+                                    }`}
+                                >
+                                    <Plus className="h-3.5 w-3.5" />
+                                    Add Columns
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
 
@@ -687,30 +757,60 @@ export function TRView({ reviewId, projectId }: Props) {
                             onChatIdChange={setSelectedChatId}
                         />
                     )}
-                    <TRTable
-                        ref={tableRef}
-                        loading={loading}
-                        columns={columns}
-                        documents={filteredDocuments}
-                        cells={cells}
-                        highlightedCell={highlightedCell}
-                        savingColumn={savingColumn}
-                        savingColumnsConfig={savingColumnsConfig}
-                        selectedDocIds={selectedDocIds}
-                        onSelectionChange={setSelectedDocIds}
-                        onExpand={(cell) => {
-                            setExpandedCell(cell);
-                            setExpandedCellCitation(undefined);
+                    <div
+                        className="relative flex flex-1 overflow-hidden"
+                        onDragOver={(e) => {
+                            if (!hasFilePayload(e.dataTransfer)) return;
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = "copy";
+                            setDragOverReviewFiles(true);
                         }}
-                        onCitationClick={(cell, page, quote) => {
-                            setExpandedCell(cell);
-                            setExpandedCellCitation({ quote, page });
+                        onDragLeave={(e) => {
+                            if (
+                                !e.currentTarget.contains(
+                                    e.relatedTarget as Node,
+                                )
+                            ) {
+                                setDragOverReviewFiles(false);
+                            }
                         }}
-                        onUpdateColumn={handleUpdateColumn}
-                        onDeleteColumn={handleDeleteColumn}
-                        onAddColumn={() => setAddColOpen(true)}
-                        onAddDocuments={() => setAddDocsOpen(true)}
-                    />
+                        onDrop={(e) => {
+                            if (!hasFilePayload(e.dataTransfer)) return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDragOverReviewFiles(false);
+                            void handleDropReviewFiles(
+                                Array.from(e.dataTransfer.files),
+                            );
+                        }}
+                    >
+                        <TRTable
+                            ref={tableRef}
+                            loading={loading}
+                            columns={columns}
+                            documents={filteredDocuments}
+                            cells={cells}
+                            highlightedCell={highlightedCell}
+                            savingColumn={savingColumn}
+                            savingColumnsConfig={savingColumnsConfig}
+                            selectedDocIds={selectedDocIds}
+                            uploadingFilenames={uploadingDroppedFilenames}
+                            dragOverFiles={dragOverReviewFiles}
+                            onSelectionChange={setSelectedDocIds}
+                            onExpand={(cell) => {
+                                setExpandedCell(cell);
+                                setExpandedCellCitation(undefined);
+                            }}
+                            onCitationClick={(cell, page, quote) => {
+                                setExpandedCell(cell);
+                                setExpandedCellCitation({ quote, page });
+                            }}
+                            onUpdateColumn={handleUpdateColumn}
+                            onDeleteColumn={handleDeleteColumn}
+                            onAddColumn={() => setAddColOpen(true)}
+                            onAddDocuments={() => setAddDocsOpen(true)}
+                        />
+                    </div>
                 </div>
             </div>
 

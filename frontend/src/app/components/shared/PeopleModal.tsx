@@ -136,13 +136,22 @@ export function PeopleModal({
     }
 
     const trimmedNewEmail = newEmail.trim().toLowerCase();
+    const normalizedCurrentUserEmail =
+        currentUserEmail?.trim().toLowerCase() ?? null;
     const isValidEmail = EMAIL_RE.test(trimmedNewEmail);
     const sharedLower = sharedWith.map((e) => e.toLowerCase());
     const alreadyShared = sharedLower.includes(trimmedNewEmail);
     const isOwnerEmail =
         !!ownerEmail && trimmedNewEmail === ownerEmail.toLowerCase();
+    const isSelfEmail =
+        !!normalizedCurrentUserEmail &&
+        trimmedNewEmail === normalizedCurrentUserEmail;
     const canAdd =
-        isValidEmail && !alreadyShared && !isOwnerEmail && busy === null;
+        isValidEmail &&
+        !alreadyShared &&
+        !isOwnerEmail &&
+        !isSelfEmail &&
+        busy === null;
 
     async function handleAdd() {
         if (!canAdd || !onSharedWithChange) return;
@@ -249,10 +258,16 @@ export function PeopleModal({
                                 {trimmedNewEmail} is the owner.
                             </p>
                         )}
+                        {isSelfEmail && !isOwnerEmail && trimmedNewEmail && (
+                            <p className="mt-1.5 text-xs text-gray-400">
+                                You cannot share this with yourself.
+                            </p>
+                        )}
                         {trimmedNewEmail &&
                             !isValidEmail &&
                             !alreadyShared &&
-                            !isOwnerEmail && (
+                            !isOwnerEmail &&
+                            !isSelfEmail && (
                                 <p className="mt-1.5 text-xs text-gray-400">
                                     Enter a valid email.
                                 </p>

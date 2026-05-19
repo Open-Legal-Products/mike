@@ -1,4 +1,9 @@
-import { Router } from "express";
+import {
+  Router,
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { db, type Db } from "../db";
@@ -27,6 +32,14 @@ type WorkflowAccess =
     }
   | null;
 
+type AsyncRoute = (req: Request, res: Response) => Promise<unknown>;
+
+function asyncRoute(handler: AsyncRoute) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    void handler(req, res).catch(next);
+  };
+}
+
 function withWorkflowAccess<T extends Record<string, unknown>>(
   workflow: T,
   access: { allowEdit: boolean; isOwner: boolean; sharedByName?: string | null },
@@ -37,6 +50,41 @@ function withWorkflowAccess<T extends Record<string, unknown>>(
     is_owner: access.isOwner,
     shared_by_name: access.sharedByName ?? null,
   };
+}
+
+async function loadSharerNames(
+  client: Db,
+  sharerIds: string[],
+): Promise<Map<string, string>> {
+  const uniqueIds = [...new Set(sharerIds.filter(Boolean))];
+  const names = new Map<string, string>();
+  if (uniqueIds.length === 0) return names;
+
+  const profiles = await client
+    .select({
+      user_id: user_profiles.user_id,
+      display_name: user_profiles.display_name,
+    })
+    .from(user_profiles)
+    .where(inArray(user_profiles.user_id, uniqueIds));
+  for (const profile of profiles) {
+    if (profile.user_id && profile.display_name) {
+      names.set(profile.user_id, profile.display_name);
+    }
+  }
+
+  const missingIds = uniqueIds.filter((id) => !names.has(id));
+  if (missingIds.length > 0) {
+    const identities = await client
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(inArray(users.id, missingIds));
+    for (const identity of identities) {
+      if (identity.email) names.set(identity.id, identity.email);
+    }
+  }
+
+  return names;
 }
 
 async function resolveWorkflowAccess(
@@ -74,7 +122,7 @@ async function resolveWorkflowAccess(
 }
 
 // GET /workflows
-workflowsRouter.get("/", requireAuth, async (req, res) => {
+workflowsRouter.get("/", requireAuth, asyncRoute(async (req, res) => {
   const userId = res.locals.userId as string;
   const userEmail = res.locals.userEmail as string;
   const { type } = req.query as { type?: string };
@@ -113,32 +161,17 @@ workflowsRouter.get("/", requireAuth, async (req, res) => {
       .where(and(...sharedConditions));
 
     if (wfs.length > 0) {
-      // Fetch sharer profiles + identity rows (replaces Supabase auth admin client)
-      const sharerIds = [
-        ...new Set(shares.map((s) => s.shared_by_user_id).filter(Boolean)),
-      ];
-      const profiles = sharerIds.length
-        ? await db
-            .select({
-              user_id: user_profiles.user_id,
-              display_name: user_profiles.display_name,
-            })
-            .from(user_profiles)
-            .where(inArray(user_profiles.user_id, sharerIds))
-        : [];
-      const identities = sharerIds.length
-        ? await db
-            .select({ id: users.id, email: users.email })
-            .from(users)
-            .where(inArray(users.id, sharerIds))
-        : [];
+      const sharerIds = shares
+        .map((s) => s.shared_by_user_id)
+        .filter((id): id is string => !!id);
+      const sharerNames = await loadSharerNames(db, sharerIds);
 
       sharedWorkflows = wfs.map((wf) => {
         const share = shares.find((s) => s.workflow_id === wf.id);
         const sharerId = share?.shared_by_user_id;
-        const profile = profiles.find((p) => p.user_id === sharerId);
-        const identity = identities.find((u) => u.id === sharerId);
-        const shared_by_name = profile?.display_name || identity?.email || null;
+        const shared_by_name = sharerId
+          ? sharerNames.get(sharerId) ?? null
+          : null;
         return withWorkflowAccess(wf, {
           allowEdit: !!share?.allow_edit,
           isOwner: false,
@@ -152,10 +185,10 @@ workflowsRouter.get("/", requireAuth, async (req, res) => {
     withWorkflowAccess(wf, { allowEdit: true, isOwner: true }),
   );
   res.json([...ownWithFlag, ...sharedWorkflows]);
-});
+}));
 
 // POST /workflows
-workflowsRouter.post("/", requireAuth, async (req, res) => {
+workflowsRouter.post("/", requireAuth, asyncRoute(async (req, res) => {
   const userId = res.locals.userId as string;
   const { title, type, prompt_md, columns_config, practice } = req.body as {
     title: string;
@@ -190,12 +223,9 @@ workflowsRouter.post("/", requireAuth, async (req, res) => {
       .status(500)
       .json({ detail: err instanceof Error ? err.message : "Insert failed" });
   }
-});
+}));
 
-async function handleWorkflowUpdate(
-  req: import("express").Request,
-  res: import("express").Response,
-) {
+async function handleWorkflowUpdate(req: Request, res: Response) {
   const userId = res.locals.userId as string;
   const userEmail = res.locals.userEmail as string | undefined;
   const { workflowId } = req.params;
@@ -232,13 +262,13 @@ async function handleWorkflowUpdate(
 }
 
 // PUT /workflows/:workflowId
-workflowsRouter.put("/:workflowId", requireAuth, handleWorkflowUpdate);
+workflowsRouter.put("/:workflowId", requireAuth, asyncRoute(handleWorkflowUpdate));
 
 // PATCH /workflows/:workflowId
-workflowsRouter.patch("/:workflowId", requireAuth, handleWorkflowUpdate);
+workflowsRouter.patch("/:workflowId", requireAuth, asyncRoute(handleWorkflowUpdate));
 
 // DELETE /workflows/:workflowId
-workflowsRouter.delete("/:workflowId", requireAuth, async (req, res) => {
+workflowsRouter.delete("/:workflowId", requireAuth, asyncRoute(async (req, res) => {
   const userId = res.locals.userId as string;
   const { workflowId } = req.params;
   await db
@@ -251,20 +281,20 @@ workflowsRouter.delete("/:workflowId", requireAuth, async (req, res) => {
       ),
     );
   res.status(204).send();
-});
+}));
 
 // GET /workflows/hidden
-workflowsRouter.get("/hidden", requireAuth, async (req, res) => {
+workflowsRouter.get("/hidden", requireAuth, asyncRoute(async (_req, res) => {
   const userId = res.locals.userId as string;
   const rows = await db
     .select({ workflow_id: hidden_workflows.workflow_id })
     .from(hidden_workflows)
     .where(eq(hidden_workflows.user_id, userId));
   res.json(rows.map((r) => r.workflow_id));
-});
+}));
 
 // POST /workflows/hidden
-workflowsRouter.post("/hidden", requireAuth, async (req, res) => {
+workflowsRouter.post("/hidden", requireAuth, asyncRoute(async (req, res) => {
   const userId = res.locals.userId as string;
   const { workflow_id } = req.body as { workflow_id: string };
   if (!workflow_id?.trim())
@@ -276,10 +306,10 @@ workflowsRouter.post("/hidden", requireAuth, async (req, res) => {
       target: [hidden_workflows.user_id, hidden_workflows.workflow_id],
     });
   res.status(204).send();
-});
+}));
 
 // DELETE /workflows/hidden/:workflowId
-workflowsRouter.delete("/hidden/:workflowId", requireAuth, async (req, res) => {
+workflowsRouter.delete("/hidden/:workflowId", requireAuth, asyncRoute(async (req, res) => {
   const userId = res.locals.userId as string;
   const { workflowId } = req.params;
   await db
@@ -291,10 +321,10 @@ workflowsRouter.delete("/hidden/:workflowId", requireAuth, async (req, res) => {
       ),
     );
   res.status(204).send();
-});
+}));
 
 // GET /workflows/:workflowId
-workflowsRouter.get("/:workflowId", requireAuth, async (req, res) => {
+workflowsRouter.get("/:workflowId", requireAuth, asyncRoute(async (req, res) => {
   const userId = res.locals.userId as string;
   const userEmail = res.locals.userEmail as string | undefined;
   const { workflowId } = req.params;
@@ -306,10 +336,10 @@ workflowsRouter.get("/:workflowId", requireAuth, async (req, res) => {
       isOwner: access.isOwner,
     }),
   );
-});
+}));
 
 // GET /workflows/:workflowId/shares
-workflowsRouter.get("/:workflowId/shares", requireAuth, async (req, res) => {
+workflowsRouter.get("/:workflowId/shares", requireAuth, asyncRoute(async (req, res) => {
   const userId = res.locals.userId as string;
   const { workflowId } = req.params;
 
@@ -338,13 +368,13 @@ workflowsRouter.get("/:workflowId/shares", requireAuth, async (req, res) => {
     .orderBy(asc(workflow_shares.created_at));
 
   res.json(shares);
-});
+}));
 
 // DELETE /workflows/:workflowId/shares/:shareId
 workflowsRouter.delete(
   "/:workflowId/shares/:shareId",
   requireAuth,
-  async (req, res) => {
+  asyncRoute(async (req, res) => {
     const userId = res.locals.userId as string;
     const { workflowId, shareId } = req.params;
 
@@ -366,12 +396,13 @@ workflowsRouter.delete(
         ),
       );
     res.status(204).send();
-  },
+  }),
 );
 
 // POST /workflows/:workflowId/share
-workflowsRouter.post("/:workflowId/share", requireAuth, async (req, res) => {
+workflowsRouter.post("/:workflowId/share", requireAuth, asyncRoute(async (req, res) => {
   const userId = res.locals.userId as string;
+  const userEmail = res.locals.userEmail as string | undefined;
   const { workflowId } = req.params;
   const { emails, allow_edit } = req.body as {
     emails: string[];
@@ -380,6 +411,23 @@ workflowsRouter.post("/:workflowId/share", requireAuth, async (req, res) => {
 
   if (!emails?.length)
     return void res.status(400).json({ detail: "emails is required" });
+
+  const normalizedEmails = [
+    ...new Set(
+      emails
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+  if (normalizedEmails.length === 0) {
+    return void res.status(400).json({ detail: "emails is required" });
+  }
+  const normalizedUserEmail = userEmail?.trim().toLowerCase();
+  if (normalizedUserEmail && normalizedEmails.includes(normalizedUserEmail)) {
+    return void res
+      .status(400)
+      .json({ detail: "You cannot share a workflow with yourself." });
+  }
 
   // Verify ownership
   const wf = await db.query.workflows.findFirst({
@@ -395,10 +443,10 @@ workflowsRouter.post("/:workflowId/share", requireAuth, async (req, res) => {
       .status(404)
       .json({ detail: "Workflow not found or not editable" });
 
-  const rows = emails.map((email: string) => ({
+  const rows = normalizedEmails.map((email: string) => ({
     workflow_id: workflowId,
     shared_by_user_id: userId,
-    shared_with_email: email.trim().toLowerCase(),
+    shared_with_email: email,
     allow_edit: allow_edit ?? false,
   }));
   // Upsert on (workflow_id, shared_with_email) so re-sharing to the same
@@ -412,4 +460,12 @@ workflowsRouter.post("/:workflowId/share", requireAuth, async (req, res) => {
     });
 
   res.status(204).send();
-});
+}));
+
+workflowsRouter.use(
+  (err: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) return next(err);
+    console.error("[workflows] unhandled route error", err);
+    res.status(500).json({ detail: "Failed to process workflow request" });
+  },
+);

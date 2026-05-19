@@ -25,7 +25,10 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl as awsGetSignedUrl } from "@aws-sdk/s3-request-presigner";
 
+let cachedClient: S3Client | undefined;
+
 function getClient(): S3Client {
+  if (cachedClient) return cachedClient;
   const endpoint = process.env.S3_ENDPOINT_URL;
   const config: S3ClientConfig = {
     region: process.env.AWS_REGION ?? "us-east-1",
@@ -43,12 +46,21 @@ function getClient(): S3Client {
   }
   // No endpoint → real AWS. Leave credentials unset so the SDK uses the
   // default chain (IMDS / task role / shared config / env).
-  return new S3Client(config);
+  cachedClient = new S3Client(config);
+  return cachedClient;
 }
 
 const BUCKET = process.env.S3_BUCKET_NAME ?? "mike";
 
 export const storageEnabled = Boolean(process.env.S3_BUCKET_NAME);
+
+function requireStorageConfig(): void {
+  if (!storageEnabled) {
+    throw new Error(
+      "R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY must be set",
+    );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Upload
@@ -59,6 +71,7 @@ export async function uploadFile(
   content: ArrayBuffer,
   contentType: string,
 ): Promise<void> {
+  requireStorageConfig();
   const client = getClient();
   await client.send(
     new PutObjectCommand({

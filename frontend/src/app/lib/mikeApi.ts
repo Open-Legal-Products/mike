@@ -268,6 +268,21 @@ export async function moveDocumentToFolder(
     );
 }
 
+export async function renameProjectDocument(
+    projectId: string,
+    documentId: string,
+    filename: string,
+): Promise<MikeDocument> {
+    return apiRequest<MikeDocument>(
+        `/projects/${projectId}/documents/${documentId}`,
+        {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filename }),
+        },
+    );
+}
+
 export async function addDocumentToProject(
     projectId: string,
     documentId: string,
@@ -413,8 +428,11 @@ export async function createChat(payload?: {
     });
 }
 
-export async function listChats(): Promise<MikeChat[]> {
-    return apiRequest<MikeChat[]>("/chat");
+export async function listChats(options?: { limit?: number }): Promise<MikeChat[]> {
+    const params = new URLSearchParams();
+    if (options?.limit) params.set("limit", String(options.limit));
+    const query = params.toString();
+    return apiRequest<MikeChat[]>(`/chat${query ? `?${query}` : ""}`);
 }
 
 export async function listProjectChats(projectId: string): Promise<MikeChat[]> {

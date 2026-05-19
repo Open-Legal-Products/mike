@@ -138,8 +138,12 @@ async function getAccessibleChat(
 }
 
 // GET /chat
-chatRouter.get("/", requireAuth, async (_req, res) => {
+chatRouter.get("/", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
+    const requestedLimit = Number.parseInt(String(req.query.limit ?? ""), 10);
+    const limit = Number.isFinite(requestedLimit)
+        ? Math.min(Math.max(requestedLimit, 1), 100)
+        : null;
 
     const ownProjects = await db
         .select({ id: projects.id })
@@ -155,11 +159,12 @@ chatRouter.get("/", requireAuth, async (_req, res) => {
               )
             : eq(chats.user_id, userId);
 
-    const data = await db
+    const baseQuery = db
         .select()
         .from(chats)
         .where(whereClause)
         .orderBy(desc(chats.created_at));
+    const data = limit ? await baseQuery.limit(limit) : await baseQuery;
     res.json(data);
 });
 

@@ -19,6 +19,7 @@ import Link from "next/link";
 import { MikeIcon } from "@/components/chat/mike-icon";
 import { SidebarChatItem } from "@/app/components/shared/SidebarChatItem";
 import { listProjects } from "@/app/lib/mikeApi";
+import type { MikeProject } from "@/app/components/shared/types";
 
 const NAV_ITEMS = [
     { href: "/assistant", label: "Assistant", icon: MessageSquare },
@@ -35,14 +36,24 @@ interface AppSidebarProps {
 export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
     const { user } = useAuth();
     const { profile } = useUserProfile();
-    const { chats, currentChatId, setCurrentChatId } = useChatHistoryContext();
+    const {
+        chats,
+        currentChatId,
+        hasMoreChats,
+        loadMoreChats,
+        setCurrentChatId,
+    } = useChatHistoryContext();
     const router = useRouter();
     const pathname = usePathname();
     const [shouldAnimate, setShouldAnimate] = useState(false);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const [projectsCollapsed, setProjectsCollapsed] = useState(false);
     const [historyCollapsed, setHistoryCollapsed] = useState(false);
     const [projectNames, setProjectNames] = useState<Record<string, string>>(
         {},
+    );
+    const [recentProjects, setRecentProjects] = useState<MikeProject[] | null>(
+        null,
     );
 
     useEffect(() => {
@@ -52,8 +63,20 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                 const map: Record<string, string> = {};
                 for (const p of projects) map[p.id] = p.name;
                 setProjectNames(map);
+                setRecentProjects(
+                    [...projects]
+                        .sort(
+                            (a, b) =>
+                                Date.parse(b.updated_at || b.created_at) -
+                                Date.parse(a.updated_at || a.created_at),
+                        )
+                        .slice(0, 5),
+                );
             })
-            .catch(() => {});
+            .catch(() => {
+                setProjectNames({});
+                setRecentProjects([]);
+            });
     }, [user]);
 
     // Enable animation as soon as the sidebar is closed, so it animates back
@@ -116,12 +139,12 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
             className={`${
                 isOpen
                     ? "w-64 h-dvh bg-gray-50 border-r"
-                    : "w-14 md:h-dvh md:bg-gray-50 md:border-r h-auto bg-transparent"
-            } border-gray-200 flex flex-col transition-all duration-300 absolute md:relative z-99 overflow-visible`}
+                    : "w-14 md:h-dvh md:bg-gray-50 md:border-r h-auto bg-transparent pointer-events-none md:pointer-events-auto"
+            } border-gray-200 flex flex-col transition-all duration-300 absolute md:relative z-[99] overflow-visible`}
         >
             {/* Toggle + Logo */}
             <div
-                className={`mb-3 items-center justify-between px-2.5 py-2 ${
+                className={`items-center justify-between px-2.5 py-3 ${
                     !isOpen ? "hidden md:flex" : "flex"
                 }`}
             >
@@ -156,7 +179,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                 const isActive =
                     pathname === href || pathname.startsWith(href + "/");
                 return (
-                    <div key={href} className="py-1 px-2.5">
+                    <div key={href} className="py-0.5 px-2.5">
                         <button
                             onClick={() => router.push(href)}
                             title={!isOpen ? label : ""}
@@ -185,73 +208,181 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                 );
             })}
 
-            {/* Assistant History */}
-            {isOpen && pathname.startsWith("/assistant") && (
-                <div className="mt-4 flex-1 min-h-0 flex flex-col">
-                    <button
-                        onClick={() => setHistoryCollapsed((v) => !v)}
-                        className={`mb-2 px-5 flex items-center justify-between text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors ${
-                            shouldAnimate ? "sidebar-fade-in" : ""
-                        }`}
-                    >
-                        <span>Assistant History</span>
-                        <ChevronDown
-                            className={`h-3.5 w-3.5 transition-transform ${historyCollapsed ? "-rotate-90" : ""}`}
-                        />
-                    </button>
-                    <div
-                        className={`overflow-y-auto flex-1 ${historyCollapsed ? "hidden" : ""}`}
-                    >
-                        {!chats ? (
-                            <div className="space-y-1 px-2.5">
-                                {[40, 60, 50, 70, 45].map((w, i) => (
-                                    <div
-                                        key={i}
-                                        className="h-9 flex items-center px-3 rounded-md"
-                                    >
-                                        <div
-                                            className="h-3 bg-gray-200 rounded animate-pulse"
-                                            style={{ width: `${w}%` }}
-                                        />
+            {isOpen && (
+                <div className="mt-4 flex-1 min-h-0 flex flex-col gap-4">
+                    {/* Recent Projects */}
+                    <div>
+                        <button
+                            onClick={() => setProjectsCollapsed((v) => !v)}
+                            className={`mb-2 flex w-full items-center justify-between px-5 text-xs font-semibold text-gray-500 transition-colors hover:text-gray-700 ${
+                                shouldAnimate ? "sidebar-fade-in" : ""
+                            }`}
+                        >
+                            <span>Recent Projects</span>
+                            <ChevronDown
+                                className={`h-3.5 w-3.5 transition-transform ${
+                                    projectsCollapsed ? "-rotate-90" : ""
+                                }`}
+                            />
+                        </button>
+                        {!projectsCollapsed && (
+                            <>
+                                {!recentProjects ? (
+                                    <div className="space-y-1 px-2.5">
+                                        {[50, 65, 45].map((w, i) => (
+                                            <div
+                                                key={i}
+                                                className="h-9 flex items-center px-3 rounded-md"
+                                            >
+                                                <div
+                                                    className="h-3 bg-gray-200 rounded animate-pulse"
+                                                    style={{ width: `${w}%` }}
+                                                />
+                                            </div>
+                                        ))}
                                     </div>
-                                ))}
-                            </div>
-                        ) : chats.length === 0 ? (
-                            <div
-                                className={`text-xs text-gray-500 py-2 px-5 ${
-                                    shouldAnimate ? "sidebar-fade-in-2" : ""
-                                }`}
-                            >
-                                No chats yet
-                            </div>
-                        ) : (
-                            <div
-                                className={`space-y-1 px-2.5 ${
-                                    shouldAnimate ? "sidebar-fade-in-2" : ""
-                                }`}
-                            >
-                                {chats.map((chat) => (
-                                    <SidebarChatItem
-                                        key={chat.id}
-                                        chat={chat}
-                                        isActive={currentChatId === chat.id}
-                                        projectName={
-                                            chat.project_id
-                                                ? projectNames[chat.project_id]
-                                                : undefined
-                                        }
-                                        onSelect={() => {
-                                            setCurrentChatId(chat.id);
-                                            router.push(
-                                                chat.project_id
-                                                    ? `/projects/${chat.project_id}/assistant/chat/${chat.id}`
-                                                    : `/assistant/chat/${chat.id}`,
+                                ) : recentProjects.length === 0 ? (
+                                    <div
+                                        className={`px-5 py-2 text-xs text-gray-500 ${
+                                            shouldAnimate
+                                                ? "sidebar-fade-in-2"
+                                                : ""
+                                        }`}
+                                    >
+                                        No projects yet
+                                    </div>
+                                ) : (
+                                    <div
+                                        className={`space-y-1 px-2.5 ${
+                                            shouldAnimate
+                                                ? "sidebar-fade-in-2"
+                                                : ""
+                                        }`}
+                                    >
+                                        {recentProjects.map((project) => {
+                                            const isActive =
+                                                pathname ===
+                                                    `/projects/${project.id}` ||
+                                                pathname.startsWith(
+                                                    `/projects/${project.id}/`,
+                                                );
+                                            return (
+                                                <button
+                                                    key={project.id}
+                                                    onClick={() =>
+                                                        router.push(
+                                                            `/projects/${project.id}`,
+                                                        )
+                                                    }
+                                                    title={project.name}
+                                                    className={`flex h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs transition-colors ${
+                                                        isActive
+                                                            ? "bg-gray-100 text-gray-900"
+                                                            : "text-gray-700 hover:bg-gray-100"
+                                                    }`}
+                                                >
+                                                    <FolderOpen className="h-3.5 w-3.5 shrink-0 text-gray-500" />
+                                                    <span className="min-w-0 flex-1 truncate">
+                                                        {project.name}
+                                                    </span>
+                                                </button>
                                             );
-                                        }}
-                                    />
-                                ))}
-                            </div>
+                                        })}
+                                    </div>
+                                )}
+                            </>
                         )}
+                    </div>
+
+                    {/* Assistant History */}
+                    <div className="flex min-h-0 flex-1 flex-col">
+                        <button
+                            onClick={() => setHistoryCollapsed((v) => !v)}
+                            className={`mb-2 flex w-full items-center justify-between px-5 text-xs font-semibold text-gray-500 transition-colors hover:text-gray-700 ${
+                                shouldAnimate ? "sidebar-fade-in" : ""
+                            }`}
+                        >
+                            <span>Assistant History</span>
+                            <ChevronDown
+                                className={`h-3.5 w-3.5 transition-transform ${
+                                    historyCollapsed ? "-rotate-90" : ""
+                                }`}
+                            />
+                        </button>
+                        <div
+                            className={`overflow-y-auto flex-1 ${
+                                historyCollapsed ? "hidden" : ""
+                            }`}
+                        >
+                            {!chats ? (
+                                <div className="space-y-1 px-2.5">
+                                    {[40, 60, 50, 70, 45].map((w, i) => (
+                                        <div
+                                            key={i}
+                                            className="h-9 flex items-center px-3 rounded-md"
+                                        >
+                                            <div
+                                                className="h-3 bg-gray-200 rounded animate-pulse"
+                                                style={{ width: `${w}%` }}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : chats.length === 0 ? (
+                                <div
+                                    className={`text-xs text-gray-500 py-2 px-5 ${
+                                        shouldAnimate ? "sidebar-fade-in-2" : ""
+                                    }`}
+                                >
+                                    No chats yet
+                                </div>
+                            ) : (
+                                <>
+                                    <div
+                                        className={`space-y-1 px-2.5 ${
+                                            shouldAnimate
+                                                ? "sidebar-fade-in-2"
+                                                : ""
+                                        }`}
+                                    >
+                                        {chats.map((chat) => (
+                                            <SidebarChatItem
+                                                key={chat.id}
+                                                chat={chat}
+                                                isActive={
+                                                    currentChatId === chat.id
+                                                }
+                                                projectName={
+                                                    chat.project_id
+                                                        ? projectNames[
+                                                              chat.project_id
+                                                          ]
+                                                        : undefined
+                                                }
+                                                onSelect={() => {
+                                                    setCurrentChatId(chat.id);
+                                                    router.push(
+                                                        chat.project_id
+                                                            ? `/projects/${chat.project_id}/assistant/chat/${chat.id}`
+                                                            : `/assistant/chat/${chat.id}`,
+                                                    );
+                                                }}
+                                            />
+                                        ))}
+                                    </div>
+                                    {hasMoreChats && (
+                                        <div className="px-2.5 pt-1">
+                                            <button
+                                                onClick={loadMoreChats}
+                                                className="flex h-8 w-full items-center justify-start rounded-md px-3 text-left text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                                            >
+                                                Load more
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

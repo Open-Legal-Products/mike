@@ -38,6 +38,7 @@ export function AddDocumentsModal({
     const { user } = useAuth();
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [uploading, setUploading] = useState(false);
+    const [uploadingFilenames, setUploadingFilenames] = useState<string[]>([]);
     const [search, setSearch] = useState("");
     const [extraUploadedDocs, setExtraUploadedDocs] = useState<MikeDocument[]>([]);
     // IDs deleted in this session — hidden locally since `useDirectoryData`'s
@@ -52,6 +53,7 @@ export function AddDocumentsModal({
         setSelectedIds(new Set());
         setExtraUploadedDocs([]);
         setDeletedIds(new Set());
+        setUploadingFilenames([]);
     }, [open]);
 
     if (!open) return null;
@@ -175,6 +177,7 @@ export function AddDocumentsModal({
     async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
         const files = Array.from(e.target.files || []);
         if (!files.length) return;
+        setUploadingFilenames(files.map((file) => file.name));
         setUploading(true);
         try {
             const uploaded = await Promise.all(
@@ -193,6 +196,7 @@ export function AddDocumentsModal({
             console.error("Upload failed:", err);
         } finally {
             setUploading(false);
+            setUploadingFilenames([]);
             if (fileInputRef.current) fileInputRef.current.value = "";
         }
     }
@@ -255,6 +259,7 @@ export function AddDocumentsModal({
                             q ? "No matches found" : "No documents yet"
                         }
                         onDelete={handleDelete}
+                        uploadingFilenames={uploadingFilenames}
                     />
                 </div>
 

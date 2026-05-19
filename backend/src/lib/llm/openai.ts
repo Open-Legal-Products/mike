@@ -36,7 +36,13 @@ type ResponseStreamEvent = {
 };
 
 function apiKey(override?: string | null): string {
-    return override?.trim() || process.env.OPENAI_API_KEY?.trim() || "";
+    const key = override?.trim() || process.env.OPENAI_API_KEY?.trim() || "";
+    if (!key) {
+        throw new Error(
+            "OpenAI API key is not configured. Set OPENAI_API_KEY or add a user OpenAI key.",
+        );
+    }
+    return key;
 }
 
 function toResponseTools(tools: OpenAIToolSchema[]): ResponseFunctionTool[] {
@@ -131,9 +137,11 @@ async function createResponse(params: {
 
     if (!response.ok) {
         const text = await response.text().catch(() => "");
-        throw new Error(
+        const err = new Error(
             `OpenAI request failed (${response.status}): ${text || response.statusText}`,
         );
+        (err as { status?: number }).status = response.status;
+        throw err;
     }
 
     return response;

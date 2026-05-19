@@ -1,4 +1,3 @@
-import { promisify } from "util";
 import JSZip from "jszip";
 
 let _convert:
@@ -8,7 +7,26 @@ let _convert:
 async function getConvert() {
   if (!_convert) {
     const libre = await import("libreoffice-convert");
-    _convert = promisify(libre.default.convert.bind(libre.default));
+    const convert = libre.default.convert.bind(libre.default) as (
+      buf: Buffer,
+      ext: string,
+      filter: undefined,
+      callback?: (err: Error | null, result: Buffer) => void,
+    ) => Promise<Buffer> | void;
+    _convert = (buf, ext, filter) =>
+      new Promise<Buffer>((resolve, reject) => {
+        try {
+          const maybePromise = convert(buf, ext, filter, (err, result) => {
+            if (err) reject(err);
+            else resolve(result);
+          });
+          if (maybePromise && typeof maybePromise.then === "function") {
+            maybePromise.then(resolve, reject);
+          }
+        } catch (err) {
+          reject(err);
+        }
+      });
   }
   return _convert;
 }

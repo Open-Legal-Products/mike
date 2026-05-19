@@ -28,9 +28,18 @@ type GeminiContent = {
     parts: GeminiPart[];
 };
 
+function apiKey(override?: string | null): string {
+    const key = override?.trim() || process.env.GEMINI_API_KEY?.trim() || "";
+    if (!key) {
+        throw new Error(
+            "Gemini API key is not configured. Set GEMINI_API_KEY or add a user Gemini key.",
+        );
+    }
+    return key;
+}
+
 function client(override?: string | null): GoogleGenAI {
-    const apiKey = override?.trim() || process.env.GEMINI_API_KEY || "";
-    return new GoogleGenAI({ apiKey });
+    return new GoogleGenAI({ apiKey: apiKey(override) });
 }
 
 function toNativeContents(messages: StreamChatParams["messages"]): GeminiContent[] {

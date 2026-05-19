@@ -8,6 +8,7 @@ import {
     listWorkflowShares,
     shareWorkflow,
 } from "@/app/lib/mikeApi";
+import { useAuth } from "@/contexts/AuthContext";
 import { EmailPillInput } from "../shared/EmailPillInput";
 
 interface Share {
@@ -33,6 +34,8 @@ export function ShareWorkflowModal({
     const [existingShares, setExistingShares] = useState<Share[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const { user } = useAuth();
+    const ownEmail = user?.email?.trim().toLowerCase() ?? null;
 
     useEffect(() => {
         listWorkflowShares(workflowId)
@@ -47,10 +50,13 @@ export function ShareWorkflowModal({
     }
 
     async function handleConfirm() {
-        if (pendingEmails.length === 0) return;
+        const emails = ownEmail
+            ? pendingEmails.filter((email) => email !== ownEmail)
+            : pendingEmails;
+        if (emails.length === 0) return;
         setSaving(true);
         try {
-            await shareWorkflow(workflowId, { emails: pendingEmails, allow_edit: allowEdit });
+            await shareWorkflow(workflowId, { emails, allow_edit: allowEdit });
             const updated = await listWorkflowShares(workflowId);
             setExistingShares(updated);
             setPendingEmails([]);
@@ -84,6 +90,11 @@ export function ShareWorkflowModal({
                     <EmailPillInput
                         emails={pendingEmails}
                         onChange={setPendingEmails}
+                        validate={async (email) =>
+                            ownEmail && email === ownEmail
+                                ? "You cannot share a workflow with yourself."
+                                : null
+                        }
                         placeholder="Add people by email…"
                         autoFocus
                     />

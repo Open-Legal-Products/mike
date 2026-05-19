@@ -20,7 +20,7 @@ export function ToolbarTabs<T extends string>({
     actions,
 }: Props<T>) {
     return (
-        <div className="flex items-center h-10 px-8 border-b border-gray-200">
+        <div className="flex items-center h-10 px-4 border-b border-gray-200 md:px-10">
             <div className="flex-1 flex items-center gap-5">
                 {tabs.map((tab) => (
                     <button
@@ -37,7 +37,7 @@ export function ToolbarTabs<T extends string>({
                 ))}
             </div>
             {actions && (
-                <div className="flex items-center gap-1">{actions}</div>
+                <div className="flex items-center gap-2">{actions}</div>
             )}
         </div>
     );

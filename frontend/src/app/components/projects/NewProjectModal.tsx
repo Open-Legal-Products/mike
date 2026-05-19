@@ -11,6 +11,7 @@ import { useDirectoryData } from "../shared/useDirectoryData";
 import { FileDirectory } from "../shared/FileDirectory";
 import { EmailPillInput } from "../shared/EmailPillInput";
 import type { MikeProject } from "../shared/types";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Props {
     open: boolean;
@@ -28,6 +29,8 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const { user } = useAuth();
+    const ownEmail = user?.email?.trim().toLowerCase() ?? null;
 
     const { loading: dirLoading, standaloneDocuments, projects: dirProjects } = useDirectoryData(open);
 
@@ -49,7 +52,9 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
             const project = await createProject(
                 name.trim(),
                 cmNumber.trim() || undefined,
-                sharedEmails,
+                ownEmail
+                    ? sharedEmails.filter((email) => email !== ownEmail)
+                    : sharedEmails,
             );
             await Promise.all([
                 ...[...selectedDocIds].map((id) => addDocumentToProject(project.id, id).catch(() => {})),
@@ -137,6 +142,11 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
                                 <EmailPillInput
                                     emails={sharedEmails}
                                     onChange={setSharedEmails}
+                                    validate={async (email) =>
+                                        ownEmail && email === ownEmail
+                                            ? "You cannot share a project with yourself."
+                                            : null
+                                    }
                                     placeholder="Add colleagues by email…"
                                 />
                             </div>

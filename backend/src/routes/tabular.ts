@@ -20,8 +20,14 @@ import {
     type ChatMessage,
     type TabularCellStore,
 } from "../lib/chatTools";
-import { completeText, streamChatWithTools } from "../lib/llm";
-import { getUserApiKeys, getUserModelSettings } from "../lib/userSettings";
+import {
+    completeText,
+    providerForModel,
+    streamChatWithTools,
+    type Provider,
+    type UserApiKeys,
+} from "../lib/llm";
+import { getUserModelSettings } from "../lib/userSettings";
 import {
     checkProjectAccess,
     ensureReviewAccess,
@@ -55,6 +61,24 @@ function formatPromptSuffix(format?: string, tags?: string[]): string {
 }
 
 export const tabularRouter = Router();
+
+function providerLabel(provider: Provider): string {
+    if (provider === "claude") return "Anthropic";
+    if (provider === "openai") return "OpenAI";
+    return "Gemini";
+}
+
+function missingModelApiKey(model: string, apiKeys: UserApiKeys) {
+    const provider = providerForModel(model);
+    // Claude is served via Bedrock with IAM credentials — no user API key needed.
+    if (provider === "claude") return null;
+    if (apiKeys[provider]?.trim()) return null;
+    return {
+        provider,
+        model,
+        detail: `${providerLabel(provider)} API key is required to use ${model}. Add an API key or select a different tabular review model.`,
+    };
+}
 
 // GET /tabular-review
 tabularRouter.get("/", requireAuth, async (req, res) => {
@@ -492,12 +516,18 @@ tabularRouter.patch("/:reviewId", requireAuth, async (req, res) => {
     // making the call. Normalize lowercase + dedupe + drop empties.
     let sharedWithUpdate: string[] | undefined;
     if (Array.isArray(req.body.shared_with)) {
+        const normalizedUserEmail = userEmail?.trim().toLowerCase();
         const seen = new Set<string>();
         const cleaned: string[] = [];
         for (const raw of req.body.shared_with) {
             if (typeof raw !== "string") continue;
             const e = raw.trim().toLowerCase();
             if (!e || seen.has(e)) continue;
+            if (normalizedUserEmail && e === normalizedUserEmail) {
+                return void res.status(400).json({
+                    detail: "You cannot share a tabular review with yourself.",
+                });
+            }
             seen.add(e);
             cleaned.push(e);
         }
@@ -769,6 +799,18 @@ tabularRouter.post(
             return void res.status(404).json({ detail: "Document not found" });
         const docActive = await loadActiveVersion(document_id, db);
 
+        const { tabular_model, api_keys } = await getUserModelSettings(
+            userId,
+            db,
+        );
+        const missingKey = missingModelApiKey(tabular_model, api_keys);
+        if (missingKey) {
+            return void res.status(422).json({
+                code: "missing_api_key",
+                ...missingKey,
+            });
+        }
+
         await db
             .update(tabular_cells)
             .set({ status: "generating", content: null })
@@ -798,11 +840,7 @@ tabularRouter.post(
             }
         }
 
-        const { tabular_model, api_keys } = await getUserModelSettings(
-            userId,
-            db,
-        );
-        const result = await queryGemini(
+        const result = await queryTabularCell(
             tabular_model,
             doc.filename as string,
             markdown,
@@ -916,6 +954,13 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
     }
 
     const { tabular_model, api_keys } = await getUserModelSettings(userId, db);
+    const missingKey = missingModelApiKey(tabular_model, api_keys);
+    if (missingKey) {
+        return void res.status(422).json({
+            code: "missing_api_key",
+            ...missingKey,
+        });
+    }
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
@@ -986,7 +1031,7 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
                 // Single LLM call for all columns, streaming one JSON line per column
                 const receivedColumns = new Set<number>();
                 try {
-                    await queryGeminiAllColumns(
+                    await queryTabularAllColumns(
                         tabular_model,
                         filename,
                         markdown,
@@ -1017,7 +1062,7 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
                     );
                 } catch (err) {
                     console.error(
-                        `[tabular/generate] queryGeminiAllColumns error doc=${docId}`,
+                        `[tabular/generate] queryTabularAllColumns error doc=${docId}`,
                         err,
                     );
                 }
@@ -1334,6 +1379,15 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
         ),
     };
 
+    const { tabular_model, api_keys } = await getUserModelSettings(userId, db);
+    const missingKey = missingModelApiKey(tabular_model, api_keys);
+    if (missingKey) {
+        return void res.status(422).json({
+            code: "missing_api_key",
+            ...missingKey,
+        });
+    }
+
     // Create or verify chat record
     let chatId = existingChatId ?? null;
     let chatTitle: string | null = null;
@@ -1397,8 +1451,6 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
         write(`data: ${JSON.stringify({ type: "chat_id", chatId })}\n\n`);
     }
 
-    const apiKeys = await getUserApiKeys(userId, db);
-
     try {
         const { fullText, events } = await runLLMStream({
             apiMessages,
@@ -1411,7 +1463,8 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
             tabularStore,
             buildCitations: (text) =>
                 extractTabularAnnotations(text, tabularStore),
-            apiKeys,
+            model: tabular_model,
+            apiKeys: api_keys,
         });
 
         const annotations = extractTabularAnnotations(fullText, tabularStore);
@@ -1439,7 +1492,7 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
                     reviewTitle: clientReviewTitle ?? review.title ?? null,
                     projectName: clientProjectName ?? null,
                 },
-                apiKeys,
+                api_keys,
             );
             if (title) {
                 await db
@@ -1510,7 +1563,7 @@ function parseCellContent(
     return null;
 }
 
-async function queryGemini(
+async function queryTabularCell(
     model: string,
     filename: string,
     documentText: string,
@@ -1539,7 +1592,7 @@ The "summary" field must contain only the extracted value with inline citations 
             apiKeys,
         });
     } catch (err) {
-        console.error("[queryGemini] completion failed", err);
+        console.error("[queryTabularCell] completion failed", err);
         return null;
     }
     try {
@@ -1665,7 +1718,7 @@ type Column = {
     tags?: string[];
 };
 
-async function queryGeminiAllColumns(
+async function queryTabularAllColumns(
     model: string,
     filename: string,
     documentText: string,
@@ -1750,7 +1803,7 @@ Rules:
             },
         });
     } catch (err) {
-        console.error("[queryGeminiAllColumns] stream failed", err);
+        console.error("[queryTabularAllColumns] stream failed", err);
     }
 
     if (contentBuffer.trim()) pending.push(processLine(contentBuffer));

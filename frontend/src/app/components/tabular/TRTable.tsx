@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef, useImperativeHandle, useRef } from "react";
-import { Plus, Table2 } from "lucide-react";
+import { Loader2, Plus, Table2, Upload } from "lucide-react";
 import type { ColumnConfig, MikeDocument, TabularCell } from "../shared/types";
 import { TabularCell as TabularCellComponent } from "./TabularCell";
 import { TREditColumnMenu } from "./TREditColumnMenu";
@@ -30,6 +30,8 @@ interface Props {
     savingColumn: boolean;
     savingColumnsConfig: boolean;
     selectedDocIds: string[];
+    uploadingFilenames?: string[];
+    dragOverFiles?: boolean;
     highlightedCell?: { colIdx: number; rowIdx: number } | null;
     onSelectionChange: (ids: string[]) => void;
     onExpand: (cell: TabularCell) => void;
@@ -49,6 +51,8 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
         savingColumn,
         savingColumnsConfig,
         selectedDocIds,
+        uploadingFilenames = [],
+        dragOverFiles = false,
         highlightedCell,
         onSelectionChange,
         onExpand,
@@ -165,7 +169,11 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
         );
     }
 
-    if (columns.length === 0 && documents.length === 0) {
+    if (
+        columns.length === 0 &&
+        documents.length === 0 &&
+        uploadingFilenames.length === 0
+    ) {
         return (
             <div className="flex flex-1 flex-col overflow-hidden">
                 <div className="flex items-center border-b border-gray-200">
@@ -177,28 +185,33 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                     </div>
                     <div className="flex-1" />
                 </div>
-                <div className="flex flex-1 flex-col items-start justify-center w-full max-w-xs mx-auto">
-                    <Table2 className="h-8 w-8 text-gray-300 mb-4" />
-                    <p className="text-2xl font-medium font-serif text-gray-900">
-                        Tabular Review
-                    </p>
-                    <p className="mt-1 text-xs text-gray-400 text-left">
-                        Add columns and documents to get started.
-                    </p>
-                    <div className="mt-4 flex items-center gap-2">
-                        <button
-                            onClick={onAddColumn}
-                            className="inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-700 shadow-md"
-                        >
-                            + Add Columns
-                        </button>
-                        <button
-                            onClick={onAddDocuments}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors shadow-sm"
-                        >
-                            <Plus className="h-3.5 w-3.5" />
-                            Add Documents
-                        </button>
+                <div className="relative flex min-h-0 flex-1">
+                    {dragOverFiles && (
+                        <div className="absolute inset-0 z-[90] border-2 border-blue-400 bg-blue-50/40 pointer-events-none" />
+                    )}
+                    <div className="flex flex-1 flex-col items-start justify-center w-full max-w-xs mx-auto">
+                        <Table2 className="h-8 w-8 text-gray-300 mb-4" />
+                        <p className="text-2xl font-medium font-serif text-gray-900">
+                            Tabular Review
+                        </p>
+                        <p className="mt-1 text-xs text-gray-400 text-left">
+                            Add columns and documents to get started.
+                        </p>
+                        <div className="mt-4 flex items-center gap-2">
+                            <button
+                                onClick={onAddColumn}
+                                className="inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-700 shadow-md"
+                            >
+                                + Add Columns
+                            </button>
+                            <button
+                                onClick={onAddDocuments}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors shadow-sm"
+                            >
+                                <Upload className="h-3.5 w-3.5" />
+                                Add Documents
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -206,7 +219,10 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
     }
 
     return (
-        <div className="flex-1 overflow-auto" ref={scrollContainerRef}>
+        <div
+            className="flex flex-1 flex-col overflow-auto"
+            ref={scrollContainerRef}
+        >
             {/* Header */}
             <div
                 className="sticky top-0 z-20 flex bg-white h-8"
@@ -258,69 +274,114 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
             </div>
 
             {/* Rows */}
-            {documents.map((doc, docIdx) => {
-                const rowBg = selectedDocIds.includes(doc.id)
-                    ? "bg-gray-100"
-                    : docIdx % 2 === 0
-                      ? "bg-white"
-                      : "bg-gray-50";
-                return (
+            <div className="relative min-h-0 flex-1">
+                {dragOverFiles && (
+                    <div className="absolute inset-0 z-[90] border-2 border-blue-400 bg-blue-50/40 pointer-events-none" />
+                )}
+                {uploadingFilenames.map((filename) => (
                     <div
-                        key={doc.id}
-                        className={`flex ${rowBg}`}
+                        key={`uploading-${filename}`}
+                        className="flex bg-white"
                         style={{ minWidth: totalContentWidth }}
                     >
                         <div
-                            className={`sticky left-0 z-[60] ${CHECK_W} border-b border-r border-gray-200 p-2 flex items-center justify-center ${rowBg}`}
+                            className={`sticky left-0 z-[60] ${CHECK_W} border-b border-r border-gray-200 p-2 flex items-center justify-center bg-white`}
                         >
                             <input
                                 type="checkbox"
-                                checked={selectedDocIds.includes(doc.id)}
-                                onChange={() => toggleDoc(doc.id)}
-                                className="h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-pointer accent-black"
+                                disabled
+                                className="h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-default accent-black disabled:opacity-100"
                             />
                         </div>
                         <div
-                            className={`sticky left-8 z-[60] ${COL_W} border-b border-r border-gray-200 p-2 text-xs text-gray-800 flex items-center ${rowBg}`}
+                            className={`sticky left-8 z-[60] ${COL_W} border-b border-r border-gray-200 p-2 text-xs text-gray-400 flex items-center gap-2 bg-white`}
                         >
-                            <span className="line-clamp-1" title={doc.filename}>
-                                {doc.filename}
+                            <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                            <span className="line-clamp-1" title={filename}>
+                                {filename}
                             </span>
                         </div>
-                        {columns.map((col) => {
-                            const cell = getCell(doc.id, col.index);
-                            const colPos = sortedColumns.findIndex(
-                                (c) => c.index === col.index,
-                            );
-                            const isHighlighted =
-                                highlightedCell?.colIdx === colPos &&
-                                highlightedCell?.rowIdx === docIdx;
-                            return (
-                                <div
-                                    key={col.index}
-                                    className={`${COL_W} border-b border-r border-gray-200 transition-colors ${isHighlighted ? "bg-blue-200" : ""}`}
-                                >
-                                    {cell && (
-                                        <TabularCellComponent
-                                            cell={cell}
-                                            column={col}
-                                            onExpand={() => onExpand(cell)}
-                                            onCitationClick={(page, quote) =>
-                                                onCitationClick(
-                                                    cell,
-                                                    page,
-                                                    quote,
-                                                )
-                                            }
-                                        />
-                                    )}
-                                </div>
-                            );
-                        })}
+                        {sortedColumns.map((col) => (
+                            <div
+                                key={col.index}
+                                className={`${COL_W} border-b border-r border-gray-200 p-2`}
+                            >
+                                <div className="h-4 w-20 rounded bg-gray-100 animate-pulse" />
+                            </div>
+                        ))}
                         <div className="flex-1 border-b border-gray-200 min-h-8 min-w-8" />
                     </div>
-                );
-            })}
+                ))}
+                {documents.map((doc, docIdx) => {
+                    const baseRowBg =
+                        docIdx % 2 === 0 ? "bg-white" : "bg-gray-50";
+                    const rowBg = selectedDocIds.includes(doc.id)
+                        ? "bg-gray-100"
+                        : baseRowBg;
+                    return (
+                        <div
+                            key={doc.id}
+                            className={`flex ${rowBg}`}
+                            style={{ minWidth: totalContentWidth }}
+                        >
+                            <div
+                                className={`sticky left-0 z-[60] ${CHECK_W} border-b border-r border-gray-200 p-2 flex items-center justify-center ${rowBg}`}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={selectedDocIds.includes(doc.id)}
+                                    onChange={() => toggleDoc(doc.id)}
+                                    className="h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-pointer accent-black"
+                                />
+                            </div>
+                            <div
+                                className={`sticky left-8 z-[60] ${COL_W} border-b border-r border-gray-200 p-2 text-xs text-gray-800 flex items-center ${baseRowBg}`}
+                            >
+                                <span
+                                    className="line-clamp-1"
+                                    title={doc.filename}
+                                >
+                                    {doc.filename}
+                                </span>
+                            </div>
+                            {columns.map((col) => {
+                                const cell = getCell(doc.id, col.index);
+                                const colPos = sortedColumns.findIndex(
+                                    (c) => c.index === col.index,
+                                );
+                                const isHighlighted =
+                                    highlightedCell?.colIdx === colPos &&
+                                    highlightedCell?.rowIdx === docIdx;
+                                return (
+                                    <div
+                                        key={col.index}
+                                        className={`${COL_W} border-b border-r border-gray-200 transition-colors ${isHighlighted ? "bg-blue-200" : ""}`}
+                                    >
+                                        {cell && (
+                                            <TabularCellComponent
+                                                cell={cell}
+                                                column={col}
+                                                onExpand={() => onExpand(cell)}
+                                                onCitationClick={(
+                                                    page,
+                                                    quote,
+                                                ) =>
+                                                    onCitationClick(
+                                                        cell,
+                                                        page,
+                                                        quote,
+                                                    )
+                                                }
+                                            />
+                                        )}
+                                    </div>
+                                );
+                            })}
+                            <div className="flex-1 border-b border-gray-200 min-h-8 min-w-8" />
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
 });

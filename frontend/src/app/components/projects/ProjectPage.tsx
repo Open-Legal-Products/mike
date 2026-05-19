@@ -1,26 +1,17 @@
 "use client";
 
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
     Upload,
-    Plus,
     Loader2,
-    FileText,
-    File,
     AlertCircle,
     ChevronDown,
     ChevronRight,
-    Download,
     Folder,
     FolderOpen,
     FolderPlus,
-    MessageSquare,
-    Pencil,
-    Table2,
-    Users,
 } from "lucide-react";
-import { HeaderSearchBtn } from "@/app/components/shared/HeaderSearchBtn";
 import {
     getProject,
     deleteDocument,
@@ -39,8 +30,10 @@ import {
     deleteProjectFolder,
     moveDocumentToFolder,
     moveSubfolderToFolder,
+    renameProjectDocument,
     listDocumentVersions,
     uploadDocumentVersion,
+    uploadProjectDocument,
     renameDocumentVersion,
     getProjectPeople,
     type MikeDocumentVersion,
@@ -54,13 +47,15 @@ import type {
     TabularReview,
 } from "@/app/components/shared/types";
 import { ToolbarTabs } from "@/app/components/shared/ToolbarTabs";
-import { RenameableTitle } from "@/app/components/shared/RenameableTitle";
 import {
     closeRowActionMenus,
     RowActionMenuItems,
     RowActions,
 } from "@/app/components/shared/RowActions";
-import { AddDocumentsModal } from "@/app/components/shared/AddDocumentsModal";
+import {
+    AddDocumentsModal,
+    invalidateDirectoryCache,
+} from "@/app/components/shared/AddDocumentsModal";
 import { PeopleModal } from "@/app/components/shared/PeopleModal";
 import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
 import { useAuth } from "@/contexts/AuthContext";
@@ -68,238 +63,26 @@ import { UploadNewVersionModal } from "@/app/components/shared/UploadNewVersionM
 import { DocViewModal } from "@/app/components/shared/DocViewModal";
 import { AddNewTRModal } from "@/app/components/tabular/AddNewTRModal";
 import { useChatHistoryContext } from "@/app/contexts/ChatHistoryContext";
+import {
+    CHECK_W,
+    DOC_NAME_COL_W,
+    DocIcon,
+    DocVersionHistory,
+    formatBytes,
+    formatDate,
+    ProjectPageHeader,
+    ProjectPageSkeleton,
+    treeControlCellStyle,
+    treeNameCellStyle,
+    type ProjectContextMenu,
+    type ProjectTab,
+} from "./ProjectPageParts";
+import { ProjectAssistantTab } from "./ProjectAssistantTab";
+import { ProjectReviewsTab } from "./ProjectReviewsTab";
 
 interface Props {
     projectId: string;
-    initialTab?: Tab;
-}
-
-type Tab = "documents" | "assistant" | "reviews";
-
-type ContextMenu = {
-    x: number;
-    y: number;
-    docId?: string | null;
-    folderId: string | null;       // null = right-clicked on root/empty space
-    showFolderActions: boolean;    // true when right-clicked on a specific folder row
-};
-
-const CHECK_W = "w-8 shrink-0";
-const NAME_COL_W = "w-[300px] shrink-0";
-const TREE_CONTROL_WIDTH_PX = 32;
-const TREE_NAME_PADDING_PX = 8;
-
-function treeControlWidth(depth: number) {
-    return TREE_CONTROL_WIDTH_PX * (Math.max(0, depth) + 1);
-}
-
-function treeControlCellStyle(depth: number): CSSProperties | undefined {
-    if (depth <= 0) return undefined;
-    const width = treeControlWidth(depth);
-    return {
-        justifyContent: "flex-start",
-        minWidth: width,
-        paddingLeft: TREE_NAME_PADDING_PX + depth * TREE_CONTROL_WIDTH_PX,
-        width,
-    };
-}
-
-function treeNameCellStyle(depth: number): CSSProperties | undefined {
-    if (depth <= 0) return undefined;
-    return { left: treeControlWidth(depth) };
-}
-
-function formatBytes(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatDate(iso: string) {
-    return new Date(iso).toLocaleDateString(undefined, {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-    });
-}
-
-function DocIcon({ fileType }: { fileType: string | null }) {
-    if (fileType === "pdf")
-        return <FileText className="h-4 w-4 text-red-600 shrink-0" />;
-    if (fileType === "docx" || fileType === "doc")
-        return <File className="h-4 w-4 text-blue-600 shrink-0" />;
-    return <File className="h-4 w-4 text-gray-500 shrink-0" />;
-}
-
-/**
- * Stacked rows rendered beneath a doc row when its Version column is
- * expanded. Each row shows a past (or current) version with its number,
- * source, date, and a download button that fetches that specific version.
- */
-function DocVersionHistory({
-    docId,
-    filename,
-    loading,
-    versions,
-    depth = 0,
-    onDownloadVersion,
-    onOpenVersion,
-    onRenameVersion,
-}: {
-    docId: string;
-    filename: string;
-    loading: boolean;
-    versions: MikeDocumentVersion[];
-    depth?: number;
-    onDownloadVersion: (
-        docId: string,
-        versionId: string,
-        filename: string,
-    ) => void;
-    onOpenVersion?: (
-        versionId: string,
-        versionLabel: string,
-    ) => void;
-    onRenameVersion?: (
-        versionId: string,
-        displayName: string | null,
-    ) => Promise<void> | void;
-}) {
-    const [editingVersionId, setEditingVersionId] = useState<string | null>(
-        null,
-    );
-    const [editingValue, setEditingValue] = useState("");
-
-    const commit = async (versionId: string) => {
-        const trimmed = editingValue.trim();
-        setEditingVersionId(null);
-        // Empty string → clear override (falls back to V{n})
-        const next = trimmed.length > 0 ? trimmed : null;
-        await onRenameVersion?.(versionId, next);
-    };
-    if (loading && versions.length === 0) {
-        return (
-            <div className="flex items-center h-9 border-b border-gray-50 text-xs text-gray-500 bg-gray-50/60">
-                <div className={`sticky left-0 z-[60] ${CHECK_W} bg-gray-50/60 self-stretch`} style={treeControlCellStyle(depth)} />
-                <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-gray-50/60 p-2`} style={treeNameCellStyle(depth)}>
-                    <div className="flex items-center gap-2">
-                        <Loader2 className="h-3 w-3 animate-spin text-gray-400" />
-                        <span>Loading versions…</span>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-    if (versions.length === 0) {
-        return (
-            <div className="flex items-center h-9 border-b border-gray-50 text-xs text-gray-400 bg-gray-50/60">
-                <div className={`sticky left-0 z-[60] ${CHECK_W} bg-gray-50/60 self-stretch`} style={treeControlCellStyle(depth)} />
-                <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-gray-50/60 p-2`} style={treeNameCellStyle(depth)}>
-                    <div>
-                        No version history.
-                    </div>
-                </div>
-            </div>
-        );
-    }
-    // Most recent version first.
-    const ordered = [...versions].reverse();
-    return (
-        <>
-            {ordered.map((v) => {
-                const numberLabel =
-                    typeof v.version_number === "number" && v.version_number >= 1
-                        ? `${v.version_number}`
-                        : v.source === "upload"
-                          ? "Original"
-                          : "—";
-                const displayLabel = v.display_name?.trim() || numberLabel;
-                const dt = new Date(v.created_at);
-                const dateLabel = Number.isNaN(dt.valueOf())
-                    ? ""
-                    : dt.toLocaleString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                          hour: "numeric",
-                          minute: "2-digit",
-                      });
-                const isEditing = editingVersionId === v.id;
-                return (
-                    <div
-                        key={`ver-${docId}-${v.id}`}
-                        onClick={() => {
-                            if (isEditing) return;
-                            onOpenVersion?.(v.id, displayLabel);
-                        }}
-                        className="group flex items-center h-9 pr-8 border-b border-gray-50 bg-gray-50/60 text-xs text-gray-600 cursor-pointer hover:bg-gray-100/80 transition-colors"
-                    >
-                        <div className={`sticky left-0 z-[60] ${CHECK_W} bg-gray-50/60 group-hover:bg-gray-100/80 self-stretch`} style={treeControlCellStyle(depth)} />
-                        <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-gray-50/60 group-hover:bg-gray-100/80 p-2`} style={treeNameCellStyle(depth)}>
-                        <div className="flex items-center gap-2">
-                            <span className="shrink-0 text-gray-400">↳</span>
-                            {isEditing ? (
-                                <input
-                                    autoFocus
-                                    value={editingValue}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onChange={(e) =>
-                                        setEditingValue(e.target.value)
-                                    }
-                                    onKeyDown={(e) => {
-                                        if (e.key === "Enter") {
-                                            e.preventDefault();
-                                            void commit(v.id);
-                                        } else if (e.key === "Escape") {
-                                            setEditingVersionId(null);
-                                        }
-                                    }}
-                                    onBlur={() => void commit(v.id)}
-                                    className="min-w-0 flex-1 max-w-[240px] border-b border-gray-300 bg-transparent text-xs text-gray-800 outline-none focus:border-gray-500"
-                                />
-                            ) : (
-                                <span className="font-medium text-gray-700 truncate">
-                                    {displayLabel}
-                                </span>
-                            )}
-                            {!isEditing && onRenameVersion && (
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setEditingVersionId(v.id);
-                                        setEditingValue(v.display_name ?? "");
-                                    }}
-                                    title="Rename version"
-                                    className="shrink-0 rounded p-0.5 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-gray-700 hover:bg-gray-200 transition"
-                                >
-                                    <Pencil className="h-3 w-3" />
-                                </button>
-                            )}
-                            <span className="text-gray-400 truncate">{dateLabel}</span>
-                            <span className="text-gray-300 shrink-0">·</span>
-                            <span className="text-gray-400 truncate">{v.source}</span>
-                        </div>
-                        </div>
-                        <div className="ml-auto w-20 shrink-0" />
-                        <div className="w-24 shrink-0" />
-                        <div className="ml-auto w-20 shrink-0" />
-                        <div className="w-8 shrink-0 flex justify-end">
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onDownloadVersion(docId, v.id, filename);
-                                }}
-                                title="Download this version"
-                                className="flex items-center justify-center w-6 h-6 rounded text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors"
-                            >
-                                <Download className="h-3.5 w-3.5" />
-                            </button>
-                        </div>
-                    </div>
-                );
-            })}
-        </>
-    );
+    initialTab?: ProjectTab;
 }
 
 export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
@@ -310,7 +93,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
     const [loading, setLoading] = useState(true);
     const searchParams = useSearchParams();
     const tabParam = searchParams.get("tab");
-    const tab: Tab =
+    const tab: ProjectTab =
         tabParam === "assistant" || tabParam === "reviews"
             ? tabParam
             : initialTab;
@@ -472,6 +255,8 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
     const [renameChatValue, setRenameChatValue] = useState("");
     const [renamingReviewId, setRenamingReviewId] = useState<string | null>(null);
     const [renameReviewValue, setRenameReviewValue] = useState("");
+    const [renamingDocumentId, setRenamingDocumentId] = useState<string | null>(null);
+    const [renameDocumentValue, setRenameDocumentValue] = useState("");
 
     // Folder state
     const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set());
@@ -480,11 +265,16 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
     const [newFolderName, setNewFolderName] = useState("");
     const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
     const [renameFolderValue, setRenameFolderValue] = useState("");
-    const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+    const [contextMenu, setContextMenu] =
+        useState<ProjectContextMenu | null>(null);
     const contextMenuRef = useRef<HTMLDivElement>(null);
     const newFolderInputRef = useRef<HTMLDivElement | null>(null);
     const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
     const [dragOverRoot, setDragOverRoot] = useState(false);
+    const [dragOverFileRoot, setDragOverFileRoot] = useState(false);
+    const [uploadingDroppedFilenames, setUploadingDroppedFilenames] = useState<
+        string[]
+    >([]);
 
     // Actions dropdown
     const [actionsOpen, setActionsOpen] = useState(false);
@@ -494,7 +284,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
     const router = useRouter();
     const { saveChat } = useChatHistoryContext();
 
-    function handleTabChange(newTab: Tab) {
+    function handleTabChange(newTab: ProjectTab) {
         const base = `/projects/${projectId}`;
         const url = newTab === "documents" ? base : `${base}?tab=${newTab}`;
         router.push(url);
@@ -551,6 +341,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
         function handleDragEnd() {
             setDragOverFolderId(null);
             setDragOverRoot(false);
+            setDragOverFileRoot(false);
         }
         document.addEventListener("dragend", handleDragEnd);
         return () => document.removeEventListener("dragend", handleDragEnd);
@@ -656,6 +447,56 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
             ),
         } : prev);
         await moveDocumentToFolder(projectId, docId, null);
+    }
+
+    async function submitDocumentRename(docId: string) {
+        const trimmed = renameDocumentValue.trim();
+        setRenamingDocumentId(null);
+        if (!trimmed) return;
+        const previous = project?.documents?.find((d) => d.id === docId);
+        if (!previous || trimmed === previous.filename) return;
+
+        setProject((prev) =>
+            prev
+                ? {
+                      ...prev,
+                      documents: (prev.documents ?? []).map((d) =>
+                          d.id === docId
+                              ? {
+                                    ...d,
+                                    filename: trimmed,
+                                    updated_at: new Date().toISOString(),
+                                }
+                              : d,
+                      ),
+                  }
+                : prev,
+        );
+        try {
+            const updated = await renameProjectDocument(projectId, docId, trimmed);
+            setProject((prev) =>
+                prev
+                    ? {
+                          ...prev,
+                          documents: (prev.documents ?? []).map((d) =>
+                              d.id === docId ? { ...d, ...updated } : d,
+                          ),
+                      }
+                    : prev,
+            );
+        } catch (e) {
+            console.error("renameProjectDocument failed", e);
+            setProject((prev) =>
+                prev && previous
+                    ? {
+                          ...prev,
+                          documents: (prev.documents ?? []).map((d) =>
+                              d.id === docId ? previous : d,
+                          ),
+                      }
+                    : prev,
+            );
+        }
     }
 
     async function handleRemoveDoc(docId: string) {
@@ -837,6 +678,24 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
         }
     }
 
+    async function handleDeleteChatRow(chat: MikeChat) {
+        if (user?.id && chat.user_id !== user.id) {
+            setOwnerOnlyAction("delete this chat");
+            return;
+        }
+        await deleteChat(chat.id);
+        setChats((prev) => prev.filter((c) => c.id !== chat.id));
+    }
+
+    async function handleDeleteReviewRow(review: TabularReview) {
+        if (user?.id && review.user_id !== user.id) {
+            setOwnerOnlyAction("delete this tabular review");
+            return;
+        }
+        await deleteTabularReview(review.id);
+        setProjectReviews((prev) => prev.filter((r) => r.id !== review.id));
+    }
+
     // ── Drag & drop ───────────────────────────────────────────────────────────
 
     function wouldCreateCycle(movingId: string, targetId: string): boolean {
@@ -850,7 +709,36 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
         return false;
     }
 
+    function hasMovePayload(dt: DataTransfer): boolean {
+        return Array.from(dt.types).some(
+            (type) =>
+                type === "application/mike-doc" ||
+                type === "application/mike-folder",
+        );
+    }
+
+    function hasFilePayload(dt: DataTransfer): boolean {
+        return Array.from(dt.types).includes("Files");
+    }
+
+    async function handleDropProjectFiles(files: File[]) {
+        if (files.length === 0) return;
+        setUploadingDroppedFilenames(files.map((file) => file.name));
+        try {
+            const uploaded = await Promise.all(
+                files.map((file) => uploadProjectDocument(projectId, file)),
+            );
+            invalidateDirectoryCache();
+            handleDocsSelected(uploaded);
+        } catch (err) {
+            console.error("Project document drop upload failed", err);
+        } finally {
+            setUploadingDroppedFilenames([]);
+        }
+    }
+
     async function handleDropOnFolder(targetFolderId: string | null, dt: DataTransfer) {
+        if (!hasMovePayload(dt)) return;
         const docId = dt.getData("application/mike-doc");
         const subFolderId = dt.getData("application/mike-folder");
         if (docId) {
@@ -891,7 +779,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                     <ChevronRight className="h-3.5 w-3.5 text-gray-300 shrink-0" />
                 </div>
                 <div
-                    className={`sticky left-8 z-[60] ${NAME_COL_W} bg-white p-2`}
+                    className={`sticky left-8 z-[60] ${DOC_NAME_COL_W} bg-white p-2`}
                     style={treeNameCellStyle(depth)}
                 >
                     <div className="flex items-center gap-1.5">
@@ -920,6 +808,47 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
         );
     }
 
+    function renderUploadingDocumentRows(depth: number) {
+        return uploadingDroppedFilenames.map((filename) => (
+            <div
+                key={`uploading-doc-${filename}`}
+                className="group flex items-center h-10 pr-8 border-b border-gray-50"
+            >
+                <div
+                    className={`sticky left-0 z-[60] ${CHECK_W} bg-white p-2 flex items-center justify-center self-stretch`}
+                    style={treeControlCellStyle(depth)}
+                >
+                    <input
+                        type="checkbox"
+                        disabled
+                        className="h-2.5 w-2.5 rounded border-gray-200 cursor-default accent-black disabled:opacity-100"
+                    />
+                </div>
+                <div
+                    className={`sticky left-8 z-[60] ${DOC_NAME_COL_W} bg-white p-2`}
+                    style={treeNameCellStyle(depth)}
+                >
+                    <div className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin text-gray-400 shrink-0" />
+                        <span className="text-sm text-gray-400 truncate">
+                            {filename}
+                        </span>
+                    </div>
+                </div>
+                <div className="ml-auto w-20 shrink-0 text-xs text-gray-300 uppercase truncate">
+                    {filename.includes(".") ? filename.split(".").pop() : "file"}
+                </div>
+                <div className="w-24 shrink-0 text-sm text-gray-300">
+                    Uploading
+                </div>
+                <div className="w-20 shrink-0 text-sm text-gray-300">—</div>
+                <div className="w-32 shrink-0 text-sm text-gray-300">—</div>
+                <div className="w-32 shrink-0 text-sm text-gray-300">—</div>
+                <div className="w-8 shrink-0" />
+            </div>
+        ));
+    }
+
     function renderLevel(parentId: string | null, depth: number) {
         const childFolders = folders
             .filter((f) => f.parent_folder_id === parentId)
@@ -928,6 +857,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
 
         return (
             <>
+                {parentId === null && renderUploadingDocumentRows(depth)}
                 {/* Files first */}
                 {childDocs.map((doc) => {
                     const isProcessing = doc.status === "pending" || doc.status === "processing";
@@ -939,8 +869,12 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                     return (
                         <div key={`doc-${doc.id}`}>
                             <div
-                                draggable
+                                draggable={renamingDocumentId !== doc.id}
                                 onDragStart={(e) => {
+                                    if (renamingDocumentId === doc.id) {
+                                        e.preventDefault();
+                                        return;
+                                    }
                                     e.dataTransfer.setData("application/mike-doc", doc.id);
                                     e.dataTransfer.effectAllowed = "move";
                                 }}
@@ -986,7 +920,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                         className="h-2.5 w-2.5 rounded border-gray-200 cursor-pointer accent-black"
                                     />
                                 </div>
-                                <div className={`sticky left-8 z-[60] ${NAME_COL_W} p-2 ${rowBg} group-hover:bg-gray-50`} style={treeNameCellStyle(depth)}>
+                                <div className={`sticky left-8 z-[60] ${DOC_NAME_COL_W} bg-white p-2 group-hover:bg-gray-50`} style={treeNameCellStyle(depth)}>
                                 <div className="flex items-center gap-2">
                                     {isProcessing ? (
                                         <Loader2 className="h-4 w-4 animate-spin text-gray-400 shrink-0" />
@@ -995,7 +929,40 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                     ) : (
                                         <DocIcon fileType={doc.file_type} />
                                     )}
-                                    <span className="text-sm text-gray-800 truncate">{doc.filename}</span>
+                                    {renamingDocumentId === doc.id ? (
+                                        <input
+                                            autoFocus
+                                            className="min-w-0 flex-1 text-sm text-gray-800 bg-transparent outline-none border-b border-gray-300"
+                                            value={renameDocumentValue}
+                                            onClick={(e) => e.stopPropagation()}
+                                            onDragStart={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                            }}
+                                            onChange={(e) =>
+                                                setRenameDocumentValue(
+                                                    e.target.value,
+                                                )
+                                            }
+                                            onKeyDown={(e) => {
+                                                if (e.key === "Enter")
+                                                    void submitDocumentRename(
+                                                        doc.id,
+                                                    );
+                                                if (e.key === "Escape") {
+                                                    setRenamingDocumentId(null);
+                                                    setRenameDocumentValue("");
+                                                }
+                                            }}
+                                            onBlur={() =>
+                                                void submitDocumentRename(
+                                                    doc.id,
+                                                )
+                                            }
+                                        />
+                                    ) : (
+                                        <span className="text-sm text-gray-800 truncate">{doc.filename}</span>
+                                    )}
                                 </div>
                                 </div>
                                 <div className="ml-auto w-20 shrink-0 text-xs text-gray-500 uppercase truncate">
@@ -1033,6 +1000,11 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                 <div className="w-8 shrink-0 flex justify-end">
                                     {!isProcessing && (
                                         <RowActions
+                                            onRename={() => {
+                                                setRenameDocumentValue(doc.filename);
+                                                setRenamingDocumentId(doc.id);
+                                            }}
+                                            renameLabel="Rename document"
                                             onDownload={() => downloadDoc(doc.id)}
                                             onShowAllVersions={
                                                 hasVersions && !isVersionsOpen
@@ -1079,15 +1051,31 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                     return (
                         <div key={`folder-${folder.id}`}>
                             <div
-                                draggable
+                                draggable={!isRenaming}
                                 onDragStart={(e) => {
+                                    if (isRenaming) {
+                                        e.preventDefault();
+                                        return;
+                                    }
                                     e.dataTransfer.setData("application/mike-folder", folder.id);
                                     e.dataTransfer.effectAllowed = "move";
                                     e.stopPropagation();
                                 }}
-                                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverFolderId(folder.id); }}
+                                onDragOver={(e) => {
+                                    if (!hasMovePayload(e.dataTransfer)) return;
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setDragOverFolderId(folder.id);
+                                }}
                                 onDragLeave={(e) => { e.stopPropagation(); setDragOverFolderId(null); }}
-                                onDrop={async (e) => { e.preventDefault(); e.stopPropagation(); setDragOverFolderId(null); setDragOverRoot(false); await handleDropOnFolder(folder.id, e.dataTransfer); }}
+                                onDrop={async (e) => {
+                                    if (!hasMovePayload(e.dataTransfer)) return;
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setDragOverFolderId(null);
+                                    setDragOverRoot(false);
+                                    await handleDropOnFolder(folder.id, e.dataTransfer);
+                                }}
                                 onClick={() => toggleFolder(folder.id)}
                                 onContextMenu={(e) => {
                                     e.preventDefault();
@@ -1095,7 +1083,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                     closeRowActionMenus();
                                     setContextMenu({ x: e.clientX, y: e.clientY, folderId: folder.id, showFolderActions: true });
                                 }}
-                                className={`group flex items-center h-10 pr-8 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors select-none ${dragOverFolderId === folder.id ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : ""}`}
+                                className={`group flex items-center h-10 pr-8 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors ${isRenaming ? "" : "select-none"} ${dragOverFolderId === folder.id ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : ""}`}
                             >
                                 <div className={`sticky left-0 z-[60] ${CHECK_W} p-2 flex items-center justify-center ${dragOverFolderId === folder.id ? "bg-blue-50" : "bg-white"} group-hover:bg-gray-50 self-stretch`} style={treeControlCellStyle(depth)}>
                                     {isExpanded
@@ -1103,7 +1091,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                         : <ChevronRight className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                                     }
                                 </div>
-                                <div className={`sticky left-8 z-[60] ${NAME_COL_W} p-2 ${dragOverFolderId === folder.id ? "bg-blue-50" : "bg-white"} group-hover:bg-gray-50`} style={treeNameCellStyle(depth)}>
+                                <div className={`sticky left-8 z-[60] ${DOC_NAME_COL_W} p-2 ${dragOverFolderId === folder.id ? "bg-blue-50" : "bg-white"} group-hover:bg-gray-50`} style={treeNameCellStyle(depth)}>
                                 <div className="flex items-center gap-1.5">
                                     {isExpanded
                                         ? <FolderOpen className="h-4 w-4 text-amber-500 shrink-0" />
@@ -1114,6 +1102,10 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                             autoFocus
                                             className="flex-1 min-w-0 text-sm text-gray-800 bg-transparent outline-none"
                                             value={renameFolderValue}
+                                            onDragStart={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                            }}
                                             onChange={(e) => setRenameFolderValue(e.target.value)}
                                             onKeyDown={(e) => {
                                                 if (e.key === "Enter") void handleRenameFolder(folder.id);
@@ -1158,44 +1150,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
 
     // ── Loading skeleton ──────────────────────────────────────────────────────
 
-    if (loading) {
-        return (
-            <div className="flex-1 overflow-y-auto bg-white">
-                <div className="flex items-start justify-between px-8 py-4">
-                    <div className="flex items-center gap-1.5 text-2xl font-medium font-serif">
-                        <span className="text-gray-400">Projects</span>
-                        <span className="text-gray-300">›</span>
-                        <div className="h-6 w-40 rounded bg-gray-100 animate-pulse" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <div className="h-8 w-16 rounded bg-gray-100 animate-pulse" />
-                        <div className="h-8 w-28 rounded bg-gray-100 animate-pulse" />
-                    </div>
-                </div>
-                <div className="flex items-center h-10 px-8 border-b border-gray-200 gap-5">
-                    <div className="h-3 w-20 rounded bg-gray-100 animate-pulse" />
-                    <div className="h-3 w-10 rounded bg-gray-100 animate-pulse" />
-                    <div className="h-3 w-24 rounded bg-gray-100 animate-pulse" />
-                </div>
-                <div className="flex items-center h-8 pr-8 border-b border-gray-200">
-                    <div className="w-8 shrink-0" />
-                    <div className="flex-1 min-w-0 pl-3 pr-4"><div className="h-2.5 w-8 rounded bg-gray-100 animate-pulse" /></div>
-                    <div className="w-20 shrink-0"><div className="h-2.5 w-8 rounded bg-gray-100 animate-pulse" /></div>
-                    <div className="w-24 shrink-0"><div className="h-2.5 w-8 rounded bg-gray-100 animate-pulse" /></div>
-                    <div className="w-8 shrink-0" />
-                </div>
-                {[1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="flex items-center h-10 pr-8 border-b border-gray-50">
-                        <div className="w-8 shrink-0" />
-                        <div className="flex-1 min-w-0 pl-3 pr-4"><div className="h-3.5 w-56 rounded bg-gray-100 animate-pulse" /></div>
-                        <div className="w-20 shrink-0"><div className="h-3 w-8 rounded bg-gray-100 animate-pulse" /></div>
-                        <div className="w-24 shrink-0"><div className="h-3 w-12 rounded bg-gray-100 animate-pulse" /></div>
-                        <div className="w-8 shrink-0" />
-                    </div>
-                ))}
-            </div>
-        );
-    }
+    if (loading) return <ProjectPageSkeleton />;
 
     if (!project) {
         return (
@@ -1267,20 +1222,20 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
     ) : null;
 
     const toolbarActions = (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-5">
             {actionsDropdown}
             {tab === "documents" && (
                 <>
                     <button
                         onClick={() => { setCreatingFolderIn(null); setNewFolderName(""); }}
-                        className="flex items-center gap-1 text-xs px-3 font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                        className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
                     >
                         <FolderPlus className="h-3.5 w-3.5" />
                         Add Subfolder
                     </button>
                     <button
                         onClick={() => setAddDocsOpen(true)}
-                        className="flex items-center gap-1 text-xs px-3 font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                        className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
                     >
                         <Upload className="h-3.5 w-3.5" />
                         Add Documents
@@ -1292,79 +1247,21 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
 
     return (
         <div className="flex-1 overflow-y-auto bg-white flex flex-col h-full">
-            {/* Page header */}
-            <div className="flex items-start justify-between px-8 py-4">
-                <div>
-                    <div className="flex items-center gap-1.5 text-2xl font-medium font-serif">
-                        <button
-                            onClick={() => router.push("/projects")}
-                            className="text-gray-400 hover:text-gray-600 transition-colors"
-                        >
-                            Projects
-                        </button>
-                        <span className="text-gray-300">›</span>
-                        {tab !== "documents" ? (
-                            <button
-                                onClick={() => router.push(`/projects/${projectId}`)}
-                                className="text-gray-500 hover:text-gray-700 transition-colors"
-                            >
-                                {project.name}
-                                {project.cm_number ? <span className="ml-1 text-gray-400">(#{project.cm_number})</span> : null}
-                            </button>
-                        ) : (
-                            <RenameableTitle
-                                value={project.name}
-                                onCommit={handleTitleCommit}
-                                suffix={project.cm_number ? <span className="ml-1 text-gray-400">(#{project.cm_number})</span> : null}
-                            />
-                        )}
-                        {tab !== "documents" && (
-                            <>
-                                <span className="text-gray-300">›</span>
-                                <span className="text-gray-900">{tab === "assistant" ? "Assistant" : "Tabular Reviews"}</span>
-                            </>
-                        )}
-                    </div>
-                </div>
-                <div className="flex items-center gap-2">
-                    <HeaderSearchBtn value={search} onChange={setSearch} placeholder="Search…" />
-                    <button
-                        onClick={() => setPeopleModalOpen(true)}
-                        className="flex h-8 w-8 items-center justify-center text-sm text-gray-500 transition-colors hover:text-gray-900 cursor-pointer"
-                        title="People with access"
-                        aria-label="People with access"
-                    >
-                        <Users className="h-4 w-4" />
-                    </button>
-                    <div className="relative group">
-                        <button
-                            onClick={() => !creatingChat && handleNewChat()}
-                            className={`flex h-8 items-center justify-center gap-1.5 px-3 text-sm transition-colors ${
-                                !creatingChat ? "text-gray-500 hover:text-gray-900 cursor-pointer" : "text-gray-300 cursor-default"
-                            }`}
-                        >
-                            {creatingChat ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                            Chat
-                        </button>
-                    </div>
-                    <div className="relative group">
-                        <button
-                            onClick={() => docs.length > 0 && !creatingReview && handleNewReview()}
-                            className={`flex h-8 items-center justify-center gap-1.5 px-3 text-sm transition-colors ${
-                                docs.length > 0 ? "text-gray-500 hover:text-gray-900 cursor-pointer" : "text-gray-300 cursor-default"
-                            }`}
-                        >
-                            {creatingReview ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                            Tabular Review
-                        </button>
-                        {docs.length === 0 && (
-                            <div className="pointer-events-none absolute right-0 top-full mt-1.5 z-10 hidden group-hover:flex items-center whitespace-nowrap rounded-lg bg-gray-900 px-2.5 py-1.5 text-xs text-white shadow-lg">
-                                Upload a document first
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
+            <ProjectPageHeader
+                project={project}
+                tab={tab}
+                search={search}
+                creatingChat={creatingChat}
+                creatingReview={creatingReview}
+                docsCount={docs.length}
+                onBackToProjects={() => router.push("/projects")}
+                onOpenDocuments={() => router.push(`/projects/${projectId}`)}
+                onTitleCommit={handleTitleCommit}
+                onSearchChange={setSearch}
+                onOpenPeople={() => setPeopleModalOpen(true)}
+                onNewChat={handleNewChat}
+                onNewReview={handleNewReview}
+            />
 
             <ToolbarTabs
                 tabs={[
@@ -1402,7 +1299,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                     className="h-2.5 w-2.5 rounded border-gray-200 cursor-pointer accent-black"
                                 />
                             </div>
-                            <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-white pl-2 text-left`}>
+                            <div className={`sticky left-8 z-[60] ${DOC_NAME_COL_W} bg-white pl-2 text-left`}>
                                 Name
                             </div>
                             <div className="ml-auto w-20 shrink-0 text-left">Type</div>
@@ -1414,13 +1311,42 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                         </div>
 
                         {/* Blue ring wraps everything below the header when root-dropping */}
-                        <div className="flex-1 flex flex-col min-h-0 relative">
+                        <div
+                            className="flex-1 flex flex-col min-h-0 relative"
+                            onDragOver={(e) => {
+                                if (!hasFilePayload(e.dataTransfer)) return;
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = "copy";
+                                setDragOverFileRoot(true);
+                            }}
+                            onDragLeave={(e) => {
+                                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                                    setDragOverFileRoot(false);
+                                }
+                            }}
+                            onDrop={(e) => {
+                                if (!hasFilePayload(e.dataTransfer)) return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setDragOverFileRoot(false);
+                                setDragOverRoot(false);
+                                setDragOverFolderId(null);
+                                void handleDropProjectFiles(
+                                    Array.from(e.dataTransfer.files),
+                                );
+                            }}
+                        >
                             {dragOverRoot && dragOverFolderId === null && (
                                 <div className="absolute inset-0 border-2 border-blue-400 pointer-events-none z-[80]" />
                             )}
+                            {dragOverFileRoot && (
+                                <div className="absolute inset-0 z-[90] border-2 border-blue-400 bg-blue-50/40 pointer-events-none" />
+                            )}
 
                         {/* Empty state */}
-                        {docs.length === 0 && folders.length === 0 ? (
+                        {docs.length === 0 &&
+                        folders.length === 0 &&
+                        uploadingDroppedFilenames.length === 0 ? (
                             <div
                                 onClick={() => setAddDocsOpen(true)}
                                 className="flex-1 flex cursor-pointer flex-col items-center justify-center py-24 text-center"
@@ -1437,13 +1363,18 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                     setContextMenu({ x: e.clientX, y: e.clientY, folderId: null, showFolderActions: false });
                                 }}
                                 onClick={() => setContextMenu(null)}
-                                onDragOver={(e) => { e.preventDefault(); setDragOverRoot(true); }}
+                                onDragOver={(e) => {
+                                    if (!hasMovePayload(e.dataTransfer)) return;
+                                    e.preventDefault();
+                                    setDragOverRoot(true);
+                                }}
                                 onDragLeave={(e) => {
                                     if (!e.currentTarget.contains(e.relatedTarget as Node)) {
                                         setDragOverRoot(false);
                                     }
                                 }}
                                 onDrop={async (e) => {
+                                    if (!hasMovePayload(e.dataTransfer)) return;
                                     e.preventDefault();
                                     setDragOverRoot(false);
                                     setDragOverFolderId(null);
@@ -1452,15 +1383,17 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                             >
                                 {/* Search: flat list; no search: folder tree */}
                                 {q ? (
-                                    filteredDocs.map((doc) => {
-                                        const isProcessing = doc.status === "pending" || doc.status === "processing";
-                                        const isError = doc.status === "error";
-                                        const isVersionsOpen = expandedVersionDocIds.has(doc.id);
-                                        const hasVersions =
-                                            typeof doc.latest_version_number === "number" &&
-                                            doc.latest_version_number >= 1;
-                                        return (
-                                            <div key={doc.id}>
+                                    <>
+                                        {renderUploadingDocumentRows(0)}
+                                        {filteredDocs.map((doc) => {
+                                            const isProcessing = doc.status === "pending" || doc.status === "processing";
+                                            const isError = doc.status === "error";
+                                            const isVersionsOpen = expandedVersionDocIds.has(doc.id);
+                                            const hasVersions =
+                                                typeof doc.latest_version_number === "number" &&
+                                                doc.latest_version_number >= 1;
+                                            return (
+                                                <div key={doc.id}>
                                                 <div
                                                     onClick={() => {
                                     setViewingDocVersion(null);
@@ -1488,10 +1421,43 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                                             className="h-2.5 w-2.5 rounded border-gray-200 cursor-pointer accent-black"
                                                         />
                                                     </div>
-                                                    <div className={`sticky left-8 z-[60] ${NAME_COL_W} p-2 ${selectedDocIds.includes(doc.id) ? "bg-gray-50" : "bg-white"} group-hover:bg-gray-50`}>
+                                                    <div className={`sticky left-8 z-[60] ${DOC_NAME_COL_W} bg-white p-2 group-hover:bg-gray-50`}>
                                                     <div className="flex items-center gap-2">
                                                         {isProcessing ? <Loader2 className="h-4 w-4 animate-spin text-gray-400 shrink-0" /> : isError ? <AlertCircle className="h-4 w-4 text-red-500 shrink-0" /> : <DocIcon fileType={doc.file_type} />}
-                                                        <span className="text-sm text-gray-800 truncate">{doc.filename}</span>
+                                                        {renamingDocumentId === doc.id ? (
+                                                            <input
+                                                                autoFocus
+                                                                className="min-w-0 flex-1 text-sm text-gray-800 bg-transparent outline-none border-b border-gray-300"
+                                                                value={renameDocumentValue}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                onDragStart={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                }}
+                                                                onChange={(e) =>
+                                                                    setRenameDocumentValue(
+                                                                        e.target.value,
+                                                                    )
+                                                                }
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === "Enter")
+                                                                        void submitDocumentRename(
+                                                                            doc.id,
+                                                                        );
+                                                                    if (e.key === "Escape") {
+                                                                        setRenamingDocumentId(null);
+                                                                        setRenameDocumentValue("");
+                                                                    }
+                                                                }}
+                                                                onBlur={() =>
+                                                                    void submitDocumentRename(
+                                                                        doc.id,
+                                                                    )
+                                                                }
+                                                            />
+                                                        ) : (
+                                                            <span className="text-sm text-gray-800 truncate">{doc.filename}</span>
+                                                        )}
                                                     </div>
                                                     </div>
                                                     <div className="ml-auto w-20 shrink-0 text-xs text-gray-500 uppercase truncate">{doc.file_type ?? <span className="text-gray-300">—</span>}</div>
@@ -1525,6 +1491,11 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                                     <div className="w-8 shrink-0 flex justify-end">
                                                         {!isProcessing && (
                                                             <RowActions
+                                                                onRename={() => {
+                                                                    setRenameDocumentValue(doc.filename);
+                                                                    setRenamingDocumentId(doc.id);
+                                                                }}
+                                                                renameLabel="Rename document"
                                                                 onDownload={() => downloadDoc(doc.id)}
                                                                 onShowAllVersions={
                                                                     hasVersions && !isVersionsOpen
@@ -1555,9 +1526,10 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                                         }
                                                     />
                                                 )}
-                                            </div>
-                                        );
-                                    })
+                                                </div>
+                                            );
+                                        })}
+                                    </>
                                 ) : (
                                     renderLevel(null, 0)
                                 )}
@@ -1589,6 +1561,15 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                         {menuDoc ? (
                                             <RowActionMenuItems
                                                 onClose={() => setContextMenu(null)}
+                                                onRename={() => {
+                                                    setRenameDocumentValue(
+                                                        menuDoc.filename,
+                                                    );
+                                                    setRenamingDocumentId(
+                                                        menuDoc.id,
+                                                    );
+                                                }}
+                                                renameLabel="Rename document"
                                                 onDownload={() => downloadDoc(menuDoc.id)}
                                                 onShowAllVersions={
                                                     menuDocHasVersions && !menuDocVersionsOpen
@@ -1675,160 +1656,56 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
 
                 {/* Tab: Assistant */}
                 {tab === "assistant" && (
-                    <>
-                        <div className="flex items-center h-8 pr-8 border-b border-gray-200 text-xs text-gray-500 font-medium select-none">
-                            <div className={`sticky left-0 z-[60] ${CHECK_W} relative bg-white flex items-center justify-center self-stretch before:absolute before:inset-x-0 before:bottom-0 before:h-px before:bg-white`}>
-                                <input
-                                    type="checkbox"
-                                    checked={allChatsSelected}
-                                    ref={(el) => { if (el) el.indeterminate = someChatsSelected; }}
-                                    onChange={() => {
-                                        if (allChatsSelected) setSelectedChatIds([]);
-                                        else setSelectedChatIds(filteredChats.map((c) => c.id));
-                                    }}
-                                    className="h-2.5 w-2.5 rounded border-gray-200 cursor-pointer accent-black"
-                                />
-                            </div>
-                            <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-white pl-2 text-left`}>
-                                Chats
-                            </div>
-                            <div className="ml-auto w-32 shrink-0 text-left">Created</div>
-                            <div className="w-8 shrink-0" />
-                        </div>
-                        {chats.length === 0 ? (
-                            <div className="flex flex-col items-start py-24 w-full max-w-xs mx-auto">
-                                <MessageSquare className="h-8 w-8 text-gray-300 mb-4" />
-                                <p className="text-2xl font-medium font-serif text-gray-900">Assistant</p>
-                                <p className="mt-1 text-xs text-gray-400 max-w-xs">Ask questions and get answers grounded in the documents in this project.</p>
-                                <button onClick={() => handleNewChat()} className="mt-4 inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors shadow-md">
-                                    + Create New
-                                </button>
-                            </div>
-                        ) : (
-                            <div>
-                                {filteredChats.map((chat) => (
-                                    <div
-                                        key={chat.id}
-                                        onClick={() => { if (renamingChatId === chat.id) return; router.push(`/projects/${projectId}/assistant/chat/${chat.id}`); }}
-                                        className="group flex items-center h-10 pr-8 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
-                                    >
-                                        <div className={`sticky left-0 z-[60] ${CHECK_W} p-2 flex items-center justify-center ${selectedChatIds.includes(chat.id) ? "bg-gray-50" : "bg-white"} group-hover:bg-gray-50`} onClick={(e) => e.stopPropagation()}>
-                                            <input type="checkbox" checked={selectedChatIds.includes(chat.id)} onChange={() => setSelectedChatIds((prev) => prev.includes(chat.id) ? prev.filter((x) => x !== chat.id) : [...prev, chat.id])} className="h-2.5 w-2.5 rounded border-gray-200 cursor-pointer accent-black" />
-                                        </div>
-                                        <div className={`sticky left-8 z-[60] ${NAME_COL_W} p-2 ${selectedChatIds.includes(chat.id) ? "bg-gray-50" : "bg-white"} group-hover:bg-gray-50`}>
-                                            {renamingChatId === chat.id ? (
-                                                <input autoFocus value={renameChatValue} onChange={(e) => setRenameChatValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submitChatRename(chat.id); if (e.key === "Escape") setRenamingChatId(null); }} onBlur={() => submitChatRename(chat.id)} onClick={(e) => e.stopPropagation()} className="w-full text-sm text-gray-800 bg-transparent outline-none" />
-                                            ) : (
-                                                <span className="text-sm text-gray-800 truncate block">{chat.title ?? "Untitled Chat"}</span>
-                                            )}
-                                        </div>
-                                        <div className="ml-auto w-32 shrink-0 text-sm text-gray-500 truncate">{formatDate(chat.created_at)}</div>
-                                        <div className="w-8 shrink-0 flex justify-end" onClick={(e) => e.stopPropagation()}>
-                                            <RowActions
-                                                onRename={() => {
-                                                    if (user?.id && chat.user_id !== user.id) {
-                                                        setOwnerOnlyAction("rename this chat");
-                                                        return;
-                                                    }
-                                                    setRenameChatValue(chat.title ?? "Untitled Chat");
-                                                    setRenamingChatId(chat.id);
-                                                }}
-                                                onDelete={async () => {
-                                                    if (user?.id && chat.user_id !== user.id) {
-                                                        setOwnerOnlyAction("delete this chat");
-                                                        return;
-                                                    }
-                                                    await deleteChat(chat.id);
-                                                    setChats((prev) => prev.filter((c) => c.id !== chat.id));
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </>
+                    <ProjectAssistantTab
+                        chats={chats}
+                        filteredChats={filteredChats}
+                        selectedChatIds={selectedChatIds}
+                        allChatsSelected={allChatsSelected}
+                        someChatsSelected={someChatsSelected}
+                        renamingChatId={renamingChatId}
+                        renameChatValue={renameChatValue}
+                        currentUserId={user?.id}
+                        onCreateChat={handleNewChat}
+                        onOpenChat={(chatId) =>
+                            router.push(
+                                `/projects/${projectId}/assistant/chat/${chatId}`,
+                            )
+                        }
+                        onDeleteChat={handleDeleteChatRow}
+                        onOwnerOnlyAction={setOwnerOnlyAction}
+                        submitChatRename={submitChatRename}
+                        setSelectedChatIds={setSelectedChatIds}
+                        setRenamingChatId={setRenamingChatId}
+                        setRenameChatValue={setRenameChatValue}
+                    />
                 )}
 
                 {/* Tab: Reviews */}
                 {tab === "reviews" && (
-                    <>
-                        <div className="flex items-center h-8 pr-8 border-b border-gray-200 text-xs text-gray-500 font-medium select-none">
-                            <div className={`sticky left-0 z-[60] ${CHECK_W} relative bg-white flex items-center justify-center self-stretch before:absolute before:inset-x-0 before:bottom-0 before:h-px before:bg-white`}>
-                                <input
-                                    type="checkbox"
-                                    checked={allReviewsSelected}
-                                    ref={(el) => { if (el) el.indeterminate = someReviewsSelected; }}
-                                    onChange={() => {
-                                        if (allReviewsSelected) setSelectedReviewIds([]);
-                                        else setSelectedReviewIds(filteredReviews.map((r) => r.id));
-                                    }}
-                                    className="h-2.5 w-2.5 rounded border-gray-200 cursor-pointer accent-black"
-                                />
-                            </div>
-                            <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-white pl-2 text-left`}>
-                                Name
-                            </div>
-                            <div className="ml-auto w-24 shrink-0 text-left">Columns</div>
-                            <div className="w-24 shrink-0 text-left">Documents</div>
-                            <div className="w-32 shrink-0 text-left">Created</div>
-                            <div className="w-8 shrink-0" />
-                        </div>
-                        {projectReviews.length === 0 ? (
-                            <div className="flex flex-col items-start py-24 w-full max-w-xs mx-auto">
-                                <Table2 className="h-8 w-8 text-gray-300 mb-4" />
-                                <p className="text-2xl font-medium font-serif text-gray-900">Tabular Reviews</p>
-                                <p className="mt-1 text-xs text-gray-400 max-w-xs">Extract data from project documents into tables using AI.</p>
-                                <button onClick={handleNewReview} disabled={creatingReview || docs.length === 0} className="mt-4 inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors shadow-md disabled:opacity-40">
-                                    + Create New
-                                </button>
-                            </div>
-                        ) : (
-                            <div>
-                                {filteredReviews.map((review) => (
-                                    <div
-                                        key={review.id}
-                                        onClick={() => { if (renamingReviewId === review.id) return; router.push(`/projects/${projectId}/tabular-reviews/${review.id}`); }}
-                                        className="group flex items-center h-10 pr-8 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
-                                    >
-                                        <div className={`sticky left-0 z-[60] ${CHECK_W} p-2 flex items-center justify-center ${selectedReviewIds.includes(review.id) ? "bg-gray-50" : "bg-white"} group-hover:bg-gray-50`} onClick={(e) => e.stopPropagation()}>
-                                            <input type="checkbox" checked={selectedReviewIds.includes(review.id)} onChange={() => setSelectedReviewIds((prev) => prev.includes(review.id) ? prev.filter((x) => x !== review.id) : [...prev, review.id])} className="h-2.5 w-2.5 rounded border-gray-200 cursor-pointer accent-black" />
-                                        </div>
-                                        <div className={`sticky left-8 z-[60] ${NAME_COL_W} p-2 ${selectedReviewIds.includes(review.id) ? "bg-gray-50" : "bg-white"} group-hover:bg-gray-50`}>
-                                            {renamingReviewId === review.id ? (
-                                                <input autoFocus value={renameReviewValue} onChange={(e) => setRenameReviewValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submitReviewRename(review.id); if (e.key === "Escape") setRenamingReviewId(null); }} onBlur={() => submitReviewRename(review.id)} onClick={(e) => e.stopPropagation()} className="w-full text-sm text-gray-800 bg-transparent outline-none" />
-                                            ) : (
-                                                <span className="text-sm text-gray-800 truncate block">{review.title ?? "Untitled Review"}</span>
-                                            )}
-                                        </div>
-                                        <div className="ml-auto w-24 shrink-0 text-sm text-gray-500 truncate">{review.columns_config?.length ?? 0}</div>
-                                        <div className="w-24 shrink-0 text-sm text-gray-500 truncate">{review.document_count ?? 0}</div>
-                                        <div className="w-32 shrink-0 text-sm text-gray-500 truncate">{review.created_at ? formatDate(review.created_at) : <span className="text-gray-300">—</span>}</div>
-                                        <div className="w-8 shrink-0 flex justify-end" onClick={(e) => e.stopPropagation()}>
-                                            <RowActions
-                                                onRename={() => {
-                                                    if (user?.id && review.user_id !== user.id) {
-                                                        setOwnerOnlyAction("rename this tabular review");
-                                                        return;
-                                                    }
-                                                    setRenameReviewValue(review.title ?? "Untitled Review");
-                                                    setRenamingReviewId(review.id);
-                                                }}
-                                                onDelete={async () => {
-                                                    if (user?.id && review.user_id !== user.id) {
-                                                        setOwnerOnlyAction("delete this tabular review");
-                                                        return;
-                                                    }
-                                                    await deleteTabularReview(review.id);
-                                                    setProjectReviews((prev) => prev.filter((r) => r.id !== review.id));
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </>
+                    <ProjectReviewsTab
+                        docs={docs}
+                        reviews={projectReviews}
+                        filteredReviews={filteredReviews}
+                        selectedReviewIds={selectedReviewIds}
+                        allReviewsSelected={allReviewsSelected}
+                        someReviewsSelected={someReviewsSelected}
+                        renamingReviewId={renamingReviewId}
+                        renameReviewValue={renameReviewValue}
+                        creatingReview={creatingReview}
+                        currentUserId={user?.id}
+                        onCreateReview={handleNewReview}
+                        onOpenReview={(reviewId) =>
+                            router.push(
+                                `/projects/${projectId}/tabular-reviews/${reviewId}`,
+                            )
+                        }
+                        onDeleteReview={handleDeleteReviewRow}
+                        onOwnerOnlyAction={setOwnerOnlyAction}
+                        submitReviewRename={submitReviewRename}
+                        setSelectedReviewIds={setSelectedReviewIds}
+                        setRenamingReviewId={setRenamingReviewId}
+                        setRenameReviewValue={setRenameReviewValue}
+                    />
                 )}
             </div>
             </div>
