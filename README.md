@@ -63,7 +63,7 @@ OPENAI_API_KEY=your-openai-key
 RESEND_API_KEY=your-resend-key
 USER_API_KEYS_ENCRYPTION_SECRET=your-long-random-secret
 
-# Optional: route Claude/Gemini calls through Hey Jude.
+# Optional: route model calls through Hey Jude.
 HEY_JUDE_ENABLED=false
 HEY_JUDE_BASE_URL=http://localhost:4005
 HEY_JUDE_API_KEY=sk-heyjude-dev
@@ -81,7 +81,7 @@ Supabase values come from the project dashboard. Use the project URL for `SUPABA
 
 Provider keys are only needed for the models and email features you plan to use. Model provider keys can be configured in `backend/.env` for the whole instance, or per user in **Account > Models & API Keys**. If a provider key is present in `backend/.env`, that provider is available by default and the matching browser API key field is read-only.
 
-To pseudonymize Claude or Gemini prompts before provider calls, run [Hey Jude](https://github.com/sure-scale/hey-jude) locally and set `HEY_JUDE_ENABLED=true`. Mike still stores original chat text in its database.
+To pseudonymize provider prompts before model calls, run [Hey Jude](https://github.com/sure-scale/hey-jude) locally and set `HEY_JUDE_ENABLED=true`. Mike still stores original chat text in its database.
 
 ## Install
 
