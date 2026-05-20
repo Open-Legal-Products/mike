@@ -24,6 +24,13 @@ import {
     type LlmMessage,
     type OpenAIToolSchema,
 } from "./llm";
+import {
+    fenceBody,
+    fenceInstructions,
+    fenceLabel,
+    makeFenceNonce,
+    type FenceNonce,
+} from "./promptFence";
 
 const STANDARD_FONT_DATA_URL = (() => {
     try {
@@ -546,6 +553,7 @@ export async function enrichWithPriorEvents(
     chatId: string | null | undefined,
     db: ReturnType<typeof createServerSupabase>,
     docIndex: DocIndex,
+    fenceNonce?: FenceNonce,
 ): Promise<ChatMessage[]> {
     if (!chatId) return messages;
     const { data: rows } = await db
@@ -564,12 +572,17 @@ export async function enrichWithPriorEvents(
     for (const [slug, info] of Object.entries(docIndex)) {
         if (info.document_id) slugByDocumentId.set(info.document_id, slug);
     }
+    const safeName = (filename: unknown): string => {
+        const raw = typeof filename === "string" ? filename : "";
+        return fenceNonce ? fenceLabel(fenceNonce, "filename", raw) : `"${raw}"`;
+    };
     const refFor = (documentId: unknown, filename: unknown) => {
         const slug =
             typeof documentId === "string"
                 ? slugByDocumentId.get(documentId)
                 : undefined;
-        return slug ? `${slug} ("${filename}")` : `"${filename}"`;
+        const name = safeName(filename);
+        return slug ? `${slug} (${name})` : name;
     };
 
     const lines: string[] = [];
@@ -591,7 +604,7 @@ export async function enrichWithPriorEvents(
             // can call edit_document / read_document on them. Emit one
             // line per copy, all attributed back to the same source.
             const srcLabel =
-                typeof ev.filename === "string" ? `"${ev.filename}"` : "";
+                typeof ev.filename === "string" ? safeName(ev.filename) : "";
             const copies = Array.isArray(ev.copies)
                 ? (ev.copies as {
                       new_filename?: unknown;
@@ -607,7 +620,11 @@ export async function enrichWithPriorEvents(
                 );
             }
         } else if (ev?.type === "workflow_applied") {
-            lines.push(`- applied workflow: "${ev.title}"`);
+            const title = typeof ev.title === "string" ? ev.title : "";
+            const safeTitle = fenceNonce
+                ? fenceLabel(fenceNonce, "workflow-title", title)
+                : `"${title}"`;
+            lines.push(`- applied workflow: ${safeTitle}`);
         }
     }
     if (lines.length === 0) return messages;
@@ -641,9 +658,17 @@ export function buildMessages(
     }[],
     systemPromptExtra?: string,
     docIndex?: DocIndex,
+    fenceNonce?: FenceNonce,
 ) {
     const formatted: unknown[] = [];
     let systemContent = SYSTEM_PROMPT;
+
+    if (fenceNonce) {
+        // Tell the model exactly once per turn what the spotlighting
+        // convention means — so it can recognise UNTRUSTED markers
+        // around document content, filenames, and prior-turn summaries.
+        systemContent += `\n\n${fenceInstructions(fenceNonce)}`;
+    }
 
     if (systemPromptExtra) {
         systemContent += `\n\n${systemPromptExtra.trim()}`;
@@ -652,10 +677,15 @@ export function buildMessages(
     if (docAvailability.length) {
         systemContent += "\n\n---\nAVAILABLE DOCUMENTS:\n";
         for (const doc of docAvailability) {
-            const label = doc.folder_path
-                ? `${doc.folder_path} / ${doc.filename}`
+            // doc.doc_id is server-generated slug (trusted); filename
+            // and folder_path are user-supplied so we fence them.
+            const filenamePart = fenceNonce
+                ? fenceLabel(fenceNonce, "filename", doc.filename)
                 : doc.filename;
-            systemContent += `- ${doc.doc_id}: ${label}\n`;
+            const labelPart = doc.folder_path
+                ? `${fenceNonce ? fenceLabel(fenceNonce, "folder", doc.folder_path) : doc.folder_path} / ${filenamePart}`
+                : filenamePart;
+            systemContent += `- ${doc.doc_id}: ${labelPart}\n`;
         }
         systemContent +=
             "\nYou do NOT retain document content between conversation turns. You MUST call read_document (or fetch_documents) at the start of every response that involves a document's content, even if you have read it in a previous turn. Failure to do so will result in hallucinated or stale content.\n---\n";
@@ -675,14 +705,22 @@ export function buildMessages(
     for (const msg of messages) {
         let content = msg.content ?? "";
         if (msg.role === "user" && msg.workflow) {
-            content = `[Workflow: ${msg.workflow.title} (id: ${msg.workflow.id})]\n\n${content}`;
+            // workflow.id is a server-generated UUID (trusted),
+            // workflow.title is user-supplied free text (fenced).
+            const titlePart = fenceNonce
+                ? fenceLabel(fenceNonce, "workflow-title", msg.workflow.title)
+                : msg.workflow.title;
+            content = `[Workflow: ${titlePart} (id: ${msg.workflow.id})]\n\n${content}`;
         }
         if (msg.role === "user" && msg.files?.length) {
             const lines = msg.files.map((f) => {
                 const slug = f.document_id
                     ? slugByDocumentId.get(f.document_id)
                     : undefined;
-                return slug ? `- ${slug}: ${f.filename}` : `- ${f.filename}`;
+                const namePart = fenceNonce
+                    ? fenceLabel(fenceNonce, "filename", f.filename)
+                    : f.filename;
+                return slug ? `- ${slug}: ${namePart}` : `- ${namePart}`;
             });
             content = `[The user attached the following document(s) to this message:\n${lines.join("\n")}]\n\n${content}`;
         }
@@ -1845,6 +1883,7 @@ export async function runToolCalls(
     docIndex?: DocIndex,
     turnEditState?: TurnEditState,
     projectId?: string | null,
+    fenceNonce?: FenceNonce,
 ): Promise<{
     toolResults: unknown[];
     docsRead: { filename: string; document_id?: string }[];
@@ -1888,12 +1927,19 @@ export async function runToolCalls(
             const filename = docStore.get(docId)?.filename;
             const documentId = docIndex?.[docId]?.document_id;
             if (filename) docsRead.push({ filename, document_id: documentId });
+            // Document body is the highest-leverage prompt-injection
+            // surface — fence it so the model treats anything inside
+            // as data, not instructions. The citation reminder stays
+            // outside the fence (it's a server-controlled directive).
+            const fencedBody = fenceNonce
+                ? fenceBody(fenceNonce, "document-body", content)
+                : content;
             toolResults.push({
                 role: "tool",
                 tool_call_id: tc.id,
                 content: filename
-                    ? `${citationReminder(docId, filename)}\n\n${content}`
-                    : content,
+                    ? `${citationReminder(docId, filename)}\n\n${fencedBody}`
+                    : fencedBody,
             });
         } else if (tc.function.name === "find_in_document") {
             const rawDocId = args.doc_id as string;
@@ -1935,7 +1981,12 @@ export async function runToolCalls(
                     total_matches: totalMatches,
                 });
             }
-            toolResults.push({ role: "tool", tool_call_id: tc.id, content });
+            // Search hits include verbatim excerpts from document
+            // text — fence the entire payload as untrusted.
+            const fencedFind = fenceNonce
+                ? fenceBody(fenceNonce, "search-hits", content)
+                : content;
+            toolResults.push({ role: "tool", tool_call_id: tc.id, content: fencedFind });
         } else if (tc.function.name === "list_documents") {
             const list = Array.from(docStore.entries()).map(
                 ([doc_id, info]) => ({
@@ -1944,10 +1995,15 @@ export async function runToolCalls(
                     file_type: info.file_type,
                 }),
             );
+            // Filenames are user-supplied; fence the JSON payload so
+            // the model treats the listed names as data.
+            const json = JSON.stringify(list);
             toolResults.push({
                 role: "tool",
                 tool_call_id: tc.id,
-                content: JSON.stringify(list),
+                content: fenceNonce
+                    ? fenceBody(fenceNonce, "document-list", json)
+                    : json,
             });
         } else if (tc.function.name === "fetch_documents") {
             const rawDocIds = (args.doc_ids as string[]) ?? [];
@@ -1964,8 +2020,13 @@ export async function runToolCalls(
                     db,
                 );
                 const filename = docStore.get(docId)?.filename ?? docId;
+                // Per-doc body fenced; the header + citation reminder
+                // stay outside (they're server-controlled directives).
+                const fencedBody = fenceNonce
+                    ? fenceBody(fenceNonce, "document-body", content)
+                    : content;
                 parts.push(
-                    `--- ${filename} (${docId}) ---\n${citationReminder(docId, filename)}\n\n${content}`,
+                    `--- ${filename} (${docId}) ---\n${citationReminder(docId, filename)}\n\n${fencedBody}`,
                 );
                 if (docStore.get(docId)) {
                     const documentId = docIndex?.[docId]?.document_id;
@@ -1984,10 +2045,13 @@ export async function runToolCalls(
                       title: w.title,
                   }))
                 : [];
+            const json = JSON.stringify(list);
             toolResults.push({
                 role: "tool",
                 tool_call_id: tc.id,
-                content: JSON.stringify(list),
+                content: fenceNonce
+                    ? fenceBody(fenceNonce, "workflow-list", json)
+                    : json,
             });
         } else if (tc.function.name === "read_workflow") {
             const wfId = args.workflow_id as string;
@@ -1998,10 +2062,15 @@ export async function runToolCalls(
                 );
                 workflowsApplied.push({ workflow_id: wfId, title: wf.title });
             }
+            // prompt_md is user-authored content stored in the DB —
+            // fence it. The "not found" branch is server-controlled.
+            const wfContent = wf ? wf.prompt_md : `Workflow '${wfId}' not found.`;
             toolResults.push({
                 role: "tool",
                 tool_call_id: tc.id,
-                content: wf ? wf.prompt_md : `Workflow '${wfId}' not found.`,
+                content: wf && fenceNonce
+                    ? fenceBody(fenceNonce, "workflow-prompt", wfContent)
+                    : wfContent,
             });
         } else if (tc.function.name === "read_table_cells" && tabularStore) {
             const colIndices = args.col_indices as number[] | undefined;
@@ -2729,6 +2798,16 @@ export async function runLLMStream(params: {
      * generated docs still get persisted, but as standalone documents.
      */
     projectId?: string | null;
+    /**
+     * Per-request fence nonce. When provided, every untrusted span
+     * emitted to the model from a tool result (document body text,
+     * filenames, workflow prompt_md, search excerpts) is wrapped using
+     * promptFence helpers so the model can distinguish data from
+     * instructions. Caller is responsible for ensuring the same nonce
+     * is also passed to buildMessages() so the system prompt contains
+     * the matching fenceInstructions block.
+     */
+    fenceNonce?: FenceNonce;
 }): Promise<{ fullText: string; events: AssistantEvent[] }> {
     const {
         apiMessages,
@@ -2744,6 +2823,7 @@ export async function runLLMStream(params: {
         model,
         apiKeys,
         projectId,
+        fenceNonce,
     } = params;
     const activeTools = extraTools?.length
         ? [...TOOLS, ...WORKFLOW_TOOLS, ...extraTools]
@@ -2906,6 +2986,7 @@ export async function runLLMStream(params: {
                 docIndex,
                 turnEditState,
                 projectId,
+                fenceNonce,
             );
             for (const r of docsRead) {
                 events.push({

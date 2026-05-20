@@ -11,6 +11,7 @@ import {
     PROJECT_EXTRA_TOOLS,
     type ChatMessage,
 } from "../lib/chatTools";
+import { makeFenceNonce } from "../lib/promptFence";
 import { getUserApiKeys } from "../lib/userSettings";
 import { checkProjectAccess } from "../lib/access";
 
@@ -100,11 +101,17 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         folder_path: folderPaths.get(doc_id),
     }));
 
+    // Per-request spotlighting nonce. Threads through the system
+    // prompt, prior-turn summaries, and every tool result so the model
+    // can tell data from instructions. See docs/SECURITY-MODEL.md.
+    const fenceNonce = makeFenceNonce();
+
     const enrichedMessages = await enrichWithPriorEvents(
         messages,
         chatId,
         db,
         docIndex,
+        fenceNonce,
     );
     const messagesForLLM: ChatMessage[] = displayed_doc
         ? enrichedMessages.map((m, i) => {
@@ -140,6 +147,8 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         messagesForLLM,
         docAvailability,
         systemPromptExtra,
+        docIndex,
+        fenceNonce,
     );
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
@@ -169,6 +178,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             model,
             apiKeys,
             projectId,
+            fenceNonce,
         });
 
         const annotations = extractAnnotations(fullText, docIndex, events);
