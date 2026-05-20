@@ -107,6 +107,12 @@ Open `http://localhost:3000`.
 2. If you did not set provider keys in `backend/.env`, open **Account > Models & API Keys** and add an Anthropic, Gemini, or OpenAI API key.
 3. Create or open a project and start chatting with documents.
 
+## Security model and trust boundaries
+
+Mike does not treat the LLM as a security boundary. Document contents, filenames, and folder paths supplied by users (or by anyone who hands a document to a user) can attempt to instruct the model. The codebase wraps untrusted spans in a per-request spotlighting fence so the model can distinguish data from instructions; that raises the bar on casual prompt injection but does not prevent a determined attacker from getting the model to comply. **Do not upload documents from untrusted sources without reviewing the model's tool calls before accepting its output.** See [`docs/SECURITY-MODEL.md`](docs/SECURITY-MODEL.md) for the full threat model, what is and is not defended, and how to run the adversarial test corpus locally with `npm run test:prompt-fence --prefix backend`.
+
+To report a vulnerability privately, use [GitHub's security advisories](https://github.com/willchen96/mike/security/advisories/new).
+
 ## Troubleshooting
 
 **Sign-up confirmation email never arrives.** Confirmation emails are sent by Supabase Auth, not by Mike. For local development, the simplest fix is to disable email confirmation in **Supabase > Authentication > Providers > Email**. For production, configure custom SMTP in Supabase; the built-in mailer is heavily rate-limited and may be restricted on newer projects.

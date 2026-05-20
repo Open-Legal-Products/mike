@@ -10,6 +10,7 @@ import {
     runLLMStream,
     type ChatMessage,
 } from "../lib/chatTools";
+import { makeFenceNonce } from "../lib/promptFence";
 import { completeText } from "../lib/llm";
 import { getUserApiKeys, getUserModelSettings } from "../lib/userSettings";
 import { checkProjectAccess } from "../lib/access";
@@ -532,13 +533,25 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         doc_id,
         filename: info.filename,
     }));
+    // Per-request spotlighting nonce. Same value is woven into the
+    // system prompt (via buildMessages) and into every tool result
+    // (via runLLMStream) so the model can recognise data fences and
+    // refuse instructions appearing inside them. See docs/SECURITY-MODEL.md.
+    const fenceNonce = makeFenceNonce();
     const enrichedMessages = await enrichWithPriorEvents(
         messages,
         chatId,
         db,
         docIndex,
+        fenceNonce,
     );
-    const apiMessages = buildMessages(enrichedMessages, docAvailability);
+    const apiMessages = buildMessages(
+        enrichedMessages,
+        docAvailability,
+        undefined,
+        docIndex,
+        fenceNonce,
+    );
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
 
@@ -572,6 +585,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             model,
             apiKeys,
             projectId: resolvedProjectId,
+            fenceNonce,
         });
 
         devLog("[chat/stream] LLM stream finished", {
