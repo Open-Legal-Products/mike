@@ -9,7 +9,7 @@ import {
 import { downloadFile, uploadFile, storageKey } from "../../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../../lib/convert";
 import { checkProjectAccess } from "../../lib/access";
-import { singleFileUpload } from "../../lib/upload";
+import { singleFileUpload, hasMagicBytes } from "../../lib/upload";
 
 export const projectsRouter = Router();
 const ALLOWED_TYPES = new Set(["pdf", "docx", "doc"]);
@@ -717,6 +717,15 @@ export async function handleDocumentUpload(
       });
 
   const content = file.buffer;
+
+  // Magic-byte check: verify the file actually starts with the binary
+  // signature for its declared type. An attacker could rename malware.exe
+  // to contract.pdf to bypass extension-only validation.
+  if (!hasMagicBytes(content, suffix)) {
+    return void res.status(400).json({
+      detail: `File content does not match its extension (.${suffix}). Please upload a valid ${suffix.toUpperCase()} file.`,
+    });
+  }
   const { data: doc, error: insertErr } = await db
     .from("documents")
     .insert({

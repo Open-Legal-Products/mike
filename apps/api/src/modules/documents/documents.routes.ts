@@ -23,7 +23,7 @@ import {
   loadActiveVersion,
 } from "../../lib/documentVersions";
 import { ensureDocAccess } from "../../lib/access";
-import { singleFileUpload } from "../../lib/upload";
+import { singleFileUpload, hasMagicBytes } from "../../lib/upload";
 
 export const documentsRouter = Router();
 const ALLOWED_TYPES = new Set(["pdf", "docx", "doc"]);
@@ -420,6 +420,13 @@ documentsRouter.post(
       });
     }
 
+    // Magic-byte check: verify actual binary content matches the extension.
+    if (suffix && !hasMagicBytes(file.buffer, suffix)) {
+      return void res.status(400).json({
+        detail: `File content does not match its extension (.${suffix}). Please upload a valid ${suffix.toUpperCase()} file.`,
+      });
+    }
+
     // Peg the new version into a predictable /versions/:id path under the
     // existing document folder so ops can spot the history in storage.
     const versionSlug = crypto.randomUUID().replace(/-/g, "");
@@ -813,6 +820,16 @@ async function handleDocumentUpload(
       });
 
   const content = file.buffer;
+
+  // Magic-byte check: verify the file actually starts with the binary
+  // signature for its declared type. An attacker could rename malware.exe
+  // to contract.pdf to bypass extension-only validation.
+  if (!hasMagicBytes(content, suffix)) {
+    return void res.status(400).json({
+      detail: `File content does not match its extension (.${suffix}). Please upload a valid ${suffix.toUpperCase()} file.`,
+    });
+  }
+
   const { data: doc, error: insertErr } = await db
     .from("documents")
     .insert({
