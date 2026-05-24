@@ -30,6 +30,16 @@ jobs:
 
       - run: npm ci
         working-directory: .
+
+      # Fail the build if any high or critical CVEs exist in dependencies.
+      # `--audit-level=high` means: pass if only low/moderate vulns exist,
+      # fail if any high or critical ones do.
+      # Why not --audit-level=critical? High CVEs are often exploitable too
+      # and should not be silently ignored.
+      - name: Dependency security audit
+        run: npm audit --audit-level=high
+        working-directory: apps/api
+
       - run: npm test
 
   packages:
