@@ -9,6 +9,7 @@ import {
     enrichWithPriorEvents,
     extractAnnotations,
     runLLMStream,
+    generateSpotlightNonce,
     PROJECT_EXTRA_TOOLS,
     type ChatMessage,
 } from "../../lib/chatTools";
@@ -177,10 +178,13 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         systemPromptExtra += `\n\nUSER-ATTACHED DOCUMENTS FOR THIS TURN:\nThe user has attached the following document(s) directly to their latest message. Treat these as the primary focus of the request unless their message clearly says otherwise.\n${lines.join("\n")}`;
     }
 
+    const nonce = generateSpotlightNonce();
     const apiMessages = buildMessages(
         messagesForLLM,
         docAvailability,
         systemPromptExtra,
+        docIndex,
+        nonce,
     );
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
@@ -223,6 +227,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             model,
             apiKeys,
             projectId,
+            nonce,
         });
 
         await incrementMessageCredits(userId, db);

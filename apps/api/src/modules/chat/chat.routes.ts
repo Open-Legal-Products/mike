@@ -9,6 +9,7 @@ import {
     buildWorkflowStore,
     extractAnnotations,
     runLLMStream,
+    generateSpotlightNonce,
     type ChatMessage,
 } from "../../lib/chatTools";
 import { completeText } from "../../lib/llm";
@@ -551,7 +552,8 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         db,
         docIndex,
     );
-    const apiMessages = buildMessages(enrichedMessages, docAvailability);
+    const nonce = generateSpotlightNonce();
+    const apiMessages = buildMessages(enrichedMessages, docAvailability, undefined, docIndex, nonce);
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
 
@@ -597,6 +599,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             model,
             apiKeys,
             projectId: resolvedProjectId,
+            nonce,
         });
 
         await incrementMessageCredits(userId, db);

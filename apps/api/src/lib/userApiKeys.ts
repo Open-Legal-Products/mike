@@ -44,12 +44,14 @@ function legacyEncryptionKey(): Buffer {
 // a random 16-byte salt. Even if one row's key is somehow extracted, all
 // other rows remain secure because their keys are derived with different salts.
 function deriveKey(salt: Buffer): Buffer {
-  return crypto.hkdfSync(
-    "sha256",
-    getMasterSecret(),
-    salt,
-    Buffer.from("mike-user-api-key", "utf8"),
-    32,
+  return Buffer.from(
+    crypto.hkdfSync(
+      "sha256",
+      getMasterSecret(),
+      salt,
+      Buffer.from("mike-user-api-key", "utf8"),
+      32,
+    ),
   );
 }
 
