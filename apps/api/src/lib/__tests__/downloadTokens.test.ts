@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { signDownload, verifyDownload, buildDownloadUrl } from "../downloadTokens";
+import { signDownloadPayload, verifyDownloadPayload } from "../../core/downloadTokens";
 
 const SECRET = "test-secret-32-bytes-long-enough!!";
 
@@ -87,6 +88,39 @@ describe("verifyDownload", () => {
         const result = verifyDownload(token);
         process.env.DOWNLOAD_SIGNING_SECRET = SECRET;
         expect(result).toBeNull();
+    });
+});
+
+describe("token expiry", () => {
+    const SECRET = "expiry-test-secret-value-32bytes!";
+
+    it("accepts a token whose exp is in the future", () => {
+        const futureExp = Math.floor(Date.now() / 1000) + 3600;
+        const token = signDownloadPayload(
+            { path: "p", filename: "f.pdf", exp: futureExp },
+            SECRET,
+        );
+        expect(verifyDownloadPayload(token, SECRET)).not.toBeNull();
+    });
+
+    it("rejects a token whose exp is in the past", () => {
+        const pastExp = Math.floor(Date.now() / 1000) - 1;
+        const token = signDownloadPayload(
+            { path: "p", filename: "f.pdf", exp: pastExp },
+            SECRET,
+        );
+        expect(verifyDownloadPayload(token, SECRET)).toBeNull();
+    });
+
+    it("accepts a legacy token with no exp field (backwards compat)", () => {
+        // Manually build a token without the 'e' field to simulate old tokens
+        const b64u = (buf: Buffer) =>
+            buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+        const crypto = require("crypto") as typeof import("crypto");
+        const payload = b64u(Buffer.from(JSON.stringify({ p: "path", f: "file.pdf" })));
+        const sig = b64u(crypto.createHmac("sha256", SECRET).update(payload).digest());
+        const token = `${payload}.${sig}`;
+        expect(verifyDownloadPayload(token, SECRET)).not.toBeNull();
     });
 });
 

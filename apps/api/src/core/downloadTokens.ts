@@ -3,6 +3,8 @@ import crypto from "crypto";
 export type DownloadTokenPayload = {
   path: string;
   filename: string;
+  /** Unix timestamp (seconds) after which the token is invalid. */
+  exp?: number;
 };
 
 function b64urlEncode(buf: Buffer): string {
@@ -28,13 +30,17 @@ function timingSafeEqStr(a: string, b: string): boolean {
   return crypto.timingSafeEqual(aBuf, bBuf) && a.length === b.length;
 }
 
+const DEFAULT_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
+
 export function signDownloadPayload(
   payload: DownloadTokenPayload,
   secret: string,
+  ttlSeconds = DEFAULT_TTL_SECONDS,
 ): string {
+  const exp = payload.exp ?? Math.floor(Date.now() / 1000) + ttlSeconds;
   const encodedPayload = b64urlEncode(
     Buffer.from(
-      JSON.stringify({ p: payload.path, f: payload.filename }),
+      JSON.stringify({ p: payload.path, f: payload.filename, e: exp }),
       "utf8",
     ),
   );
@@ -68,11 +74,17 @@ export function verifyDownloadPayload(
     ) as {
       p: unknown;
       f: unknown;
+      e?: unknown;
     };
     if (typeof parsed.p !== "string" || typeof parsed.f !== "string") {
       return null;
     }
     if (!parsed.p || !parsed.f) return null;
+    // Reject expired tokens. Tokens without `e` (legacy) are still accepted
+    // for backwards compatibility — they'll be re-issued on next access.
+    if (typeof parsed.e === "number" && parsed.e < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
     return { path: parsed.p, filename: parsed.f };
   } catch {
     return null;
