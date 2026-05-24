@@ -1,0 +1,80 @@
+import crypto from "crypto";
+
+export type DownloadTokenPayload = {
+  path: string;
+  filename: string;
+};
+
+function b64urlEncode(buf: Buffer): string {
+  return buf
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function b64urlDecode(s: string): Buffer {
+  let t = s.replace(/-/g, "+").replace(/_/g, "/");
+  while (t.length % 4) t += "=";
+  return Buffer.from(t, "base64");
+}
+
+function timingSafeEqStr(a: string, b: string): boolean {
+  const maxLen = Math.max(a.length, b.length, 1);
+  const aBuf = Buffer.alloc(maxLen, 0);
+  const bBuf = Buffer.alloc(maxLen, 0);
+  Buffer.from(a).copy(aBuf);
+  Buffer.from(b).copy(bBuf);
+  return crypto.timingSafeEqual(aBuf, bBuf) && a.length === b.length;
+}
+
+export function signDownloadPayload(
+  payload: DownloadTokenPayload,
+  secret: string,
+): string {
+  const encodedPayload = b64urlEncode(
+    Buffer.from(
+      JSON.stringify({ p: payload.path, f: payload.filename }),
+      "utf8",
+    ),
+  );
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(encodedPayload)
+    .digest();
+  return `${encodedPayload}.${b64urlEncode(signature)}`;
+}
+
+export function verifyDownloadPayload(
+  token: string,
+  secret: string,
+): DownloadTokenPayload | null {
+  const parts = token.split(".");
+  if (parts.length !== 2) return null;
+
+  const [encodedPayload, encodedSignature] = parts;
+  const expectedSignature = crypto
+    .createHmac("sha256", secret)
+    .update(encodedPayload)
+    .digest();
+
+  if (!timingSafeEqStr(encodedSignature, b64urlEncode(expectedSignature))) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(
+      b64urlDecode(encodedPayload).toString("utf8"),
+    ) as {
+      p: unknown;
+      f: unknown;
+    };
+    if (typeof parsed.p !== "string" || typeof parsed.f !== "string") {
+      return null;
+    }
+    if (!parsed.p || !parsed.f) return null;
+    return { path: parsed.p, filename: parsed.f };
+  } catch {
+    return null;
+  }
+}
