@@ -21,21 +21,43 @@ type EncryptedKeyRow = {
   encrypted_key: string;
   iv: string;
   auth_tag: string;
+  salt?: string | null; // null = legacy row (no HKDF); non-null = HKDF-derived key
 };
 
 export { hasEnvApiKey, normalizeApiKeyProvider };
 
-function encryptionKey(): Buffer {
+function getMasterSecret(): Buffer {
   const secret = process.env.USER_API_KEYS_ENCRYPTION_SECRET;
   if (!secret) {
     throw new Error("USER_API_KEYS_ENCRYPTION_SECRET is not configured");
   }
-  return crypto.createHash("sha256").update(secret).digest();
+  return Buffer.from(secret, "utf8");
+}
+
+// Legacy path: SHA-256 of the master secret (single key for all rows).
+// Used only to decrypt rows that were written before HKDF was introduced.
+function legacyEncryptionKey(): Buffer {
+  return crypto.createHash("sha256").update(getMasterSecret()).digest();
+}
+
+// New path: HKDF (RFC 5869) derives a unique 256-bit key per row using
+// a random 16-byte salt. Even if one row's key is somehow extracted, all
+// other rows remain secure because their keys are derived with different salts.
+function deriveKey(salt: Buffer): Buffer {
+  return crypto.hkdfSync(
+    "sha256",
+    getMasterSecret(),
+    salt,
+    Buffer.from("mike-user-api-key", "utf8"),
+    32,
+  );
 }
 
 function encrypt(value: string): Omit<EncryptedKeyRow, "provider"> {
+  const salt = crypto.randomBytes(16);
+  const key = deriveKey(salt);
   const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", encryptionKey(), iv);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
   const encrypted = Buffer.concat([
     cipher.update(value, "utf8"),
     cipher.final(),
@@ -44,14 +66,21 @@ function encrypt(value: string): Omit<EncryptedKeyRow, "provider"> {
     encrypted_key: encrypted.toString("base64"),
     iv: iv.toString("base64"),
     auth_tag: cipher.getAuthTag().toString("base64"),
+    salt: salt.toString("base64"),
   };
 }
 
 function decrypt(row: EncryptedKeyRow): string | null {
   try {
+    // Choose key derivation path based on whether a salt is stored.
+    // Rows written before HKDF was introduced have salt = null.
+    const key = row.salt
+      ? deriveKey(Buffer.from(row.salt, "base64"))
+      : legacyEncryptionKey();
+
     const decipher = crypto.createDecipheriv(
       "aes-256-gcm",
-      encryptionKey(),
+      key,
       Buffer.from(row.iv, "base64"),
     );
     decipher.setAuthTag(Buffer.from(row.auth_tag, "base64"));
@@ -120,7 +149,7 @@ export async function getUserApiKeys(
 
   const { data, error } = await db
     .from("user_api_keys")
-    .select("provider, encrypted_key, iv, auth_tag")
+    .select("provider, encrypted_key, iv, auth_tag, salt")
     .eq("user_id", userId);
   if (error) throw error;
 
