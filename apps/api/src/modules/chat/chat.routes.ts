@@ -14,6 +14,7 @@ import {
 import { completeText } from "../../lib/llm";
 import { getUserApiKeys, getUserModelSettings } from "../../lib/userSettings";
 import { checkProjectAccess } from "../../lib/access";
+import { checkMessageCredits, incrementMessageCredits } from "../../lib/credits";
 
 export const chatRouter = Router();
 
@@ -559,6 +560,21 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         docCount: Object.keys(docIndex).length,
     }, "[chat/stream] starting LLM stream");
 
+    // Credit check and API key fetch must happen BEFORE flushHeaders().
+    // Once SSE headers are flushed the response is committed — we can no
+    // longer send a 429 JSON body. Check credits first, fail fast.
+    const [apiKeys, creditCheck] = await Promise.all([
+        getUserApiKeys(userId, db),
+        checkMessageCredits(userId, db),
+    ]);
+
+    if (!creditCheck.allowed) {
+        return void res.status(429).json({
+            detail: `Monthly message limit reached (${creditCheck.used}/${creditCheck.limit}). Resets on ${creditCheck.resetDate}.`,
+            code: "CREDIT_LIMIT_EXCEEDED",
+        });
+    }
+
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -566,8 +582,6 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     res.flushHeaders();
 
     const write = (line: string) => res.write(line);
-
-    const apiKeys = await getUserApiKeys(userId, db);
 
     try {
         write(`data: ${JSON.stringify({ type: "chat_id", chatId })}\n\n`);
@@ -584,6 +598,8 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             apiKeys,
             projectId: resolvedProjectId,
         });
+
+        await incrementMessageCredits(userId, db);
 
         req.log.debug({ eventCount: events?.length ?? 0 }, "[chat/stream] LLM stream finished");
 

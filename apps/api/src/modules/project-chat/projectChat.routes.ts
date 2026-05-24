@@ -14,6 +14,7 @@ import {
 } from "../../lib/chatTools";
 import { getUserApiKeys } from "../../lib/userSettings";
 import { checkProjectAccess } from "../../lib/access";
+import { checkMessageCredits, incrementMessageCredits } from "../../lib/credits";
 
 const chatMessageSchema = z.object({
     role: z.string(),
@@ -184,6 +185,21 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
 
+    // Credit check and API key fetch must happen BEFORE flushHeaders().
+    // Once SSE headers are flushed the response is committed — we can no
+    // longer send a 429 JSON body. Check credits first, fail fast.
+    const [apiKeys, creditCheck] = await Promise.all([
+        getUserApiKeys(userId, db),
+        checkMessageCredits(userId, db),
+    ]);
+
+    if (!creditCheck.allowed) {
+        return void res.status(429).json({
+            detail: `Monthly message limit reached (${creditCheck.used}/${creditCheck.limit}). Resets on ${creditCheck.resetDate}.`,
+            code: "CREDIT_LIMIT_EXCEEDED",
+        });
+    }
+
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -191,8 +207,6 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
     res.flushHeaders();
 
     const write = (line: string) => res.write(line);
-
-    const apiKeys = await getUserApiKeys(userId, db);
 
     try {
         write(`data: ${JSON.stringify({ type: "chat_id", chatId })}\n\n`);
@@ -210,6 +224,8 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             apiKeys,
             projectId,
         });
+
+        await incrementMessageCredits(userId, db);
 
         const annotations = extractAnnotations(fullText, docIndex, events);
         await db.from("chat_messages").insert({
