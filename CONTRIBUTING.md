@@ -31,11 +31,11 @@ We will aim to respond promptly and coordinate a disclosure timeline with you.
 Backend:
 
 ```bash
-npm run build --prefix backend
+npm run build --prefix apps/api
 ```
 
 Frontend:
 
 ```bash
-npm run build --prefix frontend
+npm run build --prefix apps/web
 ```
