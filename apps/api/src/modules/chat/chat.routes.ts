@@ -135,13 +135,31 @@ async function getAccessibleChat(
 // own projects in the global recent-chats list). Chats in projects that
 // are merely *shared with* the user are NOT included here — those are
 // listed per-project via GET /projects/:projectId/chats.
+// GET /chat?limit=50&before=<ISO-timestamp>
+// Returns the user's chats ordered newest-first.
+// `limit`  — how many to return (1–200, default 50).
+// `before` — ISO 8601 timestamp cursor: only return chats created before
+//            this time. Used for pagination: pass the `created_at` of the
+//            last item from the previous page to get the next page.
 chatRouter.get("/", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
     const db = createServerSupabase();
+
     const requestedLimit = Number.parseInt(String(req.query.limit ?? ""), 10);
-    const limit = Number.isFinite(requestedLimit)
-        ? Math.min(Math.max(requestedLimit, 1), 100)
-        : null;
+    const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+        ? Math.min(requestedLimit, 200)
+        : 50;
+
+    const beforeRaw = req.query.before;
+    const before =
+        typeof beforeRaw === "string" && beforeRaw.trim()
+            ? new Date(beforeRaw.trim())
+            : null;
+    if (before !== null && isNaN(before.getTime())) {
+        return void res.status(400).json({
+            detail: "`before` must be a valid ISO 8601 timestamp",
+        });
+    }
 
     const { data: ownProjects, error: projErr } = await db
         .from("projects")
@@ -161,9 +179,12 @@ chatRouter.get("/", requireAuth, async (req, res) => {
         .from("chats")
         .select("*")
         .or(filter)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(limit);
 
-    if (limit) query = query.limit(limit);
+    if (before !== null) {
+        query = query.lt("created_at", before.toISOString());
+    }
 
     const { data, error } = await query;
     if (error) return void res.status(500).json({ detail: error.message });
