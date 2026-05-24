@@ -36,11 +36,16 @@ projectsRouter.get("/", requireAuth, async (req, res) => {
     .order("created_at", { ascending: false });
   if (ownError) return void res.status(500).json({ detail: ownError.message });
 
-  const { data: sharedProjects, error: sharedError } = userEmail
+  // Case-insensitive match: normalise the caller's email to lowercase before
+  // querying. shared_with stores emails as entered by the project owner, which
+  // may differ in casing. Without this, "Alice@example.com" would not see a
+  // project shared with "alice@example.com".
+  const normalizedEmail = userEmail?.toLowerCase();
+  const { data: sharedProjects, error: sharedError } = normalizedEmail
     ? await db
         .from("projects")
         .select("*")
-        .filter("shared_with", "cs", JSON.stringify([userEmail]))
+        .filter("shared_with", "cs", JSON.stringify([normalizedEmail]))
         .neq("user_id", userId)
         .order("created_at", { ascending: false })
     : { data: [], error: null };
@@ -139,11 +144,14 @@ projectsRouter.get("/:projectId", requireAuth, async (req, res) => {
   if (error || !project)
     return void res.status(404).json({ detail: "Project not found" });
 
+  const normalizedEmailForAccess = userEmail?.toLowerCase();
   const canAccess =
     project.user_id === userId ||
-    (userEmail &&
+    (normalizedEmailForAccess &&
       Array.isArray(project.shared_with) &&
-      project.shared_with.includes(userEmail));
+      (project.shared_with as string[]).some(
+        (e) => e.toLowerCase() === normalizedEmailForAccess,
+      ));
   if (!canAccess)
     return void res.status(404).json({ detail: "Project not found" });
 
