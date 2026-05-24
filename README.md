@@ -77,7 +77,18 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
 
 Supabase values come from the project dashboard. Use the project URL for `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL`, the service role key for the backend `SUPABASE_SECRET_KEY`, and the anon/public key for `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY`. If your Supabase project shows multiple key formats, use the legacy JWT-style anon and service role keys expected by the Supabase client libraries.
 
+> **Security:** `SUPABASE_SECRET_KEY` is the Supabase **service role** key — it bypasses Row Level Security and must never appear in `NEXT_PUBLIC_*` variables or be sent to a browser. Keep it in `apps/api/.env` only, which is server-side only.
+
 Provider keys are only needed for the models and email features you plan to use. Model provider keys can be configured in `apps/api/.env` for the whole instance, or per user in **Account > Models & API Keys**. If a provider key is present in `apps/api/.env`, that provider is available by default and the matching browser API key field is read-only.
+
+## Safe Local Testing
+
+When developing or testing Mike locally:
+
+- **Use a dedicated, disposable Supabase project** — not your production database. Local dev generates test users, test documents, and may run migrations that are hard to reverse on live data.
+- **Use a dedicated R2 bucket or MinIO** — not a bucket that serves production traffic. Test uploads and deletes will be made against it.
+- **Use synthetic documents** — do not upload real client documents, case files, or any personally identifiable information to a development instance. Local logs and storage are not production-hardened.
+- **Use provider keys with low spend limits** — set billing alerts on Anthropic, OpenAI, and Gemini accounts used for development so automated test runs cannot generate surprise costs.
 
 ## Install
 
