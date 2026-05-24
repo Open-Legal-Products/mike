@@ -2831,8 +2831,17 @@ export async function runLLMStream(params: {
     };
 
     const selectedModel = resolveModel(model, DEFAULT_MAIN_MODEL);
+    const LLM_TIMEOUT_MS = 180_000;
 
-    await streamChatWithTools({
+    const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(
+            () => reject(new Error("LLM_STREAM_TIMEOUT")),
+            LLM_TIMEOUT_MS,
+        ),
+    );
+
+    await Promise.race([
+        streamChatWithTools({
         model: selectedModel,
         systemPrompt,
         messages: chatMessages,
@@ -2979,6 +2988,16 @@ export async function runLLMStream(params: {
                     }),
             }));
         },
+        }),
+        timeoutPromise,
+    ]).catch((err: unknown) => {
+        if (err instanceof Error && err.message === "LLM_STREAM_TIMEOUT") {
+            write(
+                `data: ${JSON.stringify({ type: "error", message: "The request timed out. Please try again." })}\n\n`,
+            );
+            write("data: [DONE]\n\n");
+        }
+        throw err;
     });
 
     flushText();
