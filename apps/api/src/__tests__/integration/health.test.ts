@@ -24,8 +24,10 @@ function mockSupabase() {
     };
 }
 
-// Import app AFTER mocks are in place.
-const { app } = await import("../../app");
+// Vitest hoists vi.mock() calls before all imports, so this regular import
+// will receive the mocked Supabase client even though it appears after the
+// vi.mock() calls in source order.
+import { app } from "../../app";
 
 describe("GET /health", () => {
     it("returns 200 with { ok: true }", async () => {
