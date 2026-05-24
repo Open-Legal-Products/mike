@@ -22,3 +22,20 @@ Start local development:
 npm run dev --prefix apps/api
 npm run dev --prefix apps/web
 ```
+
+Optional local services:
+
+```bash
+supabase start
+docker compose up minio minio-init redis
+```
+
+To run the live Supabase access-control harness after `supabase start`, set
+`SUPABASE_TEST_URL` and `SUPABASE_TEST_SERVICE_ROLE_KEY` from the CLI output,
+then run:
+
+```bash
+npm run test:integration:supabase --prefix apps/api
+```
+
+The regular API test suite skips that live test unless those variables are set.

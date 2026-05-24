@@ -36,6 +36,10 @@ const envSchema = z.object({
     ANTHROPIC_API_KEY: z.string().optional(),
     CLAUDE_API_KEY: z.string().optional(),
     OPENAI_API_KEY: z.string().optional(),
+    OPENAI_BASE_URL: z.string().url().optional(),
+    OPENAI_ALLOW_LOCAL_BASE_URL: z
+        .enum(["true", "false"])
+        .default("false"),
     GEMINI_API_KEY: z.string().optional(),
 
     RESEND_API_KEY: z.string().optional(),

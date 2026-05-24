@@ -9,6 +9,7 @@
 #   api  — Express backend on http://localhost:3001 (hot-reload via tsx watch)
 #   web  — Next.js frontend on http://localhost:3000 (hot-reload)
 #   minio — local S3-compatible object storage on http://localhost:9000
+#   redis — queue backend for future BullMQ workers on redis://localhost:6379
 #
 # Both services mount the repo root as a volume so code changes are reflected
 # instantly without rebuilding the image.  Node module changes (package.json
@@ -50,8 +51,11 @@ services:
       R2_ACCESS_KEY_ID: minioadmin
       R2_SECRET_ACCESS_KEY: minioadmin
       R2_BUCKET_NAME: mike
+      REDIS_URL: redis://redis:6379
     depends_on:
       minio:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -110,9 +114,24 @@ services:
         mc mb --ignore-existing local/mike
         mc anonymous set none local/mike
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
 volumes:
   api_node_modules:
   api_app_node_modules:
   web_node_modules:
   web_app_node_modules:
   minio_data:
+  redis_data:

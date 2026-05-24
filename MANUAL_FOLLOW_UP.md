@@ -8,23 +8,22 @@ longer design work.
 
 ### Supabase Integration And RLS/IDOR Tests
 
-The branch now has mock-based access tests for the core helpers, and CI runs
-`supabase db reset` against the local Supabase stack. The remaining proof is a
-real seeded integration suite that creates two users, two projects, and cross-
-project documents, then verifies tabular review routes cannot read foreign
-document IDs.
+The branch now has mock-based access tests for the core helpers, CI runs
+`supabase db reset` against the local Supabase stack, and a skipped-by-default
+live harness exists at
+`apps/api/src/__tests__/integration/access.supabase.test.ts`.
 
 Manual setup needed:
 
 1. Run `supabase start`.
 2. Capture the local API URL, anon key, and service role key printed by the CLI.
-3. Add a dedicated integration test script that seeds users/documents via the
-   service role key and calls API routes with real user JWTs.
+3. Run `npm run test:integration:supabase --prefix apps/api`.
 4. Cover:
-   - `POST /tabular-review` drops or rejects inaccessible `document_ids`.
-   - `GET /tabular-review/:reviewId` hides inaccessible review data.
-   - `POST /tabular-review/:reviewId/generate` cannot load inaccessible docs.
-   - document download and zip routes only return accessible docs.
+   - Already scaffolded: access helper proof that inaccessible document IDs are
+     filtered with real Supabase data.
+   - Still needed: route-level proof that `POST /tabular-review`,
+     `GET /tabular-review/:reviewId`, `POST /tabular-review/:reviewId/generate`,
+     and document zip/download routes enforce that same boundary with real JWTs.
 
 ## Product-Sized Follow-Ups
 
@@ -35,9 +34,14 @@ The action plan recommends BullMQ plus Redis, but that changes the runtime
 architecture and API contract (`jobId`, polling/SSE status, retries, worker
 deployment, dead-letter behavior). Design this as its own PR series.
 
-Suggested scope:
+Partially automated:
 
-1. Add Redis to Docker Compose.
+- Redis now runs in Docker Compose and is exposed as `redis://localhost:6379`
+  for future BullMQ workers.
+
+Remaining scope:
+
+1. Add BullMQ/ioredis dependencies.
 2. Add `document-ingestion`, `conversion`, and `workflow-execution` queues.
 3. Move LibreOffice conversion out of request handlers.
 4. Add job status APIs and frontend status states.
@@ -62,12 +66,13 @@ status. Treat it as a feature project, not a drive-by merge.
 
 ### Local / Alternative LLM Providers
 
-The provider abstraction is stronger now, but the fork report still shows
-demand for Ollama, OpenRouter, Azure OpenAI, Bedrock, and generic
-OpenAI-compatible base URLs. Before adding providers, decide:
+The provider abstraction is stronger now, and OpenAI-compatible base URL
+support exists through `OPENAI_BASE_URL` with production HTTPS guardrails. The
+fork report still shows demand for Ollama, OpenRouter, Azure OpenAI, and
+Bedrock. Before adding more first-class providers, decide:
 
 - which providers are first-class vs. generic compatible endpoints
-- how users configure base URLs and custom auth headers
+- how users configure base URLs and custom auth headers in the UI
 - what safety checks prevent SSRF for user-provided endpoints
 - how model availability appears in the UI
 

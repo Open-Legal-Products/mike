@@ -6,8 +6,8 @@ import type {
     StreamChatParams,
     StreamChatResult,
 } from "./types";
+import { openAIResponsesUrl } from "./baseUrl";
 
-const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const MAX_OUTPUT_TOKENS = 16384;
 
 type ResponseInputItem =
@@ -116,7 +116,7 @@ async function createResponse(params: {
     apiKey: string;
     signal?: AbortSignal;
 }): Promise<Response> {
-    const response = await fetch(OPENAI_RESPONSES_URL, {
+    const response = await fetch(openAIResponsesUrl(), {
         method: "POST",
         headers: {
             Authorization: `Bearer ${params.apiKey}`,
