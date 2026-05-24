@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  api:
+    name: API tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      # Dummy values so env.ts validation passes at test time
+      SUPABASE_URL: http://localhost:54321
+      SUPABASE_SECRET_KEY: test-secret-key
+      DOWNLOAD_SIGNING_SECRET: test-download-secret-32bytes!!
+      USER_API_KEYS_ENCRYPTION_SECRET: test-encryption-secret-32bytes!
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - run: npm ci
+        working-directory: .
+      - run: npm test
+
+  packages:
+    name: Package typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - run: npm ci
+        working-directory: .
+
+      - run: ./node_modules/.bin/tsc -p packages/core/tsconfig.json --noEmit
+      - run: ./node_modules/.bin/tsc -p packages/api-client/tsconfig.json --noEmit
+      - run: ./node_modules/.bin/tsc -p packages/sdk-js/tsconfig.json --noEmit
+
+  web:
+    name: Web lint and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - run: npm ci
+        working-directory: .
+      - run: npm run lint
+      - run: npm run build
+
+  # -----------------------------------------------------------------------
+  # Slower job: migration validation against real local Supabase (3-5 min)
+  # Only runs on PRs touching the supabase/ directory
+  # -----------------------------------------------------------------------
+  migrations:
+    name: Migration validation
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' &&
+      contains(toJson(github.event.pull_request.changed_files), 'supabase/')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v2
+        with:
+          version: latest
+
+      - name: Start Supabase
+        run: supabase start
+
+      - name: Reset DB (applies all migrations from scratch)
+        run: supabase db reset
+
+      - name: Stop Supabase
+        run: supabase stop --no-backup
+
+  # -----------------------------------------------------------------------
+  # Deploy job: push migrations to production on merge to main
+  # -----------------------------------------------------------------------
+  deploy-migrations:
+    name: Deploy migrations
+    runs-on: ubuntu-latest
+    needs: [api, packages, web]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v2
+        with:
+          version: latest
+
+      - name: Push migrations to production
+        run: supabase db push --db-url "${{ secrets.DATABASE_URL }}"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
