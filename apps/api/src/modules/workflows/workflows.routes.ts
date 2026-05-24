@@ -422,6 +422,96 @@ workflowsRouter.post("/:workflowId/share", requireAuth, asyncRoute(async (req, r
   res.status(204).send();
 }));
 
+// GET /workflows/:workflowId/export
+// Returns the workflow as a downloadable .mikeworkflow.json file.
+// Only the owner can export — the exported file contains the full prompt
+// content which may be proprietary.
+workflowsRouter.get("/:workflowId/export", requireAuth, asyncRoute(async (req, res) => {
+  const userId = res.locals.userId as string;
+  const { workflowId } = req.params;
+  const db = createServerSupabase();
+
+  const { data: wf } = await db
+    .from("workflows")
+    .select("title, type, prompt_md, columns_config, practice")
+    .eq("id", workflowId)
+    .eq("user_id", userId)
+    .eq("is_system", false)
+    .single();
+
+  if (!wf) return void res.status(404).json({ detail: "Workflow not found" });
+
+  const payload = {
+    formatVersion: 1,
+    exportedAt: new Date().toISOString(),
+    workflow: {
+      title: wf.title,
+      type: wf.type,
+      prompt_md: wf.prompt_md ?? null,
+      columns_config: wf.columns_config ?? null,
+      practice: wf.practice ?? null,
+    },
+  };
+
+  // Produce a safe filename from the workflow title.
+  const safeName = String(wf.title ?? "workflow")
+    .replace(/[^a-zA-Z0-9 _-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .slice(0, 80) || "workflow";
+
+  const filename = `${safeName}.mikeworkflow.json`;
+  res.setHeader("Content-Type", "application/json");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.json(payload);
+}));
+
+// POST /workflows/import
+// Accepts a .mikeworkflow.json payload (the body, not a file upload) and
+// creates a new workflow owned by the authenticated user.  The imported
+// workflow always gets a fresh ID — it is never merged with an existing one.
+workflowsRouter.post("/import", requireAuth, asyncRoute(async (req, res) => {
+  const userId = res.locals.userId as string;
+
+  // Validate the shape of the import payload.
+  const body = req.body as Record<string, unknown>;
+  if (!body || typeof body !== "object" || body.formatVersion !== 1) {
+    return void res.status(400).json({ detail: "Invalid workflow file format. Expected formatVersion: 1." });
+  }
+  const wf = body.workflow as Record<string, unknown> | undefined;
+  if (!wf || typeof wf !== "object") {
+    return void res.status(400).json({ detail: "Missing workflow object in import payload." });
+  }
+  const title = typeof wf.title === "string" ? wf.title.trim() : "";
+  if (!title) return void res.status(400).json({ detail: "workflow.title is required." });
+
+  const type = wf.type;
+  if (type !== "assistant" && type !== "tabular") {
+    return void res.status(400).json({ detail: "workflow.type must be 'assistant' or 'tabular'." });
+  }
+
+  const db = createServerSupabase();
+  const { data, error } = await db
+    .from("workflows")
+    .insert({
+      user_id: userId,
+      title,
+      type,
+      prompt_md: typeof wf.prompt_md === "string" ? wf.prompt_md : null,
+      columns_config: wf.columns_config ?? null,
+      practice: typeof wf.practice === "string" ? wf.practice : null,
+      is_system: false,
+    })
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    return void res.status(500).json({ detail: error?.message ?? "Failed to import workflow." });
+  }
+
+  res.status(201).json(data);
+}));
+
 workflowsRouter.use(
   (err: unknown, _req: Request, res: Response, next: NextFunction) => {
     if (res.headersSent) return next(err);
