@@ -109,7 +109,11 @@ app.use(
 
 app.use(generalLimiter);
 
-app.use(express.json({ limit: "50mb" }));
+// 10 MB cap on JSON bodies. The API never legitimately receives larger payloads
+// — documents are uploaded as multipart/form-data, not base64 in JSON.
+// A 50 MB (or unlimited) cap lets any client exhaust server memory with one
+// large request. 10 MB is generous for chat messages + metadata.
+app.use(express.json({ limit: "10mb" }));
 
 app.post("/chat", chatLimiter);
 app.post("/projects/:projectId/chat", chatLimiter);
@@ -150,6 +154,24 @@ app.get("/ready", async (_req, res) => {
 
   const allOk = Object.values(checks).every((c) => c.ok);
   res.status(allOk ? 200 : 503).json({ ok: allOk, checks });
+});
+
+// Catch async errors that escape all route handlers and middleware.
+// Without these handlers, an unhandled Promise rejection or uncaught
+// exception prints a warning and may silently continue — or in older
+// Node.js versions, crash without a stack trace.
+// Here we log them and exit cleanly so the process manager (Railway,
+// PM2, Kubernetes) can restart the process with a known-good state.
+// Note: "exit cleanly" is intentional — a process with unknown corrupted
+// state is more dangerous than a fresh restart.
+process.on("unhandledRejection", (reason) => {
+    logger.fatal({ reason }, "Unhandled promise rejection — exiting");
+    process.exit(1);
+});
+
+process.on("uncaughtException", (err) => {
+    logger.fatal({ err }, "Uncaught exception — exiting");
+    process.exit(1);
 });
 
 app.listen(PORT, () => {
