@@ -1,0 +1,25 @@
+node_modules
+*/node_modules
+**/node_modules
+
+# Build artifacts
+apps/api/dist
+apps/web/.next
+apps/web/out
+
+# Development files that should not leak into images
+.env
+**/.env
+.env.local
+**/.env.local
+
+# VCS and editor noise
+.git
+.gitignore
+.github
+*.md
+!apps/api/.env.example
+
+# Test outputs
+coverage
+.nyc_output
