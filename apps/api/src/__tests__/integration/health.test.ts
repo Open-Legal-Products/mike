@@ -9,7 +9,22 @@ vi.mock("../../lib/supabase", () => ({
 }));
 
 // Mock the env validation module — in tests the required env vars may not be set.
-vi.mock("../../lib/env", () => ({}));
+vi.mock("../../lib/env", () => ({
+    env: {
+        NODE_ENV: "test",
+        FRONTEND_URL: "http://localhost:3000",
+        TRUST_PROXY_HOPS: 1,
+        RATE_LIMIT_GENERAL_WINDOW_MINUTES: 15,
+        RATE_LIMIT_GENERAL_MAX: 300,
+        RATE_LIMIT_CHAT_WINDOW_MINUTES: 15,
+        RATE_LIMIT_CHAT_MAX: 30,
+        RATE_LIMIT_CHAT_CREATE_WINDOW_MINUTES: 15,
+        RATE_LIMIT_CHAT_CREATE_MAX: 60,
+        RATE_LIMIT_UPLOAD_WINDOW_HOURS: 1,
+        RATE_LIMIT_UPLOAD_MAX: 50,
+        R2_BUCKET_NAME: "mike",
+    },
+}));
 
 function mockSupabase() {
     return {

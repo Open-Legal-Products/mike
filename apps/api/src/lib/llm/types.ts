@@ -51,6 +51,7 @@ export type StreamChatParams = {
     callbacks?: StreamCallbacks;
     runTools?: (calls: NormalizedToolCall[]) => Promise<NormalizedToolResult[]>;
     apiKeys?: UserApiKeys;
+    signal?: AbortSignal;
     /**
      * Enable provider-side reasoning/thinking. Off by default — should only
      * be turned on for interactive chat surfaces where the user actually

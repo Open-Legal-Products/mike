@@ -12,16 +12,11 @@ import { workflowsRouter } from "./routes/workflows";
 import { userRouter } from "./routes/user";
 import { downloadsRouter } from "./routes/downloads";
 import { getAdminClient } from "./lib/supabase";
-import { storageEnabled } from "./lib/storage";
+import { checkStorageReady } from "./lib/storage";
+import { env } from "./lib/env";
+import { sendError } from "./lib/http";
 
-const isProduction = process.env.NODE_ENV === "production";
-
-function envInt(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
+const isProduction = env.NODE_ENV === "production";
 
 function minutes(value: number): number {
   return value * 60 * 1000;
@@ -38,38 +33,43 @@ function makeLimiter(options: { windowMs: number; max: number; message?: string 
     standardHeaders: true,
     legacyHeaders: false,
     skip: (req) => req.method === "OPTIONS",
-    message: {
-      detail: options.message ?? "Too many requests. Please try again later.",
+    handler: (_req, res) => {
+      sendError(
+        res,
+        429,
+        "RATE_LIMITED",
+        options.message ?? "Too many requests. Please try again later.",
+      );
     },
   });
 }
 
 const generalLimiter = makeLimiter({
-  windowMs: minutes(envInt("RATE_LIMIT_GENERAL_WINDOW_MINUTES", 15)),
-  max: envInt("RATE_LIMIT_GENERAL_MAX", 300),
+  windowMs: minutes(env.RATE_LIMIT_GENERAL_WINDOW_MINUTES),
+  max: env.RATE_LIMIT_GENERAL_MAX,
 });
 
 const chatLimiter = makeLimiter({
-  windowMs: minutes(envInt("RATE_LIMIT_CHAT_WINDOW_MINUTES", 15)),
-  max: envInt("RATE_LIMIT_CHAT_MAX", 30),
+  windowMs: minutes(env.RATE_LIMIT_CHAT_WINDOW_MINUTES),
+  max: env.RATE_LIMIT_CHAT_MAX,
   message: "Too many chat requests. Please try again later.",
 });
 
 const chatCreateLimiter = makeLimiter({
-  windowMs: minutes(envInt("RATE_LIMIT_CHAT_CREATE_WINDOW_MINUTES", 15)),
-  max: envInt("RATE_LIMIT_CHAT_CREATE_MAX", 60),
+  windowMs: minutes(env.RATE_LIMIT_CHAT_CREATE_WINDOW_MINUTES),
+  max: env.RATE_LIMIT_CHAT_CREATE_MAX,
 });
 
 const uploadLimiter = makeLimiter({
-  windowMs: hours(envInt("RATE_LIMIT_UPLOAD_WINDOW_HOURS", 1)),
-  max: envInt("RATE_LIMIT_UPLOAD_MAX", 50),
+  windowMs: hours(env.RATE_LIMIT_UPLOAD_WINDOW_HOURS),
+  max: env.RATE_LIMIT_UPLOAD_MAX,
   message: "Too many upload requests. Please try again later.",
 });
 
 export const app = express();
 
 app.disable("x-powered-by");
-app.set("trust proxy", envInt("TRUST_PROXY_HOPS", 1));
+app.set("trust proxy", env.TRUST_PROXY_HOPS);
 
 app.use(httpLogger);
 
@@ -91,7 +91,7 @@ app.use(
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL ?? "http://localhost:3000",
+    origin: env.FRONTEND_URL,
     credentials: true,
   }),
 );
@@ -137,7 +137,7 @@ app.get("/ready", async (_req, res) => {
     checks.db = { ok: false, error: String(err) };
   }
 
-  checks.storage = { ok: storageEnabled };
+  checks.storage = await checkStorageReady();
 
   const allOk = Object.values(checks).every((c) => c.ok);
   res.status(allOk ? 200 : 503).json({ ok: allOk, checks });

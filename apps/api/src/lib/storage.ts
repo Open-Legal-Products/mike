@@ -14,8 +14,10 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  HeadBucketCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl as awsGetSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { env } from "./env";
 export {
   normalizeDownloadFilename,
   sanitizeDispositionFilename,
@@ -34,23 +36,23 @@ function getClient(): S3Client {
   if (!cachedClient) {
     cachedClient = new S3Client({
       region: "auto",
-      endpoint: process.env.R2_ENDPOINT_URL!,
+      endpoint: env.R2_ENDPOINT_URL!,
       forcePathStyle: true,
       credentials: {
-        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+        accessKeyId: env.R2_ACCESS_KEY_ID!,
+        secretAccessKey: env.R2_SECRET_ACCESS_KEY!,
       },
     });
   }
   return cachedClient;
 }
 
-const BUCKET = process.env.R2_BUCKET_NAME ?? "mike";
+const BUCKET = env.R2_BUCKET_NAME;
 
 export const storageEnabled = Boolean(
-  process.env.R2_ENDPOINT_URL &&
-  process.env.R2_ACCESS_KEY_ID &&
-  process.env.R2_SECRET_ACCESS_KEY,
+  env.R2_ENDPOINT_URL &&
+  env.R2_ACCESS_KEY_ID &&
+  env.R2_SECRET_ACCESS_KEY,
 );
 
 function requireStorageConfig(): void {
@@ -138,5 +140,24 @@ export async function getSignedUrl(
     return await awsGetSignedUrl(client, command, { expiresIn });
   } catch {
     return null;
+  }
+}
+
+export async function checkStorageReady(): Promise<{
+  ok: boolean;
+  latencyMs?: number;
+  error?: string;
+}> {
+  if (!storageEnabled) {
+    return { ok: false, error: "storage is not configured" };
+  }
+
+  const startedAt = Date.now();
+  try {
+    await getClient().send(new HeadBucketCommand({ Bucket: BUCKET }));
+    return { ok: true, latencyMs: Date.now() - startedAt };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, latencyMs: Date.now() - startedAt, error: message };
   }
 }

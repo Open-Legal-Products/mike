@@ -200,6 +200,7 @@ This is the full set of changes in this fork relative to `willchen96/mike` at up
 | 35 | Test spotlight nonce and document labels | Make sure prompt fencing and document lookup helpers keep working. | Prompt assembly deserves regression tests. | Chapter 24. |
 | 36 | Test model routing | Ensure each model ID goes to the right provider and unknown IDs fail safely. | Provider abstraction needs a contract. | Alternative-provider fork cluster. |
 | 37 | Rewrite README as the guide | Turn the README into a reader's map for the whole fork. | Documentation should explain the why, not just the how. | The fork report itself. |
+| 38 | Close remaining action-plan gaps | Add standard error helpers, API-client error parsing, storage readiness probes, LLM circuit breaking and abort wiring, MinIO local storage, access tests, and manual follow-up tracking. | Finish the foundation without pretending product-sized work is done. | `ACTION_PLAN.md`, reviewer-agent findings, and the fork report's testing/self-hosting/security clusters. |
 
 ## Self-Hosting
 

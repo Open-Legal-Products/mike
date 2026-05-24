@@ -1,4 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("../env", () => ({
+    env: {
+        R2_BUCKET_NAME: "mike",
+    },
+}));
+
 import {
     generateSpotlightNonce,
     resolveDoc,

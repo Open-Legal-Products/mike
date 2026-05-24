@@ -536,7 +536,8 @@ tabularRouter.patch("/:reviewId", requireAuth, async (req, res) => {
             .select("document_id,column_index")
             .eq("review_id", reviewId);
         const existingKeys = new Set(
-            (existingCells ?? []).map((cell: any) => `:`,
+            (existingCells ?? []).map(
+                (cell: any) => `${cell.document_id}:${cell.column_index}`,
             ),
         );
 

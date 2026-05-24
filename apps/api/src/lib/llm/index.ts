@@ -15,6 +15,63 @@ export * from "./models";
 // HTTP status codes that are safe to retry (provider temporarily overloaded
 // or unavailable; the request itself is valid and has not been processed yet).
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+const CIRCUIT_FAILURE_THRESHOLD = 5;
+const CIRCUIT_WINDOW_MS = 60_000;
+const CIRCUIT_OPEN_MS = 30_000;
+
+type CircuitState = {
+    failures: number[];
+    openUntil: number;
+};
+
+const circuitStates = new Map<string, CircuitState>();
+
+function stateFor(label: string): CircuitState {
+    const existing = circuitStates.get(label);
+    if (existing) return existing;
+    const created = { failures: [], openUntil: 0 };
+    circuitStates.set(label, created);
+    return created;
+}
+
+function assertCircuitClosed(label: string): void {
+    const state = stateFor(label);
+    const now = Date.now();
+    if (state.openUntil > now) {
+        const waitMs = state.openUntil - now;
+        const err = new Error(
+            `LLM provider circuit is open for ${label}; retry after ${waitMs}ms`,
+        );
+        (err as { code?: string; retryAfterMs?: number }).code =
+            "LLM_CIRCUIT_OPEN";
+        (err as { retryAfterMs?: number }).retryAfterMs = waitMs;
+        throw err;
+    }
+}
+
+function recordSuccess(label: string): void {
+    const state = stateFor(label);
+    state.failures = [];
+    state.openUntil = 0;
+}
+
+function recordRetryableFailure(label: string, err: unknown): void {
+    const state = stateFor(label);
+    const now = Date.now();
+    state.failures = [...state.failures.filter((t) => now - t < CIRCUIT_WINDOW_MS), now];
+    if (state.failures.length >= CIRCUIT_FAILURE_THRESHOLD) {
+        state.openUntil = now + CIRCUIT_OPEN_MS;
+        logger.error(
+            {
+                label,
+                failures: state.failures.length,
+                openMs: CIRCUIT_OPEN_MS,
+                err,
+            },
+            "[llm] circuit opened after repeated transient failures",
+        );
+    }
+}
 
 function isRetryable(err: unknown): boolean {
     if (err instanceof Error) {
@@ -34,12 +91,18 @@ async function withRetry<T>(
     maxAttempts = 3,
 ): Promise<T> {
     let lastErr: unknown;
+    assertCircuitClosed(label);
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-            return await fn();
+            const result = await fn();
+            recordSuccess(label);
+            return result;
         } catch (err) {
             lastErr = err;
-            if (!isRetryable(err) || attempt === maxAttempts) throw err;
+            if (!isRetryable(err)) throw err;
+            recordRetryableFailure(label, err);
+            assertCircuitClosed(label);
+            if (attempt === maxAttempts) throw err;
             const delayMs = Math.min(1000 * 2 ** (attempt - 1), 8000); // 1s, 2s, 4s …
             logger.warn(
                 { attempt, maxAttempts, delayMs, label, err },

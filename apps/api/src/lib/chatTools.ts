@@ -2864,15 +2864,24 @@ export async function runLLMStream(params: {
 
     const selectedModel = resolveModel(model, DEFAULT_MAIN_MODEL);
     const LLM_TIMEOUT_MS = 180_000;
+    const abortController = new AbortController();
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(
-            () => reject(new Error("LLM_STREAM_TIMEOUT")),
+    const timeout = setTimeout(
+        () => {
+            abortController.abort();
+        },
             LLM_TIMEOUT_MS,
-        ),
     );
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        abortController.signal.addEventListener(
+            "abort",
+            () => reject(new Error("LLM_STREAM_TIMEOUT")),
+            { once: true },
+        );
+    });
 
-    await Promise.race([
+    try {
+        await Promise.race([
         streamChatWithTools({
         model: selectedModel,
         systemPrompt,
@@ -2880,6 +2889,7 @@ export async function runLLMStream(params: {
         tools: activeTools as OpenAIToolSchema[],
         maxIterations: 10,
         apiKeys,
+        signal: abortController.signal,
         enableThinking: true,
         callbacks: {
             onContentDelta: (delta) => {
@@ -3023,7 +3033,8 @@ export async function runLLMStream(params: {
         },
         }),
         timeoutPromise,
-    ]).catch((err: unknown) => {
+        ]);
+    } catch (err: unknown) {
         if (err instanceof Error && err.message === "LLM_STREAM_TIMEOUT") {
             write(
                 `data: ${JSON.stringify({ type: "error", message: "The request timed out. Please try again." })}\n\n`,
@@ -3031,7 +3042,9 @@ export async function runLLMStream(params: {
             write("data: [DONE]\n\n");
         }
         throw err;
-    });
+    } finally {
+        clearTimeout(timeout);
+    }
 
     flushText();
 

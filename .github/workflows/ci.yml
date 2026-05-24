@@ -83,14 +83,13 @@ jobs:
 
   # -----------------------------------------------------------------------
   # Slower job: migration validation against real local Supabase (3-5 min)
-  # Only runs on PRs touching the supabase/ directory
+  # Runs on PRs and pushes. Supabase's local stack applies the migrations
+  # against a real Postgres/Auth environment, which catches SQL drift that
+  # mocked unit tests cannot see.
   # -----------------------------------------------------------------------
   migrations:
     name: Migration validation
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'pull_request' &&
-      contains(toJson(github.event.pull_request.changed_files), 'supabase/')
     steps:
       - uses: actions/checkout@v4
 

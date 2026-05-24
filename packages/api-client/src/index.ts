@@ -85,8 +85,23 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
     });
 
     if (!response.ok) {
-        const detail = await response.text();
-        throw new Error(detail || `API error: ${response.status}`);
+        const text = await response.text();
+        let message = text || `API error: ${response.status}`;
+        let code: string | undefined;
+        try {
+            const parsed = JSON.parse(text) as {
+                detail?: string;
+                error?: { code?: string; message?: string };
+            };
+            message = parsed.error?.message ?? parsed.detail ?? message;
+            code = parsed.error?.code;
+        } catch {
+            // Keep the plain response text when the server returns non-JSON.
+        }
+        const err = new Error(message);
+        (err as { status?: number; code?: string }).status = response.status;
+        if (code) (err as { code?: string }).code = code;
+        throw err;
     }
 
     if (

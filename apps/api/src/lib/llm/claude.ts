@@ -20,6 +20,12 @@ type NativeMessage = {
 
 const MAX_TOKENS = 16384;
 
+function throwIfAborted(signal?: AbortSignal): void {
+    if (signal?.aborted) {
+        throw new Error("LLM_STREAM_ABORTED");
+    }
+}
+
 function apiKey(override?: string | null): string {
     const key = override?.trim() || process.env.ANTHROPIC_API_KEY?.trim() || "";
     if (!key) {
@@ -61,6 +67,7 @@ export async function streamClaude(
     let fullText = "";
 
     for (let iter = 0; iter < maxIter; iter++) {
+        throwIfAborted(params.signal);
         const stream = anthropic.messages.stream({
             model,
             system: systemPrompt,
@@ -80,6 +87,10 @@ export async function streamClaude(
                 : {}),
             // Extended thinking requires temperature to be default (omitted).
         });
+        const abort = () => {
+            stream.controller.abort();
+        };
+        params.signal?.addEventListener("abort", abort, { once: true });
 
         let sawThinking = false;
 
@@ -93,7 +104,12 @@ export async function streamClaude(
             });
         }
 
-        const final = await stream.finalMessage();
+        let final: Anthropic.Message;
+        try {
+            final = await stream.finalMessage();
+        } finally {
+            params.signal?.removeEventListener("abort", abort);
+        }
         if (sawThinking) callbacks.onReasoningBlockEnd?.();
         const stopReason = final.stop_reason;
         const assistantBlocks = final.content as ContentBlock[];

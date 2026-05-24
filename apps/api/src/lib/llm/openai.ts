@@ -114,6 +114,7 @@ async function createResponse(params: {
     previousResponseId?: string;
     reasoningSummary?: boolean;
     apiKey: string;
+    signal?: AbortSignal;
 }): Promise<Response> {
     const response = await fetch(OPENAI_RESPONSES_URL, {
         method: "POST",
@@ -133,6 +134,7 @@ async function createResponse(params: {
                 ? { summary: "auto" }
                 : undefined,
         }),
+        signal: params.signal,
     });
 
     if (!response.ok) {
@@ -177,6 +179,7 @@ export async function streamOpenAI(
             previousResponseId,
             reasoningSummary: !!enableThinking,
             apiKey: key,
+            signal: params.signal,
         });
         if (!response.body) throw new Error("OpenAI response had no body");
 

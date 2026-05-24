@@ -16,6 +16,17 @@ const envSchema = z.object({
         .default("development"),
     FRONTEND_URL: z.string().default("http://localhost:3000"),
     TRUST_PROXY_HOPS: z.coerce.number().nonnegative().default(1),
+    RATE_LIMIT_GENERAL_WINDOW_MINUTES: z.coerce.number().positive().default(15),
+    RATE_LIMIT_GENERAL_MAX: z.coerce.number().positive().default(300),
+    RATE_LIMIT_CHAT_WINDOW_MINUTES: z.coerce.number().positive().default(15),
+    RATE_LIMIT_CHAT_MAX: z.coerce.number().positive().default(30),
+    RATE_LIMIT_CHAT_CREATE_WINDOW_MINUTES: z.coerce
+        .number()
+        .positive()
+        .default(15),
+    RATE_LIMIT_CHAT_CREATE_MAX: z.coerce.number().positive().default(60),
+    RATE_LIMIT_UPLOAD_WINDOW_HOURS: z.coerce.number().positive().default(1),
+    RATE_LIMIT_UPLOAD_MAX: z.coerce.number().positive().default(50),
 
     R2_ENDPOINT_URL: z.string().optional(),
     R2_ACCESS_KEY_ID: z.string().optional(),

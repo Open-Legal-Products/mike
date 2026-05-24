@@ -49,6 +49,12 @@ function toNativeContents(messages: StreamChatParams["messages"]): GeminiContent
     }));
 }
 
+function throwIfAborted(signal?: AbortSignal): void {
+    if (signal?.aborted) {
+        throw new Error("LLM_STREAM_ABORTED");
+    }
+}
+
 export async function streamGemini(
     params: StreamChatParams,
 ): Promise<StreamChatResult> {
@@ -61,6 +67,7 @@ export async function streamGemini(
     let fullText = "";
 
     for (let iter = 0; iter < maxIter; iter++) {
+        throwIfAborted(params.signal);
         const stream = await ai.models.generateContentStream({
             model,
             contents: contents as never,
@@ -86,6 +93,7 @@ export async function streamGemini(
         let sawThinking = false;
 
         for await (const chunk of stream) {
+            throwIfAborted(params.signal);
             const parts =
                 (chunk as { candidates?: { content?: { parts?: GeminiPart[] } }[] })
                     .candidates?.[0]?.content?.parts ?? [];

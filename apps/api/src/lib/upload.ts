@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
 import multer from "multer";
+import { sendError } from "./http";
 
 export const MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024;
 export const MAX_UPLOAD_SIZE_MB = Math.round(
@@ -58,13 +59,14 @@ export function singleFileUpload(fieldName: string): RequestHandler {
 
       if (err instanceof multer.MulterError) {
         if (err.code === "LIMIT_FILE_SIZE") {
-          return void res.status(413).json({
-            detail: `File too large. Maximum size is ${MAX_UPLOAD_SIZE_MB} MB.`,
-          });
+          return void sendError(
+            res,
+            413,
+            "BAD_REQUEST",
+            `File too large. Maximum size is ${MAX_UPLOAD_SIZE_MB} MB.`,
+          );
         }
-        return void res.status(400).json({
-          detail: `Upload failed: ${err.message}`,
-        });
+        return void sendError(res, 400, "BAD_REQUEST", `Upload failed: ${err.message}`);
       }
 
       return next(err);

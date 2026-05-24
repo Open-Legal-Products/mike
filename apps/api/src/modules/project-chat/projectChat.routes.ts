@@ -16,6 +16,7 @@ import {
 import { getUserApiKeys } from "../../lib/userSettings";
 import { checkProjectAccess } from "../../lib/access";
 import { checkMessageCredits, incrementMessageCredits } from "../../lib/credits";
+import { parseBody, sendError } from "../../lib/http";
 
 const chatMessageSchema = z.object({
     role: z.string(),
@@ -65,14 +66,10 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
     const userEmail = res.locals.userEmail as string | undefined;
     const { projectId } = req.params;
 
-    const bodyResult = projectChatBodySchema.safeParse(req.body);
-    if (!bodyResult.success) {
-        return void res.status(400).json({
-            detail: bodyResult.error.issues.map((i) => i.message).join("; "),
-        });
-    }
+    const body = parseBody(projectChatBodySchema, req, res);
+    if (!body) return;
     const { messages, chat_id, model, displayed_doc, attached_documents } =
-        bodyResult.data as {
+        body as {
             messages: ChatMessage[];
             chat_id?: string;
             model?: string;
@@ -90,7 +87,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         db,
     );
     if (!projectAccess.ok)
-        return void res.status(404).json({ detail: "Project not found" });
+        return void sendError(res, 404, "NOT_FOUND", "Project not found");
 
     let chatId = chat_id ?? null;
     let chatTitle: string | null = null;
@@ -113,9 +110,12 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             .select("id, title")
             .single();
         if (error || !newChat)
-            return void res
-                .status(500)
-                .json({ detail: "Failed to create chat" });
+            return void sendError(
+                res,
+                500,
+                "INTERNAL_ERROR",
+                "Failed to create chat",
+            );
         chatId = newChat.id as string;
         chatTitle = newChat.title;
     }
@@ -198,10 +198,12 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
     ]);
 
     if (!creditCheck.allowed) {
-        return void res.status(429).json({
-            detail: `Monthly message limit reached (${creditCheck.used}/${creditCheck.limit}). Resets on ${creditCheck.resetDate}.`,
-            code: "CREDIT_LIMIT_EXCEEDED",
-        });
+        return void sendError(
+            res,
+            429,
+            "CREDIT_LIMIT_EXCEEDED",
+            `Monthly message limit reached (${creditCheck.used}/${creditCheck.limit}). Resets on ${creditCheck.resetDate}.`,
+        );
     }
 
     res.setHeader("Content-Type", "text/event-stream");
