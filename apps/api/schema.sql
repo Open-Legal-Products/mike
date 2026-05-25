@@ -47,6 +47,19 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
+create or replace function public.increment_message_credits(uid uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.user_profiles
+  set message_credits_used = coalesce(message_credits_used, 0) + 1
+  where user_id = uid;
+end;
+$$;
+
 create table if not exists public.user_api_keys (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -54,6 +67,7 @@ create table if not exists public.user_api_keys (
   encrypted_key text not null,
   iv text not null,
   auth_tag text not null,
+  salt text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(user_id, provider)
@@ -68,7 +82,7 @@ create index if not exists idx_user_api_keys_user
 
 create table if not exists public.projects (
   id uuid primary key default gen_random_uuid(),
-  user_id text not null,
+  user_id uuid not null references auth.users(id) on delete cascade,
   name text not null,
   cm_number text,
   visibility text not null default 'private',
@@ -86,7 +100,7 @@ create index if not exists projects_shared_with_idx
 create table if not exists public.project_subfolders (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects(id) on delete cascade,
-  user_id text not null,
+  user_id uuid not null references auth.users(id) on delete cascade,
   name text not null,
   parent_folder_id uuid references public.project_subfolders(id) on delete cascade,
   created_at timestamptz not null default now(),
@@ -99,7 +113,7 @@ create index if not exists idx_project_subfolders_project
 create table if not exists public.documents (
   id uuid primary key default gen_random_uuid(),
   project_id uuid references public.projects(id) on delete cascade,
-  user_id text not null,
+  user_id uuid not null references auth.users(id) on delete cascade,
   filename text not null,
   file_type text,
   size_bytes integer not null default 0,
@@ -184,7 +198,7 @@ create index if not exists document_edits_version_id_idx
 
 create table if not exists public.workflows (
   id uuid primary key default gen_random_uuid(),
-  user_id text,
+  user_id uuid references auth.users(id) on delete set null,
   title text not null,
   type text not null,
   prompt_md text,
@@ -199,7 +213,7 @@ create index if not exists idx_workflows_user
 
 create table if not exists public.hidden_workflows (
   id uuid primary key default gen_random_uuid(),
-  user_id text not null,
+  user_id uuid not null references auth.users(id) on delete cascade,
   workflow_id text not null,
   created_at timestamptz not null default now(),
   unique(user_id, workflow_id)
@@ -211,7 +225,7 @@ create index if not exists idx_hidden_workflows_user
 create table if not exists public.workflow_shares (
   id uuid primary key default gen_random_uuid(),
   workflow_id uuid not null references public.workflows(id) on delete cascade,
-  shared_by_user_id text not null,
+  shared_by_user_id uuid not null references auth.users(id) on delete cascade,
   shared_with_email text not null,
   allow_edit boolean not null default false,
   created_at timestamptz not null default now(),
@@ -232,7 +246,7 @@ create index if not exists workflow_shares_email_idx
 create table if not exists public.chats (
   id uuid primary key default gen_random_uuid(),
   project_id uuid references public.projects(id) on delete cascade,
-  user_id text not null,
+  user_id uuid not null references auth.users(id) on delete cascade,
   title text,
   created_at timestamptz not null default now()
 );
@@ -280,7 +294,7 @@ $$;
 create table if not exists public.tabular_reviews (
   id uuid primary key default gen_random_uuid(),
   project_id uuid references public.projects(id) on delete cascade,
-  user_id text not null,
+  user_id uuid not null references auth.users(id) on delete cascade,
   title text,
   columns_config jsonb,
   document_ids jsonb,
@@ -317,7 +331,7 @@ create index if not exists idx_tabular_cells_review
 create table if not exists public.tabular_review_chats (
   id uuid primary key default gen_random_uuid(),
   review_id uuid not null references public.tabular_reviews(id) on delete cascade,
-  user_id text not null,
+  user_id uuid not null references auth.users(id) on delete cascade,
   title text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

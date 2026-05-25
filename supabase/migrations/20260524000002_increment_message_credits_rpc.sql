@@ -12,7 +12,7 @@
 -- A Postgres function using `+= 1` (or the `UPDATE ... SET col = col + 1`)
 -- is atomic — the database serialises concurrent increments correctly.
 
-CREATE OR REPLACE FUNCTION increment_message_credits(uid text)
+CREATE OR REPLACE FUNCTION increment_message_credits(uid uuid)
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER

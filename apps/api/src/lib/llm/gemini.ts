@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
 import type {
     StreamChatParams,
     StreamChatResult,
@@ -6,12 +5,23 @@ import type {
 } from "./types";
 import { toGeminiTools } from "./tools";
 
+type GoogleGenAIConstructor = typeof import("@google/genai").GoogleGenAI;
+type GoogleGenAIClient = InstanceType<GoogleGenAIConstructor>;
+
+const importEsm = new Function("specifier", "return import(specifier)") as (
+    specifier: string,
+) => Promise<{ GoogleGenAI: GoogleGenAIConstructor }>;
+
 type GeminiPart = {
     text?: string;
     // Set by Gemini when the text content is a thought summary rather than
     // final-answer prose. Requires `thinkingConfig.includeThoughts: true`.
     thought?: boolean;
-    functionCall?: { id?: string; name: string; args?: Record<string, unknown> };
+    functionCall?: {
+        id?: string;
+        name: string;
+        args?: Record<string, unknown>;
+    };
     functionResponse?: {
         id?: string;
         name: string;
@@ -38,11 +48,14 @@ function apiKey(override?: string | null): string {
     return key;
 }
 
-function client(override?: string | null): GoogleGenAI {
+async function client(override?: string | null): Promise<GoogleGenAIClient> {
+    const { GoogleGenAI } = await importEsm("@google/genai");
     return new GoogleGenAI({ apiKey: apiKey(override) });
 }
 
-function toNativeContents(messages: StreamChatParams["messages"]): GeminiContent[] {
+function toNativeContents(
+    messages: StreamChatParams["messages"],
+): GeminiContent[] {
     return messages.map((m) => ({
         role: m.role === "assistant" ? "model" : "user",
         parts: [{ text: m.content }],
@@ -58,9 +71,17 @@ function throwIfAborted(signal?: AbortSignal): void {
 export async function streamGemini(
     params: StreamChatParams,
 ): Promise<StreamChatResult> {
-    const { model, systemPrompt, tools = [], callbacks = {}, runTools, apiKeys, enableThinking } = params;
+    const {
+        model,
+        systemPrompt,
+        tools = [],
+        callbacks = {},
+        runTools,
+        apiKeys,
+        enableThinking,
+    } = params;
     const maxIter = params.maxIterations ?? 10;
-    const ai = client(apiKeys?.gemini);
+    const ai = await client(apiKeys?.gemini);
     const functionDeclarations = toGeminiTools(tools);
 
     const contents: GeminiContent[] = toNativeContents(params.messages);
@@ -95,8 +116,11 @@ export async function streamGemini(
         for await (const chunk of stream) {
             throwIfAborted(params.signal);
             const parts =
-                (chunk as { candidates?: { content?: { parts?: GeminiPart[] } }[] })
-                    .candidates?.[0]?.content?.parts ?? [];
+                (
+                    chunk as {
+                        candidates?: { content?: { parts?: GeminiPart[] } }[];
+                    }
+                ).candidates?.[0]?.content?.parts ?? [];
 
             for (const part of parts) {
                 if (part.text) {
@@ -113,7 +137,9 @@ export async function streamGemini(
                     // so it can be echoed verbatim in the replay turn.
                     callParts.push(part);
                     const call: NormalizedToolCall = {
-                        id: part.functionCall.id ?? `${part.functionCall.name}-${toolCalls.length}`,
+                        id:
+                            part.functionCall.id ??
+                            `${part.functionCall.name}-${toolCalls.length}`,
                         name: part.functionCall.name,
                         input: part.functionCall.args ?? {},
                     };
@@ -146,7 +172,8 @@ export async function streamGemini(
                 const match = toolCalls.find((c) => c.id === r.tool_use_id);
                 return {
                     functionResponse: {
-                        ...(r.tool_use_id && !r.tool_use_id.startsWith(match?.name ?? "")
+                        ...(r.tool_use_id &&
+                        !r.tool_use_id.startsWith(match?.name ?? "")
                             ? { id: r.tool_use_id }
                             : {}),
                         name: match?.name ?? "tool",
@@ -166,7 +193,7 @@ export async function completeGeminiText(params: {
     user: string;
     apiKeys?: { gemini?: string | null };
 }): Promise<string> {
-    const ai = client(params.apiKeys?.gemini);
+    const ai = await client(params.apiKeys?.gemini);
     const resp = await ai.models.generateContent({
         model: params.model,
         contents: [{ role: "user", parts: [{ text: params.user }] }],

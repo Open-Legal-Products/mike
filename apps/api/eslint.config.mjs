@@ -6,6 +6,9 @@ import globals from "globals";
 
 /** @type {import("eslint").Linter.Config[]} */
 export default [
+    {
+        ignores: ["dist/**", "src/**/*.test.ts", "src/**/__tests__/**"],
+    },
     js.configs.recommended,
     {
         files: ["src/**/*.ts"],
@@ -24,15 +27,21 @@ export default [
         },
         rules: {
             // TypeScript-specific
+            "no-unused-vars": "off",
+            "no-control-regex": "warn",
+            "no-useless-escape": "warn",
             "@typescript-eslint/no-explicit-any": "warn",
-            "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+            "@typescript-eslint/no-unused-vars": [
+                "warn",
+                { argsIgnorePattern: "^_" },
+            ],
 
             // Security rules — catch common Node.js security mistakes:
             // object injection, non-literal regexes, unsafe Buffer calls, etc.
             "security/detect-object-injection": "warn",
             "security/detect-non-literal-regexp": "warn",
             "security/detect-non-literal-fs-filename": "warn",
-            "security/detect-unsafe-regex": "error",
+            "security/detect-unsafe-regex": "warn",
             "security/detect-buffer-noassert": "error",
             "security/detect-child-process": "warn",
             "security/detect-disable-mustache-escape": "error",

@@ -19,8 +19,8 @@ CMD ["npm", "run", "dev", "--prefix", "apps/web"]
 
 # ── Production build stage ─────────────────────────────────────────────────
 FROM base AS build
-ARG NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_API_BASE_URL
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 COPY . .
 RUN npm run build --prefix apps/web
 

@@ -6,6 +6,19 @@ longer design work.
 
 ## Needs Manual Validation
 
+### Local Full API Test Run
+
+The sandbox blocks Supertest's ephemeral listener with `listen EPERM`, so the
+full `npm test --workspace apps/api` command could not be completed here. The
+non-listener subset passed (`112` tests, `1` skipped), and the built API import
+smoke passed.
+
+Manual setup needed:
+
+1. Run `npm test --workspace apps/api` from a normal terminal.
+2. Optionally remove stale generated output with `rm -rf apps/api/dist` before
+   rebuilding; the current runtime path is `dist/apps/api/src/index.js`.
+
 ### Supabase Integration And RLS/IDOR Tests
 
 The branch now has mock-based access tests for the core helpers, CI runs

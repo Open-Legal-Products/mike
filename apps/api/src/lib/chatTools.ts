@@ -939,7 +939,9 @@ export async function generateDocx(
             value: string,
         ): { text: string; levelOffset: number | null } => {
             const trimmed = value.trim();
-            const match = trimmed.match(/^(\(([a-z]+)\)|([a-z]+)[.)])\s+(.+)$/i);
+            const match = trimmed.match(
+                /^(\(([a-z]+)\)|([a-z]+)[.)])\s+(.+)$/i,
+            );
             if (!match) return { text: trimmed, levelOffset: null };
             const marker = (match[2] ?? match[3] ?? "").toLowerCase();
             const isRoman =
@@ -1006,13 +1008,15 @@ export async function generateDocx(
         };
         let currentClauseLevel: number | null = null;
 
-        for (const [sectionIndex, section] of (sections as {
-            heading?: string;
-            content?: string;
-            level?: number;
-            pageBreak?: boolean;
-            table?: { headers: string[]; rows: string[][] };
-        }[]).entries()) {
+        for (const [sectionIndex, section] of (
+            sections as {
+                heading?: string;
+                content?: string;
+                level?: number;
+                pageBreak?: boolean;
+                table?: { headers: string[]; rows: string[][] };
+            }[]
+        ).entries()) {
             if (section.pageBreak) {
                 children.push(new Paragraph({ children: [new PageBreak()] }));
             }
@@ -1150,11 +1154,11 @@ export async function generateDocx(
                               ? currentClauseLevel + 2
                               : manualList.levelOffset !== null
                                 ? currentClauseLevel + manualList.levelOffset
-                              : numeric.levelFromPrefix !== null
-                                ? numeric.levelFromPrefix
-                                : numberedBodyParagraphs === 0
-                                  ? currentClauseLevel + 1
-                                  : currentClauseLevel + 2;
+                                : numeric.levelFromPrefix !== null
+                                  ? numeric.levelFromPrefix
+                                  : numberedBodyParagraphs === 0
+                                    ? currentClauseLevel + 1
+                                    : currentClauseLevel + 2;
                     if (currentClauseLevel !== null) numberedBodyParagraphs++;
                     children.push(
                         new Paragraph({
@@ -1536,7 +1540,12 @@ async function readDocumentContent(
         return "Document not found.";
     }
     logger.debug(
-        { docLabel, filename: docInfo.filename, file_type: docInfo.file_type, storage_path: docInfo.storage_path },
+        {
+            docLabel,
+            filename: docInfo.filename,
+            file_type: docInfo.file_type,
+            storage_path: docInfo.storage_path,
+        },
         "[read_document] resolved docInfo",
     );
 
@@ -1572,19 +1581,34 @@ async function readDocumentContent(
                     current.bytes.byteOffset + current.bytes.byteLength,
                 ) as ArrayBuffer;
                 sourcePath = current.storage_path;
-                logger.debug({ sourcePath, bytes: raw.byteLength }, "[read_document] using current version");
+                logger.debug(
+                    { sourcePath, bytes: raw.byteLength },
+                    "[read_document] using current version",
+                );
             } else {
-                logger.debug({ documentId }, "[read_document] loadCurrentVersionBytes returned null, falling back to original storage_path");
+                logger.debug(
+                    { documentId },
+                    "[read_document] loadCurrentVersionBytes returned null, falling back to original storage_path",
+                );
             }
         }
         if (!raw) {
             raw = await downloadFile(docInfo.storage_path);
             if (raw) {
-                logger.debug({ storage_path: docInfo.storage_path, bytes: raw.byteLength }, "[read_document] fallback download");
+                logger.debug(
+                    {
+                        storage_path: docInfo.storage_path,
+                        bytes: raw.byteLength,
+                    },
+                    "[read_document] fallback download",
+                );
             }
         }
         if (!raw) {
-            logger.warn({ docLabel, sourcePath }, "[read_document] FAILED to download any bytes");
+            logger.warn(
+                { docLabel, sourcePath },
+                "[read_document] FAILED to download any bytes",
+            );
             emitDocRead();
             return "Document could not be read.";
         }
@@ -1602,29 +1626,47 @@ async function readDocumentContent(
         let text: string;
         if (docInfo.file_type === "pdf") {
             text = await extractPdfText(raw);
-            logger.debug({ length: text.length, filename: docInfo.filename }, "[read_document] pdf extracted");
+            logger.debug(
+                { length: text.length, filename: docInfo.filename },
+                "[read_document] pdf extracted",
+            );
         } else if (docInfo.file_type === "docx") {
             // Use the same flattening as the edit_document matcher so the
             // LLM sees exactly the characters it can anchor against.
             text = await extractDocxBodyText(Buffer.from(raw));
-            logger.debug({ length: text.length, filename: docInfo.filename }, "[read_document] docx extracted");
+            logger.debug(
+                { length: text.length, filename: docInfo.filename },
+                "[read_document] docx extracted",
+            );
             if (!text) {
-                logger.debug({ filename: docInfo.filename }, "[read_document] docx accepted-view extractor returned empty, falling back to mammoth");
+                logger.debug(
+                    { filename: docInfo.filename },
+                    "[read_document] docx accepted-view extractor returned empty, falling back to mammoth",
+                );
                 const mammoth = await import("mammoth");
                 const result = await mammoth.extractRawText({
                     buffer: Buffer.from(raw),
                 });
                 text = result.value;
-                logger.debug({ length: text.length, filename: docInfo.filename }, "[read_document] docx mammoth fallback");
+                logger.debug(
+                    { length: text.length, filename: docInfo.filename },
+                    "[read_document] docx mammoth fallback",
+                );
             }
         } else {
-            logger.debug({ file_type: docInfo.file_type, filename: docInfo.filename }, "[read_document] unknown file_type, trying mammoth");
+            logger.debug(
+                { file_type: docInfo.file_type, filename: docInfo.filename },
+                "[read_document] unknown file_type, trying mammoth",
+            );
             const mammoth = await import("mammoth");
             const result = await mammoth.extractRawText({
                 buffer: Buffer.from(raw),
             });
             text = result.value;
-            logger.debug({ length: text.length, filename: docInfo.filename }, "[read_document] mammoth result");
+            logger.debug(
+                { length: text.length, filename: docInfo.filename },
+                "[read_document] mammoth result",
+            );
         }
         logger.debug(
             { filename: docInfo.filename, finalTextLength: text.length },
@@ -1854,6 +1896,10 @@ export type DocReplicatedResult = {
     }[];
 };
 
+function throwIfAborted(signal?: AbortSignal): void {
+    if (signal?.aborted) throw new Error("LLM_STREAM_TIMEOUT");
+}
+
 export async function runToolCalls(
     toolCalls: ToolCall[],
     docStore: DocStore,
@@ -1866,6 +1912,7 @@ export async function runToolCalls(
     turnEditState?: TurnEditState,
     projectId?: string | null,
     nonce?: string,
+    signal?: AbortSignal,
 ): Promise<{
     toolResults: unknown[];
     docsRead: { filename: string; document_id?: string }[];
@@ -1888,6 +1935,7 @@ export async function runToolCalls(
     const docsEdited: DocEditedResult[] = [];
 
     for (const tc of toolCalls) {
+        throwIfAborted(signal);
         let args: Record<string, unknown> = {};
         try {
             args = JSON.parse(tc.function.arguments || "{}");
@@ -1989,7 +2037,9 @@ export async function runToolCalls(
                 );
                 const filename = docStore.get(docId)?.filename ?? docId;
                 // Document body is user-controlled; spotlight it.
-                const fencedContent = nonce ? spotlight(content, nonce) : content;
+                const fencedContent = nonce
+                    ? spotlight(content, nonce)
+                    : content;
                 parts.push(
                     `--- ${filename} (${docId}) ---\n${citationReminder(docId, filename)}\n\n${fencedContent}`,
                 );
@@ -2026,7 +2076,9 @@ export async function runToolCalls(
             }
             // Workflow content is user-authored; spotlight it so an adversarial
             // workflow title or prompt body cannot inject instructions.
-            const wfContent = wf ? wf.prompt_md : `Workflow '${wfId}' not found.`;
+            const wfContent = wf
+                ? wf.prompt_md
+                : `Workflow '${wfId}' not found.`;
             toolResults.push({
                 role: "tool",
                 tool_call_id: tc.id,
@@ -2640,6 +2692,7 @@ export async function runToolCalls(
                 content: JSON.stringify(toolResultPayload),
             });
         }
+        throwIfAborted(signal);
     }
 
     return {
@@ -2866,12 +2919,9 @@ export async function runLLMStream(params: {
     const LLM_TIMEOUT_MS = 180_000;
     const abortController = new AbortController();
 
-    const timeout = setTimeout(
-        () => {
-            abortController.abort();
-        },
-            LLM_TIMEOUT_MS,
-    );
+    const timeout = setTimeout(() => {
+        abortController.abort();
+    }, LLM_TIMEOUT_MS);
     const timeoutPromise = new Promise<never>((_, reject) => {
         abortController.signal.addEventListener(
             "abort",
@@ -2882,157 +2932,166 @@ export async function runLLMStream(params: {
 
     try {
         await Promise.race([
-        streamChatWithTools({
-        model: selectedModel,
-        systemPrompt,
-        messages: chatMessages,
-        tools: activeTools as OpenAIToolSchema[],
-        maxIterations: 10,
-        apiKeys,
-        signal: abortController.signal,
-        enableThinking: true,
-        callbacks: {
-            onContentDelta: (delta) => {
-                iterText += delta;
-                streamVisibleContent(delta);
-            },
-            onReasoningDelta: (delta) => {
-                iterReasoning += delta;
-                write(
-                    `data: ${JSON.stringify({ type: "reasoning_delta", text: delta })}\n\n`,
-                );
-            },
-            onReasoningBlockEnd: () => {
-                if (!iterReasoning) return;
-                events.push({ type: "reasoning", text: iterReasoning });
-                write(
-                    `data: ${JSON.stringify({ type: "reasoning_block_end" })}\n\n`,
-                );
-                iterReasoning = "";
-            },
-            // Fires after Claude's turn ends with stop_reason=tool_use, before
-            // the tool actually runs. Flushes any buffered assistant text so
-            // it's emitted in chronological order, then signals the client so
-            // it can open a fresh PreResponseWrapper (shows "Working…") while
-            // the tool executes — avoids the dead gap between message_stop
-            // and the first tool-specific event.
-            onToolCallStart: (call) => {
-                flushText();
-                write(
-                    `data: ${JSON.stringify({
-                        type: "tool_call_start",
-                        name: call.name,
-                    })}\n\n`,
-                );
-            },
-        },
-        runTools: async (calls) => {
-            // Emit any text the model produced before this tool turn so the
-            // UI sees it before the tool results stream in.
-            flushText();
-
-            const toolCalls: ToolCall[] = calls.map((c) => ({
-                id: c.id,
-                function: {
-                    name: c.name,
-                    arguments: JSON.stringify(c.input),
+            streamChatWithTools({
+                model: selectedModel,
+                systemPrompt,
+                messages: chatMessages,
+                tools: activeTools as OpenAIToolSchema[],
+                maxIterations: 10,
+                apiKeys,
+                signal: abortController.signal,
+                enableThinking: true,
+                callbacks: {
+                    onContentDelta: (delta) => {
+                        iterText += delta;
+                        streamVisibleContent(delta);
+                    },
+                    onReasoningDelta: (delta) => {
+                        iterReasoning += delta;
+                        write(
+                            `data: ${JSON.stringify({ type: "reasoning_delta", text: delta })}\n\n`,
+                        );
+                    },
+                    onReasoningBlockEnd: () => {
+                        if (!iterReasoning) return;
+                        events.push({ type: "reasoning", text: iterReasoning });
+                        write(
+                            `data: ${JSON.stringify({ type: "reasoning_block_end" })}\n\n`,
+                        );
+                        iterReasoning = "";
+                    },
+                    // Fires after Claude's turn ends with stop_reason=tool_use, before
+                    // the tool actually runs. Flushes any buffered assistant text so
+                    // it's emitted in chronological order, then signals the client so
+                    // it can open a fresh PreResponseWrapper (shows "Working…") while
+                    // the tool executes — avoids the dead gap between message_stop
+                    // and the first tool-specific event.
+                    onToolCallStart: (call) => {
+                        flushText();
+                        write(
+                            `data: ${JSON.stringify({
+                                type: "tool_call_start",
+                                name: call.name,
+                            })}\n\n`,
+                        );
+                    },
                 },
-            }));
-            const {
-                toolResults,
-                docsRead,
-                docsFound,
-                docsCreated,
-                docsReplicated,
-                workflowsApplied,
-                docsEdited,
-            } = await runToolCalls(
-                toolCalls,
-                docStore,
-                userId,
-                db,
-                write,
-                workflowStore,
-                tabularStore,
-                docIndex,
-                turnEditState,
-                projectId,
-                nonce,
-            );
-            for (const r of docsRead) {
-                events.push({
-                    type: "doc_read",
-                    filename: r.filename,
-                    document_id: r.document_id,
-                });
-            }
-            for (const f of docsFound) {
-                events.push({
-                    type: "doc_find",
-                    filename: f.filename,
-                    query: f.query,
-                    total_matches: f.total_matches,
-                });
-            }
-            for (const dl of docsCreated) {
-                events.push({
-                    type: "doc_created",
-                    filename: dl.filename,
-                    download_url: dl.download_url,
-                    document_id: dl.document_id,
-                    version_id: dl.version_id,
-                    version_number: dl.version_number ?? null,
-                });
-            }
-            for (const r of docsReplicated) {
-                events.push({
-                    type: "doc_replicated",
-                    filename: r.filename,
-                    count: r.count,
-                    copies: r.copies,
-                });
-            }
-            for (const wf of workflowsApplied) {
-                events.push({
-                    type: "workflow_applied",
-                    workflow_id: wf.workflow_id,
-                    title: wf.title,
-                });
-            }
-            for (const e of docsEdited) {
-                events.push({
-                    type: "doc_edited",
-                    filename: e.filename,
-                    document_id: e.document_id,
-                    version_id: e.version_id,
-                    version_number: e.version_number,
-                    download_url: e.download_url,
-                    annotations: e.annotations,
-                });
-            }
+                runTools: async (calls) => {
+                    throwIfAborted(abortController.signal);
+                    // Emit any text the model produced before this tool turn so the
+                    // UI sees it before the tool results stream in.
+                    flushText();
 
-            // Index alignment would break if any tool branch skips its
-            // push (unhandled tool name, disabled store, guard failure).
-            // Each tool_result already carries its tool_call_id, so key off
-            // that directly — and fall back to an error result for any
-            // tool_use that didn't produce one, so Claude's next request
-            // has a tool_result for every tool_use it sent.
-            const resultByCallId = new Map<string, string>();
-            for (const r of toolResults) {
-                const row = r as { tool_call_id: string; content?: unknown };
-                resultByCallId.set(row.tool_call_id, String(row.content ?? ""));
-            }
-            return toolCalls.map((c) => ({
-                tool_use_id: c.id,
-                content:
-                    resultByCallId.get(c.id) ??
-                    JSON.stringify({
-                        error: `Tool '${c.function.name}' is not available.`,
-                    }),
-            }));
-        },
-        }),
-        timeoutPromise,
+                    const toolCalls: ToolCall[] = calls.map((c) => ({
+                        id: c.id,
+                        function: {
+                            name: c.name,
+                            arguments: JSON.stringify(c.input),
+                        },
+                    }));
+                    const {
+                        toolResults,
+                        docsRead,
+                        docsFound,
+                        docsCreated,
+                        docsReplicated,
+                        workflowsApplied,
+                        docsEdited,
+                    } = await runToolCalls(
+                        toolCalls,
+                        docStore,
+                        userId,
+                        db,
+                        write,
+                        workflowStore,
+                        tabularStore,
+                        docIndex,
+                        turnEditState,
+                        projectId,
+                        nonce,
+                        abortController.signal,
+                    );
+                    throwIfAborted(abortController.signal);
+                    for (const r of docsRead) {
+                        events.push({
+                            type: "doc_read",
+                            filename: r.filename,
+                            document_id: r.document_id,
+                        });
+                    }
+                    for (const f of docsFound) {
+                        events.push({
+                            type: "doc_find",
+                            filename: f.filename,
+                            query: f.query,
+                            total_matches: f.total_matches,
+                        });
+                    }
+                    for (const dl of docsCreated) {
+                        events.push({
+                            type: "doc_created",
+                            filename: dl.filename,
+                            download_url: dl.download_url,
+                            document_id: dl.document_id,
+                            version_id: dl.version_id,
+                            version_number: dl.version_number ?? null,
+                        });
+                    }
+                    for (const r of docsReplicated) {
+                        events.push({
+                            type: "doc_replicated",
+                            filename: r.filename,
+                            count: r.count,
+                            copies: r.copies,
+                        });
+                    }
+                    for (const wf of workflowsApplied) {
+                        events.push({
+                            type: "workflow_applied",
+                            workflow_id: wf.workflow_id,
+                            title: wf.title,
+                        });
+                    }
+                    for (const e of docsEdited) {
+                        events.push({
+                            type: "doc_edited",
+                            filename: e.filename,
+                            document_id: e.document_id,
+                            version_id: e.version_id,
+                            version_number: e.version_number,
+                            download_url: e.download_url,
+                            annotations: e.annotations,
+                        });
+                    }
+
+                    // Index alignment would break if any tool branch skips its
+                    // push (unhandled tool name, disabled store, guard failure).
+                    // Each tool_result already carries its tool_call_id, so key off
+                    // that directly — and fall back to an error result for any
+                    // tool_use that didn't produce one, so Claude's next request
+                    // has a tool_result for every tool_use it sent.
+                    const resultByCallId = new Map<string, string>();
+                    for (const r of toolResults) {
+                        const row = r as {
+                            tool_call_id: string;
+                            content?: unknown;
+                        };
+                        resultByCallId.set(
+                            row.tool_call_id,
+                            String(row.content ?? ""),
+                        );
+                    }
+                    return toolCalls.map((c) => ({
+                        tool_use_id: c.id,
+                        content:
+                            resultByCallId.get(c.id) ??
+                            JSON.stringify({
+                                error: `Tool '${c.function.name}' is not available.`,
+                            }),
+                    }));
+                },
+            }),
+            timeoutPromise,
         ]);
     } catch (err: unknown) {
         if (err instanceof Error && err.message === "LLM_STREAM_TIMEOUT") {
@@ -3190,7 +3249,13 @@ export async function buildDocContext(
     }
 
     logger.debug(
-        { docs: Object.entries(docIndex).map(([label, info]) => ({ label, filename: info.filename, document_id: info.document_id })) },
+        {
+            docs: Object.entries(docIndex).map(([label, info]) => ({
+                label,
+                filename: info.filename,
+                document_id: info.document_id,
+            })),
+        },
         "[buildDocContext] available docs",
     );
     return { docIndex, docStore };
@@ -3279,7 +3344,14 @@ export async function buildProjectDocContext(
     }
 
     logger.debug(
-        { docs: Object.entries(docIndex).map(([label, info]) => ({ label, filename: info.filename, document_id: info.document_id, folder: folderPaths.get(label) ?? null })) },
+        {
+            docs: Object.entries(docIndex).map(([label, info]) => ({
+                label,
+                filename: info.filename,
+                document_id: info.document_id,
+                folder: folderPaths.get(label) ?? null,
+            })),
+        },
         "[buildProjectDocContext] available docs",
     );
     return { docIndex, docStore, folderPaths };

@@ -141,9 +141,15 @@ tabularRouter.get("/", requireAuth, async (req, res) => {
     // commonly the tabular_reviews.shared_with column hasn't been migrated
     // yet. Log and continue so the user still sees their own reviews.
     if (sharedErr)
-        logger.warn({ err: sharedErr.message }, "[tabular] shared-by-project query failed");
+        logger.warn(
+            { err: sharedErr.message },
+            "[tabular] shared-by-project query failed",
+        );
     if (sharedDirectErr)
-        logger.warn({ err: sharedDirectErr.message }, "[tabular] shared-by-email query failed");
+        logger.warn(
+            { err: sharedDirectErr.message },
+            "[tabular] shared-by-email query failed",
+        );
     const seen = new Set<string>();
     const reviews: Record<string, unknown>[] = [];
     for (const r of [
@@ -222,12 +228,7 @@ tabularRouter.post("/", requireAuth, async (req, res) => {
             return void res.status(404).json({ detail: "Project not found" });
     }
     const allowedDocumentIds = Array.isArray(document_ids)
-        ? await filterAccessibleDocumentIds(
-              document_ids,
-              userId,
-              userEmail,
-              db,
-          )
+        ? await filterAccessibleDocumentIds(document_ids, userId, userEmail, db)
         : [];
     const { data: review, error } = await db
         .from("tabular_reviews")
@@ -352,15 +353,14 @@ tabularRouter.get("/:reviewId", requireAuth, async (req, res) => {
         .from("tabular_cells")
         .select("*")
         .eq("review_id", reviewId);
-    const cellDocIds = [...new Set((cells ?? []).map((c: any) => c.document_id))];
+    const cellDocIds = [
+        ...new Set((cells ?? []).map((c: any) => c.document_id)),
+    ];
     const hasExplicitDocIds = Array.isArray(review.document_ids);
     const explicitDocIds = hasExplicitDocIds
         ? (review.document_ids as string[])
         : [];
-    const docIds =
-        hasExplicitDocIds
-            ? explicitDocIds
-            : cellDocIds;
+    const docIds = hasExplicitDocIds ? explicitDocIds : cellDocIds;
     const docsResult =
         docIds.length > 0
             ? await db.from("documents").select("*").in("id", docIds)
@@ -468,6 +468,12 @@ tabularRouter.patch("/:reviewId", requireAuth, async (req, res) => {
         updates.columns_config = req.body.columns_config;
     if (req.body.project_id !== undefined)
         updates.project_id = req.body.project_id;
+    const requestedMetadataUpdate =
+        req.body.title != null ||
+        req.body.columns_config != null ||
+        req.body.project_id !== undefined ||
+        Array.isArray(req.body.document_ids) ||
+        Array.isArray(req.body.shared_with);
     // shared_with edits are owner-only — gated below after we know who's
     // making the call. Normalize lowercase + dedupe + drop empties.
     let sharedWithUpdate: string[] | undefined;
@@ -507,11 +513,12 @@ tabularRouter.patch("/:reviewId", requireAuth, async (req, res) => {
     );
     if (!access.ok)
         return void res.status(404).json({ detail: "Review not found" });
+    if (requestedMetadataUpdate && !access.isOwner) {
+        return void res.status(403).json({
+            detail: "Only the review owner can update review metadata",
+        });
+    }
     if (sharedWithUpdate !== undefined) {
-        if (!access.isOwner)
-            return void res
-                .status(403)
-                .json({ detail: "Only the review owner can change sharing" });
         updates.shared_with = sharedWithUpdate;
     }
 
@@ -546,7 +553,8 @@ tabularRouter.patch("/:reviewId", requireAuth, async (req, res) => {
         if (Array.isArray(req.body.document_ids)) {
             // document_ids is the new source of truth — delete removed docs' cells
             const requestedDocIds = req.body.document_ids as string[];
-            const existingDocIds = (existingCells ?? []).map((cell: any) => cell.document_id,
+            const existingDocIds = (existingCells ?? []).map(
+                (cell: any) => cell.document_id,
             );
             const existingDocIdSet = new Set(existingDocIds);
             const newDocCandidates = requestedDocIds.filter(
@@ -562,7 +570,8 @@ tabularRouter.patch("/:reviewId", requireAuth, async (req, res) => {
             const newDocIds = requestedDocIds.filter(
                 (id) => existingDocIdSet.has(id) || newDocAllowedSet.has(id),
             );
-            const removedDocIds = existingDocIds.filter((id: string) => !newDocIds.includes(id),
+            const removedDocIds = existingDocIds.filter(
+                (id: string) => !newDocIds.includes(id),
             );
 
             if (removedDocIds.length > 0) {
@@ -773,7 +782,10 @@ tabularRouter.post(
                             ? await extractPdfMarkdown(buf)
                             : await extractDocxMarkdown(buf);
                 } catch (err) {
-                    logger.error({ err, document_id }, "[regenerate-cell] extraction error");
+                    logger.error(
+                        { err, document_id },
+                        "[regenerate-cell] extraction error",
+                    );
                 }
             }
         }
@@ -853,7 +865,9 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
     );
     let docs: Record<string, unknown>[] = [];
     if (docIds.length > 0) {
-        const filteredIds = docIds.filter((id: string) => allowedDocIds.has(id));
+        const filteredIds = docIds.filter((id: string) =>
+            allowedDocIds.has(id),
+        );
         const { data } =
             filteredIds.length > 0
                 ? await db
@@ -905,7 +919,10 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
                                     ? await extractPdfMarkdown(buf)
                                     : await extractDocxMarkdown(buf);
                         } catch (err) {
-                            logger.error({ err, docId }, "[tabular/generate] extraction error");
+                            logger.error(
+                                { err, docId },
+                                "[tabular/generate] extraction error",
+                            );
                         }
                     }
                 }
@@ -964,7 +981,10 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
                         api_keys,
                     );
                 } catch (err) {
-                    logger.error({ err, docId }, "[tabular/generate] queryTabularAllColumns error");
+                    logger.error(
+                        { err, docId },
+                        "[tabular/generate] queryTabularAllColumns error",
+                    );
                 }
 
                 // Mark any columns the LLM didn't return as error

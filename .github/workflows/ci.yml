@@ -40,7 +40,11 @@ jobs:
         run: npm audit --audit-level=high
         working-directory: apps/api
 
+      - run: npm run lint
       - run: npm test
+      - run: npm run build
+      - name: Smoke import built API app
+        run: node -e "require('./dist/apps/api/src/app.js'); console.log('api app import ok')"
 
   packages:
     name: Package typecheck
@@ -112,7 +116,7 @@ jobs:
   deploy-migrations:
     name: Deploy migrations
     runs-on: ubuntu-latest
-    needs: [api, packages, web]
+    needs: [api, packages, web, migrations]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4

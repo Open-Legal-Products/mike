@@ -18,11 +18,13 @@ export type { ApiKeyProvider, ApiKeySource } from "@mike/core";
 
 export type AuthHeaderProvider = () => Promise<Record<string, string>>;
 
-type MikeApiClientConfig = {
+export type MikeApiClientConfig = {
     baseUrl?: string;
     getAuthHeaders?: AuthHeaderProvider;
     fetchImpl?: typeof fetch;
 };
+
+type ResolvedMikeApiClientConfig = Required<MikeApiClientConfig>;
 
 // Server-side shape before mapping
 interface ServerMessage {
@@ -40,41 +42,55 @@ interface ServerChatDetailOut {
     messages: ServerMessage[];
 }
 
-declare const process:
-    | { env?: Record<string, string | undefined> }
-    | undefined;
+declare const process: { env?: Record<string, string | undefined> } | undefined;
 
 const DEFAULT_API_BASE =
     process?.env?.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
 
-let clientConfig: Required<MikeApiClientConfig> = {
+let clientConfig: ResolvedMikeApiClientConfig = {
     baseUrl: DEFAULT_API_BASE,
     getAuthHeaders: async () => ({}),
     fetchImpl: fetch,
 };
 
-export function configureMikeApiClient(config: MikeApiClientConfig): void {
-    clientConfig = {
-        ...clientConfig,
+function resolveMikeApiClientConfig(
+    config: MikeApiClientConfig = {},
+    base: ResolvedMikeApiClientConfig = clientConfig,
+): ResolvedMikeApiClientConfig {
+    return {
+        ...base,
         ...config,
-        baseUrl: config.baseUrl ?? clientConfig.baseUrl,
-        getAuthHeaders: config.getAuthHeaders ?? clientConfig.getAuthHeaders,
-        fetchImpl: config.fetchImpl ?? clientConfig.fetchImpl,
+        baseUrl: config.baseUrl ?? base.baseUrl,
+        getAuthHeaders: config.getAuthHeaders ?? base.getAuthHeaders,
+        fetchImpl: config.fetchImpl ?? base.fetchImpl,
     };
 }
 
-async function getAuthHeader(): Promise<Record<string, string>> {
-    return clientConfig.getAuthHeaders();
+export function configureMikeApiClient(config: MikeApiClientConfig): void {
+    clientConfig = resolveMikeApiClientConfig(config);
 }
 
-function apiUrl(path: string): string {
-    return `${clientConfig.baseUrl}${path}`;
+async function getAuthHeader(
+    config: ResolvedMikeApiClientConfig = clientConfig,
+): Promise<Record<string, string>> {
+    return config.getAuthHeaders();
 }
 
-async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-    const authHeaders = await getAuthHeader();
+function apiUrl(
+    path: string,
+    config: ResolvedMikeApiClientConfig = clientConfig,
+): string {
+    return `${config.baseUrl}${path}`;
+}
+
+async function apiRequestWithConfig<T>(
+    config: ResolvedMikeApiClientConfig,
+    path: string,
+    init?: RequestInit,
+): Promise<T> {
+    const authHeaders = await getAuthHeader(config);
     const { headers: initHeaders, ...restInit } = init ?? {};
-    const response = await clientConfig.fetchImpl(apiUrl(path), {
+    const response = await config.fetchImpl(apiUrl(path, config), {
         cache: "no-store",
         ...restInit,
         headers: {
@@ -112,6 +128,10 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
     }
 
     return (await response.json()) as T;
+}
+
+async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+    return apiRequestWithConfig<T>(clientConfig, path, init);
 }
 
 // ---------------------------------------------------------------------------
@@ -387,11 +407,19 @@ export async function uploadProjectDocument(
     projectId: string,
     file: File,
 ): Promise<MikeDocument> {
-    const authHeaders = await getAuthHeader();
+    return uploadProjectDocumentWithConfig(clientConfig, projectId, file);
+}
+
+async function uploadProjectDocumentWithConfig(
+    config: ResolvedMikeApiClientConfig,
+    projectId: string,
+    file: File,
+): Promise<MikeDocument> {
+    const authHeaders = await getAuthHeader(config);
     const form = new FormData();
     form.append("file", file);
-    const response = await clientConfig.fetchImpl(
-        apiUrl(`/projects/${projectId}/documents`),
+    const response = await config.fetchImpl(
+        apiUrl(`/projects/${projectId}/documents`, config),
         {
             method: "POST",
             headers: { ...authHeaders },
@@ -405,14 +433,24 @@ export async function uploadProjectDocument(
 export async function uploadStandaloneDocument(
     file: File,
 ): Promise<MikeDocument> {
-    const authHeaders = await getAuthHeader();
+    return uploadStandaloneDocumentWithConfig(clientConfig, file);
+}
+
+async function uploadStandaloneDocumentWithConfig(
+    config: ResolvedMikeApiClientConfig,
+    file: File,
+): Promise<MikeDocument> {
+    const authHeaders = await getAuthHeader(config);
     const form = new FormData();
     form.append("file", file);
-    const response = await clientConfig.fetchImpl(apiUrl(`/single-documents`), {
-        method: "POST",
-        headers: { ...authHeaders },
-        body: form,
-    });
+    const response = await config.fetchImpl(
+        apiUrl(`/single-documents`, config),
+        {
+            method: "POST",
+            headers: { ...authHeaders },
+            body: form,
+        },
+    );
     if (!response.ok) throw new Error(await response.text());
     return response.json() as Promise<MikeDocument>;
 }
@@ -437,15 +475,18 @@ export async function downloadDocumentsZip(
     documentIds: string[],
 ): Promise<Blob> {
     const authHeaders = await getAuthHeader();
-    const response = await clientConfig.fetchImpl(apiUrl(`/single-documents/download-zip`), {
-        method: "POST",
-        cache: "no-store",
-        headers: {
-            "Content-Type": "application/json",
-            ...authHeaders,
+    const response = await clientConfig.fetchImpl(
+        apiUrl(`/single-documents/download-zip`),
+        {
+            method: "POST",
+            cache: "no-store",
+            headers: {
+                "Content-Type": "application/json",
+                ...authHeaders,
+            },
+            body: JSON.stringify({ document_ids: documentIds }),
         },
-        body: JSON.stringify({ document_ids: documentIds }),
-    });
+    );
     if (!response.ok) {
         const detail = await response.text();
         throw new Error(detail || `API error: ${response.status}`);
@@ -467,7 +508,9 @@ export async function createChat(payload?: {
     });
 }
 
-export async function listChats(options?: { limit?: number }): Promise<MikeChat[]> {
+export async function listChats(options?: {
+    limit?: number;
+}): Promise<MikeChat[]> {
     const params = new URLSearchParams();
     if (options?.limit) params.set("limit", String(options.limit));
     const query = params.toString();
@@ -479,7 +522,17 @@ export async function listProjectChats(projectId: string): Promise<MikeChat[]> {
 }
 
 export async function getChat(chatId: string): Promise<MikeChatDetailOut> {
-    const raw = await apiRequest<ServerChatDetailOut>(`/chat/${chatId}`);
+    return getChatWithConfig(clientConfig, chatId);
+}
+
+async function getChatWithConfig(
+    config: ResolvedMikeApiClientConfig,
+    chatId: string,
+): Promise<MikeChatDetailOut> {
+    const raw = await apiRequestWithConfig<ServerChatDetailOut>(
+        config,
+        `/chat/${chatId}`,
+    );
     const messages: MikeMessage[] = raw.messages.map((m) => {
         if (m.role === "user") {
             return {
@@ -504,6 +557,89 @@ export async function getChat(chatId: string): Promise<MikeChatDetailOut> {
         };
     });
     return { chat: raw.chat, messages };
+}
+
+export function createMikeApiClient(config: MikeApiClientConfig = {}) {
+    const scopedConfig = resolveMikeApiClientConfig(config, {
+        baseUrl: DEFAULT_API_BASE,
+        getAuthHeaders: async () => ({}),
+        fetchImpl: fetch,
+    });
+
+    return {
+        projects: {
+            list: () =>
+                apiRequestWithConfig<MikeProject[]>(scopedConfig, "/projects"),
+            create: (
+                name: string,
+                cm_number?: string,
+                shared_with?: string[],
+            ) =>
+                apiRequestWithConfig<MikeProject>(scopedConfig, "/projects", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name, cm_number, shared_with }),
+                }),
+            get: (projectId: string) =>
+                apiRequestWithConfig<MikeProject>(
+                    scopedConfig,
+                    `/projects/${projectId}`,
+                ),
+            update: (
+                projectId: string,
+                payload: {
+                    name?: string;
+                    cm_number?: string;
+                    shared_with?: string[];
+                },
+            ) =>
+                apiRequestWithConfig<MikeProject>(
+                    scopedConfig,
+                    `/projects/${projectId}`,
+                    {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload),
+                    },
+                ),
+            delete: (projectId: string) =>
+                apiRequestWithConfig<void>(
+                    scopedConfig,
+                    `/projects/${projectId}`,
+                    {
+                        method: "DELETE",
+                    },
+                ),
+        },
+        chats: {
+            create: (payload?: { project_id?: string }) =>
+                apiRequestWithConfig<{ id: string }>(
+                    scopedConfig,
+                    "/chat/create",
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload ?? {}),
+                    },
+                ),
+            list: (options?: { limit?: number }) => {
+                const params = new URLSearchParams();
+                if (options?.limit) params.set("limit", String(options.limit));
+                const query = params.toString();
+                return apiRequestWithConfig<MikeChat[]>(
+                    scopedConfig,
+                    `/chat${query ? `?${query}` : ""}`,
+                );
+            },
+            get: (chatId: string) => getChatWithConfig(scopedConfig, chatId),
+        },
+        documents: {
+            uploadToProject: (projectId: string, file: File) =>
+                uploadProjectDocumentWithConfig(scopedConfig, projectId, file),
+            uploadStandalone: (file: File) =>
+                uploadStandaloneDocumentWithConfig(scopedConfig, file),
+        },
+    };
 }
 
 export async function renameChat(chatId: string, title: string): Promise<void> {
@@ -687,10 +823,13 @@ export async function streamTabularGeneration(
     reviewId: string,
 ): Promise<Response> {
     const authHeaders = await getAuthHeader();
-    return clientConfig.fetchImpl(apiUrl(`/tabular-review/${reviewId}/generate`), {
-        method: "POST",
-        headers: { ...authHeaders },
-    });
+    return clientConfig.fetchImpl(
+        apiUrl(`/tabular-review/${reviewId}/generate`),
+        {
+            method: "POST",
+            headers: { ...authHeaders },
+        },
+    );
 }
 
 export async function streamTabularChat(
