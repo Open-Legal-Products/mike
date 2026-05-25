@@ -33,6 +33,16 @@ const envSchema = z.object({
     R2_SECRET_ACCESS_KEY: z.string().optional(),
     R2_BUCKET_NAME: z.string().default("mike"),
 
+    // Google Cloud Storage (optional — set to use GCS instead of R2)
+    GCS_BUCKET_NAME: z.string().default("mike"),
+    GCS_PROJECT_ID: z.string().optional(),
+    // GCS_SIGNED_URL_TTL: signed URL lifetime in seconds (default: 3600)
+    GCS_SIGNED_URL_TTL: z.coerce.number().positive().default(3600),
+
+    // Vertex AI (optional — use Gemini via Google Cloud instead of AI Studio)
+    VERTEX_AI_PROJECT: z.string().optional(),
+    VERTEX_AI_LOCATION: z.string().default("us-central1"),
+
     ANTHROPIC_API_KEY: z.string().optional(),
     CLAUDE_API_KEY: z.string().optional(),
     OPENAI_API_KEY: z.string().optional(),

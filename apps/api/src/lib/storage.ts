@@ -29,6 +29,7 @@ import { env } from "./env";
 // alternative adapters without needing to know the internal file layout.
 export type { StorageAdapter } from "./storage/adapter";
 export { R2StorageAdapter } from "./storage/r2";
+export { GCSStorageAdapter } from "./storage/gcs";
 
 // Path / filename utilities are pure functions with no I/O; they live in
 // core/ and are re-exported here for convenience.

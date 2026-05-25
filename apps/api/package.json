@@ -16,6 +16,7 @@
     "@anthropic-ai/sdk": "^0.90.0",
     "@aws-sdk/client-s3": "^3.787.0",
     "@aws-sdk/s3-request-presigner": "^3.787.0",
+    "@google-cloud/storage": "^7.19.0",
     "@google/genai": "^1.50.1",
     "@mike/core": "0.1.0",
     "@supabase/supabase-js": "^2.49.4",
