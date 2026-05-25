@@ -2,7 +2,8 @@
 // Callers always speak OpenAI-style tools + { role, content } messages; each
 // provider translates internally.
 
-export type Provider = "claude" | "gemini" | "openai";
+/** Provider identifier string — extensible, not a closed union. */
+export type Provider = string;
 
 export type OpenAIToolSchema = {
     type: "function";
@@ -36,10 +37,29 @@ export type StreamCallbacks = {
     onToolCallStart?: (call: NormalizedToolCall) => void;
 };
 
+/**
+ * Per-request API keys keyed by provider id.
+ *
+ * The three named optional properties exist solely for IDE autocomplete on
+ * the built-in providers — they are NOT a closed list.  The index signature
+ * makes this map open: third-party providers (e.g. "ollama", "bedrock") carry
+ * their credentials here without any changes to this file.  Callers access
+ * keys via apiKeys[providerId], not via named property access.
+ */
 export type UserApiKeys = {
     claude?: string | null;
     gemini?: string | null;
     openai?: string | null;
+    [provider: string]: string | null | undefined;
+};
+
+/** Parameters for the single-shot non-streaming completeText() call. */
+export type CompleteTextParams = {
+    model: string;
+    systemPrompt?: string;
+    user: string;
+    maxTokens?: number;
+    apiKeys?: UserApiKeys;
 };
 
 export type StreamChatParams = {

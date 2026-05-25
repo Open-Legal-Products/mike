@@ -29,7 +29,7 @@ function retryableError(status = 503) {
 }
 
 const baseParams = {
-    model: "gpt-4.1-mini",
+    model: "gpt-5.4-mini",
     messages: [{ role: "user" as const, content: "hello" }],
     tools: [],
     callbacks: {},

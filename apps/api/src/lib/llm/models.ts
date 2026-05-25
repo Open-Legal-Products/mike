@@ -1,7 +1,7 @@
-import type { Provider } from "./types";
+import { findProviderForModel, allRegisteredModels } from "./registry";
 
 // ---------------------------------------------------------------------------
-// Canonical model IDs
+// Canonical model IDs (built-in providers)
 // ---------------------------------------------------------------------------
 // Main-chat tier (top-end) — user picks one of these per message.
 export const CLAUDE_MAIN_MODELS = ["claude-opus-4-7", "claude-sonnet-4-6"] as const;
@@ -26,6 +26,18 @@ export const DEFAULT_MAIN_MODEL = "gemini-3-flash-preview";
 export const DEFAULT_TITLE_MODEL = "gemini-3.1-flash-lite-preview";
 export const DEFAULT_TABULAR_MODEL = "gemini-3-flash-preview";
 
+// Derived (not hand-maintained) fallback set for resolveModel().
+// Built by spreading the *_MODELS arrays above, so adding a model to any
+// of those arrays automatically includes it here — no second edit site.
+//
+// Why keep this alongside allRegisteredModels()?  Two reasons:
+//   1. Test isolation: models.test.ts imports models.ts directly without
+//      importing index.ts, so no providers are registered and the registry
+//      is empty.  ALL_MODELS provides the fallback in that case.
+//   2. External providers registered via registerProvider() appear in
+//      allRegisteredModels() but NOT here — that's intentional.
+//      resolveModel() checks both, so external models are always accepted
+//      once their provider is registered.
 const ALL_MODELS = new Set<string>([
     ...CLAUDE_MAIN_MODELS,
     ...GEMINI_MAIN_MODELS,
@@ -42,14 +54,34 @@ const ALL_MODELS = new Set<string>([
 // Provider inference
 // ---------------------------------------------------------------------------
 
-export function providerForModel(model: string): Provider {
+/**
+ * Maps a model ID to its provider string.
+ *
+ * Registered providers are checked first so that externally registered
+ * adapters (Ollama, Bedrock, Azure) override the built-in prefix matching
+ * below — no edits to this file required to support a new provider.
+ *
+ * The prefix fallback keeps this function usable in test contexts that don't
+ * import index.ts and therefore don't trigger provider registration.
+ */
+export function providerForModel(model: string): string {
+    const registered = findProviderForModel(model);
+    if (registered) return registered.id;
     if (model.startsWith("claude")) return "claude";
     if (model.startsWith("gemini")) return "gemini";
     if (model.startsWith("gpt-")) return "openai";
     throw new Error(`Unknown model id: ${model}`);
 }
 
+/**
+ * Returns id if it is a recognised model, otherwise returns fallback.
+ *
+ * Checks the live registry first (includes externally registered models) then
+ * falls back to the static ALL_MODELS set so the function works in test
+ * contexts where no providers have been registered.
+ */
 export function resolveModel(id: string | null | undefined, fallback: string): string {
-    if (id && ALL_MODELS.has(id)) return id;
+    if (!id) return fallback;
+    if (allRegisteredModels().has(id) || ALL_MODELS.has(id)) return id;
     return fallback;
 }

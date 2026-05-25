@@ -3,17 +3,23 @@ import { createServerSupabase } from "./supabase";
 import type { UserApiKeys } from "./llm";
 import { logger } from "./logger";
 import {
-  API_KEY_PROVIDERS,
   envApiKey,
   hasEnvApiKey,
   normalizeApiKeyProvider,
+  getRegisteredProviders,
   type ApiKeyProvider,
   type ApiKeySource,
 } from "../core/apiKeyProviders";
 
 type Db = ReturnType<typeof createServerSupabase>;
-export type ApiKeyStatus = Record<ApiKeyProvider, boolean> & {
-  sources: Record<ApiKeyProvider, ApiKeySource>;
+
+/**
+ * Status record keyed by provider id.
+ * Derived dynamically from the registered provider list so new providers
+ * added via registerApiKeyProvider() appear here automatically.
+ */
+export type ApiKeyStatus = Record<string, boolean> & {
+  sources: Record<string, ApiKeySource>;
 };
 
 type EncryptedKeyRow = {
@@ -104,18 +110,17 @@ export async function getUserApiKeyStatus(
   userId: string,
   db: Db = createServerSupabase(),
 ): Promise<ApiKeyStatus> {
-  const status: ApiKeyStatus = {
-    claude: false,
-    gemini: false,
-    openai: false,
-    sources: {
-      claude: null,
-      gemini: null,
-      openai: null,
-    },
-  };
+  // Build status object dynamically from the registered provider list so new
+  // providers appear here without any manual addition to this function.
+  const providers = getRegisteredProviders();
+  const status: ApiKeyStatus = {} as ApiKeyStatus;
+  status.sources = {} as Record<string, ApiKeySource>;
+  for (const provider of providers) {
+    status[provider] = false;
+    status.sources[provider] = null;
+  }
 
-  for (const provider of API_KEY_PROVIDERS) {
+  for (const provider of providers) {
     if (hasEnvApiKey(provider)) {
       status[provider] = true;
       status.sources[provider] = "env";
@@ -143,11 +148,11 @@ export async function getUserApiKeys(
   userId: string,
   db: Db = createServerSupabase(),
 ): Promise<UserApiKeys> {
-  const apiKeys: UserApiKeys = {
-    claude: envApiKey("claude"),
-    gemini: envApiKey("gemini"),
-    openai: envApiKey("openai"),
-  };
+  // Seed from env vars for all registered providers.
+  const apiKeys: UserApiKeys = {};
+  for (const provider of getRegisteredProviders()) {
+    apiKeys[provider] = envApiKey(provider);
+  }
 
   const { data, error } = await db
     .from("user_api_keys")

@@ -1,12 +1,69 @@
 import { streamClaude, completeClaudeText } from "./claude";
 import { streamGemini, completeGeminiText } from "./gemini";
 import { streamOpenAI, completeOpenAIText } from "./openai";
-import { providerForModel } from "./models";
-import type { StreamChatParams, StreamChatResult, UserApiKeys } from "./types";
+import {
+    registerProvider,
+    getRegisteredProvider,
+} from "./registry";
+import {
+    providerForModel,
+    CLAUDE_MAIN_MODELS,
+    CLAUDE_MID_MODELS,
+    CLAUDE_LOW_MODELS,
+    GEMINI_MAIN_MODELS,
+    GEMINI_MID_MODELS,
+    GEMINI_LOW_MODELS,
+    OPENAI_MAIN_MODELS,
+    OPENAI_MID_MODELS,
+    OPENAI_LOW_MODELS,
+} from "./models";
+import type { StreamChatParams, StreamChatResult, CompleteTextParams } from "./types";
 import { logger } from "../logger";
 
 export * from "./types";
 export * from "./models";
+
+/**
+ * Register a third-party LLM provider so it is available via
+ * streamChatWithTools() and completeText().
+ *
+ * Example — adding Ollama:
+ *   import { registerProvider } from "lib/llm";
+ *   import { setupOllama } from "lib/llm/providers/ollama";
+ *   setupOllama(["llama3.3", "phi4"]);
+ */
+export { registerProvider } from "./registry";
+
+// ---------------------------------------------------------------------------
+// Register built-in providers
+// ---------------------------------------------------------------------------
+// Providers are imported above so that Vitest's vi.mock() hoisting works:
+// test files mock e.g. "../claude" before this module loads, so the mocked
+// function is captured here and ends up in the registry.
+
+registerProvider({
+    id: "claude",
+    matchesModel: (m) => m.startsWith("claude"),
+    stream: streamClaude,
+    complete: completeClaudeText,
+    models: { main: CLAUDE_MAIN_MODELS, mid: CLAUDE_MID_MODELS, low: CLAUDE_LOW_MODELS },
+});
+
+registerProvider({
+    id: "gemini",
+    matchesModel: (m) => m.startsWith("gemini"),
+    stream: streamGemini,
+    complete: completeGeminiText,
+    models: { main: GEMINI_MAIN_MODELS, mid: GEMINI_MID_MODELS, low: GEMINI_LOW_MODELS },
+});
+
+registerProvider({
+    id: "openai",
+    matchesModel: (m) => m.startsWith("gpt-"),
+    stream: streamOpenAI,
+    complete: completeOpenAIText,
+    models: { main: OPENAI_MAIN_MODELS, mid: OPENAI_MID_MODELS, low: OPENAI_LOW_MODELS },
+});
 
 // ---------------------------------------------------------------------------
 // Retry helper — exponential backoff for transient LLM errors
@@ -75,10 +132,8 @@ function recordRetryableFailure(label: string, err: unknown): void {
 
 function isRetryable(err: unknown): boolean {
     if (err instanceof Error) {
-        // Anthropic SDK surfaces status as .status; OpenAI SDK does too.
         const status = (err as { status?: number }).status;
         if (status && RETRYABLE_STATUSES.has(status)) return true;
-        // Network-level transient errors.
         const code = (err as { code?: string }).code;
         if (code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ENOTFOUND") return true;
     }
@@ -103,7 +158,7 @@ async function withRetry<T>(
             recordRetryableFailure(label, err);
             assertCircuitClosed(label);
             if (attempt === maxAttempts) throw err;
-            const delayMs = Math.min(1000 * 2 ** (attempt - 1), 8000); // 1s, 2s, 4s …
+            const delayMs = Math.min(1000 * 2 ** (attempt - 1), 8000);
             logger.warn(
                 { attempt, maxAttempts, delayMs, label, err },
                 "[llm] transient error — retrying after backoff",
@@ -115,35 +170,37 @@ async function withRetry<T>(
 }
 
 // ---------------------------------------------------------------------------
+// Public dispatch
+// ---------------------------------------------------------------------------
+
+function requireAdapter(providerId: string, model: string) {
+    const adapter = getRegisteredProvider(providerId);
+    if (!adapter) {
+        throw new Error(
+            `LLM provider "${providerId}" matched model "${model}" but is not registered. ` +
+            `Import "lib/llm" to initialize built-in providers, ` +
+            `or call registerProvider() for third-party providers.`,
+        );
+    }
+    return adapter;
+}
 
 export async function streamChatWithTools(
     params: StreamChatParams,
 ): Promise<StreamChatResult> {
-    const provider = providerForModel(params.model);
+    const providerId = providerForModel(params.model);
+    const adapter = requireAdapter(providerId, params.model);
     return withRetry(
-        () => {
-            if (provider === "claude") return streamClaude(params);
-            if (provider === "openai") return streamOpenAI(params);
-            return streamGemini(params);
-        },
-        `streamChatWithTools/${provider}`,
+        () => adapter.stream(params),
+        `streamChatWithTools/${providerId}`,
     );
 }
 
-export async function completeText(params: {
-    model: string;
-    systemPrompt?: string;
-    user: string;
-    maxTokens?: number;
-    apiKeys?: UserApiKeys;
-}): Promise<string> {
-    const provider = providerForModel(params.model);
+export async function completeText(params: CompleteTextParams): Promise<string> {
+    const providerId = providerForModel(params.model);
+    const adapter = requireAdapter(providerId, params.model);
     return withRetry(
-        () => {
-            if (provider === "claude") return completeClaudeText(params);
-            if (provider === "openai") return completeOpenAIText(params);
-            return completeGeminiText(params);
-        },
-        `completeText/${provider}`,
+        () => adapter.complete(params),
+        `completeText/${providerId}`,
     );
 }
