@@ -26,6 +26,10 @@ import {
     type OpenAIToolSchema,
 } from "./llm";
 import { logger } from "./logger";
+import {
+    buildLawLibrarySystemPrompt,
+    getAllLawLibraryTools,
+} from "./lawLibraries";
 
 const STANDARD_FONT_DATA_URL = (() => {
     try {
@@ -673,7 +677,7 @@ export function buildMessages(
     nonce?: string,
 ) {
     const formatted: unknown[] = [];
-    let systemContent = SYSTEM_PROMPT;
+    let systemContent = buildLawLibrarySystemPrompt(SYSTEM_PROMPT);
 
     if (systemPromptExtra) {
         systemContent += `\n\n${systemPromptExtra.trim()}`;
@@ -2830,9 +2834,10 @@ export async function runLLMStream(params: {
         projectId,
         nonce,
     } = params;
+    const lawLibraryTools = getAllLawLibraryTools();
     const activeTools = extraTools?.length
-        ? [...TOOLS, ...WORKFLOW_TOOLS, ...extraTools]
-        : [...TOOLS, ...WORKFLOW_TOOLS];
+        ? [...TOOLS, ...WORKFLOW_TOOLS, ...lawLibraryTools, ...extraTools]
+        : [...TOOLS, ...WORKFLOW_TOOLS, ...lawLibraryTools];
 
     // Extract system prompt; pass remaining turns to the adapter as
     // plain user/assistant messages.
