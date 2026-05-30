@@ -1,0 +1,30 @@
+{
+  "pkg:protobufjs": {
+    "package": "protobufjs",
+    "severity": "high",
+    "reason": "Transitive dep via @google/genai. No upstream fix available yet.",
+    "added": "2026-05-17",
+    "expires": "2026-08-17"
+  },
+  "pkg:@xmldom/xmldom": {
+    "package": "@xmldom/xmldom",
+    "severity": "high",
+    "reason": "Transitive dep via mammoth. No upstream fix available yet.",
+    "added": "2026-05-17",
+    "expires": "2026-08-17"
+  },
+  "pkg:fast-xml-builder": {
+    "package": "fast-xml-builder",
+    "severity": "high",
+    "reason": "Transitive dep via @aws-sdk. No upstream fix available yet.",
+    "added": "2026-05-17",
+    "expires": "2026-08-17"
+  },
+  "pkg:tmp": {
+    "package": "tmp",
+    "severity": "high",
+    "reason": "Transitive dep via libreoffice-convert. No upstream fix available yet.",
+    "added": "2026-05-17",
+    "expires": "2026-08-17"
+  }
+}
