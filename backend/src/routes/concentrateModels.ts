@@ -27,6 +27,13 @@ type ConcentrateModel = {
     id: string;
     name: string;
     author: string;
+    /**
+     * Whether at least one Concentrate-side provider for this model
+     * advertises Zero Data Retention. The catalog is filtered to ZDR-only
+     * models server-side; this flag is included on every returned model
+     * so the UI can display a ZDR badge without an extra lookup.
+     */
+    zdr: boolean;
 };
 
 type CacheEntry = {
@@ -41,11 +48,21 @@ function resolveKey(userKey?: string | null): string {
     return userKey?.trim() || process.env.CONCENTRATE_API_KEY?.trim() || "";
 }
 
+type RawProvider = {
+    zdr?: false | { policy_url?: string; certificate_url?: string };
+};
 type RawModel = {
     slug?: string;
     name?: string;
     author?: { slug?: string };
+    providers?: Record<string, RawProvider>;
 };
+
+function modelHasZdr(m: RawModel): boolean {
+    const providers = m.providers;
+    if (!providers || typeof providers !== "object") return false;
+    return Object.values(providers).some((p) => !!p.zdr);
+}
 
 async function fetchModelsFromApi(key: string): Promise<ConcentrateModel[]> {
     const res = await fetch(modelsUrl(), {
@@ -61,11 +78,18 @@ async function fetchModelsFromApi(key: string): Promise<ConcentrateModel[]> {
     const models = Array.isArray(json)
         ? json
         : ((json as { data?: unknown[] }).data ?? []);
-    return (models as RawModel[]).map((m) => ({
-        id: m.slug ?? "",
-        name: m.name ?? m.slug ?? "",
-        author: m.author?.slug ?? "unknown",
-    }));
+    // Server-side filter: only include models with at least one
+    // ZDR-certified provider behind the Concentrate router. Users who want
+    // to fall back to non-ZDR models should configure that provider's key
+    // directly rather than via Concentrate.
+    return (models as RawModel[])
+        .filter(modelHasZdr)
+        .map((m) => ({
+            id: m.slug ?? "",
+            name: m.name ?? m.slug ?? "",
+            author: m.author?.slug ?? "unknown",
+            zdr: true,
+        }));
 }
 
 concentrateModelsRouter.get(

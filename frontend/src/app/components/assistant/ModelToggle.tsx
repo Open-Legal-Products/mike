@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, Check, AlertCircle } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, Check, AlertCircle, Shield } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -12,14 +12,25 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { isModelAvailable } from "@/app/lib/modelAvailability";
 import type { ApiKeyState } from "@/app/lib/mikeApi";
+import {
+    getConcentrateModels,
+    type ConcentrateModel,
+} from "@/app/lib/concentrateModels";
 
 export interface ModelOption {
     id: string;
     label: string;
-    group: "Anthropic" | "Google" | "OpenAI";
+    group: string;
+    zdr?: boolean;
+    /**
+     * Whether the model is only routable via Concentrate. Used by the
+     * availability check so the picker can mark Concentrate-only models
+     * unavailable when no Concentrate key is configured.
+     */
+    concentrateOnly?: boolean;
 }
 
-export const MODELS: ModelOption[] = [
+const STATIC_MODELS: ModelOption[] = [
     { id: "claude-opus-4-7", label: "Claude Opus 4.7", group: "Anthropic" },
     { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", group: "Anthropic" },
     { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", group: "Google" },
@@ -28,11 +39,63 @@ export const MODELS: ModelOption[] = [
     { id: "gpt-4o-mini", label: "GPT-4o Mini", group: "OpenAI" },
 ];
 
+/**
+ * Static set used by routing-layer code that needs a stable, build-time
+ * list of model IDs. The picker itself merges this with the live
+ * Concentrate catalog when a Concentrate key is configured.
+ */
+export const MODELS: ModelOption[] = STATIC_MODELS;
 export const DEFAULT_MODEL_ID = "gemini-2.0-flash";
+export const ALLOWED_MODEL_IDS = new Set(STATIC_MODELS.map((m) => m.id));
 
-export const ALLOWED_MODEL_IDS = new Set(MODELS.map((m) => m.id));
+const STATIC_GROUP_ORDER = ["Anthropic", "Google", "OpenAI"];
 
-const GROUP_ORDER: ModelOption["group"][] = ["Anthropic", "Google", "OpenAI"];
+function authorLabel(author: string): string {
+    if (author === "anthropic") return "Anthropic";
+    if (author === "openai") return "OpenAI";
+    if (author === "google") return "Google";
+    return author.charAt(0).toUpperCase() + author.slice(1);
+}
+
+function mergeModels(
+    concentrate: ConcentrateModel[],
+    hasConcentrateKey: boolean,
+): ModelOption[] {
+    if (!hasConcentrateKey || concentrate.length === 0) return STATIC_MODELS;
+
+    const out: ModelOption[] = [...STATIC_MODELS];
+    const seen = new Set(out.map((m) => m.id));
+    for (const m of concentrate) {
+        if (!m.id || seen.has(m.id)) continue;
+        out.push({
+            id: m.id,
+            label: m.name || m.id,
+            group: authorLabel(m.author),
+            zdr: m.zdr,
+            concentrateOnly: true,
+        });
+        seen.add(m.id);
+    }
+    return out;
+}
+
+function groupOrder(models: ModelOption[]): string[] {
+    const seen = new Set<string>();
+    const order: string[] = [];
+    for (const g of STATIC_GROUP_ORDER) {
+        if (models.some((m) => m.group === g)) {
+            order.push(g);
+            seen.add(g);
+        }
+    }
+    for (const m of models) {
+        if (!seen.has(m.group)) {
+            order.push(m.group);
+            seen.add(m.group);
+        }
+    }
+    return order;
+}
 
 interface Props {
     value: string;
@@ -42,11 +105,39 @@ interface Props {
 
 export function ModelToggle({ value, onChange, apiKeys }: Props) {
     const [isOpen, setIsOpen] = useState(false);
-    const selected = MODELS.find((m) => m.id === value);
+    const [concentrateModels, setConcentrateModels] = useState<
+        ConcentrateModel[]
+    >([]);
+    const hasConcentrateKey = !!apiKeys?.concentrate?.configured;
+
+    useEffect(() => {
+        if (!hasConcentrateKey) {
+            setConcentrateModels([]);
+            return;
+        }
+        let cancelled = false;
+        getConcentrateModels().then((m) => {
+            if (!cancelled) setConcentrateModels(m);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [hasConcentrateKey]);
+
+    const merged = useMemo(
+        () => mergeModels(concentrateModels, hasConcentrateKey),
+        [concentrateModels, hasConcentrateKey],
+    );
+
+    const selected = merged.find((m) => m.id === value);
     const selectedLabel = selected?.label ?? "Model";
     const selectedAvailable = apiKeys
-        ? isModelAvailable(value, apiKeys)
+        ? selected?.concentrateOnly
+            ? hasConcentrateKey
+            : isModelAvailable(value, apiKeys)
         : true;
+
+    const order = groupOrder(merged);
 
     return (
         <DropdownMenu onOpenChange={setIsOpen}>
@@ -69,9 +160,13 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                     />
                 </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56 z-50" side="top" align="start">
-                {GROUP_ORDER.map((group, gi) => {
-                    const items = MODELS.filter((m) => m.group === group);
+            <DropdownMenuContent
+                className="w-64 z-50 max-h-[60vh] overflow-y-auto"
+                side="top"
+                align="start"
+            >
+                {order.map((group, gi) => {
+                    const items = merged.filter((m) => m.group === group);
                     if (items.length === 0) return null;
                     return (
                         <div key={group}>
@@ -81,7 +176,9 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                             </DropdownMenuLabel>
                             {items.map((m) => {
                                 const available = apiKeys
-                                    ? isModelAvailable(m.id, apiKeys)
+                                    ? m.concentrateOnly
+                                        ? hasConcentrateKey
+                                        : isModelAvailable(m.id, apiKeys)
                                     : true;
                                 return (
                                     <DropdownMenuItem
@@ -90,18 +187,24 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                                         onSelect={() => onChange(m.id)}
                                     >
                                         <span
-                                            className={`flex-1 ${available ? "" : "text-gray-400"}`}
+                                            className={`flex-1 truncate ${available ? "" : "text-gray-400"}`}
                                         >
                                             {m.label}
                                         </span>
+                                        {m.zdr && (
+                                            <Shield
+                                                className="h-3 w-3 text-gray-500 ml-1 shrink-0"
+                                                aria-label="Zero Data Retention"
+                                            />
+                                        )}
                                         {!available && (
                                             <AlertCircle
-                                                className="h-3.5 w-3.5 text-red-500 ml-1"
+                                                className="h-3.5 w-3.5 text-red-500 ml-1 shrink-0"
                                                 aria-label="API key missing"
                                             />
                                         )}
                                         {m.id === value && available && (
-                                            <Check className="h-3.5 w-3.5 text-gray-600 ml-1" />
+                                            <Check className="h-3.5 w-3.5 text-gray-600 ml-1 shrink-0" />
                                         )}
                                     </DropdownMenuItem>
                                 );

@@ -14,7 +14,8 @@ export function isModelAvailable(
     apiKeys: ApiKeyState,
 ): boolean {
     const provider = getModelProvider(modelId);
-    if (!provider) return false;
+    // Unknown/dynamic model IDs are only reachable through Concentrate.
+    if (!provider) return !!apiKeys.concentrate?.configured;
     if (isProviderAvailable(provider, apiKeys)) return true;
     // Concentrate acts as a universal fallback router — if the user has a
     // Concentrate key, any known model can be routed through it.
@@ -36,8 +37,10 @@ export function providerLabel(provider: ModelProvider): string {
 
 export function modelGroupToProvider(
     group: ModelOption["group"],
-): ModelProvider {
+): ModelProvider | null {
     if (group === "Anthropic") return "claude";
     if (group === "OpenAI") return "openai";
-    return "gemini";
+    if (group === "Google") return "gemini";
+    // Concentrate-only groups (Meta, Mistral, etc.) have no native provider.
+    return null;
 }

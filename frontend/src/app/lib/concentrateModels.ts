@@ -4,6 +4,7 @@ export type ConcentrateModel = {
     id: string;
     name: string;
     author: string;
+    zdr: boolean;
 };
 
 let cache: { models: ConcentrateModel[]; fetchedAt: number } | null = null;

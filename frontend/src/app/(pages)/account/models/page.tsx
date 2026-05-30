@@ -195,7 +195,7 @@ function TabularModelDropdown({
                                         className="cursor-pointer"
                                         onSelect={() => onChange(m.id)}
                                         title={
-                                            !available
+                                            !available && provider
                                                 ? `Add a ${providerLabel(provider)} API key to use this model`
                                                 : undefined
                                         }
