@@ -15,7 +15,10 @@ export function isModelAvailable(
 ): boolean {
     const provider = getModelProvider(modelId);
     if (!provider) return false;
-    return isProviderAvailable(provider, apiKeys);
+    if (isProviderAvailable(provider, apiKeys)) return true;
+    // Concentrate acts as a universal fallback router — if the user has a
+    // Concentrate key, any known model can be routed through it.
+    return !!apiKeys.concentrate?.configured;
 }
 
 export function isProviderAvailable(

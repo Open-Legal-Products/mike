@@ -37,6 +37,13 @@ const API_KEY_FIELDS = [
         label: "OpenAI API Key",
         placeholder: "sk-…",
     },
+    {
+        provider: "concentrate",
+        label: "Concentrate API Key",
+        placeholder: "sk-cn-…",
+        description:
+            "Optional. Concentrate routes any model you don't have a direct key for through a single endpoint — useful for trying models without managing one key per provider.",
+    },
 ] as const;
 
 export default function ModelsAndApiKeysPage() {
@@ -96,6 +103,11 @@ export default function ModelsAndApiKeysPage() {
                             key={field.provider}
                             label={field.label}
                             placeholder={field.placeholder}
+                            description={
+                                "description" in field
+                                    ? field.description
+                                    : undefined
+                            }
                             hasSavedKey={
                                 !!profile?.apiKeys[field.provider].configured
                             }
@@ -213,6 +225,7 @@ function TabularModelDropdown({
 function ApiKeyField({
     label,
     placeholder,
+    description,
     hasSavedKey,
     isServerConfigured,
     onSave,
@@ -220,6 +233,7 @@ function ApiKeyField({
 }: {
     label: string;
     placeholder: string;
+    description?: string;
     hasSavedKey: boolean;
     isServerConfigured: boolean;
     onSave: (value: string) => Promise<boolean>;
@@ -258,7 +272,10 @@ function ApiKeyField({
 
     return (
         <div>
-            <label className="text-sm text-gray-600 block mb-2">{label}</label>
+            <label className="text-sm text-gray-600 block mb-1">{label}</label>
+            {description && (
+                <p className="text-xs text-gray-400 mb-2">{description}</p>
+            )}
             {isServerConfigured && (
                 <div className="mb-2 rounded-md border border-blue-100 bg-blue-50 px-3 py-2">
                     <p className="text-xs text-blue-800">

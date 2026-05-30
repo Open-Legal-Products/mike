@@ -42,11 +42,17 @@ const ALL_MODELS = new Set<string>([
 // Provider inference
 // ---------------------------------------------------------------------------
 
+// Returns the native provider for a static model ID, or "concentrate" for
+// dynamic IDs that are not in the known static set.
 export function providerForModel(model: string): Provider {
     if (model.startsWith("claude")) return "claude";
     if (model.startsWith("gemini")) return "gemini";
     if (model.startsWith("gpt-")) return "openai";
-    throw new Error(`Unknown model id: ${model}`);
+    return "concentrate";
+}
+
+export function isStaticModel(id: string): boolean {
+    return ALL_MODELS.has(id);
 }
 
 export function resolveModel(id: string | null | undefined, fallback: string): string {
