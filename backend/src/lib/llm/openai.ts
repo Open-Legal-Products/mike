@@ -7,6 +7,12 @@ import type {
     StreamChatParams,
     StreamChatResult,
 } from "./types";
+import {
+    runStreamingLoop,
+    type ProviderSession,
+    type TurnContext,
+    type TurnResult,
+} from "./driver";
 
 const MAX_OUTPUT_TOKENS = 16384;
 
@@ -71,28 +77,26 @@ function parseFunctionCall(item: {
     };
 }
 
-export async function streamOpenAI(
-    params: StreamChatParams,
-): Promise<StreamChatResult> {
+function createOpenAISession(params: StreamChatParams): ProviderSession {
     const {
         model,
         systemPrompt,
         tools = [],
-        callbacks = {},
         runTools,
         apiKeys,
         enableThinking,
     } = params;
-    const maxIter = params.maxIterations ?? 10;
     const openai = client(apiKeys?.openai);
     const responseTools = toResponseTools(tools);
     const hasTools = responseTools.length > 0;
 
+    // Conversation state is carried server-side via `previous_response_id`;
+    // after the first turn `input` only carries fresh tool outputs.
     let input: ResponseInputItem[] = toResponseInput(params.messages);
     let previousResponseId: string | undefined;
-    let fullText = "";
 
-    for (let iter = 0; iter < maxIter; iter++) {
+    async function runTurn(ctx: TurnContext): Promise<TurnResult> {
+        const { callbacks } = ctx;
         // The SDK returns a typed async iterable of SSE events — no manual
         // fetch/TextDecoder/buffer parsing required. Conversation state is
         // carried server-side via `previous_response_id`, so after the first
@@ -100,7 +104,7 @@ export async function streamOpenAI(
         // context (including instructions) persist.
         const stream = await openai.responses.create({
             model,
-            instructions: iter === 0 ? systemPrompt : undefined,
+            instructions: ctx.iter === 0 ? systemPrompt : undefined,
             input: input as OpenAI.Responses.ResponseInput,
             tools: responseTools.length ? responseTools : undefined,
             stream: true,
@@ -111,6 +115,7 @@ export async function streamOpenAI(
 
         const toolCalls: NormalizedToolCall[] = [];
         const startedToolCallIds = new Set<string>();
+        let turnText = "";
         let pendingText = "";
         let sawReasoning = false;
 
@@ -132,7 +137,7 @@ export async function streamOpenAI(
                     if (hasTools) {
                         pendingText += event.delta;
                     } else {
-                        fullText += event.delta;
+                        turnText += event.delta;
                         callbacks.onContentDelta?.(event.delta);
                     }
                     break;
@@ -157,17 +162,25 @@ export async function streamOpenAI(
             }
         }
 
+        // OpenAI fires onToolCallStart mid-stream (above) and onReasoningBlockEnd
+        // after the stream — preserving the provider's callback ordering.
         if (sawReasoning) callbacks.onReasoningBlockEnd?.();
 
-        if (!toolCalls.length || !runTools) {
-            if (pendingText) {
-                fullText += pendingText;
-                callbacks.onContentDelta?.(pendingText);
-            }
-            break;
+        // Buffered preamble text is surfaced only when this turn isn't going to
+        // run tools; in a tool-using turn it is dropped (neither streamed nor
+        // counted in fullText). Mirrors the driver's break condition.
+        if ((!toolCalls.length || !runTools) && pendingText) {
+            turnText += pendingText;
+            callbacks.onContentDelta?.(pendingText);
         }
 
-        const results = await runTools(toolCalls);
+        return { toolCalls, textForFullText: turnText };
+    }
+
+    function recordToolResults(
+        _calls: NormalizedToolCall[],
+        results: NormalizedToolResult[],
+    ): void {
         input = results.map((result) => ({
             type: "function_call_output",
             call_id: result.tool_use_id,
@@ -175,7 +188,13 @@ export async function streamOpenAI(
         }));
     }
 
-    return { fullText };
+    return { runTurn, recordToolResults };
+}
+
+export async function streamOpenAI(
+    params: StreamChatParams,
+): Promise<StreamChatResult> {
+    return runStreamingLoop(params, createOpenAISession);
 }
 
 export async function completeOpenAIText(params: {

@@ -7,6 +7,12 @@ import type {
     NormalizedToolResult,
 } from "./types";
 import { toClaudeTools } from "./tools";
+import {
+    runStreamingLoop,
+    type ProviderSession,
+    type TurnContext,
+    type TurnResult,
+} from "./driver";
 
 type ContentBlock =
     | { type: "text"; text: string }
@@ -41,26 +47,24 @@ function toNativeMessages(
     return messages.map((m) => ({ role: m.role, content: m.content }));
 }
 
-export async function streamClaude(
-    params: StreamChatParams,
-): Promise<StreamChatResult> {
+function createClaudeSession(params: StreamChatParams): ProviderSession {
     const {
         model,
         systemPrompt,
         tools = [],
-        callbacks = {},
-        runTools,
         apiKeys,
         enableThinking,
     } = params;
-    const maxIter = params.maxIterations ?? 10;
     const anthropic = client(apiKeys?.claude);
     const claudeTools = toClaudeTools(tools);
 
     const messages: NativeMessage[] = toNativeMessages(params.messages);
-    let fullText = "";
+    // Holds the previous turn's assistant content blocks, which Claude requires
+    // verbatim on the follow-up turn that carries tool_result blocks.
+    let lastAssistantBlocks: ContentBlock[] = [];
 
-    for (let iter = 0; iter < maxIter; iter++) {
+    async function runTurn(ctx: TurnContext): Promise<TurnResult> {
+        const { callbacks } = ctx;
         const stream = anthropic.messages.stream({
             model,
             system: systemPrompt,
@@ -94,17 +98,21 @@ export async function streamClaude(
         }
 
         const final = await stream.finalMessage();
+        // Claude fires onReasoningBlockEnd before walking blocks for
+        // onToolCallStart — preserving the provider's callback ordering.
         if (sawThinking) callbacks.onReasoningBlockEnd?.();
         const stopReason = final.stop_reason;
         const assistantBlocks = final.content as ContentBlock[];
+        lastAssistantBlocks = assistantBlocks;
 
         // Extract text content and tool_use calls from the final assistant
         // message so we can accumulate text and drive the tool-call loop.
+        let turnText = "";
         const toolCalls: NormalizedToolCall[] = [];
         for (const block of assistantBlocks) {
             if (block.type === "text") {
                 const txt = (block as { text: string }).text;
-                if (typeof txt === "string") fullText += txt;
+                if (typeof txt === "string") turnText += txt;
             } else if (block.type === "tool_use") {
                 const tu = block as {
                     id: string;
@@ -121,16 +129,21 @@ export async function streamClaude(
             }
         }
 
-        if (stopReason !== "tool_use" || !toolCalls.length || !runTools) {
-            break;
-        }
+        return {
+            toolCalls,
+            textForFullText: turnText,
+            stop: stopReason !== "tool_use",
+        };
+    }
 
-        const results = await runTools(toolCalls);
-
+    function recordToolResults(
+        _calls: NormalizedToolCall[],
+        results: NormalizedToolResult[],
+    ): void {
         // Record the assistant turn (preserving the original content blocks,
         // which Claude requires on the follow-up) and the user turn that
         // carries the tool_result blocks.
-        messages.push({ role: "assistant", content: assistantBlocks });
+        messages.push({ role: "assistant", content: lastAssistantBlocks });
         messages.push({
             role: "user",
             content: results.map((r) => ({
@@ -141,7 +154,13 @@ export async function streamClaude(
         });
     }
 
-    return { fullText };
+    return { runTurn, recordToolResults };
+}
+
+export async function streamClaude(
+    params: StreamChatParams,
+): Promise<StreamChatResult> {
+    return runStreamingLoop(params, createClaudeSession);
 }
 
 export async function completeClaudeText(params: {

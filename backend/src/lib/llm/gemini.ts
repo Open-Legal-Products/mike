@@ -3,8 +3,15 @@ import type {
     StreamChatParams,
     StreamChatResult,
     NormalizedToolCall,
+    NormalizedToolResult,
 } from "./types";
 import { toGeminiTools } from "./tools";
+import {
+    runStreamingLoop,
+    type ProviderSession,
+    type TurnContext,
+    type TurnResult,
+} from "./driver";
 
 type GeminiPart = {
     text?: string;
@@ -49,18 +56,19 @@ function toNativeContents(messages: StreamChatParams["messages"]): GeminiContent
     }));
 }
 
-export async function streamGemini(
-    params: StreamChatParams,
-): Promise<StreamChatResult> {
-    const { model, systemPrompt, tools = [], callbacks = {}, runTools, apiKeys, enableThinking } = params;
-    const maxIter = params.maxIterations ?? 10;
+function createGeminiSession(params: StreamChatParams): ProviderSession {
+    const { model, systemPrompt, tools = [], apiKeys, enableThinking } = params;
     const ai = client(apiKeys?.gemini);
     const functionDeclarations = toGeminiTools(tools);
 
     const contents: GeminiContent[] = toNativeContents(params.messages);
-    let fullText = "";
+    // Stashed from the latest turn so recordToolResults can rebuild the model
+    // turn (text + functionCall parts) before appending the tool responses.
+    let lastTextParts: string[] = [];
+    let lastCallParts: GeminiPart[] = [];
 
-    for (let iter = 0; iter < maxIter; iter++) {
+    async function runTurn(ctx: TurnContext): Promise<TurnResult> {
+        const { callbacks } = ctx;
         const stream = await ai.models.generateContentStream({
             model,
             contents: contents as never,
@@ -115,27 +123,31 @@ export async function streamGemini(
             }
         }
 
+        // Gemini fires onToolCallStart mid-stream (above) and onReasoningBlockEnd
+        // after the stream — preserving the provider's callback ordering.
         if (sawThinking) callbacks.onReasoningBlockEnd?.();
 
-        fullText += textParts.join("");
+        lastTextParts = textParts;
+        lastCallParts = callParts;
 
-        if (!toolCalls.length || !runTools) {
-            break;
-        }
+        return { toolCalls, textForFullText: textParts.join("") };
+    }
 
-        const results = await runTools(toolCalls);
-
+    function recordToolResults(
+        calls: NormalizedToolCall[],
+        results: NormalizedToolResult[],
+    ): void {
         // Append the model's turn (text + functionCall parts, in that order)
         // and the matching functionResponse turn.
         const modelParts: GeminiPart[] = [];
-        if (textParts.length) modelParts.push({ text: textParts.join("") });
-        for (const cp of callParts) modelParts.push(cp);
+        if (lastTextParts.length) modelParts.push({ text: lastTextParts.join("") });
+        for (const cp of lastCallParts) modelParts.push(cp);
         contents.push({ role: "model", parts: modelParts });
 
         contents.push({
             role: "user",
             parts: results.map((r) => {
-                const match = toolCalls.find((c) => c.id === r.tool_use_id);
+                const match = calls.find((c) => c.id === r.tool_use_id);
                 return {
                     functionResponse: {
                         ...(r.tool_use_id && !r.tool_use_id.startsWith(match?.name ?? "")
@@ -149,7 +161,13 @@ export async function streamGemini(
         });
     }
 
-    return { fullText };
+    return { runTurn, recordToolResults };
+}
+
+export async function streamGemini(
+    params: StreamChatParams,
+): Promise<StreamChatResult> {
+    return runStreamingLoop(params, createGeminiSession);
 }
 
 export async function completeGeminiText(params: {
