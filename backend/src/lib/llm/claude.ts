@@ -54,9 +54,20 @@ function createClaudeSession(params: StreamChatParams): ProviderSession {
         tools = [],
         apiKeys,
         enableThinking,
+        enableWebSearch,
     } = params;
     const anthropic = client(apiKeys?.claude);
-    const claudeTools = toClaudeTools(tools);
+    // Combine caller-supplied function tools with Anthropic's native,
+    // server-executed web_search tool. The latter never surfaces as a
+    // `tool_use` block (it arrives as `server_tool_use` and is run by
+    // Anthropic), so it sits alongside the function tools without touching the
+    // tool-call loop.
+    const claudeTools = [
+        ...toClaudeTools(tools),
+        ...(enableWebSearch
+            ? [{ type: "web_search_20250305", name: "web_search" }]
+            : []),
+    ];
 
     const messages: NativeMessage[] = toNativeMessages(params.messages);
     // Holds the previous turn's assistant content blocks, which Claude requires
@@ -89,6 +100,17 @@ function createClaudeSession(params: StreamChatParams): ProviderSession {
 
         stream.on("text", (delta) => {
             callbacks.onContentDelta?.(delta);
+        });
+        // `contentBlock` fires when a block is fully assembled. A native
+        // web_search arrives as a completed `server_tool_use` block (with the
+        // query in its input) before Anthropic runs the search and streams the
+        // answer text — so firing here keeps the indicator ahead of the prose.
+        stream.on("contentBlock", (block) => {
+            const b = block as { type?: string; name?: string; input?: unknown };
+            if (b.type === "server_tool_use" && b.name === "web_search") {
+                const query = (b.input as { query?: string } | undefined)?.query;
+                callbacks.onWebSearch?.(query);
+            }
         });
         if (enableThinking) {
             stream.on("thinking", (delta) => {

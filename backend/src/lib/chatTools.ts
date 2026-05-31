@@ -2698,6 +2698,7 @@ type AssistantEvent =
           }[];
       }
     | { type: "workflow_applied"; workflow_id: string; title: string }
+    | { type: "web_search"; query?: string }
     | {
           type: "doc_edited";
           filename: string;
@@ -2840,6 +2841,7 @@ export async function runLLMStream(params: {
         maxIterations: 10,
         apiKeys,
         enableThinking: true,
+        enableWebSearch: true,
         callbacks: {
             onContentDelta: (delta) => {
                 iterText += delta;
@@ -2871,6 +2873,20 @@ export async function runLLMStream(params: {
                     `data: ${JSON.stringify({
                         type: "tool_call_start",
                         name: call.name,
+                    })}\n\n`,
+                );
+            },
+            // Native web search runs server-side inside the provider turn.
+            // Flush any preceding prose so the indicator lands in order, then
+            // both stream it and persist it (unlike tool_call_start, which is
+            // a transient placeholder) so reloaded chats still show the search.
+            onWebSearch: (query) => {
+                flushText();
+                events.push({ type: "web_search", query });
+                write(
+                    `data: ${JSON.stringify({
+                        type: "web_search",
+                        query,
                     })}\n\n`,
                 );
             },

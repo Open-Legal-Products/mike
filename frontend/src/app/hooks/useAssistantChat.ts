@@ -558,6 +558,17 @@ export function useAssistantChat({
                             continue;
                         }
 
+                        if (data.type === "web_search") {
+                            // Native, server-side web search performed by the
+                            // model. Persisted (unlike tool_call_start), so it
+                            // stays visible in reloaded chats.
+                            pushEvent({
+                                type: "web_search",
+                                query: data.query as string | undefined,
+                            });
+                            continue;
+                        }
+
                         if (data.type === "workflow_applied") {
                             pushEvent({
                                 type: "workflow_applied",

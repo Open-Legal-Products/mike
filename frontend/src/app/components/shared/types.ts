@@ -128,6 +128,7 @@ export type AssistantEvent =
         isStreaming?: boolean;
     }
   | { type: "workflow_applied"; workflow_id: string; title: string }
+  | { type: "web_search"; query?: string; isStreaming?: boolean }
   | {
         type: "doc_edited";
         filename: string;

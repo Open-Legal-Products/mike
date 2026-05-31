@@ -57,9 +57,14 @@ function toNativeContents(messages: StreamChatParams["messages"]): GeminiContent
 }
 
 function createGeminiSession(params: StreamChatParams): ProviderSession {
-    const { model, systemPrompt, tools = [], apiKeys, enableThinking } = params;
+    const { model, systemPrompt, tools = [], apiKeys, enableThinking, enableWebSearch } = params;
     const ai = client(apiKeys?.gemini);
     const functionDeclarations = toGeminiTools(tools);
+    // Combine function declarations with the native googleSearch grounding
+    // tool. Gemini 2.0+ models accept both in the same request.
+    const geminiTools: unknown[] = [];
+    if (functionDeclarations.length) geminiTools.push({ functionDeclarations });
+    if (enableWebSearch) geminiTools.push({ googleSearch: {} });
 
     const contents: GeminiContent[] = toNativeContents(params.messages);
     // Stashed from the latest turn so recordToolResults can rebuild the model
@@ -74,8 +79,8 @@ function createGeminiSession(params: StreamChatParams): ProviderSession {
             contents: contents as never,
             config: {
                 systemInstruction: systemPrompt,
-                tools: functionDeclarations.length
-                    ? [{ functionDeclarations } as never]
+                tools: geminiTools.length
+                    ? (geminiTools as never)
                     : undefined,
                 // When enabled, ask Gemini to surface thought summaries.
                 // When disabled, explicitly zero the thinking budget so the
@@ -91,12 +96,25 @@ function createGeminiSession(params: StreamChatParams): ProviderSession {
         const textParts: string[] = [];
         const callParts: GeminiPart[] = [];
         const toolCalls: NormalizedToolCall[] = [];
+        // googleSearch grounding reports its queries via groundingMetadata,
+        // which can repeat across chunks — dedupe so each search fires once.
+        const seenQueries = new Set<string>();
         let sawThinking = false;
 
         for await (const chunk of stream) {
-            const parts =
-                (chunk as { candidates?: { content?: { parts?: GeminiPart[] } }[] })
-                    .candidates?.[0]?.content?.parts ?? [];
+            const candidate = (chunk as {
+                candidates?: {
+                    content?: { parts?: GeminiPart[] };
+                    groundingMetadata?: { webSearchQueries?: string[] };
+                }[];
+            }).candidates?.[0];
+            for (const query of candidate?.groundingMetadata?.webSearchQueries ?? []) {
+                if (!seenQueries.has(query)) {
+                    seenQueries.add(query);
+                    callbacks.onWebSearch?.(query);
+                }
+            }
+            const parts = candidate?.content?.parts ?? [];
 
             for (const part of parts) {
                 if (part.text) {

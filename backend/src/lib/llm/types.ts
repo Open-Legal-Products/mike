@@ -34,6 +34,14 @@ export type StreamCallbacks = {
     onReasoningBlockEnd?: () => void;
     onContentDelta?: (text: string) => void;
     onToolCallStart?: (call: NormalizedToolCall) => void;
+    /**
+     * Fired when the provider's native web-search tool issues a search. These
+     * searches run server-side (the provider executes them itself and folds
+     * the results into its response), so they never reach `runTools`; this
+     * callback exists purely so consumers can surface a "searching the web"
+     * indicator. `query` is the search string when the provider exposes it.
+     */
+    onWebSearch?: (query?: string) => void;
 };
 
 export type UserApiKeys = {
@@ -58,6 +66,14 @@ export type StreamChatParams = {
      * one-shot completions should leave this off to save tokens and latency.
      */
     enableThinking?: boolean;
+    /**
+     * Enable the provider's native web-search tool (Anthropic `web_search`,
+     * OpenAI Responses `web_search`, Gemini `googleSearch` grounding). The
+     * provider runs searches server-side and incorporates results into its
+     * answer; matching `onWebSearch` callbacks fire as searches happen. Off by
+     * default — only interactive chat surfaces should opt in.
+     */
+    enableWebSearch?: boolean;
 };
 
 export type StreamChatResult = {

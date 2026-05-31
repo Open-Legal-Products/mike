@@ -85,10 +85,21 @@ function createOpenAISession(params: StreamChatParams): ProviderSession {
         runTools,
         apiKeys,
         enableThinking,
+        enableWebSearch,
     } = params;
     const openai = client(apiKeys?.openai);
     const responseTools = toResponseTools(tools);
+    // `hasTools` (which drives the pre-tool preamble buffering) keys off
+    // *function* tools only — the native web_search tool is server-executed
+    // and doesn't produce a function-call preamble, so it's appended
+    // separately and left out of that gate.
     const hasTools = responseTools.length > 0;
+    const requestTools: OpenAI.Responses.Tool[] = [
+        ...responseTools,
+        ...(enableWebSearch
+            ? [{ type: "web_search" } as OpenAI.Responses.Tool]
+            : []),
+    ];
 
     // Conversation state is carried server-side via `previous_response_id`;
     // after the first turn `input` only carries fresh tool outputs.
@@ -106,7 +117,7 @@ function createOpenAISession(params: StreamChatParams): ProviderSession {
             model,
             instructions: ctx.iter === 0 ? systemPrompt : undefined,
             input: input as OpenAI.Responses.ResponseInput,
-            tools: responseTools.length ? responseTools : undefined,
+            tools: requestTools.length ? requestTools : undefined,
             stream: true,
             max_output_tokens: MAX_OUTPUT_TOKENS,
             previous_response_id: previousResponseId,
@@ -147,6 +158,13 @@ function createOpenAISession(params: StreamChatParams): ProviderSession {
                         const call = parseFunctionCall(event.item);
                         startedToolCallIds.add(call.id);
                         callbacks.onToolCallStart?.(call);
+                    } else if (event.item.type === "web_search_call") {
+                        // Native web search runs server-side; surface it as a
+                        // search indicator rather than a tool call.
+                        const action = (
+                            event.item as { action?: { query?: string } }
+                        ).action;
+                        callbacks.onWebSearch?.(action?.query);
                     }
                     break;
 
