@@ -1,6 +1,7 @@
 import type { MikeWorkflow } from "../shared/types";
+import { PORTED_LEGAL_WORKFLOWS } from "./portedLegalWorkflows";
 
-export const BUILT_IN_WORKFLOWS: MikeWorkflow[] = [
+const HANDWRITTEN_WORKFLOWS: MikeWorkflow[] = [
     {
         id: "builtin-cp-checklist",
         user_id: null,
@@ -1241,6 +1242,11 @@ export const BUILT_IN_WORKFLOWS: MikeWorkflow[] = [
             },
         ],
     },
+];
+
+export const BUILT_IN_WORKFLOWS: MikeWorkflow[] = [
+    ...HANDWRITTEN_WORKFLOWS,
+    ...PORTED_LEGAL_WORKFLOWS,
 ];
 
 export const BUILT_IN_IDS = new Set(BUILT_IN_WORKFLOWS.map((wf) => wf.id));

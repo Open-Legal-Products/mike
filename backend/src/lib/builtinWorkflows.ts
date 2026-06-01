@@ -1,4 +1,6 @@
-export const BUILTIN_WORKFLOWS: { id: string; title: string; prompt_md: string }[] = [
+import { PORTED_LEGAL_WORKFLOWS } from "./portedLegalWorkflows";
+
+const HANDWRITTEN_WORKFLOWS: { id: string; title: string; prompt_md: string }[] = [
     {
         id: "builtin-cp-checklist",
         title: "Generate CP Checklist",
@@ -74,3 +76,8 @@ export const BUILTIN_WORKFLOWS: { id: string; title: string; prompt_md: string }
             "Generate the summary as a downloadable Word document.",
     },
 ];
+
+// Hand-written transactional workflows plus the legal review/diligence skills
+// ported from Anthropic's claude-for-legal (see portedLegalWorkflows.ts).
+export const BUILTIN_WORKFLOWS: { id: string; title: string; prompt_md: string }[] =
+    [...HANDWRITTEN_WORKFLOWS, ...PORTED_LEGAL_WORKFLOWS];
