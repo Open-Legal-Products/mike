@@ -12,9 +12,9 @@ import { workflowsRouter } from "./routes/workflows";
 import { userRouter } from "./routes/user";
 import { downloadsRouter } from "./routes/downloads";
 
-const app = express();
 const PORT = process.env.PORT ?? 3001;
 const isProduction = process.env.NODE_ENV === "production";
+const isTest = process.env.NODE_ENV === "test";
 
 function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -71,56 +71,70 @@ const uploadLimiter = makeLimiter({
   message: "Too many upload requests. Please try again later.",
 });
 
-app.disable("x-powered-by");
-app.set("trust proxy", envInt("TRUST_PROXY_HOPS", 1));
+export function createApp() {
+  const app = express();
 
-app.use(
-  helmet({
-    contentSecurityPolicy: false,
-    crossOriginEmbedderPolicy: false,
-    hsts: isProduction
-      ? {
-          maxAge: 15552000,
-          includeSubDomains: true,
-        }
-      : false,
-    referrerPolicy: { policy: "no-referrer" },
-  }),
-);
+  app.disable("x-powered-by");
+  app.set("trust proxy", envInt("TRUST_PROXY_HOPS", 1));
 
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL ?? "http://localhost:3000",
-    credentials: true,
-  }),
-);
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+      hsts: isProduction
+        ? {
+            maxAge: 15552000,
+            includeSubDomains: true,
+          }
+        : false,
+      referrerPolicy: { policy: "no-referrer" },
+    }),
+  );
 
-app.use(generalLimiter);
+  app.use(
+    cors({
+      origin: process.env.FRONTEND_URL ?? "http://localhost:3000",
+      credentials: true,
+    }),
+  );
 
-app.use(express.json({ limit: "50mb" }));
+  // Rate limiters interfere with deterministic tests; skip them under test.
+  if (!isTest) {
+    app.use(generalLimiter);
+  }
 
-app.post("/chat", chatLimiter);
-app.post("/projects/:projectId/chat", chatLimiter);
-app.post("/tabular-review/:reviewId/chat", chatLimiter);
-app.post("/tabular-review/:reviewId/generate", chatLimiter);
-app.post("/chat/create", chatCreateLimiter);
-app.post("/chat/:chatId/generate-title", chatCreateLimiter);
-app.post("/single-documents", uploadLimiter);
-app.post("/single-documents/:documentId/versions", uploadLimiter);
-app.post("/projects/:projectId/documents", uploadLimiter);
+  app.use(express.json({ limit: "50mb" }));
 
-app.use("/chat", chatRouter);
-app.use("/projects", projectsRouter);
-app.use("/projects/:projectId/chat", projectChatRouter);
-app.use("/single-documents", documentsRouter);
-app.use("/tabular-review", tabularRouter);
-app.use("/workflows", workflowsRouter);
-app.use("/user", userRouter);
-app.use("/users", userRouter);
-app.use("/download", downloadsRouter);
+  if (!isTest) {
+    app.post("/chat", chatLimiter);
+    app.post("/projects/:projectId/chat", chatLimiter);
+    app.post("/tabular-review/:reviewId/chat", chatLimiter);
+    app.post("/tabular-review/:reviewId/generate", chatLimiter);
+    app.post("/chat/create", chatCreateLimiter);
+    app.post("/chat/:chatId/generate-title", chatCreateLimiter);
+    app.post("/single-documents", uploadLimiter);
+    app.post("/single-documents/:documentId/versions", uploadLimiter);
+    app.post("/projects/:projectId/documents", uploadLimiter);
+  }
 
-app.get("/health", (_req, res) => res.json({ ok: true }));
+  app.use("/chat", chatRouter);
+  app.use("/projects", projectsRouter);
+  app.use("/projects/:projectId/chat", projectChatRouter);
+  app.use("/single-documents", documentsRouter);
+  app.use("/tabular-review", tabularRouter);
+  app.use("/workflows", workflowsRouter);
+  app.use("/user", userRouter);
+  app.use("/users", userRouter);
+  app.use("/download", downloadsRouter);
 
-app.listen(PORT, () => {
-  console.log(`Mike backend running on port ${PORT}`);
-});
+  app.get("/health", (_req, res) => res.json({ ok: true }));
+
+  return app;
+}
+
+// Only bind a port when run directly (not when imported by tests).
+if (require.main === module) {
+  createApp().listen(PORT, () => {
+    console.log(`Mike backend running on port ${PORT}`);
+  });
+}
