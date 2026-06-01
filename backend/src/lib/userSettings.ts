@@ -51,3 +51,23 @@ export async function getUserApiKeys(
     const client = db ?? createServerSupabase();
     return getStoredUserApiKeys(userId, client);
 }
+
+/**
+ * The user's free-text practice profile (firm positions, house style,
+ * escalation rules, preferred governing law, …). Injected into the assistant
+ * system prompt so workflows can rely on the user's configured positions
+ * instead of assuming defaults. Returns null when unset.
+ */
+export async function getUserPracticeProfile(
+    userId: string,
+    db?: ReturnType<typeof createServerSupabase>,
+): Promise<string | null> {
+    const client = db ?? createServerSupabase();
+    const { data } = await client
+        .from("user_profiles")
+        .select("practice_profile")
+        .eq("user_id", userId)
+        .maybeSingle();
+    const profile = (data?.practice_profile as string | null) ?? null;
+    return profile && profile.trim() ? profile : null;
+}

@@ -14,6 +14,14 @@ export const userRouter = Router();
 
 const MONTHLY_CREDIT_LIMIT = 999999;
 
+// Single source of truth for the profile columns we select, so the three
+// load paths below can't drift apart.
+const PROFILE_COLUMNS =
+  "display_name, organisation, message_credits_used, credits_reset_date, tier, tabular_model, practice_profile";
+
+// Cap the practice profile so a runaway paste can't blow up the system prompt.
+const MAX_PRACTICE_PROFILE_CHARS = 20000;
+
 type UserProfileRow = {
   display_name: string | null;
   organisation: string | null;
@@ -21,6 +29,7 @@ type UserProfileRow = {
   credits_reset_date: string;
   tier: string;
   tabular_model: string;
+  practice_profile: string | null;
 };
 
 function serializeProfile(
@@ -36,6 +45,7 @@ function serializeProfile(
     creditsRemaining: Math.max(MONTHLY_CREDIT_LIMIT - creditsUsed, 0),
     tier: row.tier || "Free",
     tabularModel: resolveModel(row.tabular_model, DEFAULT_TABULAR_MODEL),
+    practiceProfile: row.practice_profile ?? null,
     ...(apiKeyStatus ? { apiKeyStatus } : {}),
   };
 }
@@ -47,6 +57,7 @@ function validateProfilePayload(body: unknown):
         display_name?: string | null;
         organisation?: string | null;
         tabular_model?: string;
+        practice_profile?: string | null;
         updated_at: string;
       };
     }
@@ -60,6 +71,7 @@ function validateProfilePayload(body: unknown):
     "displayName",
     "organisation",
     "tabularModel",
+    "practiceProfile",
   ]);
   const invalidField = Object.keys(raw).find((key) => !allowedFields.has(key));
   if (invalidField) {
@@ -70,6 +82,7 @@ function validateProfilePayload(body: unknown):
     display_name?: string | null;
     organisation?: string | null;
     tabular_model?: string;
+    practice_profile?: string | null;
     updated_at: string;
   } = { updated_at: new Date().toISOString() };
 
@@ -98,6 +111,25 @@ function validateProfilePayload(body: unknown):
     update.tabular_model = resolved;
   }
 
+  if ("practiceProfile" in raw) {
+    if (raw.practiceProfile !== null && typeof raw.practiceProfile !== "string") {
+      return {
+        ok: false,
+        detail: "practiceProfile must be a string or null",
+      };
+    }
+    if (
+      typeof raw.practiceProfile === "string" &&
+      raw.practiceProfile.length > MAX_PRACTICE_PROFILE_CHARS
+    ) {
+      return {
+        ok: false,
+        detail: `practiceProfile must be ${MAX_PRACTICE_PROFILE_CHARS} characters or fewer`,
+      };
+    }
+    update.practice_profile = raw.practiceProfile?.trim() || null;
+  }
+
   return { ok: true, update };
 }
 
@@ -121,9 +153,7 @@ async function loadProfile(
 ) {
   let { data, error } = await db
     .from("user_profiles")
-    .select(
-      "display_name, organisation, message_credits_used, credits_reset_date, tier, tabular_model",
-    )
+    .select(PROFILE_COLUMNS)
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -138,9 +168,7 @@ async function loadProfile(
 
     const created = await db
       .from("user_profiles")
-      .select(
-        "display_name, organisation, message_credits_used, credits_reset_date, tier, tabular_model",
-      )
+      .select(PROFILE_COLUMNS)
       .eq("user_id", userId)
       .single();
     if (created.error) return { data: null, error: created.error };

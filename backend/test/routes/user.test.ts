@@ -61,6 +61,7 @@ const profileRow = {
   credits_reset_date: "2999-01-01T00:00:00.000Z",
   tier: "Pro",
   tabular_model: "gemini-3-flash-preview",
+  practice_profile: "Our firm prefers English law and a 12-month liability cap.",
 };
 
 let app: ReturnType<typeof createApp>;
@@ -121,6 +122,8 @@ describe("GET /user/profile", () => {
       messageCreditsUsed: 5,
       tier: "Pro",
       tabularModel: "gemini-3-flash-preview",
+      practiceProfile:
+        "Our firm prefers English law and a 12-month liability cap.",
       apiKeyStatus: { claude: false, gemini: false, openai: false },
     });
   });
@@ -167,6 +170,37 @@ describe("PATCH /user/profile", () => {
       .send({ tabularModel: "not-a-real-model" });
     expect(res.status).toBe(400);
     expect(res.body.detail).toMatch(/Unsupported tabularModel/);
+  });
+
+  it("persists the practice profile", async () => {
+    mock.queueMany([
+      { data: null, error: null }, // ensureProfileRow
+      { data: null, error: null }, // update
+      { data: profileRow, error: null }, // loadProfile
+    ]);
+    const res = await request(app)
+      .patch("/user/profile")
+      .send({ practiceProfile: "We escalate any uncapped indemnity to the GC." });
+    expect(res.status).toBe(200);
+    const update = mock.calls.find((c) => c.method === "update");
+    expect(update?.args[0]).toMatchObject({
+      practice_profile: "We escalate any uncapped indemnity to the GC.",
+    });
+  });
+
+  it("rejects a non-string practice profile with 400", async () => {
+    const res = await request(app)
+      .patch("/user/profile")
+      .send({ practiceProfile: 42 });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an oversized practice profile with 400", async () => {
+    const res = await request(app)
+      .patch("/user/profile")
+      .send({ practiceProfile: "x".repeat(20001) });
+    expect(res.status).toBe(400);
+    expect(res.body.detail).toMatch(/characters or fewer/);
   });
 });
 

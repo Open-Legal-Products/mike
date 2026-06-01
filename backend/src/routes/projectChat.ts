@@ -7,11 +7,12 @@ import {
     buildWorkflowStore,
     enrichWithPriorEvents,
     extractAnnotations,
+    formatPracticeProfile,
     runLLMStream,
     PROJECT_EXTRA_TOOLS,
     type ChatMessage,
 } from "../lib/chatTools";
-import { getUserApiKeys } from "../lib/userSettings";
+import { getUserApiKeys, getUserPracticeProfile } from "../lib/userSettings";
 import { checkProjectAccess } from "../lib/access";
 
 const PROJECT_SYSTEM_PROMPT_EXTRA = `PROJECT CONTEXT:
@@ -136,10 +137,17 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         systemPromptExtra += `\n\nUSER-ATTACHED DOCUMENTS FOR THIS TURN:\nThe user has attached the following document(s) directly to their latest message. Treat these as the primary focus of the request unless their message clearly says otherwise.\n${lines.join("\n")}`;
     }
 
+    const practiceProfile = await getUserPracticeProfile(userId, db);
+    const combinedSystemExtra = [
+        systemPromptExtra,
+        formatPracticeProfile(practiceProfile),
+    ]
+        .filter(Boolean)
+        .join("\n\n");
     const apiMessages = buildMessages(
         messagesForLLM,
         docAvailability,
-        systemPromptExtra,
+        combinedSystemExtra,
     );
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);

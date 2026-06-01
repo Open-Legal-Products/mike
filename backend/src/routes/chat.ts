@@ -7,11 +7,16 @@ import {
     enrichWithPriorEvents,
     buildWorkflowStore,
     extractAnnotations,
+    formatPracticeProfile,
     runLLMStream,
     type ChatMessage,
 } from "../lib/chatTools";
 import { completeText } from "../lib/llm";
-import { getUserApiKeys, getUserModelSettings } from "../lib/userSettings";
+import {
+    getUserApiKeys,
+    getUserModelSettings,
+    getUserPracticeProfile,
+} from "../lib/userSettings";
 import { checkProjectAccess } from "../lib/access";
 
 export const chatRouter = Router();
@@ -538,7 +543,12 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         db,
         docIndex,
     );
-    const apiMessages = buildMessages(enrichedMessages, docAvailability);
+    const practiceProfile = await getUserPracticeProfile(userId, db);
+    const apiMessages = buildMessages(
+        enrichedMessages,
+        docAvailability,
+        formatPracticeProfile(practiceProfile),
+    );
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
 

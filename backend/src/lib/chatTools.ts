@@ -632,6 +632,25 @@ export async function enrichWithPriorEvents(
     return enriched;
 }
 
+/**
+ * Wrap the user's practice profile in a clearly-delimited system-prompt block.
+ * Returns an empty string when no profile is set, so callers can splice the
+ * result into `systemPromptExtra` unconditionally.
+ */
+export function formatPracticeProfile(profile?: string | null): string {
+    if (!profile || !profile.trim()) return "";
+    return (
+        "USER PRACTICE PROFILE:\n" +
+        "The user has configured the practice profile below. Treat it as authoritative " +
+        "for their firm's positions, house style, escalation rules, preferred governing " +
+        "law, and review preferences. When a workflow or task references a playbook, firm " +
+        "position, escalation matrix, or house style, use the values from this profile. If " +
+        "a value the task needs is not present here, ask the user rather than assuming a " +
+        "default.\n\n" +
+        profile.trim()
+    );
+}
+
 export function buildMessages(
     messages: ChatMessage[],
     docAvailability: {
