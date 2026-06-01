@@ -12,13 +12,21 @@ import { deleteAccount } from "@/app/lib/mikeApi";
 export default function AccountPage() {
     const router = useRouter();
     const { user, signOut } = useAuth();
-    const { profile, updateDisplayName, updateOrganisation } = useUserProfile();
+    const {
+        profile,
+        updateDisplayName,
+        updateOrganisation,
+        updatePracticeProfile,
+    } = useUserProfile();
     const [displayName, setDisplayName] = useState("");
     const [isSavingName, setIsSavingName] = useState(false);
     const [saved, setSaved] = useState(false);
     const [organisation, setOrganisation] = useState("");
     const [isSavingOrg, setIsSavingOrg] = useState(false);
     const [orgSaved, setOrgSaved] = useState(false);
+    const [practiceProfile, setPracticeProfile] = useState("");
+    const [isSavingPractice, setIsSavingPractice] = useState(false);
+    const [practiceSaved, setPracticeSaved] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
@@ -29,6 +37,7 @@ export default function AccountPage() {
         if (profile?.organisation) {
             setOrganisation(profile.organisation);
         }
+        setPracticeProfile(profile?.practiceProfile ?? "");
     }, [profile]);
 
     const handleLogout = async () => {
@@ -72,6 +81,19 @@ export default function AccountPage() {
             setTimeout(() => setOrgSaved(false), 2000);
         } else {
             alert("Failed to update organisation. Please try again.");
+        }
+    };
+
+    const handleSavePracticeProfile = async () => {
+        setIsSavingPractice(true);
+        const success = await updatePracticeProfile(practiceProfile);
+        setIsSavingPractice(false);
+
+        if (success) {
+            setPracticeSaved(true);
+            setTimeout(() => setPracticeSaved(false), 2000);
+        } else {
+            alert("Failed to update practice profile. Please try again.");
         }
     };
 
@@ -160,6 +182,58 @@ export default function AccountPage() {
                         </label>
                         <p className="text-base">{user?.email}</p>
                     </div>
+                </div>
+            </div>
+
+            {/* Practice Profile */}
+            <div className="py-6">
+                <div className="flex items-center gap-2 mb-1">
+                    <h2 className="text-2xl font-medium font-serif">
+                        Practice Profile
+                    </h2>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                    A plain-English playbook the assistant reads on every chat:
+                    your firm&apos;s positions, house style, escalation rules,
+                    preferred governing law, and review preferences. Workflows
+                    use these instead of assuming defaults; anything you leave
+                    out, the assistant will ask about.
+                </p>
+                <textarea
+                    value={practiceProfile}
+                    onChange={(e) => setPracticeProfile(e.target.value)}
+                    placeholder={
+                        "e.g. We act sales-side. Liability cap: 12 months' fees; never accept uncapped indemnities — escalate to the GC.\nPreferred governing law: England & Wales. House style: surgical redlines, no wholesale rewrites."
+                    }
+                    rows={10}
+                    maxLength={20000}
+                    className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
+                />
+                <div className="flex items-center justify-between mt-2">
+                    <span className="text-xs text-gray-400">
+                        {practiceProfile.length.toLocaleString()} / 20,000
+                    </span>
+                    <Button
+                        onClick={handleSavePracticeProfile}
+                        disabled={
+                            isSavingPractice ||
+                            practiceProfile.trim() ===
+                                (profile?.practiceProfile ?? "").trim() ||
+                            practiceSaved
+                        }
+                        className="min-w-[80px] transition-all bg-black hover:bg-gray-900 text-white"
+                    >
+                        {isSavingPractice ? (
+                            "Saving..."
+                        ) : practiceSaved ? (
+                            <>
+                                <Check className="h-4 w-3" />
+                                Saved
+                            </>
+                        ) : (
+                            "Save"
+                        )}
+                    </Button>
                 </div>
             </div>
 

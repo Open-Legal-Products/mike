@@ -26,6 +26,7 @@ interface UserProfile {
     creditsRemaining: number;
     tier: string;
     tabularModel: string;
+    practiceProfile: string | null;
     apiKeys: ApiKeyState;
 }
 
@@ -34,6 +35,7 @@ interface UserProfileContextType {
     loading: boolean;
     updateDisplayName: (name: string) => Promise<boolean>;
     updateOrganisation: (organisation: string) => Promise<boolean>;
+    updatePracticeProfile: (value: string) => Promise<boolean>;
     updateModelPreference: (
         field: "tabularModel",
         value: string,
@@ -101,6 +103,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 creditsRemaining: 999999, // temporarily unlimited
                 tier: "Free",
                 tabularModel: "gemini-3-flash-preview",
+                practiceProfile: null,
                 apiKeys: emptyApiKeys(),
             });
         } finally {
@@ -142,6 +145,26 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
             if (!user) return false;
             try {
                 const updated = await updateUserProfile({ organisation });
+                setProfile((prev) =>
+                    prev ? { ...prev, ...toProfile(updated) } : null,
+                );
+                return true;
+            } catch {
+                return false;
+            }
+        },
+        [user],
+    );
+
+    const updatePracticeProfile = useCallback(
+        async (practiceProfile: string): Promise<boolean> => {
+            if (!user) return false;
+            try {
+                const updated = await updateUserProfile({
+                    practiceProfile: practiceProfile.trim()
+                        ? practiceProfile
+                        : null,
+                });
                 setProfile((prev) =>
                     prev ? { ...prev, ...toProfile(updated) } : null,
                 );
@@ -229,6 +252,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 loading,
                 updateDisplayName,
                 updateOrganisation,
+                updatePracticeProfile,
                 updateModelPreference,
                 updateApiKey,
                 reloadProfile,
