@@ -8,8 +8,11 @@ import { LogOut, Check } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { deleteAccount } from "@/app/lib/mikeApi";
+import { useTranslations } from "next-intl";
+import { LanguageSwitcher } from "@/app/components/shared/LanguageSwitcher";
 
 export default function AccountPage() {
+    const t = useTranslations("Account.AccountPage");
     const router = useRouter();
     const { user, signOut } = useAuth();
     const { profile, updateDisplayName, updateOrganisation } = useUserProfile();
@@ -45,7 +48,7 @@ export default function AccountPage() {
         } catch {
             setIsDeleting(false);
             setDeleteConfirm(false);
-            alert("Failed to delete account. Please try again.");
+            alert(t("errorDeleteAccount"));
         }
     };
 
@@ -58,7 +61,7 @@ export default function AccountPage() {
             setSaved(true);
             setTimeout(() => setSaved(false), 2000);
         } else {
-            alert("Failed to update display name. Please try again.");
+            alert(t("errorUpdateDisplayName"));
         }
     };
 
@@ -71,7 +74,7 @@ export default function AccountPage() {
             setOrgSaved(true);
             setTimeout(() => setOrgSaved(false), 2000);
         } else {
-            alert("Failed to update organisation. Please try again.");
+            alert(t("errorUpdateOrganisation"));
         }
     };
 
@@ -82,19 +85,19 @@ export default function AccountPage() {
             {/* Profile Settings */}
             <div className="pb-6">
                 <div className="flex items-center gap-2 mb-4">
-                    <h2 className="text-2xl font-medium font-serif">Profile</h2>
+                    <h2 className="text-2xl font-medium font-serif">{t("profileSectionTitle")}</h2>
                 </div>
                 <div className="space-y-4">
                     <div>
                         <label className="text-sm text-gray-600 block mb-2">
-                            Display Name
+                            {t("displayNameLabel")}
                         </label>
                         <div className="flex gap-2">
                             <Input
                                 type="text"
                                 value={displayName}
                                 onChange={(e) => setDisplayName(e.target.value)}
-                                placeholder="Enter your name"
+                                placeholder={t("displayNamePlaceholder")}
                                 className="flex-1"
                             />
                             <Button
@@ -105,21 +108,21 @@ export default function AccountPage() {
                                 className="min-w-[80px] transition-all bg-black hover:bg-gray-900 text-white"
                             >
                                 {isSavingName ? (
-                                    "Saving..."
+                                    t("buttonSaving")
                                 ) : saved ? (
                                     <>
                                         <Check className="h-4 w-3" />
-                                        Saved
+                                        {t("buttonSaved")}
                                     </>
                                 ) : (
-                                    "Save"
+                                    t("buttonSave")
                                 )}
                             </Button>
                         </div>
                     </div>
                     <div>
                         <label className="text-sm text-gray-600 block mb-2">
-                            Organisation
+                            {t("organisationLabel")}
                         </label>
                         <div className="flex gap-2">
                             <Input
@@ -128,7 +131,7 @@ export default function AccountPage() {
                                 onChange={(e) =>
                                     setOrganisation(e.target.value)
                                 }
-                                placeholder="Enter your organisation"
+                                placeholder={t("organisationPlaceholder")}
                                 className="flex-1"
                             />
                             <Button
@@ -142,21 +145,21 @@ export default function AccountPage() {
                                 className="min-w-[80px] transition-all bg-black hover:bg-gray-900 text-white"
                             >
                                 {isSavingOrg ? (
-                                    "Saving..."
+                                    t("buttonSaving")
                                 ) : orgSaved ? (
                                     <>
                                         <Check className="h-4 w-3" />
-                                        Saved
+                                        {t("buttonSaved")}
                                     </>
                                 ) : (
-                                    "Save"
+                                    t("buttonSave")
                                 )}
                             </Button>
                         </div>
                     </div>
                     <div>
                         <label className="text-sm text-gray-600 block mb-2">
-                            Email
+                            {t("emailLabel")}
                         </label>
                         <p className="text-base">{user?.email}</p>
                     </div>
@@ -167,7 +170,7 @@ export default function AccountPage() {
             <div className="py-6">
                 <div className="flex items-center gap-2 mb-4">
                     <h2 className="text-2xl font-medium font-serif">
-                        Usage Plan
+                        {t("planSectionTitle")}
                     </h2>
                 </div>
                 <div>
@@ -180,7 +183,7 @@ export default function AccountPage() {
             {/* Actions */}
             <div className="py-6">
                 <h2 className="text-2xl font-medium font-serif mb-4">
-                    Actions
+                    {t("actionsSectionTitle")}
                 </h2>
                 <Button
                     variant="outline"
@@ -188,24 +191,30 @@ export default function AccountPage() {
                     className="w-full sm:w-auto"
                 >
                     <LogOut className="h-4 w-4 mr-2" />
-                    Sign Out
+                    {t("signOut")}
                 </Button>
+            </div>
+
+            {/* Language */}
+            <div className="py-6">
+                <h2 className="text-2xl font-medium font-serif mb-4">
+                    {t("languageSectionTitle")}
+                </h2>
+                <LanguageSwitcher />
             </div>
 
             {/* Danger Zone */}
             <div className="py-6">
                 <h2 className="text-2xl font-medium font-serif mb-1 text-red-600">
-                    Danger Zone
+                    {t("dangerZoneSectionTitle")}
                 </h2>
                 <p className="text-sm text-gray-500 mb-4">
-                    Permanently delete your account and all associated data.
-                    This action cannot be undone.
+                    {t("dangerZoneDescription")}
                 </p>
                 {deleteConfirm ? (
                     <div className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-3 max-w-sm">
                         <p className="text-sm font-medium text-red-700">
-                            Are you sure? This will permanently delete your
-                            account.
+                            {t("deleteConfirmPrompt")}
                         </p>
                         <div className="flex gap-2">
                             <Button
@@ -214,14 +223,14 @@ export default function AccountPage() {
                                 disabled={isDeleting}
                                 className="text-sm"
                             >
-                                Cancel
+                                {t("deleteCancel")}
                             </Button>
                             <Button
                                 onClick={handleDeleteAccount}
                                 disabled={isDeleting}
                                 className="text-sm bg-red-600 hover:bg-red-700 text-white"
                             >
-                                {isDeleting ? "Deleting…" : "Delete Account"}
+                                {isDeleting ? t("deleteButtonLoading") : t("deleteButton")}
                             </Button>
                         </div>
                     </div>
@@ -231,7 +240,7 @@ export default function AccountPage() {
                         onClick={() => setDeleteConfirm(true)}
                         className="w-full sm:w-auto border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
                     >
-                        Delete Account
+                        {t("deleteButton")}
                     </Button>
                 )}
             </div>

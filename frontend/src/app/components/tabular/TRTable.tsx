@@ -1,6 +1,7 @@
 "use client";
 
 import { forwardRef, useImperativeHandle, useRef } from "react";
+import { useTranslations } from "next-intl";
 import { Loader2, Plus, Table2, Upload } from "lucide-react";
 import type { ColumnConfig, MikeDocument, TabularCell } from "../shared/types";
 import { TabularCell as TabularCellComponent } from "./TabularCell";
@@ -64,6 +65,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
     },
     ref,
 ) {
+    const t = useTranslations("Tabular.TRTable");
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const sortedColumns = [...columns].sort((a, b) => a.index - b.index);
     const totalContentWidth =
@@ -135,7 +137,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                     <div
                         className={`${COL_W} border-r border-gray-200 p-2 text-xs font-medium text-gray-500`}
                     >
-                        Document
+                        {t("documentColumn")}
                     </div>
                     {Array.from({ length: SKELETON_COLS }).map((_, i) => (
                         <div
@@ -181,7 +183,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                     <div
                         className={`${COL_W} border-r border-gray-200 p-2 text-xs font-medium text-gray-500 select-none`}
                     >
-                        Document
+                        {t("documentColumn")}
                     </div>
                     <div className="flex-1" />
                 </div>
@@ -192,24 +194,24 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                     <div className="flex flex-1 flex-col items-start justify-center w-full max-w-xs mx-auto">
                         <Table2 className="h-8 w-8 text-gray-300 mb-4" />
                         <p className="text-2xl font-medium font-serif text-gray-900">
-                            Tabular Review
+                            {t("emptyTitle")}
                         </p>
                         <p className="mt-1 text-xs text-gray-400 text-left">
-                            Add columns and documents to get started.
+                            {t("emptySubtitle")}
                         </p>
                         <div className="mt-4 flex items-center gap-2">
                             <button
                                 onClick={onAddColumn}
                                 className="inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-700 shadow-md"
                             >
-                                + Add Columns
+                                {t("addColumns")}
                             </button>
                             <button
                                 onClick={onAddDocuments}
                                 className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors shadow-sm"
                             >
                                 <Upload className="h-3.5 w-3.5" />
-                                Add Documents
+                                {t("addDocuments")}
                             </button>
                         </div>
                     </div>

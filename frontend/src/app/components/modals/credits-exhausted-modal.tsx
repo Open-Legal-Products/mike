@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import { createPortal } from "react-dom";
+import { useTranslations } from "next-intl";
 
 interface CreditsExhaustedModalProps {
     isOpen: boolean;
@@ -12,6 +13,7 @@ export function CreditsExhaustedModal({
     onClose,
     resetDate,
 }: CreditsExhaustedModalProps) {
+    const t = useTranslations("Modals.CreditsExhaustedModal");
     if (!isOpen) return null;
 
     // Format the reset date
@@ -38,20 +40,19 @@ export function CreditsExhaustedModal({
                     {/* Header */}
                     <div className="flex items-start justify-between mb-4">
                         <h2 className="text-3xl font-light font-eb-garamond text-gray-900">
-                            Message Limit Reached
+                            {t("title")}
                         </h2>
                     </div>
 
                     {/* Content */}
                     <div className="space-y-4">
                         <p className="text-gray-600">
-                            You've reached your monthly message limit of 100
-                            messages.
+                            {t("limitReached")}
                         </p>
 
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                             <p className="text-sm text-blue-900 font-medium mb-1">
-                                Your credits will reset on:
+                                {t("resetLabel")}
                             </p>
                             <p className="text-lg font-semibold text-blue-700">
                                 {formatResetDate(resetDate)}
@@ -59,8 +60,7 @@ export function CreditsExhaustedModal({
                         </div>
 
                         <p className="text-sm text-gray-500">
-                            Your message credits automatically reset on the
-                            first day of each month.
+                            {t("autoResetNote")}
                         </p>
                     </div>
 
@@ -70,7 +70,7 @@ export function CreditsExhaustedModal({
                             onClick={onClose}
                             className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
                         >
-                            Close
+                            {t("close")}
                         </button>
                     </div>
                 </div>

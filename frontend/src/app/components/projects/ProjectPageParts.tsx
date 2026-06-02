@@ -10,6 +10,7 @@ import {
     Plus,
     Users,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { HeaderSearchBtn } from "@/app/components/shared/HeaderSearchBtn";
 import { RenameableTitle } from "@/app/components/shared/RenameableTitle";
 import type { MikeProject } from "@/app/components/shared/types";
@@ -101,6 +102,7 @@ export function DocVersionHistory({
         displayName: string | null,
     ) => Promise<void> | void;
 }) {
+    const t = useTranslations("Projects.ProjectPageParts");
     const [editingVersionId, setEditingVersionId] = useState<string | null>(
         null,
     );
@@ -126,7 +128,7 @@ export function DocVersionHistory({
                 >
                     <div className="flex items-center gap-2">
                         <Loader2 className="h-3 w-3 animate-spin text-gray-400" />
-                        <span>Loading versions…</span>
+                        <span>{t("loadingVersions")}</span>
                     </div>
                 </div>
             </div>
@@ -144,7 +146,7 @@ export function DocVersionHistory({
                     className={`sticky left-8 z-[60] ${DOC_NAME_COL_W} bg-gray-50/60 p-2`}
                     style={treeNameCellStyle(depth)}
                 >
-                    <div>No version history.</div>
+                    <div>{t("noVersionHistory")}</div>
                 </div>
             </div>
         );
@@ -159,7 +161,7 @@ export function DocVersionHistory({
                     v.version_number >= 1
                         ? `${v.version_number}`
                         : v.source === "upload"
-                          ? "Original"
+                          ? t("versionOriginal")
                           : "—";
                 const displayLabel = v.display_name?.trim() || numberLabel;
                 const dt = new Date(v.created_at);
@@ -228,7 +230,7 @@ export function DocVersionHistory({
                                                 v.display_name ?? "",
                                             );
                                         }}
-                                        title="Rename version"
+                                        title={t("renameVersion")}
                                         className="shrink-0 rounded p-0.5 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-gray-700 hover:bg-gray-200 transition"
                                     >
                                         <Pencil className="h-3 w-3" />
@@ -356,6 +358,7 @@ export function ProjectPageHeader({
     onNewChat: () => void;
     onNewReview: () => void;
 }) {
+    const t = useTranslations("Projects.ProjectPageParts");
     return (
         <div className="mb-1 flex items-start justify-between px-4 py-3 md:px-10">
             <div>
@@ -364,7 +367,7 @@ export function ProjectPageHeader({
                         onClick={onBackToProjects}
                         className="text-gray-400 hover:text-gray-600 transition-colors"
                     >
-                        Projects
+                        {t("breadcrumbProjects")}
                     </button>
                     <span className="text-gray-300">›</span>
                     {tab !== "documents" ? (
@@ -397,8 +400,8 @@ export function ProjectPageHeader({
                             <span className="text-gray-300">›</span>
                             <span className="text-gray-900">
                                 {tab === "assistant"
-                                    ? "Assistant"
-                                    : "Tabular Reviews"}
+                                    ? t("tabAssistant")
+                                    : t("tabTabularReviews")}
                             </span>
                         </>
                     )}
@@ -408,13 +411,13 @@ export function ProjectPageHeader({
                 <HeaderSearchBtn
                     value={search}
                     onChange={onSearchChange}
-                    placeholder="Search…"
+                    placeholder={t("searchPlaceholder")}
                 />
                 <button
                     onClick={onOpenPeople}
                     className="flex h-8 w-8 items-center justify-center text-sm text-gray-500 transition-colors hover:text-gray-900 cursor-pointer"
-                    title="People with access"
-                    aria-label="People with access"
+                    title={t("peopleWithAccess")}
+                    aria-label={t("peopleWithAccess")}
                 >
                     <Users className="h-4 w-4" />
                 </button>
@@ -432,7 +435,7 @@ export function ProjectPageHeader({
                         ) : (
                             <Plus className="h-4 w-4" />
                         )}
-                        Chat
+                        {t("chatButton")}
                     </button>
                 </div>
                 <div className="relative group">
@@ -451,11 +454,11 @@ export function ProjectPageHeader({
                         ) : (
                             <Plus className="h-4 w-4" />
                         )}
-                        Tabular Review
+                        {t("tabularReviewButton")}
                     </button>
                     {docsCount === 0 && (
                         <div className="pointer-events-none absolute right-0 top-full mt-1.5 z-10 hidden group-hover:flex items-center whitespace-nowrap rounded-lg bg-gray-900 px-2.5 py-1.5 text-xs text-white shadow-lg">
-                            Upload a document first
+                            {t("uploadDocumentFirst")}
                         </div>
                     )}
                 </div>

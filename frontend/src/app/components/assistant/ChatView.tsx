@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState, useRef, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { ArrowDown } from "lucide-react";
 import { UserMessage } from "./UserMessage";
 import { AssistantMessage } from "./AssistantMessage";
@@ -31,6 +32,7 @@ export function ChatView({
     handleChat,
     cancel,
 }: Props) {
+    const t = useTranslations("Assistant.ChatView");
     const [tabs, setTabs] = useState<AssistantSidePanelTab[]>([]);
     const [activeTabId, setActiveTabId] = useState<string | null>(null);
     const [panelMounted, setPanelMounted] = useState(false);
@@ -582,8 +584,7 @@ export function ChatView({
                             />
                             <div className="py-3 text-center">
                                 <p className="text-xs text-gray-500">
-                                    AI can make mistakes. Answers are not legal
-                                    advice.
+                                    {t("disclaimer")}
                                 </p>
                             </div>
                         </div>

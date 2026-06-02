@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 interface Props {
     value: string;
@@ -9,7 +10,9 @@ interface Props {
     placeholder?: string;
 }
 
-export function HeaderSearchBtn({ value, onChange, placeholder = "Search…" }: Props) {
+export function HeaderSearchBtn({ value, onChange, placeholder }: Props) {
+    const t = useTranslations("Shared.HeaderSearchBtn");
+    const resolvedPlaceholder = placeholder ?? t("searchPlaceholder");
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
 
@@ -32,7 +35,7 @@ export function HeaderSearchBtn({ value, onChange, placeholder = "Search…" }: 
                     <input
                         autoFocus
                         type="text"
-                        placeholder={placeholder}
+                        placeholder={resolvedPlaceholder}
                         value={value}
                         onChange={(e) => onChange(e.target.value)}
                         className="flex-1 text-sm text-gray-700 placeholder:text-gray-400 outline-none bg-transparent"

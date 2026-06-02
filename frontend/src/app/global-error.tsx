@@ -1,6 +1,26 @@
 "use client";
 
 import { useEffect } from "react";
+import { NextIntlClientProvider, useTranslations } from "next-intl";
+import enMessages from "../../messages/en.json";
+import { defaultLocale } from "@/i18n/config";
+
+function GlobalErrorContent() {
+    const t = useTranslations("GlobalError");
+
+    return (
+        <div className="error-container">
+            <h1 className="error-title">{t("title")}</h1>
+            <p className="error-message">{t("description")}</p>
+            <button
+                className="btn-back"
+                onClick={() => window.history.back()}
+            >
+                {t("back")}
+            </button>
+        </div>
+    );
+}
 
 export default function GlobalError({
     error,
@@ -11,10 +31,14 @@ export default function GlobalError({
         console.error("Global error:", error);
     }, [error]);
 
+    // global-error replaces the root layout (and thus the app-level
+    // NextIntlClientProvider), so it must supply its own i18n context. As a
+    // Client Component it can't read the locale cookie on the server, so it
+    // falls back to the default locale's catalog.
     return (
-        <html lang="en">
+        <html lang={defaultLocale}>
             <head>
-                <title>Something went wrong – Mike</title>
+                <title>{`${enMessages.GlobalError.title} – Mike`}</title>
                 <style>{`
                     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=EB+Garamond:wght@400;500&display=swap');
                     
@@ -78,19 +102,12 @@ export default function GlobalError({
                 `}</style>
             </head>
             <body>
-                <div className="error-container">
-                    <h1 className="error-title">Something went wrong</h1>
-                    <p className="error-message">
-                        We encountered an unexpected error. This has been logged
-                        and our team will look into it.
-                    </p>
-                    <button
-                        className="btn-back"
-                        onClick={() => window.history.back()}
-                    >
-                        Back
-                    </button>
-                </div>
+                <NextIntlClientProvider
+                    locale={defaultLocale}
+                    messages={enMessages}
+                >
+                    <GlobalErrorContent />
+                </NextIntlClientProvider>
             </body>
         </html>
     );

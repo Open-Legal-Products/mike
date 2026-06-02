@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Check } from "lucide-react";
 import { QuoteIcon } from "@radix-ui/react-icons";
+import { useTranslations } from "next-intl";
 
 interface CiteButtonProps {
     quoteText: string;
@@ -19,6 +20,7 @@ export function CiteButton({
     iconSize = 12,
     textClassName = "text-[10px] font-medium",
 }: CiteButtonProps) {
+    const t = useTranslations("Common.CiteButton");
     const [isCopied, setIsCopied] = useState(false);
 
     const handleClick = async (e: React.MouseEvent) => {
@@ -41,7 +43,7 @@ export function CiteButton({
         <button
             onClick={handleClick}
             className={`transition-colors flex items-center gap-1 ${className}`}
-            title="Copy Quote and Citation"
+            title={t("copyTitle")}
         >
             {isCopied ? (
                 <Check
@@ -59,7 +61,7 @@ export function CiteButton({
                             : textClassName
                     }
                 >
-                    {isCopied ? "Copied" : "Cite"}
+                    {isCopied ? t("copied") : t("cite")}
                 </span>
             )}
         </button>

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 export function PreResponseWrapper({
     children,
@@ -17,6 +18,7 @@ export function PreResponseWrapper({
     /** Tighter typography + child gap for narrow side panels (e.g. TR chat). */
     compact?: boolean;
 }) {
+    const t = useTranslations("Shared.PreResponseWrapper");
     const [userToggled, setUserToggled] = useState(false);
     const [isOpen, setIsOpen] = useState(!shouldMinimize);
     // Once content has streamed in (shouldMinimize=true even once), stay
@@ -31,10 +33,9 @@ export function PreResponseWrapper({
         setIsOpen(!shouldMinimize && !hasMinimizedRef.current);
     }, [shouldMinimize, userToggled]);
 
-    const stepWord = `step${stepCount === 1 ? "" : "s"}`;
     const label = isStreaming
-        ? "Working"
-        : `Completed in ${stepCount} ${stepWord}`;
+        ? t("working")
+        : t("completed", { count: stepCount });
 
     const buttonTextClass = compact ? "text-xs" : "text-sm";
     const childrenGapClass = compact ? "gap-2.5" : "gap-4";

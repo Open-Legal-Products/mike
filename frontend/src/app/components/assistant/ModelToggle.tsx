@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { ChevronDown, Check, AlertCircle } from "lucide-react";
 import {
     DropdownMenu,
@@ -41,6 +42,7 @@ interface Props {
 }
 
 export function ModelToggle({ value, onChange, apiKeys }: Props) {
+    const t = useTranslations("Assistant.ModelToggle");
     const [isOpen, setIsOpen] = useState(false);
     const selected = MODELS.find((m) => m.id === value);
     const selectedLabel = selected?.label ?? "Model";
@@ -56,8 +58,8 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                     className={`flex items-center gap-1.5 rounded-lg px-2 h-8 text-sm transition-colors cursor-pointer text-gray-400 hover:bg-gray-100 hover:text-gray-700 ${isOpen ? "bg-gray-100 text-gray-700" : ""}`}
                     title={
                         !selectedAvailable
-                            ? "API key missing for selected model"
-                            : "Choose model"
+                            ? t("titleApiKeyMissing")
+                            : t("titleChooseModel")
                     }
                 >
                     {!selectedAvailable && (
@@ -97,7 +99,7 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                                         {!available && (
                                             <AlertCircle
                                                 className="h-3.5 w-3.5 text-red-500 ml-1"
-                                                aria-label="API key missing"
+                                                aria-label={t("ariaApiKeyMissing")}
                                             />
                                         )}
                                         {m.id === value && available && (

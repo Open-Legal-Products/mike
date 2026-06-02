@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, Loader2, Search, Upload, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { getProject, uploadProjectDocument } from "@/app/lib/mikeApi";
 import type { MikeDocument } from "./types";
 import { DocFileIcon } from "./FileDirectory";
@@ -37,6 +38,7 @@ export function AddProjectDocsModal({
     excludeDocIds,
     allowMultiple = true,
 }: Props) {
+    const t = useTranslations("Documents.AddProjectDocsModal");
     const [docs, setDocs] = useState<MikeDocument[]>([]);
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState("");
@@ -145,7 +147,7 @@ export function AddProjectDocsModal({
                         <Search className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                         <input
                             type="text"
-                            placeholder="Search…"
+                            placeholder={t("searchPlaceholder")}
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             className="flex-1 bg-transparent text-sm text-gray-700 placeholder:text-gray-400 outline-none"
@@ -182,7 +184,7 @@ export function AddProjectDocsModal({
                         </div>
                     ) : filtered.length === 0 ? (
                         <p className="text-center text-sm text-gray-400 py-8">
-                            {q ? "No matches found" : "No documents in this project"}
+                            {q ? t("noMatchesFound") : t("noDocumentsInProject")}
                         </p>
                     ) : (
                         <div className="rounded-sm border border-gray-100 overflow-hidden">
@@ -229,7 +231,7 @@ export function AddProjectDocsModal({
                                         </span>
                                         {excluded && (
                                             <span className="text-[10px] text-gray-400 shrink-0">
-                                                Already added
+                                                {t("alreadyAdded")}
                                             </span>
                                         )}
                                         <VersionChip
@@ -268,27 +270,27 @@ export function AddProjectDocsModal({
                             ) : (
                                 <Upload className="h-3.5 w-3.5" />
                             )}
-                            {uploading ? "Uploading…" : "Upload"}
+                            {uploading ? t("uploading") : t("upload")}
                         </button>
                     </div>
                     <div className="flex items-center gap-2">
                         {selectedIds.size > 0 && (
                             <span className="text-xs text-gray-400">
-                                {selectedIds.size} selected
+                                {t("selected", { count: selectedIds.size })}
                             </span>
                         )}
                         <button
                             onClick={onClose}
                             className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100"
                         >
-                            Cancel
+                            {t("cancel")}
                         </button>
                         <button
                             onClick={handleConfirm}
                             disabled={selectedIds.size === 0 || uploading}
                             className="rounded-lg bg-gray-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-40"
                         >
-                            Confirm
+                            {t("confirm")}
                         </button>
                     </div>
                 </div>

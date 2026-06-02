@@ -23,6 +23,7 @@ import { AssistantWorkflowModal } from "./AssistantWorkflowModal";
 import { ApiKeyMissingModal } from "../shared/ApiKeyMissingModal";
 import { ModelToggle } from "./ModelToggle";
 import { useSelectedModel } from "@/app/hooks/useSelectedModel";
+import { useTranslations } from "next-intl";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import {
     getModelProvider,
@@ -59,6 +60,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
     }: Props,
     ref,
 ) {
+    const t = useTranslations("Assistant.ChatInput");
     const [value, setValue] = useState("");
     const [attachedDocs, setAttachedDocs] = useState<MikeDocument[]>([]);
     const [selectedWorkflow, setSelectedWorkflow] = useState<{
@@ -218,7 +220,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                         <textarea
                             ref={textareaRef}
                             rows={1}
-                            placeholder="Ask a question about your documents..."
+                            placeholder={t("placeholder")}
                             value={value}
                             onChange={handleChange}
                             onKeyDown={handleKeyDown}
@@ -242,7 +244,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                                 <button
                                     type="button"
                                     onClick={() => setWorkflowModalOpen(true)}
-                                    aria-label="Open workflows"
+                                    aria-label={t("openWorkflows")}
                                     className={`flex items-center gap-1.5 rounded-lg px-2 h-8 text-sm transition-colors ${selectedWorkflow ? "text-blue-600 hover:bg-blue-50" : "text-gray-400 hover:bg-gray-100 hover:text-gray-700"}`}
                                 >
                                     {selectedWorkflow ? (
@@ -251,7 +253,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                                         <Library className="h-3.5 w-3.5" />
                                     )}
                                     <span className="hidden sm:inline">
-                                        Workflows
+                                        {t("workflows")}
                                     </span>
                                 </button>
                             )}
@@ -259,12 +261,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                                 <button
                                     type="button"
                                     onClick={onProjectsClick}
-                                    aria-label="Open projects"
+                                    aria-label={t("openProjects")}
                                     className="flex items-center gap-1.5 rounded-lg px-2 h-8 text-sm text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
                                 >
                                     <FolderOpen className="h-3.5 w-3.5" />
                                     <span className="hidden sm:inline">
-                                        Projects
+                                        {t("projects")}
                                     </span>
                                 </button>
                             )}

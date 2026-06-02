@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { supabase } from "@/lib/supabase";
 import { applyOptimisticResolution } from "../assistant/EditCard";
 import { DocView } from "./DocView";
@@ -199,12 +200,13 @@ function CitationHeader({
     filename: string;
     isReloading: boolean;
 }) {
+    const t = useTranslations("Documents.DocPanel");
     const displayQuote = displayCitationQuote(citation);
     const pagesLabel = formatCitationPage(citation);
     return (
         <div className="pt-2 pb-3">
             <div className="flex items-center gap-2 mb-2">
-                <SectionLabel>Citation</SectionLabel>
+                <SectionLabel>{t("citation")}</SectionLabel>
                 <div className="ml-auto shrink-0">
                     <DownloadButton
                         documentId={documentId}
@@ -241,11 +243,12 @@ function TrackedChangeHeader({
     filename: string;
     isReloading: boolean;
 }) {
+    const t = useTranslations("Documents.DocPanel");
     const { edit, isEditReloading, onResolveStart, onResolved, onError } = mode;
     return (
         <div className="pt-2 pb-3">
             <div className="flex items-center gap-2 mb-2">
-                <SectionLabel>Tracked Change</SectionLabel>
+                <SectionLabel>{t("trackedChange")}</SectionLabel>
                 <div className="ml-auto flex items-center gap-2 shrink-0">
                     <EditResolveButtons
                         edit={edit}
@@ -321,6 +324,7 @@ function EditResolveButtons({
         message: string;
     }) => void;
 }) {
+    const t = useTranslations("Documents.DocPanel");
     const [busy, setBusy] = useState(false);
     const [status, setStatus] = useState<"pending" | "accepted" | "rejected">(
         edit.status,
@@ -405,8 +409,8 @@ function EditResolveButtons({
                     versionId: edit.version_id ?? null,
                     message:
                         verb === "accept"
-                            ? "Couldn't save accept — please retry."
-                            : "Couldn't save reject — please retry.",
+                            ? t("errorAccept")
+                            : t("errorReject"),
                 });
             } finally {
                 setBusy(false);
@@ -423,14 +427,14 @@ function EditResolveButtons({
                 disabled={inFlight || resolved}
                 className="inline-flex items-center gap-1 rounded-lg border border-gray-900 bg-gray-900 px-2 py-1.5 text-xs font-medium text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-                {status === "accepted" ? "Accepted" : "Accept"}
+                {status === "accepted" ? t("accepted") : t("accept")}
             </button>
             <button
                 onClick={() => handle("reject")}
                 disabled={inFlight || resolved}
                 className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-                {status === "rejected" ? "Rejected" : "Reject"}
+                {status === "rejected" ? t("rejected") : t("reject")}
             </button>
         </div>
     );
@@ -451,6 +455,7 @@ function DownloadButton({
     filename: string;
     isReloading?: boolean;
 }) {
+    const t = useTranslations("Documents.DocPanel");
     const [busy, setBusy] = useState(false);
 
     const handleClick = async () => {
@@ -499,7 +504,7 @@ function DownloadButton({
             ) : (
                 <Download className="h-3.5 w-3.5" />
             )}
-            Download
+            {t("download")}
         </button>
     );
 }

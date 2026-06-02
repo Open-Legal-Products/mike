@@ -9,6 +9,7 @@ import {
     useRef,
     useState,
 } from "react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import {
     ChevronLeft,
@@ -92,6 +93,7 @@ const CHAT_MIN = 320;
 const CHAT_DEFAULT = 420;
 
 function AssistantGreeting({ username }: { username: string }) {
+    const t = useTranslations("Assistant.ProjectChatPage");
     const { profile } = useUserProfile();
     const [loaded, setLoaded] = useState(false);
     const [iconOffset, setIconOffset] = useState(0);
@@ -140,7 +142,7 @@ function AssistantGreeting({ username }: { username: string }) {
                             "transform 900ms cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 800ms ease-in-out 300ms",
                     }}
                 >
-                    Hi, {username}
+                    {t("greeting", { username })}
                 </h1>
             </div>
         </div>
@@ -199,6 +201,7 @@ function Divider({ onDrag }: { onDrag: (dx: number) => void }) {
 export default function ProjectAssistantChatPage({ params }: Props) {
     const { id: projectId, chatId } = use(params);
     const router = useRouter();
+    const t = useTranslations("Assistant.ProjectChatPage");
 
     const { setSidebarOpen } = useSidebar();
     const { user } = useAuth();
@@ -759,7 +762,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                         onClick={() => router.push("/projects")}
                         className="text-gray-500 hover:text-gray-700 transition-colors"
                     >
-                        Projects
+                        {t("breadcrumbProjects")}
                     </button>
                     <span className="text-gray-300">›</span>
                     {project ? (
@@ -786,12 +789,12 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                         }
                         className="text-gray-500 hover:text-gray-700 transition-colors"
                     >
-                        Assistant
+                        {t("breadcrumbAssistant")}
                     </button>
                     <span className="text-gray-300">›</span>
                     {chatLoaded ? (
                         <span className="text-gray-900 truncate max-w-xs">
-                            {chatTitle ?? "Untitled New Chat"}
+                            {chatTitle ?? t("untitledNewChat")}
                         </span>
                     ) : (
                         <div className="h-6 w-40 rounded bg-gray-100 animate-pulse" />
@@ -801,7 +804,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                     <button
                         onClick={handleNewChat}
                         disabled={creatingChat}
-                        title="New chat"
+                        title={t("newChatTitle")}
                         className="flex items-center justify-center p-1.5 text-gray-500 hover:text-gray-900 transition-colors disabled:opacity-40"
                     >
                         {creatingChat ? (
@@ -813,7 +816,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                     <button
                         onClick={handleDeleteChat}
                         disabled={deletingChat}
-                        title="Delete chat"
+                        title={t("deleteChatTitle")}
                         className="flex items-center justify-center p-1.5 text-gray-500 hover:text-red-600 transition-colors disabled:opacity-40"
                     >
                         {deletingChat ? (
@@ -858,7 +861,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                             {/* Explorer header */}
                             <div className="h-10 flex items-center justify-between px-3 border-b border-gray-200 shrink-0">
                                 <span className="text-xs text-gray-700">
-                                    Explorer
+                                    {t("explorerLabel")}
                                 </span>
                                 <div className="flex items-center gap-1">
                                     <input
@@ -880,7 +883,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                                             fileInputRef.current?.click()
                                         }
                                         disabled={uploading}
-                                        title="Upload documents"
+                                        title={t("uploadDocumentsTitle")}
                                         className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-40"
                                     >
                                         {uploading ? (
@@ -893,7 +896,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                                         onClick={() =>
                                             setExplorerCollapsed(true)
                                         }
-                                        title="Collapse explorer"
+                                        title={t("collapseExplorerTitle")}
                                         className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
                                     >
                                         <ChevronLeft className="h-3.5 w-3.5" />
@@ -928,7 +931,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                                 {explorerDragOver && (
                                     <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
                                         <p className="text-xs text-blue-500 font-medium">
-                                            Drop to upload
+                                            {t("dropToUpload")}
                                         </p>
                                     </div>
                                 )}
@@ -957,7 +960,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                         <div className="h-10 flex items-center justify-center border-b border-gray-200 shrink-0 px-1">
                             <button
                                 onClick={() => setExplorerCollapsed(false)}
-                                title="Expand explorer"
+                                title={t("expandExplorerTitle")}
                                 className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
                             >
                                 <ChevronRight className="h-3.5 w-3.5" />
@@ -975,7 +978,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                     >
                         {tabs.length === 0 ? (
                             <span className="px-4 self-center text-xs text-gray-700">
-                                Document Viewer
+                                {t("documentViewerLabel")}
                             </span>
                         ) : (
                             tabs.map((tab) => {
@@ -1102,12 +1105,10 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                             <div className="flex items-center justify-center h-full px-8 bg-gray-100">
                                 <div className="text-center space-y-3">
                                     <p className="font-serif text-gray-700 text-xl">
-                                        Click on a document to display here.
+                                        {t("docViewerEmptyTitle")}
                                     </p>
                                     <p className="font-serif text-base text-gray-500">
-                                        Pro tip: Drag a document from the
-                                        Project Explorer to the Assistant to
-                                        direct it to read or edit.
+                                        {t("docViewerEmptyTip")}
                                     </p>
                                 </div>
                             </div>
@@ -1127,7 +1128,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                     <div className="h-10 flex items-center gap-2 px-4 border-b border-gray-200 shrink-0">
                         <MikeIcon size={16} />
                         <span className="text-xs text-gray-700">
-                            Project Assistant
+                            {t("projectAssistantLabel")}
                         </span>
                     </div>
 

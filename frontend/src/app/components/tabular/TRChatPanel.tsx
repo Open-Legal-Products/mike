@@ -38,6 +38,7 @@ import {
     type ModelProvider,
 } from "@/app/lib/modelAvailability";
 import type { ApiKeyState } from "@/app/lib/mikeApi";
+import { useTranslations } from "next-intl";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -67,12 +68,13 @@ interface Props {
 // Reasoning block
 // ---------------------------------------------------------------------------
 
-const THINKING_PHRASES = [
-    "Thinking...",
-    "Pondering...",
-    "Analyzing...",
-    "Reasoning...",
-];
+// Thinking phrases are looked up via translation keys at render time.
+const THINKING_PHRASE_KEYS = [
+    "thinkingPhrase0",
+    "thinkingPhrase1",
+    "thinkingPhrase2",
+    "thinkingPhrase3",
+] as const;
 
 function ReasoningBlock({
     text,
@@ -81,13 +83,14 @@ function ReasoningBlock({
     text: string;
     isStreaming: boolean;
 }) {
+    const t = useTranslations("Tabular.TRChatPanel");
     const [isOpen, setIsOpen] = useState(false);
     const [phraseIdx, setPhraseIdx] = useState(0);
 
     useEffect(() => {
         if (!isStreaming) return;
         const interval = setInterval(
-            () => setPhraseIdx((i) => (i + 1) % THINKING_PHRASES.length),
+            () => setPhraseIdx((i) => (i + 1) % THINKING_PHRASE_KEYS.length),
             2000,
         );
         return () => clearInterval(interval);
@@ -106,8 +109,8 @@ function ReasoningBlock({
                 )}
                 <span className="font-medium ml-2">
                     {isStreaming
-                        ? THINKING_PHRASES[phraseIdx]
-                        : "Thought process"}
+                        ? t(THINKING_PHRASE_KEYS[phraseIdx])
+                        : t("thoughtProcess")}
                 </span>
                 {!isStreaming && (
                     <ChevronDown
@@ -138,6 +141,7 @@ function DocReadBlock({
     label: string;
     isStreaming?: boolean;
 }) {
+    const t = useTranslations("Tabular.TRChatPanel");
     return (
         <div className="flex items-center text-sm text-gray-400 ml-1">
             {isStreaming ? (
@@ -146,7 +150,7 @@ function DocReadBlock({
                 <div className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
             )}
             <span className="font-medium ml-2">
-                {isStreaming ? "Reading" : "Read"}
+                {isStreaming ? t("reading") : t("read")}
             </span>
             <span className="ml-1 text-gray-500">{label}</span>
         </div>
@@ -232,6 +236,7 @@ function TRAssistantMessage({
     msg: TRMessage;
     onCitationClick: (colIdx: number, rowIdx: number) => void;
 }) {
+    const t = useTranslations("Tabular.TRChatPanel");
     const annotations = msg.annotations ?? [];
     const citationsList: TRCitationAnnotation[] = [];
 
@@ -300,7 +305,7 @@ function TRAssistantMessage({
                     className="flex items-center text-sm text-gray-400 ml-1"
                 >
                     <div className="w-1.5 h-1.5 rounded-full border border-gray-400 border-t-transparent animate-spin shrink-0" />
-                    <span className="ml-2">Thinking...</span>
+                    <span className="ml-2">{t("thinkingPhrase0")}</span>
                 </div>
             );
         }
@@ -458,6 +463,7 @@ function TRChatInput({
     apiKeys?: ApiKeyState;
     onHeightChange: (height: number) => void;
 }) {
+    const t = useTranslations("Tabular.TRChatPanel");
     const [value, setValue] = useState("");
     const rootRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -513,7 +519,7 @@ function TRChatInput({
                 <textarea
                     ref={textareaRef}
                     rows={1}
-                    placeholder="Ask a question about your documents..."
+                    placeholder={t("chatInputPlaceholder")}
                     value={value}
                     onChange={(e) => {
                         setValue(e.target.value);
@@ -568,6 +574,7 @@ function HistoryDropdown({
     currentChatId: string | null;
     onLoad: (chatId: string) => void;
 }) {
+    const t = useTranslations("Tabular.TRChatPanel");
     const [query, setQuery] = useState("");
     const filtered = chats
         .filter((c) => c.id !== currentChatId)
@@ -583,7 +590,7 @@ function HistoryDropdown({
                 <input
                     autoFocus
                     type="text"
-                    placeholder="Search chats…"
+                    placeholder={t("searchChatsPlaceholder")}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     className="flex-1 text-xs bg-transparent outline-none placeholder:text-gray-400 text-gray-700"
@@ -594,8 +601,8 @@ function HistoryDropdown({
                     <p className="px-3 py-2 text-xs text-gray-400">
                         {chats.filter((c) => c.id !== currentChatId).length ===
                         0
-                            ? "No previous chats."
-                            : "No matches."}
+                            ? t("noPreviousChats")
+                            : t("noMatches")}
                     </p>
                 ) : (
                     filtered.map((chat) => {
@@ -642,6 +649,7 @@ export function TRChatPanel({
     initialChatId,
     onChatIdChange,
 }: Props) {
+    const t = useTranslations("Tabular.TRChatPanel");
     const { profile, updateModelPreference } = useUserProfile();
     const apiKeys = profile?.apiKeys;
     const currentModel = profile?.tabularModel ?? "gemini-3-flash-preview";
@@ -1308,7 +1316,7 @@ export function TRChatPanel({
                                     type: "content" as const,
                                     text: isAbort
                                         ? ""
-                                        : "An error occurred. Please try again.",
+                                        : t("errorOccurred"),
                                 },
                             ],
                         };
@@ -1374,7 +1382,7 @@ export function TRChatPanel({
                         className="min-w-0 overflow-x-hidden whitespace-nowrap scrollbar-none"
                     >
                         <span className="text-xs font-medium text-gray-700">
-                            {currentChatTitle ?? "Assistant"}
+                            {currentChatTitle ?? t("assistantTitle")}
                         </span>
                     </div>
                 </div>
@@ -1382,7 +1390,7 @@ export function TRChatPanel({
                     <div ref={historyRef} className="relative">
                         <button
                             onClick={() => setHistoryOpen((v) => !v)}
-                            title="Chat history"
+                            title={t("chatHistoryTitle")}
                             className={`flex items-center justify-center h-7 w-7 rounded-md transition-colors ${historyOpen ? "text-gray-900" : "text-gray-400 hover:text-gray-700"}`}
                         >
                             <Clock className="h-3.5 w-3.5" />
@@ -1399,7 +1407,7 @@ export function TRChatPanel({
                     </div>
                     <button
                         onClick={handleNewChat}
-                        title="New chat"
+                        title={t("newChatTitle")}
                         className="flex items-center justify-center h-7 w-7 rounded-md text-gray-400 hover:text-gray-700 transition-colors"
                     >
                         <MessageSquarePlus className="h-3.5 w-3.5" />
@@ -1407,7 +1415,7 @@ export function TRChatPanel({
                     {currentChatId && (
                         <button
                             onClick={handleDeleteChat}
-                            title="Delete chat"
+                            title={t("deleteChatTitle")}
                             className="flex items-center justify-center h-7 w-7 rounded-md text-gray-400 hover:text-red-600 transition-colors"
                         >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -1415,7 +1423,7 @@ export function TRChatPanel({
                     )}
                     <button
                         onClick={onClose}
-                        title="Close"
+                        title={t("closeTitle")}
                         className="flex items-center justify-center h-7 w-7 rounded-md text-gray-400 hover:text-gray-700 transition-colors"
                     >
                         <X className="h-3.5 w-3.5" />
@@ -1433,7 +1441,7 @@ export function TRChatPanel({
                     <div className="flex flex-1 flex-col items-center justify-center gap-2">
                         <MikeIcon size={24} />
                         <p className="text-sm text-gray-400 text-center">
-                            Ask a question about this tabular review.
+                            {t("emptyState")}
                         </p>
                     </div>
                 )}

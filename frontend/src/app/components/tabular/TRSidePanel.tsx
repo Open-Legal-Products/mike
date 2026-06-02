@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 
 import ReactMarkdown from "react-markdown";
@@ -67,6 +68,7 @@ export function TRSidePanel({
     citationQuote,
     citationPage,
 }: Props) {
+    const t = useTranslations("Tabular.TRSidePanel");
     const sortedColumns = [...columns].sort((a, b) => a.index - b.index);
     const currentPos = sortedColumns.findIndex((c) => c.index === column.index);
     const prevColumn = currentPos > 0 ? sortedColumns[currentPos - 1] : null;
@@ -261,7 +263,7 @@ export function TRSidePanel({
                         {cell.content?.flag && (
                             <div className="mb-5">
                                 <h4 className="mb-2 text-sm font-semibold tracking-wider font-sans">
-                                    Flag
+                                    {t("flagHeading")}
                                 </h4>
                                 <span
                                     className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${FLAG_BADGE[cell.content.flag] ?? FLAG_BADGE.grey}`}
@@ -275,7 +277,7 @@ export function TRSidePanel({
                         {/* Results */}
                         <div className="mb-6">
                             <h4 className="mb-2 text-sm font-semibold tracking-wider font-sans">
-                                Results
+                                {t("resultsHeading")}
                             </h4>
                             <div className="text-xs leading-relaxed text-slate-600">
                                 <MarkdownContent
@@ -292,7 +294,7 @@ export function TRSidePanel({
                         {cell.content?.reasoning && (
                             <div>
                                 <h4 className="mb-2 text-sm font-semibold tracking-wider font-sans">
-                                    Reasoning
+                                    {t("reasoningHeading")}
                                 </h4>
                                 <div className="text-xs leading-relaxed text-slate-600">
                                     <MarkdownContent

@@ -1,0 +1,855 @@
+{
+    "Metadata": {
+        "title": "Mike - AI Legal Platform",
+        "description": "AI-powered legal document analysis and contract review platform."
+    },
+    "Errors": {
+        "title": "Something went wrong",
+        "description": "We encountered an unexpected error. This has been logged and our team will look into it.",
+        "home": "Home"
+    },
+    "GlobalError": {
+        "title": "Something went wrong",
+        "description": "We encountered an unexpected error. This has been logged and our team will look into it.",
+        "back": "Back"
+    },
+    "NotFound": {
+        "title": "Page not found",
+        "description": "The page you're looking for doesn't exist or may have been moved.",
+        "goHome": "Go home"
+    },
+    "Layout": {
+        "openSidebar": "Open sidebar"
+    },
+    "LanguageSwitcher": {
+        "label": "Language"
+    },
+    "Assistant": {
+        "AddDocButton": {
+            "addDocuments": "Add documents",
+            "documents": "{count, plural, =1 {Document} other {Documents}}",
+            "uploading": "Uploading…",
+            "uploadFiles": "Upload files",
+            "browseAll": "Browse all"
+        },
+        "AssistantMessage": {
+            "toolCall": {
+                "generate_docx": "Creating document...",
+                "edit_document": "Editing document...",
+                "read_document": "Reading document...",
+                "fetch_documents": "Reading documents...",
+                "find_in_document": "Searching document...",
+                "replicate_document": "Copying document...",
+                "read_workflow": "Loading workflow...",
+                "list_workflows": "Loading workflows...",
+                "list_documents": "Loading documents...",
+                "running": "Running {name}...",
+                "working": "Working..."
+            },
+            "thinkingPhrase": {
+                "thinking": "Thinking...",
+                "pondering": "Pondering...",
+                "analyzing": "Analyzing...",
+                "reviewing": "Reviewing...",
+                "reasoning": "Reasoning..."
+            },
+            "thoughtProcess": "Thought process",
+            "bulkEdit": {
+                "acceptAll": "Accept all",
+                "rejectAll": "Reject all",
+                "view": "View",
+                "errorAccept": "Couldn't save one or more accepts.",
+                "errorReject": "Couldn't save one or more rejects."
+            },
+            "editSection": {
+                "pendingMultiDoc": "{count} tracked changes across {docCount} documents",
+                "pendingSingleDoc": "{count, plural, =1 {1 tracked change} other {# tracked changes}}",
+                "resolvedMultiDoc": "{count} resolved tracked changes across {docCount} documents",
+                "resolvedSingleDoc": "{count, plural, =1 {1 resolved tracked change} other {# resolved tracked changes}}",
+                "collapse": "Collapse edits",
+                "expand": "Expand edits"
+            },
+            "docRead": {
+                "reading": "Reading",
+                "read": "Read"
+            },
+            "docFind": {
+                "finding": "Finding",
+                "found": "Found",
+                "matches": "{count, plural, =1 {1 match} other {# matches}}",
+                "inFile": "in {filename}"
+            },
+            "docCreated": {
+                "creating": "Creating",
+                "created": "Created"
+            },
+            "docReplicated": {
+                "replicating": "Replicating",
+                "replicated": "Replicated",
+                "times": "{count} times"
+            },
+            "workflowApplied": {
+                "label": "Applied Workflow"
+            },
+            "docEdited": {
+                "editing": "Editing",
+                "editFailed": "Edit failed",
+                "edited": "Edited"
+            },
+            "error": {
+                "default": "Sorry, something went wrong."
+            }
+        },
+        "AssistantSidePanel": {
+            "closePanel": "Close panel"
+        },
+        "AssistantWorkflowModal": {
+            "breadcrumb": {
+                "projects": "Projects",
+                "assistant": "Assistant",
+                "addWorkflow": "Add workflow"
+            },
+            "searchPlaceholder": "Search workflows…",
+            "noMatches": "No matches found",
+            "noWorkflows": "No assistant workflows found",
+            "builtIn": "Built-in",
+            "custom": "Custom",
+            "workflowPrompt": "Workflow Prompt",
+            "noPromptDefined": "_No prompt defined._",
+            "cancel": "Cancel",
+            "use": "Use"
+        },
+        "ChatInput": {
+            "placeholder": "Ask a question about your documents...",
+            "openWorkflows": "Open workflows",
+            "workflows": "Workflows",
+            "openProjects": "Open projects",
+            "projects": "Projects"
+        },
+        "ChatView": {
+            "disclaimer": "AI can make mistakes. Answers are not legal advice."
+        },
+        "EditCard": {
+            "accept": "Accept",
+            "accepted": "Accepted",
+            "reject": "Reject",
+            "rejected": "Rejected",
+            "view": "View",
+            "viewDisabledTitle": "This change has been resolved and is no longer in the document.",
+            "errorAccept": "Couldn't save accept — reverted.",
+            "errorReject": "Couldn't save reject — reverted."
+        },
+        "InitialView": {
+            "greeting": "Hi, {username}",
+            "disclaimer": "AI can make mistakes. Answers are not legal advice."
+        },
+        "ModelToggle": {
+            "titleApiKeyMissing": "API key missing for selected model",
+            "titleChooseModel": "Choose model",
+            "ariaApiKeyMissing": "API key missing"
+        },
+        "SelectAssistantProjectModal": {
+            "breadcrumbAssistant": "Assistant",
+            "breadcrumbStartChat": "Start Chat in a Project",
+            "cancel": "Cancel",
+            "continue": "Continue"
+        },
+        "ProjectChatPage": {
+            "greeting": "Hi, {username}",
+            "breadcrumbProjects": "Projects",
+            "breadcrumbAssistant": "Assistant",
+            "untitledNewChat": "Untitled New Chat",
+            "newChatTitle": "New chat",
+            "deleteChatTitle": "Delete chat",
+            "explorerLabel": "Explorer",
+            "uploadDocumentsTitle": "Upload documents",
+            "collapseExplorerTitle": "Collapse explorer",
+            "dropToUpload": "Drop to upload",
+            "expandExplorerTitle": "Expand explorer",
+            "documentViewerLabel": "Document Viewer",
+            "projectAssistantLabel": "Project Assistant",
+            "docViewerEmptyTitle": "Click on a document to display here.",
+            "docViewerEmptyTip": "Pro tip: Drag a document from the Project Explorer to the Assistant to direct it to read or edit."
+        }
+    },
+    "Auth": {
+        "Login": {
+            "heading": "Log In",
+            "tabLogin": "Log in",
+            "tabSignup": "Sign up",
+            "emailLabel": "Email",
+            "emailPlaceholder": "Enter your email",
+            "passwordLabel": "Password",
+            "passwordPlaceholder": "Enter your password",
+            "button": "Log in",
+            "buttonLoading": "Logging in...",
+            "errorDefault": "An error occurred during login",
+            "demoDisclaimer": "Mike hosted on MikeOSS.com is currently a demo service. Please do not upload, submit, or store sensitive, confidential, privileged, client, or personally identifiable documents."
+        },
+        "Signup": {
+            "heading": "Create Account",
+            "tabLogin": "Log in",
+            "tabSignup": "Sign up",
+            "nameLabel": "Name",
+            "optional": "(optional)",
+            "namePlaceholder": "Your name",
+            "organisationLabel": "Organisation",
+            "organisationPlaceholder": "Your organisation",
+            "emailLabel": "Email",
+            "emailPlaceholder": "Enter your email",
+            "passwordLabel": "Password",
+            "passwordPlaceholder": "Create a password (min. 6 characters)",
+            "confirmPasswordLabel": "Confirm Password",
+            "confirmPasswordPlaceholder": "Confirm your password",
+            "button": "Sign up",
+            "buttonLoading": "Creating account...",
+            "errorPasswordsMismatch": "Passwords do not match",
+            "errorPasswordTooShort": "Password must be at least 6 characters",
+            "errorDefault": "An error occurred during signup",
+            "successHeading": "Account created!",
+            "successRedirecting": "Redirecting you to the home page...",
+            "termsPrefix": "By signing up, you agree to our",
+            "termsLink": "Terms of Use",
+            "termsAnd": "and",
+            "privacyLink": "Privacy Policy",
+            "demoDisclaimer": "Mike hosted on MikeOSS.com is currently a demo service. Please do not upload, submit, or store sensitive, confidential, privileged, client, or personally identifiable documents."
+        },
+        "Support": {
+            "heading": "Support",
+            "typeLabel": "What can we help you with?",
+            "typeBugLabel": "Bug Report",
+            "typeBugDescription": "Report something that isn't working",
+            "typeFeatureLabel": "Feature Request",
+            "typeFeatureDescription": "Suggest a new feature or improvement",
+            "typeQuestionLabel": "Question",
+            "typeQuestionDescription": "Ask a question about using Mike",
+            "typeOtherLabel": "Other",
+            "typeOtherDescription": "General feedback or other inquiries",
+            "linkLabel": "Link to issue (optional)",
+            "linkHint": "If the bug is in a chat, mouseover the chat in the sidebar, click the dots, then click share and paste the link here.",
+            "subjectLabel": "Subject",
+            "messageLabel": "Message",
+            "messagePlaceholder": "Please describe your question, issue, or suggestion in detail...",
+            "respondTo": "We'll respond to:",
+            "button": "Submit",
+            "buttonLoading": "Sending...",
+            "errorSubmit": "Failed to submit your feedback. Please try again.",
+            "successHeading": "Thank you for helping us improve.",
+            "successBody": "We will get in touch with you soon via email.",
+            "backToHome": "Back to Home"
+        }
+    },
+    "Account": {
+        "Layout": {
+            "pageTitle": "Settings",
+            "tabGeneral": "General",
+            "tabModels": "Models & API Keys"
+        },
+        "AccountPage": {
+            "profileSectionTitle": "Profile",
+            "displayNameLabel": "Display Name",
+            "displayNamePlaceholder": "Enter your name",
+            "organisationLabel": "Organisation",
+            "organisationPlaceholder": "Enter your organisation",
+            "emailLabel": "Email",
+            "planSectionTitle": "Usage Plan",
+            "actionsSectionTitle": "Actions",
+            "signOut": "Sign Out",
+            "languageSectionTitle": "Language",
+            "dangerZoneSectionTitle": "Danger Zone",
+            "dangerZoneDescription": "Permanently delete your account and all associated data. This action cannot be undone.",
+            "deleteConfirmPrompt": "Are you sure? This will permanently delete your account.",
+            "deleteCancel": "Cancel",
+            "deleteButton": "Delete Account",
+            "deleteButtonLoading": "Deleting…",
+            "buttonSave": "Save",
+            "buttonSaving": "Saving...",
+            "buttonSaved": "Saved",
+            "errorDeleteAccount": "Failed to delete account. Please try again.",
+            "errorUpdateDisplayName": "Failed to update display name. Please try again.",
+            "errorUpdateOrganisation": "Failed to update organisation. Please try again."
+        },
+        "ModelsPage": {
+            "modelPrefSectionTitle": "Model Preferences",
+            "tabularModelLabel": "Tabular review model",
+            "tabularModelHint": "We recommend using a smaller model for tabular reviews to reduce token costs.",
+            "selectModelPlaceholder": "Select a model",
+            "modelUnavailableTitle": "Add a {provider} API key to use this model",
+            "apiKeysSectionTitle": "API Keys",
+            "apiKeysDescription": "You must provide your own API keys for the app to work or add your API keys into the .env file if you are running your own instance of Mike.",
+            "apiKeysTitleRouting": "Title generation automatically routes to the cheapest configured provider model.",
+            "serverKeyConfigured": "A server .env key is configured for this provider. Browser API-key edits are disabled.",
+            "serverKeyWillBeUsed": "The server key will be used for this provider.",
+            "apiKeySavedHint": "A key is saved. Paste a new key to replace it.",
+            "apiKeyPlaceholderServer": "Server .env key configured",
+            "apiKeyPlaceholderSaved": "Saved key hidden",
+            "apiKeyShow": "Show key",
+            "apiKeyHide": "Hide key",
+            "apiKeySaveError": "Failed to save {label}.",
+            "apiKeyRemoveError": "Failed to remove {label}.",
+            "buttonSave": "Save",
+            "buttonSaving": "Saving...",
+            "buttonSaved": "Saved",
+            "buttonRemove": "Remove"
+        }
+    },
+    "Common": {
+        "CiteButton": {
+            "copyTitle": "Copy Quote and Citation",
+            "copied": "Copied",
+            "cite": "Cite"
+        },
+        "TextSearchWidget": {
+            "placeholder": "Find",
+            "matchPosition": "{current} of {total}",
+            "noResults": "No results"
+        }
+    },
+    "Documents": {
+        "DocPanel": {
+            "citation": "Citation",
+            "trackedChange": "Tracked Change",
+            "accept": "Accept",
+            "accepted": "Accepted",
+            "reject": "Reject",
+            "rejected": "Rejected",
+            "errorAccept": "Couldn't save accept — please retry.",
+            "errorReject": "Couldn't save reject — please retry.",
+            "download": "Download"
+        },
+        "DocumentCard": {
+            "processing": "Processing…",
+            "uploadFailed": "Upload failed",
+            "removeDocument": "Remove document"
+        },
+        "DocxView": {
+            "dismissWarning": "Dismiss warning"
+        },
+        "AddDocumentsModal": {
+            "searchPlaceholder": "Search…",
+            "noMatchesFound": "No matches found",
+            "noDocumentsYet": "No documents yet",
+            "uploading": "Uploading…",
+            "upload": "Upload",
+            "selected": "{count} selected",
+            "cancel": "Cancel",
+            "saving": "Saving…",
+            "confirm": "Confirm"
+        },
+        "AddProjectDocsModal": {
+            "searchPlaceholder": "Search…",
+            "noMatchesFound": "No matches found",
+            "noDocumentsInProject": "No documents in this project",
+            "alreadyAdded": "Already added",
+            "uploading": "Uploading…",
+            "upload": "Upload",
+            "selected": "{count} selected",
+            "cancel": "Cancel",
+            "confirm": "Confirm"
+        },
+        "UploadNewVersionModal": {
+            "headerTitle": "Upload new version · {filename}",
+            "newVersionName": "New version name",
+            "versionNamePlaceholder": "Version name",
+            "currentVersion": "Current Version:",
+            "newVersionFile": "New Version File:",
+            "changeFile": "Change file",
+            "upload": "Upload",
+            "cancel": "Cancel",
+            "saving": "Saving…",
+            "save": "Save"
+        },
+        "FileDirectory": {
+            "delete": "Delete",
+            "deselectAll": "Deselect all",
+            "selectAll": "Select all",
+            "uploading": "Uploading",
+            "projects": "Projects",
+            "emptyFolder": "Empty"
+        }
+    },
+    "Projects": {
+        "NewProjectModal": {
+            "breadcrumbProjects": "Projects",
+            "breadcrumbNew": "New project",
+            "placeholderName": "Project name",
+            "placeholderCmNumber": "Add a CM number...",
+            "membersButton": "Members{count, select, 0 {} other { ({count})}}",
+            "errorSelfShare": "You cannot share a project with yourself.",
+            "placeholderEmail": "Add colleagues by email…",
+            "selectDocuments": "Select documents",
+            "noExistingDocuments": "No existing documents",
+            "errorCreate": "Failed to create project",
+            "uploadFiles": "Upload files{count, select, 0 {} other { ({count})}}",
+            "cancel": "Cancel",
+            "creating": "Creating…",
+            "createProject": "Create project"
+        },
+        "ProjectAssistantTab": {
+            "columnChats": "Chats",
+            "columnCreated": "Created",
+            "emptyHeading": "Assistant",
+            "emptyBody": "Ask questions and get answers grounded in the documents in this project.",
+            "createNew": "+ Create New",
+            "untitledChat": "Untitled Chat"
+        },
+        "ProjectExplorer": {
+            "placeholderFolderName": "Folder name",
+            "emptyState": "No documents in this project.",
+            "contextNewSubfolder": "New subfolder",
+            "contextRename": "Rename",
+            "contextDeleteFolder": "Delete folder",
+            "contextDeleteFile": "Delete file"
+        },
+        "ProjectPageParts": {
+            "loadingVersions": "Loading versions…",
+            "noVersionHistory": "No version history.",
+            "versionOriginal": "Original",
+            "renameVersion": "Rename version",
+            "breadcrumbProjects": "Projects",
+            "tabAssistant": "Assistant",
+            "tabTabularReviews": "Tabular Reviews",
+            "searchPlaceholder": "Search…",
+            "peopleWithAccess": "People with access",
+            "chatButton": "Chat",
+            "tabularReviewButton": "Tabular Review",
+            "uploadDocumentFirst": "Upload a document first"
+        },
+        "ProjectPage": {
+            "projectNotFound": "Project not found",
+            "placeholderFolderName": "Folder name",
+            "uploading": "Uploading",
+            "dropFilesHere": "Drop PDF or DOCX files here",
+            "actions": "Actions",
+            "download": "Download",
+            "removeFromSubfolder": "Remove from subfolder",
+            "delete": "Delete",
+            "addSubfolder": "Add Subfolder",
+            "addDocuments": "Add Documents",
+            "colName": "Name",
+            "colType": "Type",
+            "colSize": "Size",
+            "colVersion": "Version",
+            "colCreated": "Created",
+            "colUpdated": "Updated",
+            "tabDocuments": "Documents",
+            "tabAssistant": "Assistant",
+            "tabTabularReviews": "Tabular Reviews"
+        },
+        "ProjectReviewsTab": {
+            "colName": "Name",
+            "colColumns": "Columns",
+            "colDocuments": "Documents",
+            "colCreated": "Created",
+            "emptyHeading": "Tabular Reviews",
+            "emptyDescription": "Extract data from project documents into tables using AI.",
+            "createNew": "+ Create New",
+            "untitledReview": "Untitled Review",
+            "ownerOnlyRename": "rename this tabular review"
+        },
+        "ProjectsOverview": {
+            "tabAll": "All",
+            "tabMine": "Mine",
+            "tabSharedWithMe": "Shared with me",
+            "actions": "Actions",
+            "delete": "Delete",
+            "heading": "Projects",
+            "searchPlaceholder": "Search projects…",
+            "colName": "Name",
+            "colCm": "CM",
+            "colFiles": "Files",
+            "colChats": "Chats",
+            "colTabularReviews": "Tabular Reviews",
+            "colCreated": "Created",
+            "loadError": "Could not load projects.",
+            "emptyDescription": "Upload documents into projects and to commence chats and tabular reviews with them.",
+            "createNew": "+ Create New",
+            "noSharedProjects": "No shared projects",
+            "ownerOnlyDelete": "delete {count} of the selected projects — only the project owner can delete a project",
+            "cmPlaceholder": "CM #"
+        }
+    },
+    "Shared": {
+        "AppSidebar": {
+            "closeSidebar": "Close sidebar",
+            "openSidebar": "Open sidebar",
+            "navAssistant": "Assistant",
+            "navProjects": "Projects",
+            "navTabularReview": "Tabular Review",
+            "navWorkflows": "Workflows",
+            "recentProjects": "Recent Projects",
+            "noProjectsYet": "No projects yet",
+            "assistantHistory": "Assistant History",
+            "noChatsYet": "No chats yet",
+            "loadMore": "Load more",
+            "accountSettings": "Account Settings"
+        },
+        "SidebarChatItem": {
+            "untitledChat": "Untitled chat",
+            "rename": "Rename",
+            "delete": "Delete"
+        },
+        "HeaderSearchBtn": {
+            "searchPlaceholder": "Search…"
+        },
+        "ProjectPicker": {
+            "searchPlaceholder": "Search projects…",
+            "noMatchesFound": "No matches found",
+            "noProjectsYet": "No projects yet",
+            "projectsHeader": "Projects"
+        },
+        "RowActions": {
+            "newSubfolder": "New subfolder",
+            "rename": "Rename",
+            "delete": "Delete",
+            "editCmNo": "Edit CM No.",
+            "download": "Download",
+            "showAllVersions": "Show all versions",
+            "uploadNewVersion": "Upload new version",
+            "removeFromSubfolder": "Remove from subfolder",
+            "unhide": "Unhide",
+            "hide": "Hide"
+        },
+        "PreResponseWrapper": {
+            "working": "Working",
+            "completed": "Completed in {count, plural, one {# step} other {# steps}}"
+        },
+        "EmailPillInput": {
+            "placeholder": "Add by email…",
+            "errorInvalidEmail": "Enter a valid email address.",
+            "errorVerifyFailed": "Could not verify email. Try again.",
+            "checking": "Checking…"
+        },
+        "PeopleModal": {
+            "addByEmailPlaceholder": "Add by email…",
+            "addMemberTitle": "Add member",
+            "hintAlreadyShared": "{email} already has access.",
+            "hintIsOwner": "{email} is the owner.",
+            "hintSelf": "You cannot share this with yourself.",
+            "hintInvalidEmail": "Enter a valid email.",
+            "sectionHeading": "People with Access",
+            "emptyRoster": "No one has access yet.",
+            "tagYou": "(You)",
+            "tagOwner": "Owner",
+            "removeAccessTitle": "Remove access",
+            "removeLabel": "Remove",
+            "footerCount": "{count, plural, one {# person with access.} other {# people with access.}}",
+            "errorAdd": "Couldn't add the member. Try again.",
+            "errorRemove": "Couldn't remove the member. Try again."
+        },
+        "OwnerOnlyModal": {
+            "defaultTitle": "Owner-only action",
+            "bodyWithAction": "Only the project owner can {action}.",
+            "bodyDefault": "Only the project owner can perform this action.",
+            "askOwner": "Ask <em>{email}</em> if you need access.",
+            "ok": "OK"
+        },
+        "ApiKeyMissingModal": {
+            "thisProvider": "this provider",
+            "title": "API key required",
+            "body": "You haven't added a {providerName} API key yet. Add one in your account settings to use this model.",
+            "cancel": "Cancel",
+            "goToAccountSettings": "Go to account settings"
+        }
+    },
+    "Tabular": {
+        "AddColumnModal": {
+            "breadcrumbRoot": "Tabular Review",
+            "editColumn": "Edit column",
+            "newColumn": "New column",
+            "columnNamePlaceholder": "Column name",
+            "columnPresetsTitle": "Column presets",
+            "noPreset": "No Preset",
+            "formatLabel": "Format",
+            "tagsLabel": "Tags",
+            "addTagPlaceholder": "Add tag…",
+            "tagHint": "Press Enter or comma to add a tag.",
+            "promptLabel": "Prompt",
+            "autoGeneratePrompt": "Auto-Generate Prompt",
+            "promptPlaceholder": "Write the analysis prompt — describe what Mike should extract from each document for this column…",
+            "addAnotherColumn": "Add another column",
+            "delete": "Delete",
+            "cancel": "Cancel",
+            "saveChanges": "Save changes",
+            "addColumns": "Add columns"
+        },
+        "AddNewTRModal": {
+            "breadcrumbProjects": "Projects",
+            "breadcrumbTabularReviews": "Tabular Reviews",
+            "breadcrumbNewReview": "New review",
+            "reviewNamePlaceholder": "Review name",
+            "workflowTemplateLabel": "Workflow Template",
+            "loadingTemplates": "Loading templates…",
+            "noTemplate": "No template — start from scratch",
+            "createUnderProject": "Create under a project",
+            "selectProject": "Select project…",
+            "noProjectsFound": "No projects found",
+            "selectDocumentsLabel": "Select Documents",
+            "projectDocumentsHeading": "Project Documents",
+            "documentsHeading": "Documents",
+            "noReadyDocuments": "No ready documents in this project",
+            "noDocumentsYet": "No documents yet",
+            "uploading": "Uploading…",
+            "upload": "Upload",
+            "cancel": "Cancel",
+            "create": "Create"
+        },
+        "TabularCell": {
+            "seeDetails": "See details"
+        },
+        "TabularReviewView": {
+            "breadcrumbProjects": "Projects",
+            "breadcrumbTabularReviews": "Tabular Reviews",
+            "breadcrumbPeople": "People",
+            "untitledReview": "Untitled Review",
+            "peopleWithAccess": "People with access",
+            "exportToExcel": "Export to Excel",
+            "export": "Export",
+            "running": "Running…",
+            "run": "Run",
+            "assistantInTabularReview": "Assistant in Tabular Review",
+            "actions": "Actions",
+            "clearResults": "Clear results",
+            "delete": "Delete",
+            "addDocuments": "Add Documents",
+            "addColumns": "Add Columns"
+        },
+        "TRChatPanel": {
+            "thinkingPhrase0": "Thinking...",
+            "thinkingPhrase1": "Pondering...",
+            "thinkingPhrase2": "Analyzing...",
+            "thinkingPhrase3": "Reasoning...",
+            "thoughtProcess": "Thought process",
+            "reading": "Reading",
+            "read": "Read",
+            "chatInputPlaceholder": "Ask a question about your documents...",
+            "searchChatsPlaceholder": "Search chats…",
+            "noPreviousChats": "No previous chats.",
+            "noMatches": "No matches.",
+            "assistantTitle": "Assistant",
+            "chatHistoryTitle": "Chat history",
+            "newChatTitle": "New chat",
+            "deleteChatTitle": "Delete chat",
+            "closeTitle": "Close",
+            "emptyState": "Ask a question about this tabular review.",
+            "errorOccurred": "An error occurred. Please try again."
+        },
+        "TREditColumnMenu": {
+            "editColumn": "Edit Column",
+            "labelField": "Label",
+            "formatLabel": "Format",
+            "addTagsPlaceholder": "Add tags…",
+            "promptLabel": "Prompt",
+            "autoGenerate": "Auto-generate",
+            "delete": "Delete",
+            "saving": "Saving…",
+            "save": "Save"
+        },
+        "TRSidePanel": {
+            "flagHeading": "Flag",
+            "resultsHeading": "Results",
+            "reasoningHeading": "Reasoning"
+        },
+        "TRTable": {
+            "documentColumn": "Document",
+            "emptyTitle": "Tabular Review",
+            "emptySubtitle": "Add columns and documents to get started.",
+            "addColumns": "+ Add Columns",
+            "addDocuments": "Add Documents"
+        },
+        "TabularReviewsPage": {
+            "pageTitle": "Tabular Reviews",
+            "searchPlaceholder": "Search reviews…",
+            "tab_all": "All",
+            "tab_in-project": "In Project",
+            "tab_standalone": "Standalone",
+            "colName": "Name",
+            "colColumns": "Columns",
+            "colDocuments": "Documents",
+            "colProject": "Project",
+            "colCreated": "Created",
+            "filterByProject": "Filter by project",
+            "allProjects": "All Projects",
+            "actions": "Actions",
+            "delete": "Delete",
+            "emptyTitle": "Tabular Reviews",
+            "emptySubtitle": "Extract data from documents into tables using AI.",
+            "createNew": "+ Create New",
+            "noReviewsFound": "No reviews found",
+            "untitledReview": "Untitled Review"
+        }
+    },
+    "Workflows": {
+        "DisplayWorkflowModal": {
+            "breadcrumbWorkflows": "Workflows",
+            "breadcrumbSelect": "Select workflow",
+            "newChat": "New Chat",
+            "newReview": "New Review",
+            "searchPlaceholder": "Search…",
+            "selectProjectPlaceholder": "Select a project…",
+            "noProjectsFound": "No projects found",
+            "workflowPrompt": "Workflow Prompt",
+            "noPromptDefined": "_No prompt defined._",
+            "columns": "Columns",
+            "noColumnsDefined": "No columns defined",
+            "tags": "Tags",
+            "prompt": "Prompt",
+            "viewPage": "View Page",
+            "edit": "Edit",
+            "use": "Use",
+            "messageOptional": "Message (optional)",
+            "additionalInstructionsPlaceholder": "Add any additional instructions to the workflow prompt…",
+            "createInProject": "Create in a project",
+            "selectProject": "Select project",
+            "selectDocuments": "Select documents",
+            "noMatchesFound": "No matches found",
+            "noDocumentsYet": "No documents yet",
+            "noDocumentsInProject": "No documents in this project",
+            "selectedCount": "{count} selected",
+            "starting": "Starting…",
+            "startChat": "Start Chat",
+            "creating": "Creating…",
+            "createReview": "Create Review"
+        },
+        "NewWorkflowModal": {
+            "breadcrumbWorkflows": "Workflows",
+            "breadcrumbEdit": "Edit workflow",
+            "breadcrumbNew": "New workflow",
+            "namePlaceholder": "Workflow name",
+            "typeLabel": "Type",
+            "typeAssistant": "Assistant",
+            "typeTabular": "Tabular",
+            "practiceAreaLabel": "Practice Area",
+            "customPracticePlaceholder": "Enter practice area…",
+            "errorUpdate": "Failed to update workflow",
+            "errorCreate": "Failed to create workflow",
+            "cancel": "Cancel",
+            "saving": "Saving…",
+            "creating": "Creating…",
+            "saveChanges": "Save changes",
+            "createWorkflow": "Create workflow"
+        },
+        "ShareWorkflowModal": {
+            "breadcrumbWorkflows": "Workflows",
+            "breadcrumbPeople": "People",
+            "cannotShareWithSelf": "You cannot share a workflow with yourself.",
+            "addPeoplePlaceholder": "Add people by email…",
+            "allowEditing": "Allow editing by share recipients",
+            "peopleWithAccess": "People with access",
+            "none": "None",
+            "canEdit": "Can edit",
+            "readOnly": "Read-only",
+            "cancel": "Cancel",
+            "sharing": "Sharing…",
+            "share": "Share"
+        },
+        "WFColumnViewModal": {
+            "breadcrumbWorkflows": "Workflows",
+            "columnTitle": "Column Title",
+            "format": "Format",
+            "tags": "Tags",
+            "prompt": "Prompt",
+            "noPromptDefined": "_No prompt defined._",
+            "close": "Close"
+        },
+        "WFEditColumnModal": {
+            "breadcrumbWorkflows": "Workflows",
+            "breadcrumbEditColumn": "Edit column",
+            "columnNamePlaceholder": "Column name",
+            "columnPresetsTitle": "Column presets",
+            "noPreset": "No Preset",
+            "formatLabel": "Format",
+            "tagsLabel": "Tags",
+            "addTagPlaceholder": "Add tag…",
+            "addTagHint": "Press Enter or comma to add a tag.",
+            "promptLabel": "Prompt",
+            "autoGeneratePrompt": "Auto-Generate Prompt",
+            "promptPlaceholder": "Write the analysis prompt — describe what Mike should extract from each document for this column…",
+            "delete": "Delete",
+            "cancel": "Cancel",
+            "saveChanges": "Save changes"
+        },
+        "WorkflowList": {
+            "tabAll": "All",
+            "tabBuiltin": "Built-in",
+            "tabCustom": "Custom",
+            "tabHidden": "Hidden",
+            "pageTitle": "Workflows",
+            "searchPlaceholder": "Search workflows…",
+            "filterByType": "Filter by type",
+            "allTypes": "All Types",
+            "typeTabular": "Tabular",
+            "typeAssistant": "Assistant",
+            "filterByPractice": "Filter by practice",
+            "allPractices": "All Practices",
+            "actions": "Actions",
+            "unhide": "Unhide",
+            "delete": "Delete",
+            "colName": "Name",
+            "colType": "Type",
+            "colPractice": "Practice",
+            "colSource": "Source",
+            "sourceMike": "Mike",
+            "sourceMyself": "Myself",
+            "sourceShared": "Shared",
+            "emptyCustomTitle": "Custom Workflows",
+            "emptyCustomDescription": "Build reusable prompts and tabular review templates tailored to your practice.",
+            "createNew": "+ Create New",
+            "emptyHiddenTitle": "Hidden Workflows",
+            "emptyHiddenDescription": "Built-in workflows you've hidden will appear here. You can unhide them at any time.",
+            "emptyAllTitle": "Workflows",
+            "emptyAllDescription": "Automate document analysis with reusable prompts and tabular review templates."
+        },
+        "WorkflowPromptEditor": {
+            "heading1": "Heading 1",
+            "heading2": "Heading 2",
+            "heading3": "Heading 3",
+            "bold": "Bold",
+            "italic": "Italic",
+            "bulletList": "Bullet list",
+            "numberedList": "Numbered list"
+        },
+        "WorkflowDetailPage": {
+            "notFound": "Workflow not found.",
+            "breadcrumbWorkflows": "Workflows",
+            "saving": "Saving…",
+            "saved": "Saved",
+            "shareAriaLabel": "Open workflow people",
+            "shareTitle": "People",
+            "readOnly": "Read-only",
+            "addColumn": "Add Column",
+            "actions": "Actions",
+            "delete": "Delete",
+            "colColumnTitle": "Column Title",
+            "colFormat": "Format",
+            "colPrompt": "Prompt",
+            "emptyColumnsTitle": "Columns",
+            "emptyColumnsDescription": "Add columns to define what this tabular review workflow extracts from each document.",
+            "addColumnButton": "+ Add Column"
+        }
+    },
+    "Modals": {
+        "CreditsExhaustedModal": {
+            "title": "Message Limit Reached",
+            "limitReached": "You've reached your monthly message limit of 100 messages.",
+            "resetLabel": "Your credits will reset on:",
+            "autoResetNote": "Your message credits automatically reset on the first day of each month.",
+            "close": "Close"
+        },
+        "DeleteChatsModal": {
+            "successTitle": "All Chats Deleted",
+            "successMessage": "Your chat history has been successfully deleted.",
+            "title": "Delete All Chats",
+            "confirmMessage": "Are you sure you want to delete all {count, plural, one {# chat} other {# chats}}? This action is permanent and cannot be undone.",
+            "deleting": "Deleting...",
+            "deleteAll": "Delete All Chats",
+            "cancel": "Cancel"
+        },
+        "SimpleLinkDialog": {
+            "title": "Share Chat",
+            "shareLink": "Share Link",
+            "copied": "Copied!",
+            "copyLink": "Copy Link"
+        }
+    }
+}

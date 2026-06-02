@@ -13,6 +13,7 @@ import {
     List,
     ListOrdered,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 interface Props {
     value: string;
@@ -55,6 +56,7 @@ export function WorkflowPromptEditor({
     onChange,
     readOnly = false,
 }: Props) {
+    const t = useTranslations("Workflows.WorkflowPromptEditor");
     const lastEmittedRef = useRef(value);
 
     const editor = useEditor({
@@ -111,7 +113,7 @@ export function WorkflowPromptEditor({
                                 .run()
                         }
                         active={editor.isActive("heading", { level: 1 })}
-                        title="Heading 1"
+                        title={t("heading1")}
                     >
                         <Heading1 className="h-4 w-4" />
                     </ToolbarBtn>
@@ -124,7 +126,7 @@ export function WorkflowPromptEditor({
                                 .run()
                         }
                         active={editor.isActive("heading", { level: 2 })}
-                        title="Heading 2"
+                        title={t("heading2")}
                     >
                         <Heading2 className="h-4 w-4" />
                     </ToolbarBtn>
@@ -137,7 +139,7 @@ export function WorkflowPromptEditor({
                                 .run()
                         }
                         active={editor.isActive("heading", { level: 3 })}
-                        title="Heading 3"
+                        title={t("heading3")}
                     >
                         <Heading3 className="h-4 w-4" />
                     </ToolbarBtn>
@@ -147,7 +149,7 @@ export function WorkflowPromptEditor({
                             editor.chain().focus().toggleBold().run()
                         }
                         active={editor.isActive("bold")}
-                        title="Bold"
+                        title={t("bold")}
                     >
                         <Bold className="h-4 w-4" />
                     </ToolbarBtn>
@@ -156,7 +158,7 @@ export function WorkflowPromptEditor({
                             editor.chain().focus().toggleItalic().run()
                         }
                         active={editor.isActive("italic")}
-                        title="Italic"
+                        title={t("italic")}
                     >
                         <Italic className="h-4 w-4" />
                     </ToolbarBtn>
@@ -166,7 +168,7 @@ export function WorkflowPromptEditor({
                             editor.chain().focus().toggleBulletList().run()
                         }
                         active={editor.isActive("bulletList")}
-                        title="Bullet list"
+                        title={t("bulletList")}
                     >
                         <List className="h-4 w-4" />
                     </ToolbarBtn>
@@ -175,7 +177,7 @@ export function WorkflowPromptEditor({
                             editor.chain().focus().toggleOrderedList().run()
                         }
                         active={editor.isActive("orderedList")}
-                        title="Numbered list"
+                        title={t("numberedList")}
                     >
                         <ListOrdered className="h-4 w-4" />
                     </ToolbarBtn>

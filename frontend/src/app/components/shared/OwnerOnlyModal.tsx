@@ -2,6 +2,7 @@
 
 import { createPortal } from "react-dom";
 import { Lock, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 interface Props {
     open: boolean;
@@ -25,18 +26,21 @@ interface Props {
 export function OwnerOnlyModal({
     open,
     onClose,
-    title = "Owner-only action",
+    title,
     action,
     ownerEmail,
     message,
 }: Props) {
+    const t = useTranslations("Shared.OwnerOnlyModal");
+
     if (!open) return null;
 
+    const resolvedTitle = title ?? t("defaultTitle");
     const body =
         message ??
         (action
-            ? `Only the project owner can ${action}.`
-            : "Only the project owner can perform this action.");
+            ? t("bodyWithAction", { action })
+            : t("bodyDefault"));
 
     return createPortal(
         <div
@@ -52,7 +56,7 @@ export function OwnerOnlyModal({
                     <div className="flex items-center gap-2">
                         <Lock className="h-4 w-4 text-amber-600" />
                         <h2 className="text-base font-medium text-gray-900">
-                            {title}
+                            {resolvedTitle}
                         </h2>
                     </div>
                     <button
@@ -70,9 +74,10 @@ export function OwnerOnlyModal({
                     </p>
                     {ownerEmail && (
                         <p className="mt-2 text-xs text-gray-400">
-                            Ask{" "}
-                            <span className="text-gray-600">{ownerEmail}</span>{" "}
-                            if you need access.
+                            {t.rich("askOwner", {
+                                email: ownerEmail,
+                                em: (chunks) => <span className="text-gray-600">{chunks}</span>,
+                            })}
                         </p>
                     )}
                 </div>
@@ -83,7 +88,7 @@ export function OwnerOnlyModal({
                         onClick={onClose}
                         className="rounded-lg bg-gray-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-700"
                     >
-                        OK
+                        {t("ok")}
                     </button>
                 </div>
             </div>

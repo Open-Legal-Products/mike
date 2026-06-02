@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
+import { useTranslations } from "next-intl";
 import { MikeIcon } from "@/components/chat/mike-icon";
 import { useFetchDocxBytes } from "@/app/hooks/useFetchDocxBytes";
 import { supabase } from "@/lib/supabase";
@@ -208,6 +209,7 @@ export function DocxView({
     rounded = true,
     bordered = true,
 }: Props) {
+    const t = useTranslations("Documents.DocxView");
     const scrollRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const lastScrollTopRef = useRef(0);
@@ -480,7 +482,7 @@ export function DocxView({
                         type="button"
                         onClick={() => onWarningDismiss?.()}
                         className="text-amber-600 hover:text-amber-900"
-                        aria-label="Dismiss warning"
+                        aria-label={t("dismissWarning")}
                     >
                         ×
                     </button>

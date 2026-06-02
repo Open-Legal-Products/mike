@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { usePathname, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -11,19 +12,20 @@ interface TabDef {
     href: string;
 }
 
-const TABS: TabDef[] = [
-    { id: "general", label: "General", href: "/account" },
-    { id: "models", label: "Models & API Keys", href: "/account/models" },
-];
-
 export default function AccountLayout({
     children,
 }: {
     children: React.ReactNode;
 }) {
+    const t = useTranslations("Account.Layout");
     const router = useRouter();
     const pathname = usePathname();
     const { isAuthenticated, authLoading } = useAuth();
+
+    const TABS: TabDef[] = [
+        { id: "general", label: t("tabGeneral"), href: "/account" },
+        { id: "models", label: t("tabModels"), href: "/account/models" },
+    ];
 
     useEffect(() => {
         if (!authLoading && !isAuthenticated) {
@@ -47,7 +49,7 @@ export default function AccountLayout({
         <div className="flex h-full flex-col overflow-y-auto">
             <header className="mx-auto flex h-16 w-full max-w-5xl shrink-0 items-end px-6 pb-2 md:h-24 md:pb-4">
                 <h1 className="text-4xl font-medium font-eb-garamond">
-                    Settings
+                    {t("pageTitle")}
                 </h1>
             </header>
 

@@ -2,6 +2,7 @@
 
 import { type Dispatch, type SetStateAction } from "react";
 import { MessageSquare } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { RowActions } from "@/app/components/shared/RowActions";
 import type { MikeChat } from "@/app/components/shared/types";
 import { CHECK_W, formatDate, NAME_COL_W } from "./ProjectPageParts";
@@ -41,6 +42,7 @@ export function ProjectAssistantTab({
     setRenamingChatId: Dispatch<SetStateAction<string | null>>;
     setRenameChatValue: Dispatch<SetStateAction<string>>;
 }) {
+    const t = useTranslations("Projects.ProjectAssistantTab");
     return (
         <>
             <div className="flex items-center h-8 pr-8 border-b border-gray-200 text-xs text-gray-500 font-medium select-none">
@@ -63,26 +65,25 @@ export function ProjectAssistantTab({
                 <div
                     className={`sticky left-8 z-[60] ${NAME_COL_W} bg-white pl-2 text-left`}
                 >
-                    Chats
+                    {t("columnChats")}
                 </div>
-                <div className="ml-auto w-32 shrink-0 text-left">Created</div>
+                <div className="ml-auto w-32 shrink-0 text-left">{t("columnCreated")}</div>
                 <div className="w-8 shrink-0" />
             </div>
             {chats.length === 0 ? (
                 <div className="flex flex-col items-start py-24 w-full max-w-xs mx-auto">
                     <MessageSquare className="h-8 w-8 text-gray-300 mb-4" />
                     <p className="text-2xl font-medium font-serif text-gray-900">
-                        Assistant
+                        {t("emptyHeading")}
                     </p>
                     <p className="mt-1 text-xs text-gray-400 max-w-xs">
-                        Ask questions and get answers grounded in the documents
-                        in this project.
+                        {t("emptyBody")}
                     </p>
                     <button
                         onClick={onCreateChat}
                         className="mt-4 inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors shadow-md"
                     >
-                        + Create New
+                        {t("createNew")}
                     </button>
                 </div>
             ) : (
@@ -139,7 +140,7 @@ export function ProjectAssistantTab({
                                     />
                                 ) : (
                                     <span className="text-sm text-gray-800 truncate block">
-                                        {chat.title ?? "Untitled Chat"}
+                                        {chat.title ?? t("untitledChat")}
                                     </span>
                                 )}
                             </div>
@@ -160,7 +161,7 @@ export function ProjectAssistantTab({
                                             return;
                                         }
                                         setRenameChatValue(
-                                            chat.title ?? "Untitled Chat",
+                                            chat.title ?? t("untitledChat"),
                                         );
                                         setRenamingChatId(chat.id);
                                     }}

@@ -1,6 +1,7 @@
 import { X, Link2, Check } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { useTranslations } from "next-intl";
 
 interface SimpleLinkDialogProps {
     isOpen: boolean;
@@ -13,6 +14,7 @@ export function SimpleLinkDialog({
     onClose,
     shareUrl,
 }: SimpleLinkDialogProps) {
+    const t = useTranslations("Modals.SimpleLinkDialog");
     const [linkCopied, setLinkCopied] = useState(false);
 
     if (!isOpen) return null;
@@ -48,7 +50,7 @@ export function SimpleLinkDialog({
                     {/* Header */}
                     <div className="flex items-center justify-between mb-6">
                         <h2 className="text-3xl font-light font-eb-garamond text-gray-900">
-                            Share Chat
+                            {t("title")}
                         </h2>
                     </div>
 
@@ -57,7 +59,7 @@ export function SimpleLinkDialog({
                         {/* Link display */}
                         <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
                             <p className="text-sm text-gray-600 mb-2 font-medium">
-                                Share Link
+                                {t("shareLink")}
                             </p>
                             <p className="text-sm text-gray-800 break-all font-mono">
                                 {shareUrl}
@@ -72,12 +74,12 @@ export function SimpleLinkDialog({
                             {linkCopied ? (
                                 <>
                                     <Check className="h-5 w-5" />
-                                    Copied!
+                                    {t("copied")}
                                 </>
                             ) : (
                                 <>
                                     <Link2 className="h-5 w-5" />
-                                    Copy Link
+                                    {t("copyLink")}
                                 </>
                             )}
                         </button>

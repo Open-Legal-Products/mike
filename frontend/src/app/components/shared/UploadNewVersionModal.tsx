@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Upload } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { listDocumentVersions } from "@/app/lib/mikeApi";
 import type { MikeDocument } from "./types";
 
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export function UploadNewVersionModal({ open, onClose, doc, onSubmit }: Props) {
+    const t = useTranslations("Documents.UploadNewVersionModal");
     const [name, setName] = useState("");
     const [stagedFile, setStagedFile] = useState<File | null>(null);
     const [submitting, setSubmitting] = useState(false);
@@ -78,7 +80,7 @@ export function UploadNewVersionModal({ open, onClose, doc, onSubmit }: Props) {
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4">
                     <div className="text-xs text-gray-400">
-                        Upload new version · {doc.filename}
+                        {t("headerTitle", { filename: doc.filename })}
                     </div>
                     <button
                         onClick={onClose}
@@ -91,24 +93,24 @@ export function UploadNewVersionModal({ open, onClose, doc, onSubmit }: Props) {
                 {/* Name input */}
                 <div className="px-5 pb-4">
                     <label className="block text-xs font-medium text-gray-500 mb-1">
-                        New version name
+                        {t("newVersionName")}
                     </label>
                     <input
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        placeholder="Version name"
+                        placeholder={t("versionNamePlaceholder")}
                         className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
                     />
                     <div className="mt-2 text-xs text-gray-500">
-                        Current Version:{" "}
+                        {t("currentVersion")}{" "}
                         <span className="text-gray-700 font-medium">
                             {currentVersion ?? "—"}
                         </span>
                     </div>
                     {stagedFile && (
                         <div className="mt-2 text-xs text-gray-500 truncate">
-                            New Version File:{" "}
+                            {t("newVersionFile")}{" "}
                             <span className="text-gray-700">
                                 {stagedFile.name}
                             </span>
@@ -132,7 +134,7 @@ export function UploadNewVersionModal({ open, onClose, doc, onSubmit }: Props) {
                             className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
                         >
                             <Upload className="h-3.5 w-3.5" />
-                            {stagedFile ? "Change file" : "Upload"}
+                            {stagedFile ? t("changeFile") : t("upload")}
                         </button>
                     </div>
                     <div className="flex items-center gap-2">
@@ -140,14 +142,14 @@ export function UploadNewVersionModal({ open, onClose, doc, onSubmit }: Props) {
                             onClick={onClose}
                             className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100"
                         >
-                            Cancel
+                            {t("cancel")}
                         </button>
                         <button
                             onClick={handleSubmit}
                             disabled={!stagedFile || submitting}
                             className="rounded-lg bg-gray-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-40"
                         >
-                            {submitting ? "Saving…" : "Save"}
+                            {submitting ? t("saving") : t("save")}
                         </button>
                     </div>
                 </div>

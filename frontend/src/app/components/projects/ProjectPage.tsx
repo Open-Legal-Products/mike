@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
     Upload,
     Loader2,
@@ -85,6 +86,7 @@ interface Props {
 }
 
 export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
+    const t = useTranslations("Projects.ProjectPage");
     const [project, setProject] = useState<MikeProject | null>(null);
     const [folders, setFolders] = useState<MikeFolder[]>([]);
     const [chats, setChats] = useState<MikeChat[]>([]);
@@ -786,7 +788,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                         <input
                             autoFocus
                             className="flex-1 min-w-0 text-sm text-gray-800 bg-transparent outline-none border-b border-gray-300"
-                            placeholder="Folder name"
+                            placeholder={t("placeholderFolderName")}
                             value={newFolderName}
                             onChange={(e) => setNewFolderName(e.target.value)}
                             onKeyDown={(e) => {
@@ -838,7 +840,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                     {filename.includes(".") ? filename.split(".").pop() : "file"}
                 </div>
                 <div className="w-24 shrink-0 text-sm text-gray-300">
-                    Uploading
+                    {t("uploading")}
                 </div>
                 <div className="w-20 shrink-0 text-sm text-gray-300">—</div>
                 <div className="w-32 shrink-0 text-sm text-gray-300">—</div>
@@ -1154,7 +1156,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
     if (!project) {
         return (
             <div className="flex h-full items-center justify-center">
-                <p className="text-gray-400">Project not found</p>
+                <p className="text-gray-400">{t("projectNotFound")}</p>
             </div>
         );
     }
@@ -1188,7 +1190,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                 onClick={() => setActionsOpen((v) => !v)}
                 className="flex items-center gap-1 text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
             >
-                Actions
+                {t("actions")}
                 <ChevronDown className="h-3.5 w-3.5" />
             </button>
             {actionsOpen && (
@@ -1198,7 +1200,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                             onClick={handleDownloadSelectedDocs}
                             className="w-full px-3 py-1.5 text-left text-xs text-gray-600 hover:bg-gray-50 transition-colors"
                         >
-                            Download
+                            {t("download")}
                         </button>
                     )}
                     {tab === "documents" && selectedDocIds.some((id) => docs.find((d) => d.id === id)?.folder_id != null) && (
@@ -1206,14 +1208,14 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                             onClick={handleRemoveSelectedFromFolder}
                             className="w-full px-3 py-1.5 text-left text-xs text-gray-600 hover:bg-gray-50 transition-colors"
                         >
-                            Remove from subfolder
+                            {t("removeFromSubfolder")}
                         </button>
                     )}
                     <button
                         onClick={handleDeleteSelected}
                         className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 transition-colors"
                     >
-                        Delete
+                        {t("delete")}
                     </button>
                 </div>
             )}
@@ -1230,14 +1232,14 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                         className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
                     >
                         <FolderPlus className="h-3.5 w-3.5" />
-                        Add Subfolder
+                        {t("addSubfolder")}
                     </button>
                     <button
                         onClick={() => setAddDocsOpen(true)}
                         className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
                     >
                         <Upload className="h-3.5 w-3.5" />
-                        Add Documents
+                        {t("addDocuments")}
                     </button>
                 </>
             )}
@@ -1264,9 +1266,9 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
 
             <ToolbarTabs
                 tabs={[
-                    { id: "documents", label: "Documents" },
-                    { id: "assistant", label: "Assistant" },
-                    { id: "reviews", label: "Tabular Reviews" },
+                    { id: "documents", label: t("tabDocuments") },
+                    { id: "assistant", label: t("tabAssistant") },
+                    { id: "reviews", label: t("tabTabularReviews") },
                 ]}
                 active={tab}
                 onChange={handleTabChange}
@@ -1299,13 +1301,13 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                 />
                             </div>
                             <div className={`sticky left-8 z-[60] ${DOC_NAME_COL_W} bg-white pl-2 text-left`}>
-                                Name
+                                {t("colName")}
                             </div>
-                            <div className="ml-auto w-20 shrink-0 text-left">Type</div>
-                            <div className="w-24 shrink-0 text-left">Size</div>
-                            <div className="w-20 shrink-0 text-left">Version</div>
-                            <div className="w-32 shrink-0 text-left">Created</div>
-                            <div className="w-32 shrink-0 text-left">Updated</div>
+                            <div className="ml-auto w-20 shrink-0 text-left">{t("colType")}</div>
+                            <div className="w-24 shrink-0 text-left">{t("colSize")}</div>
+                            <div className="w-20 shrink-0 text-left">{t("colVersion")}</div>
+                            <div className="w-32 shrink-0 text-left">{t("colCreated")}</div>
+                            <div className="w-32 shrink-0 text-left">{t("colUpdated")}</div>
                             <div className="w-8 shrink-0" />
                         </div>
 
@@ -1351,7 +1353,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                 className="flex-1 flex cursor-pointer flex-col items-center justify-center py-24 text-center"
                             >
                                 <Upload className="h-8 w-8 text-gray-200 mb-3" />
-                                <p className="text-sm text-gray-400">Drop PDF or DOCX files here</p>
+                                <p className="text-sm text-gray-400">{t("dropFilesHere")}</p>
                             </div>
                         ) : (
                             <div

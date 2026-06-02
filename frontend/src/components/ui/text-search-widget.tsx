@@ -1,6 +1,7 @@
 import { Input } from "@/components/ui/input";
 import { ArrowUp, ArrowDown, X } from "lucide-react";
 import { useRef } from "react";
+import { useTranslations } from "next-intl";
 
 interface TextSearchWidgetProps {
     isOpen: boolean;
@@ -23,6 +24,7 @@ export function TextSearchWidget({
     setCurrentMatchIdx,
     className = "",
 }: TextSearchWidgetProps) {
+    const t = useTranslations("Common.TextSearchWidget");
     const searchInputRef = useRef<HTMLInputElement>(null);
 
     const handleNext = () => {
@@ -46,7 +48,7 @@ export function TextSearchWidget({
                     <Input
                         ref={searchInputRef}
                         autoFocus
-                        placeholder="Find"
+                        placeholder={t("placeholder")}
                         value={searchQuery}
                         onChange={(e) => onSearchChange(e.target.value)}
                         className="h-8 text-sm w-full pr-[80px] rounded-sm border-gray-200 bg-gray-100/50 focus-visible:ring-0 focus-visible:border-blue-600 placeholder:text-gray-500"
@@ -68,8 +70,8 @@ export function TextSearchWidget({
                 <div className="flex items-center justify-between px-2 pb-1 pt-0.5 text-xs text-gray-500">
                     <span>
                         {matchCount > 0
-                            ? `${currentMatchIdx + 1} of ${matchCount}`
-                            : "No results"}
+                            ? t("matchPosition", { current: currentMatchIdx + 1, total: matchCount })
+                            : t("noResults")}
                     </span>
                     <div className="flex items-center gap-1">
                         <button

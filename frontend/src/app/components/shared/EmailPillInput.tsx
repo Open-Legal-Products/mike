@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -19,9 +20,11 @@ export function EmailPillInput({
     onChange,
     validate,
     onValidatingChange,
-    placeholder = "Add by email…",
+    placeholder,
     autoFocus = false,
 }: Props) {
+    const t = useTranslations("Shared.EmailPillInput");
+    const resolvedPlaceholder = placeholder ?? t("placeholder");
     const [input, setInput] = useState("");
     const [validating, setValidating] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -48,7 +51,7 @@ export function EmailPillInput({
             return;
         }
         if (!EMAIL_RE.test(email)) {
-            setError("Enter a valid email address.");
+            setError(t("errorInvalidEmail"));
             return;
         }
         if (validate) {
@@ -61,7 +64,7 @@ export function EmailPillInput({
                     return;
                 }
             } catch {
-                setError("Could not verify email. Try again.");
+                setError(t("errorVerifyFailed"));
                 return;
             } finally {
                 setValidatingState(false);
@@ -105,13 +108,13 @@ export function EmailPillInput({
                     }}
                     onKeyDown={handleKeyDown}
                     onBlur={addEmail}
-                    placeholder={emails.length === 0 ? placeholder : ""}
+                    placeholder={emails.length === 0 ? resolvedPlaceholder : ""}
                     className="flex-1 min-w-[160px] bg-transparent text-sm text-gray-700 placeholder:text-gray-400 outline-none"
                     autoFocus={autoFocus}
                 />
             </div>
             {error && <p className="mt-1.5 text-xs text-red-500">{error}</p>}
-            {validating && <p className="mt-1.5 text-xs text-gray-400">Checking…</p>}
+            {validating && <p className="mt-1.5 text-xs text-gray-400">{t("checking")}</p>}
         </div>
     );
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { PanelLeft } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ChatHistoryProvider } from "@/app/contexts/ChatHistoryContext";
@@ -13,6 +14,7 @@ export default function MikeLayout({
 }: {
     children: React.ReactNode;
 }) {
+    const t = useTranslations("Layout");
     const { isAuthenticated, authLoading } = useAuth();
     const router = useRouter();
 
@@ -96,8 +98,8 @@ export default function MikeLayout({
                                 <button
                                     onClick={handleSidebarToggle}
                                     className="flex h-8 w-8 items-center justify-center rounded-full bg-white/70 text-gray-700 shadow-[0_8px_24px_rgba(15,23,42,0.12)] ring-1 ring-white/70 backdrop-blur-md transition-all hover:bg-white/90 active:scale-95"
-                                    title="Open sidebar"
-                                    aria-label="Open sidebar"
+                                    title={t("openSidebar")}
+                                    aria-label={t("openSidebar")}
                                 >
                                     <PanelLeft className="h-4 w-4" />
                                 </button>

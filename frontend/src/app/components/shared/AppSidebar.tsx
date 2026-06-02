@@ -11,6 +11,7 @@ import {
     ChevronsUpDown,
     ChevronDown,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useChatHistoryContext } from "@/app/contexts/ChatHistoryContext";
@@ -21,11 +22,11 @@ import { SidebarChatItem } from "@/app/components/shared/SidebarChatItem";
 import { listProjects } from "@/app/lib/mikeApi";
 import type { MikeProject } from "@/app/components/shared/types";
 
-const NAV_ITEMS = [
-    { href: "/assistant", label: "Assistant", icon: MessageSquare },
-    { href: "/projects", label: "Projects", icon: FolderOpen },
-    { href: "/tabular-reviews", label: "Tabular Review", icon: Table2 },
-    { href: "/workflows", label: "Workflows", icon: Library },
+const NAV_ITEM_KEYS = [
+    { href: "/assistant", labelKey: "navAssistant" as const, icon: MessageSquare },
+    { href: "/projects", labelKey: "navProjects" as const, icon: FolderOpen },
+    { href: "/tabular-reviews", labelKey: "navTabularReview" as const, icon: Table2 },
+    { href: "/workflows", labelKey: "navWorkflows" as const, icon: Library },
 ];
 
 interface AppSidebarProps {
@@ -128,6 +129,8 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
         return profile.tier || "Free";
     };
 
+    const t = useTranslations("Shared.AppSidebar");
+
     if (!user) return null;
 
     return (
@@ -164,14 +167,15 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                 <button
                     onClick={onToggle}
                     className="h-9 w-9 p-2.5 items-center flex hover:bg-gray-100 rounded-md transition-colors"
-                    title={isOpen ? "Close sidebar" : "Open sidebar"}
+                    title={isOpen ? t("closeSidebar") : t("openSidebar")}
                 >
                     <PanelLeft className="h-4 w-4" />
                 </button>
             </div>
 
             {/* Nav items */}
-            {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+            {NAV_ITEM_KEYS.map(({ href, labelKey, icon: Icon }) => {
+                const label = t(labelKey);
                 const isActive =
                     pathname === href || pathname.startsWith(href + "/");
                 return (
@@ -214,7 +218,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                 shouldAnimate ? "sidebar-fade-in" : ""
                             }`}
                         >
-                            <span>Recent Projects</span>
+                            <span>{t("recentProjects")}</span>
                             <ChevronDown
                                 className={`h-3.5 w-3.5 transition-transform ${
                                     projectsCollapsed ? "-rotate-90" : ""
@@ -245,7 +249,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                                 : ""
                                         }`}
                                     >
-                                        No projects yet
+                                        {t("noProjectsYet")}
                                     </div>
                                 ) : (
                                     <div
@@ -298,7 +302,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                 shouldAnimate ? "sidebar-fade-in" : ""
                             }`}
                         >
-                            <span>Assistant History</span>
+                            <span>{t("assistantHistory")}</span>
                             <ChevronDown
                                 className={`h-3.5 w-3.5 transition-transform ${
                                     historyCollapsed ? "-rotate-90" : ""
@@ -330,7 +334,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                         shouldAnimate ? "sidebar-fade-in-2" : ""
                                     }`}
                                 >
-                                    No chats yet
+                                    {t("noChatsYet")}
                                 </div>
                             ) : (
                                 <>
@@ -372,7 +376,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                                 onClick={loadMoreChats}
                                                 className="flex h-8 w-full items-center justify-start rounded-md px-3 text-left text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
                                             >
-                                                Load more
+                                                {t("loadMore")}
                                             </button>
                                         </div>
                                     )}
@@ -430,7 +434,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                     className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 rounded-md"
                                 >
                                     <User className="h-4 w-4" />
-                                    Account Settings
+                                    {t("accountSettings")}
                                 </button>
                             </div>
                         )}
