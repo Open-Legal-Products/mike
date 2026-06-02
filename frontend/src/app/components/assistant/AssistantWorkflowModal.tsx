@@ -8,6 +8,7 @@ import remarkGfm from "remark-gfm";
 import type { MikeWorkflow } from "../shared/types";
 import { listWorkflows } from "@/app/lib/mikeApi";
 import { BUILT_IN_WORKFLOWS } from "../workflows/builtinWorkflows";
+import { PRACTICE_AREAS } from "@/app/lib/practiceAreas";
 
 interface Props {
     open: boolean;
@@ -80,6 +81,27 @@ export function AssistantWorkflowModal({
     const filteredWorkflows = search
         ? workflows.filter((w) => w.title.toLowerCase().includes(search.toLowerCase()))
         : workflows;
+
+    // Group the (filtered) workflows by practice area, ordered by the canonical
+    // area list first, then any other areas alphabetically, with un-tagged
+    // workflows under "Other" last.
+    const byArea = new Map<string, MikeWorkflow[]>();
+    for (const wf of filteredWorkflows) {
+        const key = wf.practice?.trim() || "Other";
+        const arr = byArea.get(key);
+        if (arr) arr.push(wf);
+        else byArea.set(key, [wf]);
+    }
+    for (const arr of byArea.values())
+        arr.sort((a, b) => a.title.localeCompare(b.title));
+    const knownAreas = PRACTICE_AREAS as readonly string[];
+    const orderedAreas = [
+        ...knownAreas.filter((a) => byArea.has(a)),
+        ...[...byArea.keys()]
+            .filter((a) => !knownAreas.includes(a) && a !== "Other")
+            .sort(),
+        ...(byArea.has("Other") ? ["Other"] : []),
+    ];
 
     function handleUse() {
         if (!selected) return;
@@ -171,28 +193,39 @@ export function AssistantWorkflowModal({
                                 {search ? "No matches found" : "No assistant workflows found"}
                             </p>
                         ) : (
-                            filteredWorkflows.map((wf) => (
-                                <button
-                                    key={wf.id}
-                                    type="button"
-                                    onClick={() =>
-                                        setSelected((prev) =>
-                                            prev?.id === wf.id ? null : wf,
-                                        )
-                                    }
-                                    className={`w-full flex items-center gap-3 px-4 py-3 text-xs text-left transition-colors border-b border-gray-50 ${
-                                        selected?.id === wf.id
-                                            ? "bg-gray-50"
-                                            : "hover:bg-gray-50"
-                                    }`}
-                                >
-                                    <span className="flex-1 truncate text-gray-800">
-                                        {wf.title}
-                                    </span>
-                                    <span className="shrink-0 text-xs text-gray-400">
-                                        {wf.is_system ? "Built-in" : "Custom"}
-                                    </span>
-                                </button>
+                            orderedAreas.map((area) => (
+                                <div key={area}>
+                                    <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                                        {area}
+                                    </div>
+                                    {byArea.get(area)!.map((wf) => (
+                                        <button
+                                            key={wf.id}
+                                            type="button"
+                                            onClick={() =>
+                                                setSelected((prev) =>
+                                                    prev?.id === wf.id
+                                                        ? null
+                                                        : wf,
+                                                )
+                                            }
+                                            className={`w-full flex items-center gap-3 px-4 py-3 text-xs text-left transition-colors border-b border-gray-50 ${
+                                                selected?.id === wf.id
+                                                    ? "bg-gray-50"
+                                                    : "hover:bg-gray-50"
+                                            }`}
+                                        >
+                                            <span className="flex-1 truncate text-gray-800">
+                                                {wf.title}
+                                            </span>
+                                            <span className="shrink-0 text-xs text-gray-400">
+                                                {wf.is_system
+                                                    ? "Built-in"
+                                                    : "Custom"}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
                             ))
                         )}
                     </div>
