@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, Search, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -84,24 +84,30 @@ export function AssistantWorkflowModal({
 
     // Group the (filtered) workflows by practice area, ordered by the canonical
     // area list first, then any other areas alphabetically, with un-tagged
-    // workflows under "Other" last.
-    const byArea = new Map<string, MikeWorkflow[]>();
-    for (const wf of filteredWorkflows) {
-        const key = wf.practice?.trim() || "Other";
-        const arr = byArea.get(key);
-        if (arr) arr.push(wf);
-        else byArea.set(key, [wf]);
-    }
-    for (const arr of byArea.values())
-        arr.sort((a, b) => a.title.localeCompare(b.title));
-    const knownAreas = PRACTICE_AREAS as readonly string[];
-    const orderedAreas = [
-        ...knownAreas.filter((a) => byArea.has(a)),
-        ...[...byArea.keys()]
-            .filter((a) => !knownAreas.includes(a) && a !== "Other")
-            .sort(),
-        ...(byArea.has("Other") ? ["Other"] : []),
-    ];
+    // workflows under "Other" last. Titles are sorted within each group.
+    const groupedWorkflows = useMemo(() => {
+        const byArea = new Map<string, MikeWorkflow[]>();
+        for (const wf of filteredWorkflows) {
+            const key = wf.practice?.trim() || "Other";
+            const arr = byArea.get(key);
+            if (arr) arr.push(wf);
+            else byArea.set(key, [wf]);
+        }
+        for (const arr of byArea.values())
+            arr.sort((a, b) => a.title.localeCompare(b.title));
+        const knownAreas = PRACTICE_AREAS as readonly string[];
+        const orderedAreas = [
+            ...knownAreas.filter((a) => byArea.has(a)),
+            ...[...byArea.keys()]
+                .filter((a) => !knownAreas.includes(a) && a !== "Other")
+                .sort(),
+            ...(byArea.has("Other") ? ["Other"] : []),
+        ];
+        return orderedAreas.map((area) => ({
+            area,
+            workflows: byArea.get(area)!,
+        }));
+    }, [filteredWorkflows]);
 
     function handleUse() {
         if (!selected) return;
@@ -193,12 +199,12 @@ export function AssistantWorkflowModal({
                                 {search ? "No matches found" : "No assistant workflows found"}
                             </p>
                         ) : (
-                            orderedAreas.map((area) => (
+                            groupedWorkflows.map(({ area, workflows }) => (
                                 <div key={area}>
                                     <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
                                         {area}
                                     </div>
-                                    {byArea.get(area)!.map((wf) => (
+                                    {workflows.map((wf) => (
                                         <button
                                             key={wf.id}
                                             type="button"

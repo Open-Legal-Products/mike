@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,62 +66,62 @@ export default function AccountPage() {
         }
     };
 
-    const handleSaveDisplayName = async () => {
-        setIsSavingName(true);
-        const success = await updateDisplayName(displayName.trim());
-        setIsSavingName(false);
-
+    // Shared save flow: toggle the saving flag, run the update, then flash
+    // "Saved" for 2s (or alert on failure). `label` keeps the error specific.
+    const runSave = async (
+        label: string,
+        doUpdate: () => Promise<boolean>,
+        setSaving: (b: boolean) => void,
+        setSavedFlag: (b: boolean) => void,
+    ) => {
+        setSaving(true);
+        const success = await doUpdate();
+        setSaving(false);
         if (success) {
-            setSaved(true);
-            setTimeout(() => setSaved(false), 2000);
+            setSavedFlag(true);
+            setTimeout(() => setSavedFlag(false), 2000);
         } else {
-            alert("Failed to update display name. Please try again.");
+            alert(`Failed to update ${label}. Please try again.`);
         }
     };
 
-    const handleSaveOrganisation = async () => {
-        setIsSavingOrg(true);
-        const success = await updateOrganisation(organisation.trim());
-        setIsSavingOrg(false);
+    const handleSaveDisplayName = () =>
+        runSave(
+            "display name",
+            () => updateDisplayName(displayName.trim()),
+            setIsSavingName,
+            setSaved,
+        );
+    const handleSaveOrganisation = () =>
+        runSave(
+            "organisation",
+            () => updateOrganisation(organisation.trim()),
+            setIsSavingOrg,
+            setOrgSaved,
+        );
+    const handleSavePracticeProfile = () =>
+        runSave(
+            "practice profile",
+            () => updatePracticeProfile(practiceProfile),
+            setIsSavingPractice,
+            setPracticeSaved,
+        );
+    const handleSaveAreaProfiles = () =>
+        runSave(
+            "area profiles",
+            () => updatePracticeProfiles(areaProfiles),
+            setIsSavingAreas,
+            setAreasSaved,
+        );
 
-        if (success) {
-            setOrgSaved(true);
-            setTimeout(() => setOrgSaved(false), 2000);
-        } else {
-            alert("Failed to update organisation. Please try again.");
-        }
-    };
-
-    const handleSavePracticeProfile = async () => {
-        setIsSavingPractice(true);
-        const success = await updatePracticeProfile(practiceProfile);
-        setIsSavingPractice(false);
-
-        if (success) {
-            setPracticeSaved(true);
-            setTimeout(() => setPracticeSaved(false), 2000);
-        } else {
-            alert("Failed to update practice profile. Please try again.");
-        }
-    };
-
-    const handleSaveAreaProfiles = async () => {
-        setIsSavingAreas(true);
-        const success = await updatePracticeProfiles(areaProfiles);
-        setIsSavingAreas(false);
-
-        if (success) {
-            setAreasSaved(true);
-            setTimeout(() => setAreasSaved(false), 2000);
-        } else {
-            alert("Failed to update area profiles. Please try again.");
-        }
-    };
-
-    const areasDirty = PRACTICE_AREAS.some(
-        (area) =>
-            (areaProfiles[area] ?? "").trim() !==
-            (profile?.practiceProfiles?.[area] ?? "").trim(),
+    const areasDirty = useMemo(
+        () =>
+            PRACTICE_AREAS.some(
+                (area) =>
+                    (areaProfiles[area] ?? "").trim() !==
+                    (profile?.practiceProfiles?.[area] ?? "").trim(),
+            ),
+        [areaProfiles, profile],
     );
 
     if (!user) return null;

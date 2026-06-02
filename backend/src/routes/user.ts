@@ -53,6 +53,23 @@ function serializeProfile(
   };
 }
 
+// Shared type + length check for the free-text profile fields. Returns an error
+// string, or null when the value is valid.
+function validateProfileText(
+  label: string,
+  value: unknown,
+  allowNull: boolean,
+): string | null {
+  if (allowNull && value === null) return null;
+  if (typeof value !== "string") {
+    return `${label} must be a string${allowNull ? " or null" : ""}`;
+  }
+  if (value.length > MAX_PRACTICE_PROFILE_CHARS) {
+    return `${label} must be ${MAX_PRACTICE_PROFILE_CHARS} characters or fewer`;
+  }
+  return null;
+}
+
 function validateProfilePayload(body: unknown):
   | {
       ok: true;
@@ -118,22 +135,10 @@ function validateProfilePayload(body: unknown):
   }
 
   if ("practiceProfile" in raw) {
-    if (raw.practiceProfile !== null && typeof raw.practiceProfile !== "string") {
-      return {
-        ok: false,
-        detail: "practiceProfile must be a string or null",
-      };
-    }
-    if (
-      typeof raw.practiceProfile === "string" &&
-      raw.practiceProfile.length > MAX_PRACTICE_PROFILE_CHARS
-    ) {
-      return {
-        ok: false,
-        detail: `practiceProfile must be ${MAX_PRACTICE_PROFILE_CHARS} characters or fewer`,
-      };
-    }
-    update.practice_profile = raw.practiceProfile?.trim() || null;
+    const err = validateProfileText("practiceProfile", raw.practiceProfile, true);
+    if (err) return { ok: false, detail: err };
+    update.practice_profile =
+      (raw.practiceProfile as string | null)?.trim() || null;
   }
 
   if ("practiceProfiles" in raw) {
@@ -148,20 +153,14 @@ function validateProfilePayload(body: unknown):
       if (!PRACTICE_AREA_SET.has(area)) {
         return { ok: false, detail: `Unknown practice area: ${area}` };
       }
-      if (typeof content !== "string") {
-        return {
-          ok: false,
-          detail: `practiceProfiles["${area}"] must be a string`,
-        };
-      }
-      if (content.length > MAX_PRACTICE_PROFILE_CHARS) {
-        return {
-          ok: false,
-          detail: `Each practice profile must be ${MAX_PRACTICE_PROFILE_CHARS} characters or fewer`,
-        };
-      }
+      const err = validateProfileText(
+        `practiceProfiles["${area}"]`,
+        content,
+        false,
+      );
+      if (err) return { ok: false, detail: err };
       // Drop blanks so the map only stores areas the user actually filled in.
-      if (content.trim()) cleaned[area] = content;
+      if ((content as string).trim()) cleaned[area] = content as string;
     }
     update.practice_profiles = cleaned;
   }

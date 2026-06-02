@@ -35,7 +35,6 @@ vi.mock("../../src/lib/chatTools", () => ({
   enrichWithPriorEvents: vi.fn(async (m: unknown) => m),
   buildWorkflowStore: vi.fn(async () => new Map()),
   extractAnnotations: vi.fn(() => []),
-  buildPracticeProfileBlock: vi.fn(() => ""),
   runLLMStream: vi.fn(async ({ write }: { write: (s: string) => void }) => {
     write(`data: ${JSON.stringify({ type: "text", text: "yo" })}\n\n`);
     return { fullText: "yo", events: [{ type: "text", text: "yo" }] };
@@ -45,8 +44,7 @@ vi.mock("../../src/lib/chatTools", () => ({
 vi.mock("../../src/lib/userSettings", () => ({
   getUserModelSettings: vi.fn(async () => ({ title_model: "m", api_keys: {} })),
   getUserApiKeys: vi.fn(async () => ({})),
-  getUserPracticeProfiles: vi.fn(async () => ({ general: null, byArea: {} })),
-  resolveWorkflowPractice: vi.fn(async () => null),
+  buildWorkflowPracticeBlock: vi.fn(async () => ""),
 }));
 
 import { createApp } from "../../src/index";

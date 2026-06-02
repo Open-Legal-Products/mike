@@ -7,6 +7,8 @@ import {
     type UserApiKeys,
 } from "./llm";
 import { getUserApiKeys as getStoredUserApiKeys } from "./userApiKeys";
+import { BUILTIN_WORKFLOW_PRACTICE } from "./builtinWorkflows";
+import { buildPracticeProfileBlock } from "./chatTools";
 
 export type UserModelSettings = {
     title_model: string;
@@ -92,7 +94,6 @@ export async function resolveWorkflowPractice(
     workflowId: string,
     db?: ReturnType<typeof createServerSupabase>,
 ): Promise<string | null> {
-    const { BUILTIN_WORKFLOW_PRACTICE } = await import("./builtinWorkflows");
     if (BUILTIN_WORKFLOW_PRACTICE.has(workflowId)) {
         return BUILTIN_WORKFLOW_PRACTICE.get(workflowId) ?? null;
     }
@@ -104,4 +105,23 @@ export async function resolveWorkflowPractice(
         .maybeSingle();
     const practice = (data?.practice as string | null) ?? null;
     return practice && practice.trim() ? practice : null;
+}
+
+/**
+ * The system-prompt practice-profile block for a chat turn: the user's general
+ * profile plus the profile for the active workflow's practice area (resolved
+ * from `workflowId`). Shared by the chat, project-chat, and tabular routes.
+ * Returns an empty string when nothing is configured.
+ */
+export async function buildWorkflowPracticeBlock(
+    userId: string,
+    workflowId: string | null | undefined,
+    db?: ReturnType<typeof createServerSupabase>,
+): Promise<string> {
+    const client = db ?? createServerSupabase();
+    const [profiles, area] = await Promise.all([
+        getUserPracticeProfiles(userId, client),
+        workflowId ? resolveWorkflowPractice(workflowId, client) : null,
+    ]);
+    return buildPracticeProfileBlock(profiles, area);
 }

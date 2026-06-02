@@ -38,9 +38,6 @@ vi.mock("../../src/lib/chatTools", () => ({
       return { fullText: "t", events: [{ type: "text", text: "t" }] };
     },
   ),
-  buildPracticeProfileBlock: vi.fn((profiles: { general: string | null }) =>
-    profiles.general ? `PRACTICE_BLOCK(${profiles.general})` : "",
-  ),
   TABULAR_TOOLS: [],
 }));
 vi.mock("../../src/lib/llm", () => ({
@@ -61,11 +58,9 @@ vi.mock("../../src/lib/userSettings", () => ({
     api_keys: {},
   })),
   getUserApiKeys: vi.fn(async () => ({})),
-  getUserPracticeProfiles: vi.fn(async () => ({
-    general: "House style: surgical redlines.",
-    byArea: {},
-  })),
-  resolveWorkflowPractice: vi.fn(async () => null),
+  buildWorkflowPracticeBlock: vi.fn(
+    async () => "PRACTICE_BLOCK(House style: surgical redlines.)",
+  ),
 }));
 
 import { createApp } from "../../src/index";

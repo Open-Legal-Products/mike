@@ -6,7 +6,6 @@ import { loadActiveVersion } from "../lib/documentVersions";
 import { normalizeDocxZipPaths } from "../lib/convert";
 import {
     runLLMStream,
-    buildPracticeProfileBlock,
     TABULAR_TOOLS,
     type ChatMessage,
     type TabularCellStore,
@@ -20,8 +19,7 @@ import {
 } from "../lib/llm";
 import {
     getUserModelSettings,
-    getUserPracticeProfiles,
-    resolveWorkflowPractice,
+    buildWorkflowPracticeBlock,
 } from "../lib/userSettings";
 import {
     checkProjectAccess,
@@ -901,9 +899,9 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
 
     const write = (line: string) => res.write(line);
 
-    const practiceProfileBlock = await reviewPracticeProfileBlock(
+    const practiceProfileBlock = await buildWorkflowPracticeBlock(
         userId,
-        review,
+        review.workflow_id,
         db,
     );
 
@@ -1159,21 +1157,6 @@ function extractTabularAnnotations(
 // Build messages for tabular chat
 // ---------------------------------------------------------------------------
 
-// The practice-profile system block for a review: the user's general profile
-// plus the profile for the review's workflow practice area (when the review was
-// created from a workflow). Empty string when nothing is configured.
-async function reviewPracticeProfileBlock(
-    userId: string,
-    review: { workflow_id?: string | null },
-    db: ReturnType<typeof createServerSupabase>,
-): Promise<string> {
-    const profiles = await getUserPracticeProfiles(userId, db);
-    const area = review.workflow_id
-        ? await resolveWorkflowPractice(review.workflow_id, db)
-        : null;
-    return buildPracticeProfileBlock(profiles, area);
-}
-
 function buildTabularMessages(
     messages: ChatMessage[],
     tabularStore: TabularCellStore,
@@ -1362,7 +1345,7 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
         messages,
         tabularStore,
         review.title || "Untitled Review",
-        await reviewPracticeProfileBlock(userId, review, db),
+        await buildWorkflowPracticeBlock(userId, review.workflow_id, db),
     );
 
     res.setHeader("Content-Type", "text/event-stream");

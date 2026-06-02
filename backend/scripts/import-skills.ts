@@ -24,6 +24,7 @@
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { PRACTICE_AREA_SET } from "../src/lib/practiceAreas";
 
 const SOURCE = process.argv[2] || process.env.SKILL_SRC || "/tmp/cfl";
 
@@ -67,6 +68,18 @@ const RUNTIME_DENYLIST = new Set([
 // Scheduled watchers and register-trackers (every area ships its own) — these
 // rely on persistent state / background runs that Mike doesn't have.
 const DENY_PATTERNS = [/-(monitor|watcher)$/, /^(renewal|leave)-tracker$/, /^log-/];
+
+// Fail fast if an area label drifts from the canonical PRACTICE_AREAS list —
+// otherwise ported workflows would tag a practice area the profile UI and
+// injection don't know about.
+for (const a of AREAS) {
+    if (!PRACTICE_AREA_SET.has(a.practice)) {
+        throw new Error(
+            `AREAS practice "${a.practice}" is missing from PRACTICE_AREAS ` +
+                `(backend/src/lib/practiceAreas.ts) — keep them in sync.`,
+        );
+    }
+}
 
 const PRACTICE_PROFILE_REF =
     "your USER PRACTICE PROFILE (provided in the system prompt; the user maintains it in Account → Practice Profile)";
