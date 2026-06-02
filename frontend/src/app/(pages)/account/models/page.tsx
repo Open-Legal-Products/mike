@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertCircle, Check, ChevronDown, Eye, EyeOff } from "lucide-react";
+import { AlertCircle, Check, ChevronDown, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,6 +20,8 @@ import {
     modelGroupToProvider,
     providerLabel,
 } from "@/app/lib/modelAvailability";
+import { clearProviderModelsCache } from "@/app/lib/providerModels";
+import { clearConcentrateModelsCache } from "@/app/lib/concentrateModels";
 
 const API_KEY_FIELDS = [
     {
@@ -48,6 +50,23 @@ const API_KEY_FIELDS = [
 
 export default function ModelsAndApiKeysPage() {
     const { profile, updateModelPreference, updateApiKey } = useUserProfile();
+    const [refreshing, setRefreshing] = useState(false);
+    const [refreshed, setRefreshed] = useState(false);
+
+    const hasAnyKey = Object.values(profile?.apiKeys ?? {}).some(
+        (k) => k.configured,
+    );
+
+    const handleRefresh = () => {
+        setRefreshing(true);
+        clearProviderModelsCache();
+        clearConcentrateModelsCache();
+        setTimeout(() => {
+            setRefreshing(false);
+            setRefreshed(true);
+            setTimeout(() => setRefreshed(false), 2000);
+        }, 400);
+    };
 
     return (
         <div className="space-y-4">
@@ -78,6 +97,24 @@ export default function ModelsAndApiKeysPage() {
                             }
                         />
                     </div>
+                    {hasAnyKey && (
+                        <div className="flex items-center gap-3 pt-1">
+                            <button
+                                type="button"
+                                onClick={handleRefresh}
+                                disabled={refreshing}
+                                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-50 transition-colors"
+                            >
+                                <RefreshCw
+                                    className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`}
+                                />
+                                {refreshed ? "Model list refreshed" : "Refresh model list"}
+                            </button>
+                            <span className="text-xs text-gray-400">
+                                Model lists update automatically when you open the picker.
+                            </span>
+                        </div>
+                    )}
                 </div>
             </div>
 

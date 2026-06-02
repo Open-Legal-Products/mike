@@ -158,9 +158,12 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
     const hasOpenAI = !!apiKeys?.openai?.configured;
     const hasConcentrateKey = !!apiKeys?.concentrate?.configured;
 
-    // Fetch each catalog the user has a key for. Independent of each other,
-    // each writes into its own slot of the catalogs state on resolve.
+    // Fetch catalogs on first open (and re-open after cache expires). Firing
+    // on open instead of mount means no background network calls until the
+    // user actually wants to pick a model. The 5-minute in-memory cache in
+    // getProviderModels/getConcentrateModels makes repeat opens instant.
     useEffect(() => {
+        if (!isOpen) return;
         let cancelled = false;
         const load = async (
             provider: ProviderId,
@@ -168,37 +171,26 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
             slot: keyof ProviderCatalogs,
         ) => {
             if (!has) {
-                if (!cancelled) {
-                    setDirect((prev) => ({ ...prev, [slot]: [] }));
-                }
+                if (!cancelled) setDirect((prev) => ({ ...prev, [slot]: [] }));
                 return;
             }
             const models = await getProviderModels(provider);
-            if (!cancelled) {
-                setDirect((prev) => ({ ...prev, [slot]: models }));
-            }
+            if (!cancelled) setDirect((prev) => ({ ...prev, [slot]: models }));
         };
         load("anthropic", hasClaude, "anthropic");
         load("openai", hasOpenAI, "openai");
         load("google", hasGemini, "google");
-        return () => {
-            cancelled = true;
-        };
-    }, [hasClaude, hasGemini, hasOpenAI]);
-
-    useEffect(() => {
         if (!hasConcentrateKey) {
-            setConcentrate([]);
-            return;
+            if (!cancelled) setConcentrate([]);
+        } else {
+            getConcentrateModels().then((m) => {
+                if (!cancelled) setConcentrate(m);
+            });
         }
-        let cancelled = false;
-        getConcentrateModels().then((m) => {
-            if (!cancelled) setConcentrate(m);
-        });
         return () => {
             cancelled = true;
         };
-    }, [hasConcentrateKey]);
+    }, [isOpen, hasClaude, hasGemini, hasOpenAI, hasConcentrateKey]);
 
     const merged = useMemo(
         () => mergeAll(direct, concentrate, hasConcentrateKey),
