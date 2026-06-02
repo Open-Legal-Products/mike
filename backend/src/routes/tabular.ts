@@ -6,6 +6,7 @@ import { loadActiveVersion } from "../lib/documentVersions";
 import { normalizeDocxZipPaths } from "../lib/convert";
 import {
     runLLMStream,
+    buildPracticeProfileBlock,
     TABULAR_TOOLS,
     type ChatMessage,
     type TabularCellStore,
@@ -17,7 +18,11 @@ import {
     type Provider,
     type UserApiKeys,
 } from "../lib/llm";
-import { getUserModelSettings } from "../lib/userSettings";
+import {
+    getUserModelSettings,
+    getUserPracticeProfiles,
+    resolveWorkflowPractice,
+} from "../lib/userSettings";
 import {
     checkProjectAccess,
     ensureReviewAccess,
@@ -896,6 +901,12 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
 
     const write = (line: string) => res.write(line);
 
+    const practiceProfileBlock = await reviewPracticeProfileBlock(
+        userId,
+        review,
+        db,
+    );
+
     try {
         await Promise.all(
             docs.map(async (doc) => {
@@ -973,6 +984,7 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
                             );
                         },
                         api_keys,
+                        practiceProfileBlock,
                     );
                 } catch (err) {
                     console.error(
@@ -1147,10 +1159,26 @@ function extractTabularAnnotations(
 // Build messages for tabular chat
 // ---------------------------------------------------------------------------
 
+// The practice-profile system block for a review: the user's general profile
+// plus the profile for the review's workflow practice area (when the review was
+// created from a workflow). Empty string when nothing is configured.
+async function reviewPracticeProfileBlock(
+    userId: string,
+    review: { workflow_id?: string | null },
+    db: ReturnType<typeof createServerSupabase>,
+): Promise<string> {
+    const profiles = await getUserPracticeProfiles(userId, db);
+    const area = review.workflow_id
+        ? await resolveWorkflowPractice(review.workflow_id, db)
+        : null;
+    return buildPracticeProfileBlock(profiles, area);
+}
+
 function buildTabularMessages(
     messages: ChatMessage[],
     tabularStore: TabularCellStore,
     reviewTitle: string,
+    systemPromptExtra?: string,
 ): unknown[] {
     const docList = tabularStore.documents
         .map((d, i) => `- ROW:${i} "${d.filename}"`)
@@ -1190,7 +1218,10 @@ Rules:
 - Do not fabricate cell content
 - Answer in clear, concise prose. You may use markdown formatting.`;
 
-    const formatted: unknown[] = [{ role: "system", content: systemContent }];
+    const fullSystem = systemPromptExtra
+        ? `${systemContent}\n\n${systemPromptExtra.trim()}`
+        : systemContent;
+    const formatted: unknown[] = [{ role: "system", content: fullSystem }];
     for (const msg of messages) {
         formatted.push({ role: msg.role, content: msg.content ?? "" });
     }
@@ -1331,6 +1362,7 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
         messages,
         tabularStore,
         review.title || "Untitled Review",
+        await reviewPracticeProfileBlock(userId, review, db),
     );
 
     res.setHeader("Content-Type", "text/event-stream");
@@ -1618,6 +1650,7 @@ async function queryTabularAllColumns(
     columns: Column[],
     onResult: (columnIndex: number, result: CellResult) => Promise<void>,
     apiKeys?: import("../lib/llm").UserApiKeys,
+    practiceProfile?: string,
 ): Promise<void> {
     const columnsDesc = columns
         .map((col) => {
@@ -1640,6 +1673,10 @@ Rules:
 - "reasoning": brief explanation of the extraction
 - The "summary" and "reasoning" string VALUES may use markdown (bullets, bold, italics, etc.) — escape newlines as \\n inside the JSON string. This markdown is rendered in the UI.
 - Output ONLY the JSON lines themselves. Do NOT wrap the response in markdown code fences (e.g. \`\`\`json), and do not add any preamble or summary.`;
+
+    const systemWithProfile = practiceProfile?.trim()
+        ? `${SYSTEM}\n\n${practiceProfile.trim()}\n\nApply the practice profile above when deciding flags (green/yellow/red) and house style — e.g. flag terms that deviate from the firm's stated positions.`
+        : SYSTEM;
 
     const USER = `Document: ${filename}\n\n${documentText.slice(0, 120_000)}\n\n---\nColumns to extract:\n${columnsDesc}`;
 
@@ -1676,7 +1713,7 @@ Rules:
     try {
         await streamChatWithTools({
             model,
-            systemPrompt: SYSTEM,
+            systemPrompt: systemWithProfile,
             messages: [{ role: "user", content: USER }],
             tools: [],
             apiKeys,

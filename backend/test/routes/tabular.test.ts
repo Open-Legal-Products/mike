@@ -25,10 +25,22 @@ vi.mock("../../src/middleware/auth", () => ({
   },
 }));
 vi.mock("../../src/lib/chatTools", () => ({
-  runLLMStream: vi.fn(async ({ write }: { write: (s: string) => void }) => {
-    write(`data: ${JSON.stringify({ type: "text", text: "t" })}\n\n`);
-    return { fullText: "t", events: [{ type: "text", text: "t" }] };
-  }),
+  runLLMStream: vi.fn(
+    async ({
+      write,
+      apiMessages,
+    }: {
+      write: (s: string) => void;
+      apiMessages: { role: string; content: string }[];
+    }) => {
+      void apiMessages;
+      write(`data: ${JSON.stringify({ type: "text", text: "t" })}\n\n`);
+      return { fullText: "t", events: [{ type: "text", text: "t" }] };
+    },
+  ),
+  buildPracticeProfileBlock: vi.fn((profiles: { general: string | null }) =>
+    profiles.general ? `PRACTICE_BLOCK(${profiles.general})` : "",
+  ),
   TABULAR_TOOLS: [],
 }));
 vi.mock("../../src/lib/llm", () => ({
@@ -49,9 +61,16 @@ vi.mock("../../src/lib/userSettings", () => ({
     api_keys: {},
   })),
   getUserApiKeys: vi.fn(async () => ({})),
+  getUserPracticeProfiles: vi.fn(async () => ({
+    general: "House style: surgical redlines.",
+    byArea: {},
+  })),
+  resolveWorkflowPractice: vi.fn(async () => null),
 }));
 
 import { createApp } from "../../src/index";
+import { runLLMStream } from "../../src/lib/chatTools";
+import { getUserModelSettings } from "../../src/lib/userSettings";
 
 let app: ReturnType<typeof createApp>;
 let mock: SupabaseMockControl;
@@ -126,6 +145,42 @@ describe("POST /tabular-review/:reviewId/chat", () => {
       .post("/tabular-review/r1/chat")
       .send({ messages: [{ role: "user", content: "summarize" }] });
     expect(res.status).toBe(404);
+  });
+
+  it("injects the practice profile into the tabular system prompt", async () => {
+    // Model has a key, so we pass the 422 gate and reach the LLM call.
+    vi.mocked(getUserModelSettings).mockResolvedValueOnce({
+      tabular_model: "gemini-3-flash-preview",
+      api_keys: { gemini: "key" },
+      title_model: "gemini-3-flash-lite-preview",
+    } as never);
+    mock.queueMany([
+      // review lookup (owned, no workflow)
+      {
+        data: {
+          id: "r1",
+          user_id: "user-1",
+          columns_config: [],
+          workflow_id: null,
+          title: "R",
+        },
+        error: null,
+      },
+      { data: [], error: null }, // cells
+      { data: { id: "tc1", title: null }, error: null }, // create chat
+    ]);
+    const res = await request(app)
+      .post("/tabular-review/r1/chat")
+      .send({ messages: [{ role: "user", content: "summarize" }] });
+    expect(res.status).toBe(200);
+    expect(runLLMStream).toHaveBeenCalledOnce();
+    const arg = vi.mocked(runLLMStream).mock.calls[0][0] as {
+      apiMessages: { role: string; content: string }[];
+    };
+    const system = arg.apiMessages.find((m) => m.role === "system");
+    expect(system?.content).toContain(
+      "PRACTICE_BLOCK(House style: surgical redlines.)",
+    );
   });
 
   it("returns 422 when the model's API key is missing", async () => {
