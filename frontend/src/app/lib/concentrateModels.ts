@@ -1,13 +1,13 @@
 import { apiRequest } from "./mikeApi";
+import type { CatalogModel } from "./catalogTypes";
 
-export type ConcentrateModel = {
-    id: string;
-    name: string;
-    author: string;
-    zdr: boolean;
-};
+/**
+ * Re-export under the old name for callers that imported ConcentrateModel
+ * directly. The wire shape is now the same unified CatalogModel everywhere.
+ */
+export type ConcentrateModel = CatalogModel;
 
-let cache: { models: ConcentrateModel[]; fetchedAt: number } | null = null;
+let cache: { models: CatalogModel[]; fetchedAt: number } | null = null;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
 /**
@@ -15,12 +15,12 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
  * Returns [] when no Concentrate key is configured (the backend returns
  * an empty list rather than erroring in that case).
  */
-export async function getConcentrateModels(): Promise<ConcentrateModel[]> {
+export async function getConcentrateModels(): Promise<CatalogModel[]> {
     if (cache && Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
         return cache.models;
     }
     try {
-        const json = await apiRequest<{ models?: ConcentrateModel[] }>(
+        const json = await apiRequest<{ models?: CatalogModel[] }>(
             "/concentrate/models",
         );
         const models = json.models ?? [];

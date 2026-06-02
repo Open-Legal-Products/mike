@@ -42,7 +42,7 @@ const API_KEY_FIELDS = [
         label: "Concentrate API Key",
         placeholder: "sk-cn-…",
         description:
-            "Optional. Concentrate routes any model you don't have a direct key for through a single endpoint — useful for trying models without managing one key per provider.",
+            "Optional. When set, Mike routes Zero Data Retention (ZDR) tagged models through Concentrate so prompts and outputs are never stored or used for training. Models not yet in the ZDR catalog fall through to your direct provider key and may be used by the provider for training.",
     },
 ] as const;
 
@@ -70,7 +70,7 @@ export default function ModelsAndApiKeysPage() {
                         <TabularModelDropdown
                             value={
                                 profile?.tabularModel ??
-                                "gemini-2.0-flash"
+                                "gemini-3-flash-preview"
                             }
                             apiKeys={profile?.apiKeys}
                             onChange={(id) =>
