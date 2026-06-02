@@ -28,15 +28,16 @@ import { join } from "node:path";
 const SOURCE = process.argv[2] || process.env.SKILL_SRC || "/tmp/cfl";
 
 // Plugin folders to import, with the Mike "practice" label each maps onto.
-// Educational / meta plugins (law-student, legal-clinic, legal-builder-hub) are
-// intentionally excluded — they aren't law-practice areas and are mostly
-// session/state-management skills with no Mike equivalent.
+// The skill-marketplace meta plugin (legal-builder-hub) is intentionally
+// excluded — it manages community skill discovery/trust, not legal tasks.
 const AREAS: { folder: string; practice: string; slug: string }[] = [
     { folder: "ai-governance-legal", practice: "AI Governance", slug: "aigov" },
     { folder: "commercial-legal", practice: "Commercial Contracts", slug: "commercial" },
     { folder: "corporate-legal", practice: "Corporate / M&A", slug: "corporate" },
     { folder: "employment-legal", practice: "Employment", slug: "employment" },
     { folder: "ip-legal", practice: "Intellectual Property", slug: "ip" },
+    { folder: "law-student", practice: "Law Student", slug: "lawstudent" },
+    { folder: "legal-clinic", practice: "Legal Clinic", slug: "clinic" },
     { folder: "litigation-legal", practice: "Litigation", slug: "litigation" },
     { folder: "privacy-legal", practice: "Privacy & Data Protection", slug: "privacy" },
     { folder: "product-legal", practice: "Product", slug: "product" },
@@ -45,12 +46,22 @@ const AREAS: { folder: string; practice: string; slug: string }[] = [
 
 // Skills whose job is plugin/profile/workspace/scheduling management rather than
 // a document task — they have no Mike equivalent (the Practice Profile is edited
-// in Account settings; there are no scheduled agents or matter workspaces).
+// in Account settings; there are no scheduled agents, matter workspaces, study
+// sessions, deadline trackers, or supervisor queues).
 const RUNTIME_DENYLIST = new Set([
     "cold-start-interview",
     "customize",
     "matter-workspace",
     "review-proposals",
+    // law-student / legal-clinic session & workspace-state skills:
+    "session",
+    "study-plan",
+    "ramp",
+    "semester-handoff",
+    "build-guide",
+    "client-comms-log",
+    "deadlines",
+    "supervisor-review-queue",
 ]);
 
 // Scheduled watchers and register-trackers (every area ships its own) — these
@@ -86,6 +97,14 @@ const ACRONYMS: Record<string, string> = {
     cp: "CP",
     sha: "SHA",
     ip: "IP",
+    irac: "IRAC",
+    dpa: "DPA",
+    dsar: "DSAR",
+    pia: "PIA",
+    fto: "FTO",
+    oss: "OSS",
+    aia: "AIA",
+    qa: "Q&A",
 };
 
 function titleCase(name: string): string {
@@ -158,6 +177,11 @@ for (const area of AREAS) {
         }
         if (DENY_PATTERNS.some((re) => re.test(name))) {
             skipped.push({ name, reason: "scheduled watcher / register-tracker" });
+            continue;
+        }
+        // Upstream marks superseded skills "DEPRECATED — use /other" near the top.
+        if (/\bDEPRECATED\b/.test(body.slice(0, 300))) {
+            skipped.push({ name, reason: "deprecated upstream" });
             continue;
         }
         skills.push({

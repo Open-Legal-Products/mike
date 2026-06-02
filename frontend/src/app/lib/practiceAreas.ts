@@ -7,6 +7,8 @@ export const PRACTICE_AREAS = [
     "Employment",
     "General Transactions",
     "Intellectual Property",
+    "Law Student",
+    "Legal Clinic",
     "Litigation",
     "Privacy & Data Protection",
     "Product",
