@@ -124,6 +124,18 @@ function mergeAll(
     return out;
 }
 
+function labelFromId(id: string): string {
+    if (!id) return "Model";
+    const s = STATIC_FALLBACK.find((m) => m.id === id);
+    if (s) return s.label;
+    return id
+        .replace(/^claude-/, "Claude ")
+        .replace(/^gemini-/, "Gemini ")
+        .replace(/^gpt-/, "GPT-")
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function groupOrder(models: ModelOption[]): string[] {
     const seen = new Set<string>();
     const order: string[] = [];
@@ -198,7 +210,7 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
     );
 
     const selected = merged.find((m) => m.id === value);
-    const selectedLabel = selected?.label ?? "Model";
+    const selectedLabel = selected?.label ?? labelFromId(value);
     const selectedAvailable = apiKeys
         ? selected?.concentrateOnly
             ? hasConcentrateKey

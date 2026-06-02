@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { DEFAULT_MODEL_ID } from "../components/assistant/ModelToggle";
 
 const STORAGE_KEY = "mike.selectedModel";
@@ -23,11 +23,12 @@ function readStored(): string {
 }
 
 export function useSelectedModel(): [string, (id: string) => void] {
-    const [model, setModelState] = useState<string>(DEFAULT_MODEL_ID);
-
-    useEffect(() => {
-        setModelState(readStored());
-    }, []);
+    // Initialise directly from localStorage so the label is correct on the
+    // very first render. Using a lazy initialiser avoids the SSR mismatch
+    // that a useEffect-based approach creates: the effect fires after first
+    // paint and sets a stored model ID that may not be in STATIC_FALLBACK,
+    // causing the picker to show "Model" until the catalog loads.
+    const [model, setModelState] = useState<string>(() => readStored());
 
     const setModel = useCallback((id: string) => {
         const next = looksLikeModelId(id) ? id : DEFAULT_MODEL_ID;
