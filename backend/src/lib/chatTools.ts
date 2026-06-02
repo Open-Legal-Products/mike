@@ -633,14 +633,21 @@ export async function enrichWithPriorEvents(
 }
 
 /**
- * Wrap the user's practice profile in a clearly-delimited system-prompt block.
- * Returns an empty string when no profile is set, so callers can splice the
- * result into `systemPromptExtra` unconditionally.
+ * Wrap one practice profile in a clearly-delimited system-prompt block.
+ * `areaLabel` titles the block for a per-area profile. Returns an empty string
+ * when the profile is blank, so callers can splice it in unconditionally.
  */
-export function formatPracticeProfile(profile?: string | null): string {
+export function formatPracticeProfile(
+    profile?: string | null,
+    areaLabel?: string,
+): string {
     if (!profile || !profile.trim()) return "";
+    const header = areaLabel
+        ? `USER PRACTICE PROFILE — ${areaLabel}:`
+        : "USER PRACTICE PROFILE:";
     return (
-        "USER PRACTICE PROFILE:\n" +
+        header +
+        "\n" +
         "The user has configured the practice profile below. Treat it as authoritative " +
         "for their firm's positions, house style, escalation rules, preferred governing " +
         "law, and review preferences. When a workflow or task references a playbook, firm " +
@@ -649,6 +656,22 @@ export function formatPracticeProfile(profile?: string | null): string {
         "default.\n\n" +
         profile.trim()
     );
+}
+
+/**
+ * Build the combined practice-profile system block: the general profile plus
+ * the profile for the active workflow's practice `area` (when both are set).
+ */
+export function buildPracticeProfileBlock(
+    profiles: { general: string | null; byArea: Record<string, string> },
+    area: string | null,
+): string {
+    const blocks: string[] = [];
+    if (profiles.general) blocks.push(formatPracticeProfile(profiles.general));
+    if (area && profiles.byArea[area]?.trim()) {
+        blocks.push(formatPracticeProfile(profiles.byArea[area], area));
+    }
+    return blocks.join("\n\n");
 }
 
 export function buildMessages(

@@ -8,6 +8,7 @@ import { LogOut, Check } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { deleteAccount } from "@/app/lib/mikeApi";
+import { PRACTICE_AREAS } from "@/app/lib/practiceAreas";
 
 export default function AccountPage() {
     const router = useRouter();
@@ -17,6 +18,7 @@ export default function AccountPage() {
         updateDisplayName,
         updateOrganisation,
         updatePracticeProfile,
+        updatePracticeProfiles,
     } = useUserProfile();
     const [displayName, setDisplayName] = useState("");
     const [isSavingName, setIsSavingName] = useState(false);
@@ -27,6 +29,11 @@ export default function AccountPage() {
     const [practiceProfile, setPracticeProfile] = useState("");
     const [isSavingPractice, setIsSavingPractice] = useState(false);
     const [practiceSaved, setPracticeSaved] = useState(false);
+    const [areaProfiles, setAreaProfiles] = useState<Record<string, string>>(
+        {},
+    );
+    const [isSavingAreas, setIsSavingAreas] = useState(false);
+    const [areasSaved, setAreasSaved] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
@@ -38,6 +45,7 @@ export default function AccountPage() {
             setOrganisation(profile.organisation);
         }
         setPracticeProfile(profile?.practiceProfile ?? "");
+        setAreaProfiles(profile?.practiceProfiles ?? {});
     }, [profile]);
 
     const handleLogout = async () => {
@@ -96,6 +104,25 @@ export default function AccountPage() {
             alert("Failed to update practice profile. Please try again.");
         }
     };
+
+    const handleSaveAreaProfiles = async () => {
+        setIsSavingAreas(true);
+        const success = await updatePracticeProfiles(areaProfiles);
+        setIsSavingAreas(false);
+
+        if (success) {
+            setAreasSaved(true);
+            setTimeout(() => setAreasSaved(false), 2000);
+        } else {
+            alert("Failed to update area profiles. Please try again.");
+        }
+    };
+
+    const areasDirty = PRACTICE_AREAS.some(
+        (area) =>
+            (areaProfiles[area] ?? "").trim() !==
+            (profile?.practiceProfiles?.[area] ?? "").trim(),
+    );
 
     if (!user) return null;
 
@@ -232,6 +259,74 @@ export default function AccountPage() {
                             </>
                         ) : (
                             "Save"
+                        )}
+                    </Button>
+                </div>
+            </div>
+
+            {/* Per-practice-area profiles */}
+            <div className="py-6">
+                <div className="flex items-center gap-2 mb-1">
+                    <h2 className="text-2xl font-medium font-serif">
+                        Practice-Area Profiles
+                    </h2>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                    Optional playbooks scoped to a practice area. The matching
+                    profile is added on top of your general profile whenever you
+                    run a workflow in that area (e.g. an NDA review applies your
+                    Commercial Contracts profile).
+                </p>
+                <div className="space-y-2">
+                    {PRACTICE_AREAS.map((area) => {
+                        const filled = (areaProfiles[area] ?? "").trim().length > 0;
+                        return (
+                            <details
+                                key={area}
+                                className="rounded-md border border-gray-200 bg-white"
+                            >
+                                <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium flex items-center justify-between">
+                                    <span>{area}</span>
+                                    {filled && (
+                                        <span className="text-xs text-gray-400">
+                                            configured
+                                        </span>
+                                    )}
+                                </summary>
+                                <div className="px-3 pb-3">
+                                    <textarea
+                                        value={areaProfiles[area] ?? ""}
+                                        onChange={(e) =>
+                                            setAreaProfiles((prev) => ({
+                                                ...prev,
+                                                [area]: e.target.value,
+                                            }))
+                                        }
+                                        placeholder={`Playbook positions specific to ${area}…`}
+                                        rows={6}
+                                        maxLength={20000}
+                                        className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
+                                    />
+                                </div>
+                            </details>
+                        );
+                    })}
+                </div>
+                <div className="flex justify-end mt-3">
+                    <Button
+                        onClick={handleSaveAreaProfiles}
+                        disabled={isSavingAreas || !areasDirty || areasSaved}
+                        className="min-w-[80px] transition-all bg-black hover:bg-gray-900 text-white"
+                    >
+                        {isSavingAreas ? (
+                            "Saving..."
+                        ) : areasSaved ? (
+                            <>
+                                <Check className="h-4 w-3" />
+                                Saved
+                            </>
+                        ) : (
+                            "Save area profiles"
                         )}
                     </Button>
                 </div>

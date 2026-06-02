@@ -62,6 +62,7 @@ const profileRow = {
   tier: "Pro",
   tabular_model: "gemini-3-flash-preview",
   practice_profile: "Our firm prefers English law and a 12-month liability cap.",
+  practice_profiles: { Litigation: "We never waive privilege." },
 };
 
 let app: ReturnType<typeof createApp>;
@@ -201,6 +202,36 @@ describe("PATCH /user/profile", () => {
       .send({ practiceProfile: "x".repeat(20001) });
     expect(res.status).toBe(400);
     expect(res.body.detail).toMatch(/characters or fewer/);
+  });
+
+  it("persists per-area practice profiles", async () => {
+    mock.queueMany([
+      { data: null, error: null }, // ensureProfileRow
+      { data: null, error: null }, // update
+      { data: profileRow, error: null }, // loadProfile
+    ]);
+    const res = await request(app)
+      .patch("/user/profile")
+      .send({
+        practiceProfiles: {
+          Litigation: "We never waive privilege.",
+          Employment: "   ", // blank -> dropped
+        },
+      });
+    expect(res.status).toBe(200);
+    const update = mock.calls.find((c) => c.method === "update");
+    expect(update?.args[0]).toMatchObject({
+      practice_profiles: { Litigation: "We never waive privilege." },
+    });
+    expect(update?.args[0].practice_profiles).not.toHaveProperty("Employment");
+  });
+
+  it("rejects an unknown practice area with 400", async () => {
+    const res = await request(app)
+      .patch("/user/profile")
+      .send({ practiceProfiles: { "Made Up Area": "x" } });
+    expect(res.status).toBe(400);
+    expect(res.body.detail).toMatch(/Unknown practice area/);
   });
 });
 

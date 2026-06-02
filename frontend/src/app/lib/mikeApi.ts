@@ -106,6 +106,7 @@ export interface UserProfile {
     tier: string;
     tabularModel: string;
     practiceProfile: string | null;
+    practiceProfiles: Record<string, string>;
     apiKeyStatus: ApiKeyStatus;
 }
 
@@ -118,6 +119,7 @@ export async function updateUserProfile(payload: {
     organisation?: string | null;
     tabularModel?: string;
     practiceProfile?: string | null;
+    practiceProfiles?: Record<string, string>;
 }): Promise<UserProfile> {
     return apiRequest<UserProfile>("/user/profile", {
         method: "PATCH",

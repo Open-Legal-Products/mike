@@ -1,8 +1,27 @@
 import { describe, it, expect } from "vitest";
-import { BUILTIN_WORKFLOWS } from "../../src/lib/builtinWorkflows";
+import {
+  BUILTIN_WORKFLOWS,
+  BUILTIN_WORKFLOW_PRACTICE,
+} from "../../src/lib/builtinWorkflows";
 import { PORTED_LEGAL_WORKFLOWS } from "../../src/lib/portedLegalWorkflows";
+import { PRACTICE_AREA_SET } from "../../src/lib/practiceAreas";
 
 describe("ported claude-for-legal workflows", () => {
+  it("spans multiple practice areas, all in the canonical set", () => {
+    const areas = new Set(PORTED_LEGAL_WORKFLOWS.map((w) => w.practice));
+    expect(areas.size).toBeGreaterThanOrEqual(8);
+    for (const area of areas) expect(PRACTICE_AREA_SET.has(area)).toBe(true);
+  });
+
+  it("maps each workflow id to its practice area", () => {
+    expect(BUILTIN_WORKFLOW_PRACTICE.get("builtin-cfl-commercial-review")).toBe(
+      "Commercial Contracts",
+    );
+    expect(
+      BUILTIN_WORKFLOW_PRACTICE.get("builtin-cfl-litigation-claim-chart"),
+    ).toBe("Litigation");
+  });
+
   it("includes the promoted commercial review playbooks", () => {
     const ids = new Set(PORTED_LEGAL_WORKFLOWS.map((w) => w.id));
     for (const id of [

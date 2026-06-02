@@ -52,22 +52,56 @@ export async function getUserApiKeys(
     return getStoredUserApiKeys(userId, client);
 }
 
+export type PracticeProfiles = {
+    /** Always-injected general profile (firm positions, house style, …). */
+    general: string | null;
+    /** Per-practice-area profiles, keyed by practice label. */
+    byArea: Record<string, string>;
+};
+
 /**
- * The user's free-text practice profile (firm positions, house style,
- * escalation rules, preferred governing law, …). Injected into the assistant
- * system prompt so workflows can rely on the user's configured positions
- * instead of assuming defaults. Returns null when unset.
+ * The user's practice profiles: a general profile plus a per-area map. Injected
+ * into the assistant system prompt so workflows can rely on the user's
+ * configured positions instead of assuming defaults.
  */
-export async function getUserPracticeProfile(
+export async function getUserPracticeProfiles(
     userId: string,
     db?: ReturnType<typeof createServerSupabase>,
-): Promise<string | null> {
+): Promise<PracticeProfiles> {
     const client = db ?? createServerSupabase();
     const { data } = await client
         .from("user_profiles")
-        .select("practice_profile")
+        .select("practice_profile, practice_profiles")
         .eq("user_id", userId)
         .maybeSingle();
-    const profile = (data?.practice_profile as string | null) ?? null;
-    return profile && profile.trim() ? profile : null;
+    const general = (data?.practice_profile as string | null) ?? null;
+    const rawByArea = (data?.practice_profiles ?? {}) as Record<string, unknown>;
+    const byArea: Record<string, string> = {};
+    for (const [area, value] of Object.entries(rawByArea)) {
+        if (typeof value === "string" && value.trim()) byArea[area] = value;
+    }
+    return { general: general && general.trim() ? general : null, byArea };
+}
+
+/**
+ * Resolve a workflow id to its practice area — checking the in-memory built-in
+ * catalogue first, then falling back to the workflows table for user-created
+ * workflows. Returns null when unknown.
+ */
+export async function resolveWorkflowPractice(
+    workflowId: string,
+    db?: ReturnType<typeof createServerSupabase>,
+): Promise<string | null> {
+    const { BUILTIN_WORKFLOW_PRACTICE } = await import("./builtinWorkflows");
+    if (BUILTIN_WORKFLOW_PRACTICE.has(workflowId)) {
+        return BUILTIN_WORKFLOW_PRACTICE.get(workflowId) ?? null;
+    }
+    const client = db ?? createServerSupabase();
+    const { data } = await client
+        .from("workflows")
+        .select("practice")
+        .eq("id", workflowId)
+        .maybeSingle();
+    const practice = (data?.practice as string | null) ?? null;
+    return practice && practice.trim() ? practice : null;
 }

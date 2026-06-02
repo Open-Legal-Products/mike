@@ -19,6 +19,7 @@ create table if not exists public.user_profiles (
   credits_reset_date timestamptz not null default (now() + interval '30 days'),
   tabular_model text not null default 'gemini-3-flash-preview',
   practice_profile text,
+  practice_profiles jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

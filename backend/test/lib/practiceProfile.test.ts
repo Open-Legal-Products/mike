@@ -19,30 +19,67 @@ describe("formatPracticeProfile", () => {
   });
 });
 
-describe("getUserPracticeProfile", () => {
-  it("returns the trimmed profile, or null when blank/absent", async () => {
-    // Import lazily so we can stub createServerSupabase per-case.
+describe("buildPracticeProfileBlock", () => {
+  it("injects only the general profile when no area matches", async () => {
+    const { buildPracticeProfileBlock } = await import(
+      "../../src/lib/chatTools"
+    );
+    const out = buildPracticeProfileBlock(
+      { general: "Firm-wide rules.", byArea: { Litigation: "Lit rules." } },
+      null,
+    );
+    expect(out).toContain("USER PRACTICE PROFILE:");
+    expect(out).toContain("Firm-wide rules.");
+    expect(out).not.toContain("Lit rules.");
+  });
+
+  it("appends the active area's profile, labelled, alongside the general one", async () => {
+    const { buildPracticeProfileBlock } = await import(
+      "../../src/lib/chatTools"
+    );
+    const out = buildPracticeProfileBlock(
+      { general: "Firm-wide rules.", byArea: { Litigation: "Lit rules." } },
+      "Litigation",
+    );
+    expect(out).toContain("USER PRACTICE PROFILE:");
+    expect(out).toContain("USER PRACTICE PROFILE — Litigation:");
+    expect(out).toContain("Firm-wide rules.");
+    expect(out).toContain("Lit rules.");
+  });
+
+  it("returns empty when nothing is configured", async () => {
+    const { buildPracticeProfileBlock } = await import(
+      "../../src/lib/chatTools"
+    );
+    expect(buildPracticeProfileBlock({ general: null, byArea: {} }, "Litigation")).toBe(
+      "",
+    );
+  });
+});
+
+describe("getUserPracticeProfiles", () => {
+  it("returns the general profile and a cleaned per-area map", async () => {
     const mod = await import("../../src/lib/userSettings");
-    const make = (practice_profile: unknown) =>
-      ({
-        from: () => ({
-          select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({
-                data: practice_profile === undefined
-                  ? null
-                  : { practice_profile },
-                error: null,
-              }),
+    const db = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({
+              data: {
+                practice_profile: "  general  ",
+                practice_profiles: {
+                  Litigation: "lit",
+                  Employment: "   ", // blank -> dropped
+                },
+              },
+              error: null,
             }),
           }),
         }),
-      }) as never;
-
-    expect(await mod.getUserPracticeProfile("u", make("  keep me  "))).toBe(
-      "  keep me  ",
-    );
-    expect(await mod.getUserPracticeProfile("u", make("   "))).toBeNull();
-    expect(await mod.getUserPracticeProfile("u", make(undefined))).toBeNull();
+      }),
+    } as never;
+    const profiles = await mod.getUserPracticeProfiles("u", db);
+    expect(profiles.general).toBe("  general  ");
+    expect(profiles.byArea).toEqual({ Litigation: "lit" });
   });
 });

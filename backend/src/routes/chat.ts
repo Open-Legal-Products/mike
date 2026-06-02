@@ -7,7 +7,7 @@ import {
     enrichWithPriorEvents,
     buildWorkflowStore,
     extractAnnotations,
-    formatPracticeProfile,
+    buildPracticeProfileBlock,
     runLLMStream,
     type ChatMessage,
 } from "../lib/chatTools";
@@ -15,7 +15,8 @@ import { completeText } from "../lib/llm";
 import {
     getUserApiKeys,
     getUserModelSettings,
-    getUserPracticeProfile,
+    getUserPracticeProfiles,
+    resolveWorkflowPractice,
 } from "../lib/userSettings";
 import { checkProjectAccess } from "../lib/access";
 
@@ -543,11 +544,14 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         db,
         docIndex,
     );
-    const practiceProfile = await getUserPracticeProfile(userId, db);
+    const profiles = await getUserPracticeProfiles(userId, db);
+    const activeArea = lastUser?.workflow?.id
+        ? await resolveWorkflowPractice(lastUser.workflow.id, db)
+        : null;
     const apiMessages = buildMessages(
         enrichedMessages,
         docAvailability,
-        formatPracticeProfile(practiceProfile),
+        buildPracticeProfileBlock(profiles, activeArea),
     );
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);

@@ -27,6 +27,7 @@ interface UserProfile {
     tier: string;
     tabularModel: string;
     practiceProfile: string | null;
+    practiceProfiles: Record<string, string>;
     apiKeys: ApiKeyState;
 }
 
@@ -36,6 +37,9 @@ interface UserProfileContextType {
     updateDisplayName: (name: string) => Promise<boolean>;
     updateOrganisation: (organisation: string) => Promise<boolean>;
     updatePracticeProfile: (value: string) => Promise<boolean>;
+    updatePracticeProfiles: (
+        value: Record<string, string>,
+    ) => Promise<boolean>;
     updateModelPreference: (
         field: "tabularModel",
         value: string,
@@ -104,6 +108,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 tier: "Free",
                 tabularModel: "gemini-3-flash-preview",
                 practiceProfile: null,
+                practiceProfiles: {},
                 apiKeys: emptyApiKeys(),
             });
         } finally {
@@ -165,6 +170,22 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                         ? practiceProfile
                         : null,
                 });
+                setProfile((prev) =>
+                    prev ? { ...prev, ...toProfile(updated) } : null,
+                );
+                return true;
+            } catch {
+                return false;
+            }
+        },
+        [user],
+    );
+
+    const updatePracticeProfiles = useCallback(
+        async (practiceProfiles: Record<string, string>): Promise<boolean> => {
+            if (!user) return false;
+            try {
+                const updated = await updateUserProfile({ practiceProfiles });
                 setProfile((prev) =>
                     prev ? { ...prev, ...toProfile(updated) } : null,
                 );
@@ -253,6 +274,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 updateDisplayName,
                 updateOrganisation,
                 updatePracticeProfile,
+                updatePracticeProfiles,
                 updateModelPreference,
                 updateApiKey,
                 reloadProfile,

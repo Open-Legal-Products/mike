@@ -1,9 +1,17 @@
 import { PORTED_LEGAL_WORKFLOWS } from "./portedLegalWorkflows";
 
-const HANDWRITTEN_WORKFLOWS: { id: string; title: string; prompt_md: string }[] = [
+export type BuiltinWorkflow = {
+    id: string;
+    title: string;
+    practice: string;
+    prompt_md: string;
+};
+
+const HANDWRITTEN_WORKFLOWS: BuiltinWorkflow[] = [
     {
         id: "builtin-cp-checklist",
         title: "Generate CP Checklist",
+        practice: "General Transactions",
         prompt_md:
             "## Generate Conditions Precedent Checklist\n\n" +
             "Review the uploaded credit agreement or financing document and generate a comprehensive " +
@@ -24,6 +32,7 @@ const HANDWRITTEN_WORKFLOWS: { id: string; title: string; prompt_md: string }[] 
     {
         id: "builtin-credit-summary",
         title: "Credit Agreement Summary",
+        practice: "General Transactions",
         prompt_md:
             "## Credit Agreement Summary\n\n" +
             "Review the uploaded credit agreement and produce a comprehensive legal summary covering the following topics. " +
@@ -54,6 +63,7 @@ const HANDWRITTEN_WORKFLOWS: { id: string; title: string; prompt_md: string }[] 
     {
         id: "builtin-sha-summary",
         title: "Shareholder Agreement Summary",
+        practice: "General Transactions",
         prompt_md:
             "## Shareholder Agreement Summary\n\n" +
             "Review the uploaded shareholder agreement and produce a comprehensive legal summary covering the following topics. " +
@@ -79,5 +89,13 @@ const HANDWRITTEN_WORKFLOWS: { id: string; title: string; prompt_md: string }[] 
 
 // Hand-written transactional workflows plus the legal review/diligence skills
 // ported from Anthropic's claude-for-legal (see portedLegalWorkflows.ts).
-export const BUILTIN_WORKFLOWS: { id: string; title: string; prompt_md: string }[] =
-    [...HANDWRITTEN_WORKFLOWS, ...PORTED_LEGAL_WORKFLOWS];
+export const BUILTIN_WORKFLOWS: BuiltinWorkflow[] = [
+    ...HANDWRITTEN_WORKFLOWS,
+    ...PORTED_LEGAL_WORKFLOWS,
+];
+
+// id -> practice area, for selecting the right per-area practice profile to
+// inject when a built-in workflow is applied.
+export const BUILTIN_WORKFLOW_PRACTICE: Map<string, string> = new Map(
+    BUILTIN_WORKFLOWS.map((w) => [w.id, w.practice]),
+);

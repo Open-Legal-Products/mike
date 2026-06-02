@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
 import { DEFAULT_TABULAR_MODEL, resolveModel } from "../lib/llm";
+import { PRACTICE_AREA_SET } from "../lib/practiceAreas";
 import {
   type ApiKeyStatus,
   getUserApiKeyStatus,
@@ -17,9 +18,9 @@ const MONTHLY_CREDIT_LIMIT = 999999;
 // Single source of truth for the profile columns we select, so the three
 // load paths below can't drift apart.
 const PROFILE_COLUMNS =
-  "display_name, organisation, message_credits_used, credits_reset_date, tier, tabular_model, practice_profile";
+  "display_name, organisation, message_credits_used, credits_reset_date, tier, tabular_model, practice_profile, practice_profiles";
 
-// Cap the practice profile so a runaway paste can't blow up the system prompt.
+// Cap each practice profile so a runaway paste can't blow up the system prompt.
 const MAX_PRACTICE_PROFILE_CHARS = 20000;
 
 type UserProfileRow = {
@@ -30,6 +31,7 @@ type UserProfileRow = {
   tier: string;
   tabular_model: string;
   practice_profile: string | null;
+  practice_profiles: Record<string, string> | null;
 };
 
 function serializeProfile(
@@ -46,6 +48,7 @@ function serializeProfile(
     tier: row.tier || "Free",
     tabularModel: resolveModel(row.tabular_model, DEFAULT_TABULAR_MODEL),
     practiceProfile: row.practice_profile ?? null,
+    practiceProfiles: row.practice_profiles ?? {},
     ...(apiKeyStatus ? { apiKeyStatus } : {}),
   };
 }
@@ -58,6 +61,7 @@ function validateProfilePayload(body: unknown):
         organisation?: string | null;
         tabular_model?: string;
         practice_profile?: string | null;
+        practice_profiles?: Record<string, string>;
         updated_at: string;
       };
     }
@@ -72,6 +76,7 @@ function validateProfilePayload(body: unknown):
     "organisation",
     "tabularModel",
     "practiceProfile",
+    "practiceProfiles",
   ]);
   const invalidField = Object.keys(raw).find((key) => !allowedFields.has(key));
   if (invalidField) {
@@ -83,6 +88,7 @@ function validateProfilePayload(body: unknown):
     organisation?: string | null;
     tabular_model?: string;
     practice_profile?: string | null;
+    practice_profiles?: Record<string, string>;
     updated_at: string;
   } = { updated_at: new Date().toISOString() };
 
@@ -128,6 +134,36 @@ function validateProfilePayload(body: unknown):
       };
     }
     update.practice_profile = raw.practiceProfile?.trim() || null;
+  }
+
+  if ("practiceProfiles" in raw) {
+    const value = raw.practiceProfiles;
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { ok: false, detail: "practiceProfiles must be an object" };
+    }
+    const cleaned: Record<string, string> = {};
+    for (const [area, content] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      if (!PRACTICE_AREA_SET.has(area)) {
+        return { ok: false, detail: `Unknown practice area: ${area}` };
+      }
+      if (typeof content !== "string") {
+        return {
+          ok: false,
+          detail: `practiceProfiles["${area}"] must be a string`,
+        };
+      }
+      if (content.length > MAX_PRACTICE_PROFILE_CHARS) {
+        return {
+          ok: false,
+          detail: `Each practice profile must be ${MAX_PRACTICE_PROFILE_CHARS} characters or fewer`,
+        };
+      }
+      // Drop blanks so the map only stores areas the user actually filled in.
+      if (content.trim()) cleaned[area] = content;
+    }
+    update.practice_profiles = cleaned;
   }
 
   return { ok: true, update };

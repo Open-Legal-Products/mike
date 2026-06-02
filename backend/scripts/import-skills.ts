@@ -28,8 +28,19 @@ import { join } from "node:path";
 const SOURCE = process.argv[2] || process.env.SKILL_SRC || "/tmp/cfl";
 
 // Plugin folders to import, with the Mike "practice" label each maps onto.
+// Educational / meta plugins (law-student, legal-clinic, legal-builder-hub) are
+// intentionally excluded — they aren't law-practice areas and are mostly
+// session/state-management skills with no Mike equivalent.
 const AREAS: { folder: string; practice: string; slug: string }[] = [
+    { folder: "ai-governance-legal", practice: "AI Governance", slug: "aigov" },
     { folder: "commercial-legal", practice: "Commercial Contracts", slug: "commercial" },
+    { folder: "corporate-legal", practice: "Corporate / M&A", slug: "corporate" },
+    { folder: "employment-legal", practice: "Employment", slug: "employment" },
+    { folder: "ip-legal", practice: "Intellectual Property", slug: "ip" },
+    { folder: "litigation-legal", practice: "Litigation", slug: "litigation" },
+    { folder: "privacy-legal", practice: "Privacy & Data Protection", slug: "privacy" },
+    { folder: "product-legal", practice: "Product", slug: "product" },
+    { folder: "regulatory-legal", practice: "Regulatory", slug: "regulatory" },
 ];
 
 // Skills whose job is plugin/profile/workspace/scheduling management rather than
@@ -40,8 +51,11 @@ const RUNTIME_DENYLIST = new Set([
     "customize",
     "matter-workspace",
     "review-proposals",
-    "renewal-tracker",
 ]);
+
+// Scheduled watchers and register-trackers (every area ships its own) — these
+// rely on persistent state / background runs that Mike doesn't have.
+const DENY_PATTERNS = [/-(monitor|watcher)$/, /^(renewal|leave)-tracker$/, /^log-/];
 
 const PRACTICE_PROFILE_REF =
     "your USER PRACTICE PROFILE (provided in the system prompt; the user maintains it in Account → Practice Profile)";
@@ -87,16 +101,19 @@ function titleCase(name: string): string {
 
 function adaptBody(name: string, body: string): string {
     let out = body.trim();
-    // Most specific first: matter-workspace paths -> the current project.
-    // Swallow any surrounding backticks so we don't leave `<long sentence>`.
-    out = out.replace(
-        /`?~\/\.claude\/plugins\/config\/claude-for-legal\/[^\s`)]*\/matters\/[^\s`)]*`?/g,
-        "the current project's documents",
-    );
     // The per-team CLAUDE.md practice profile -> Mike's per-user Practice Profile.
+    // (Match this before the generic path rule below.) Swallow any surrounding
+    // backticks so we don't leave `<long sentence>`.
     out = out.replace(
         /`?~\/\.claude\/plugins\/config\/claude-for-legal\/[^\s`)]*\/CLAUDE\.md`?/g,
         PRACTICE_PROFILE_REF,
+    );
+    // Every other ~/.claude/plugins/... path is a local working-file the upstream
+    // skill reads/writes (deal-context, trackers, output dirs). Mike has no such
+    // filesystem — work from the project's documents instead.
+    out = out.replace(
+        /`?~\/\.claude\/plugins\/config\/claude-for-legal\/[^\s`)]*`?/g,
+        "the current project's documents",
     );
     out = out.replace(/`?\bCLAUDE\.md\b`?/g, PRACTICE_PROFILE_REF);
 
@@ -139,6 +156,10 @@ for (const area of AREAS) {
             skipped.push({ name, reason: "plugin/profile-management skill" });
             continue;
         }
+        if (DENY_PATTERNS.some((re) => re.test(name))) {
+            skipped.push({ name, reason: "scheduled watcher / register-tracker" });
+            continue;
+        }
         skills.push({
             name,
             title: titleCase(name),
@@ -155,14 +176,15 @@ const HEADER =
     "// licensed under Apache-2.0. Bodies are adapted for Mike's tools and Practice Profile.\n" +
     "// Re-generate with: npx tsx scripts/import-skills.ts <path-to-claude-for-legal>\n\n";
 
-// Backend catalogue: the shape buildWorkflowStore injects ({id,title,prompt_md}).
+// Backend catalogue: shape buildWorkflowStore injects, plus `practice` so the
+// active-workflow → practice-area lookup can pick the right per-area profile.
 const backendOut =
     HEADER +
-    "export const PORTED_LEGAL_WORKFLOWS: { id: string; title: string; prompt_md: string }[] = [\n" +
+    "export const PORTED_LEGAL_WORKFLOWS: { id: string; title: string; practice: string; prompt_md: string }[] = [\n" +
     skills
         .map(
             (s) =>
-                `    {\n        id: ${JSON.stringify(s.id)},\n        title: ${JSON.stringify(s.title)},\n        prompt_md: ${JSON.stringify(s.prompt_md)},\n    },`,
+                `    {\n        id: ${JSON.stringify(s.id)},\n        title: ${JSON.stringify(s.title)},\n        practice: ${JSON.stringify(s.practice)},\n        prompt_md: ${JSON.stringify(s.prompt_md)},\n    },`,
         )
         .join("\n") +
     "\n];\n";

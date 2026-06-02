@@ -7,12 +7,16 @@ import {
     buildWorkflowStore,
     enrichWithPriorEvents,
     extractAnnotations,
-    formatPracticeProfile,
+    buildPracticeProfileBlock,
     runLLMStream,
     PROJECT_EXTRA_TOOLS,
     type ChatMessage,
 } from "../lib/chatTools";
-import { getUserApiKeys, getUserPracticeProfile } from "../lib/userSettings";
+import {
+    getUserApiKeys,
+    getUserPracticeProfiles,
+    resolveWorkflowPractice,
+} from "../lib/userSettings";
 import { checkProjectAccess } from "../lib/access";
 
 const PROJECT_SYSTEM_PROMPT_EXTRA = `PROJECT CONTEXT:
@@ -137,10 +141,13 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         systemPromptExtra += `\n\nUSER-ATTACHED DOCUMENTS FOR THIS TURN:\nThe user has attached the following document(s) directly to their latest message. Treat these as the primary focus of the request unless their message clearly says otherwise.\n${lines.join("\n")}`;
     }
 
-    const practiceProfile = await getUserPracticeProfile(userId, db);
+    const profiles = await getUserPracticeProfiles(userId, db);
+    const activeArea = lastUser?.workflow?.id
+        ? await resolveWorkflowPractice(lastUser.workflow.id, db)
+        : null;
     const combinedSystemExtra = [
         systemPromptExtra,
-        formatPracticeProfile(practiceProfile),
+        buildPracticeProfileBlock(profiles, activeArea),
     ]
         .filter(Boolean)
         .join("\n\n");
