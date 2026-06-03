@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, AlertCircle, Shield } from "lucide-react";
+import { ChevronDown, AlertCircle, Check, Shield } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -283,6 +283,9 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                                                 className="h-3.5 w-3.5 text-red-500 ml-1 shrink-0"
                                                 aria-label="API key missing"
                                             />
+                                        )}
+                                        {isSelected && available && (
+                                            <Check className="h-3.5 w-3.5 text-gray-600 ml-1 shrink-0" />
                                         )}
                                         {m.zdr && (
                                             <span

@@ -309,7 +309,7 @@ function ApiKeyField({
 
     return (
         <div>
-            <label className="text-sm text-gray-600 block mb-1">{label}</label>
+            <label className="text-sm text-gray-600 block mb-2">{label}</label>
             {description && (
                 <p className="text-xs text-gray-400 mb-2">{description}</p>
             )}
