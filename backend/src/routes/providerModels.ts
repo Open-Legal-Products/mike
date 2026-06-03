@@ -97,8 +97,10 @@ type OpenAIModel = {
 };
 
 function openaiLabel(id: string): string {
+    if (id === "chat-latest") return "GPT-latest";
     return id
         .replace(/^gpt-/, "GPT-")
+        .replace(/-chat-latest$/, "-latest")
         .replace(/-mini\b/i, " Mini")
         .replace(/-nano\b/i, " Nano")
         .replace(/-turbo\b/i, " Turbo");
