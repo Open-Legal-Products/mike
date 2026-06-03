@@ -43,9 +43,12 @@ export interface ModelOption {
  * per provider so the picker isn't empty on first visit.
  */
 const STATIC_FALLBACK: ModelOption[] = [
+    { id: "claude-opus-4-7", label: "Claude Opus 4.7", group: "Anthropic" },
     { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", group: "Anthropic" },
+    { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro", group: "Google" },
     { id: "gemini-3-flash-preview", label: "Gemini 3 Flash", group: "Google" },
-    { id: "gpt-4o-mini", label: "GPT-4o Mini", group: "OpenAI" },
+    { id: "gpt-5.5", label: "GPT-5.5", group: "OpenAI" },
+    { id: "gpt-5.4-mini", label: "GPT-5.4 Mini", group: "OpenAI" },
 ];
 
 /**
