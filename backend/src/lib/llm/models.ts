@@ -50,6 +50,7 @@ export function providerForModel(model: string): Provider {
     if (model.startsWith("gemini")) return "gemini";
     if (model.startsWith("gpt-")) return "openai";
     if (/^o[1-9]/.test(model)) return "openai";
+    if (model.endsWith("-chat-latest") || model === "chat-latest") return "openai";
     return "concentrate";
 }
 

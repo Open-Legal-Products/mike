@@ -11,6 +11,7 @@ function inferProviderFromId(modelId: string): ModelProvider | null {
     if (modelId.startsWith("gemini")) return "gemini";
     if (modelId.startsWith("gpt-")) return "openai";
     if (/^o[1-9]/.test(modelId)) return "openai";
+    if (modelId.endsWith("-chat-latest") || modelId === "chat-latest") return "openai";
     return null;
 }
 
