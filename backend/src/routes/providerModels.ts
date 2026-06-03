@@ -117,15 +117,14 @@ const OPENAI_FAMILIES: Array<{
     tools: boolean;
     streaming: boolean;
 }> = [
-    // gpt-5* family — full support
-    { test: /^gpt-5(\.\d+)?(-(mini|nano|turbo))?(-\d+)?$/, chat: true, tools: true, streaming: true },
-    // gpt-4o, gpt-4o-mini, gpt-4-turbo etc.
+    // chat-latest aliases (chat-latest, gpt-5-chat-latest, gpt-5.1-chat-latest, etc.)
+    { test: /^(gpt-[\w.]*-)?chat-latest$/, chat: true, tools: true, streaming: true },
+    // gpt-5* family — base, versioned, dated, and pro variants
+    { test: /^gpt-5(\.\d+)?(-(mini|nano|turbo|pro))?(-\d{4}-\d{2}-\d{2}|-\d+)?$/, chat: true, tools: true, streaming: true },
+    // gpt-4o, gpt-4.1, gpt-4-turbo etc. with optional date stamp
     { test: /^gpt-4(o|\.1|\.5)?(-(mini|nano|turbo))?(-\d{4}-\d{2}-\d{2})?$/, chat: true, tools: true, streaming: true },
-    // o3, o4-mini etc. — reasoning models, support tools+streaming on Responses API
-    { test: /^o[3-9](-(mini|preview))?$/, chat: true, tools: true, streaming: true },
-    // o1, o1-mini, o1-preview — early reasoning; tools support was added later
-    // but is universal on current Responses API. Stream-via-Responses works.
-    { test: /^o1(-(mini|preview))?$/, chat: true, tools: true, streaming: true },
+    // o-series reasoning models: o1, o3, o4-mini, o1-pro, o3-pro, dated variants
+    { test: /^o[1-9](-(mini|preview|pro))?(-\d{4}-\d{2}-\d{2})?$/, chat: true, tools: true, streaming: true },
 ];
 
 function openaiCapabilities(id: string): ProviderCatalogModel["capabilities"] {
@@ -140,6 +139,8 @@ function openaiCapabilities(id: string): ProviderCatalogModel["capabilities"] {
         id.includes("moderation") ||
         id.includes("realtime") ||
         id.includes("search") ||
+        id.includes("codex") ||
+        id.includes("deep-research") ||
         id.startsWith("ft:")
     ) {
         return { ...ZERO_CAPABILITIES };
