@@ -18,6 +18,7 @@ import {
 } from "@/app/lib/concentrateModels";
 import {
     getProviderModels,
+    clearProviderModelsCache,
     type ProviderId,
     type ProviderModel,
 } from "@/app/lib/providerModels";
@@ -172,6 +173,13 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
     const hasGemini = !!apiKeys?.gemini?.configured;
     const hasOpenAI = !!apiKeys?.openai?.configured;
     const hasConcentrateKey = !!apiKeys?.concentrate?.configured;
+
+    // When a key is added or removed, the cache for that provider may hold a
+    // stale result (empty list when key was absent, or old list after removal).
+    // Clear it so the next open fetches fresh.
+    useEffect(() => { clearProviderModelsCache("anthropic"); }, [hasClaude]);
+    useEffect(() => { clearProviderModelsCache("google"); }, [hasGemini]);
+    useEffect(() => { clearProviderModelsCache("openai"); }, [hasOpenAI]);
 
     // Fetch catalogs on first open (and re-open after cache expires). Firing
     // on open instead of mount means no background network calls until the
