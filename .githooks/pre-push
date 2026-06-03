@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BOLD='\033[1m'
+DIM='\033[2m'
+RESET='\033[0m'
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+HOOKS_DIR="$REPO_ROOT/.githooks"
+PASS=0
+FAIL=0
+WARN=0
+RESULTS=()
+
+run_check() {
+  local name="$1"
+  shift
+  printf "  ${DIM}running${RESET} %s ...\n" "$name"
+  local code=0
+  "$@" || code=$?
+  if [[ $code -eq 0 ]]; then
+    RESULTS+=("${GREEN}PASS${RESET}  $name")
+    ((PASS++))
+  elif [[ "$name" == *"audit"* && $code -eq 2 ]]; then
+    RESULTS+=("${YELLOW}WARN${RESET}  $name  ${DIM}(grace period)${RESET}")
+    ((WARN++))
+  else
+    RESULTS+=("${RED}FAIL${RESET}  $name")
+    ((FAIL++))
+  fi
+}
+
+run_advisory() {
+  local name="$1"
+  shift
+  printf "  ${DIM}running${RESET} %s ...\n" "$name"
+  local code=0
+  "$@" || code=$?
+  if [[ $code -eq 0 ]]; then
+    RESULTS+=("${GREEN}PASS${RESET}  $name")
+    ((PASS++))
+  else
+    RESULTS+=("${YELLOW}WARN${RESET}  $name  ${DIM}(advisory only)${RESET}")
+    ((WARN++))
+  fi
+}
+
+echo ""
+printf "${BOLD}pre-push checks${RESET}\n"
+echo "────────────────────────────────────────"
+
+# 1. Security audits
+run_check "security audit (backend)"  node "$HOOKS_DIR/audit-grace.cjs" "$REPO_ROOT/backend"
+run_check "security audit (frontend)" node "$HOOKS_DIR/audit-grace.cjs" "$REPO_ROOT/frontend"
+
+# 2. Type checking
+run_check "typecheck (backend)"  npx --prefix "$REPO_ROOT/backend" tsc --noEmit --project "$REPO_ROOT/backend/tsconfig.json"
+run_check "typecheck (frontend)" npx --prefix "$REPO_ROOT/frontend" tsc --noEmit --project "$REPO_ROOT/frontend/tsconfig.json"
+
+# 3. Lint (advisory — does not block push until existing issues are resolved)
+run_advisory "eslint (frontend)" npm run lint --prefix "$REPO_ROOT/frontend"
+
+# Summary
+echo ""
+echo "────────────────────────────────────────"
+for r in "${RESULTS[@]}"; do
+  printf "  %b\n" "$r"
+done
+echo "────────────────────────────────────────"
+
+if [[ $FAIL -gt 0 ]]; then
+  printf "\n  ${RED}${BOLD}Push blocked${RESET}: %d check(s) failed.\n\n" "$FAIL"
+  exit 1
+fi
+
+if [[ $WARN -gt 0 ]]; then
+  printf "\n  ${YELLOW}${BOLD}Warnings${RESET}: %d advisory(s) in grace period. Push allowed.\n\n" "$WARN"
+fi
+
+printf "  ${GREEN}${BOLD}All checks passed.${RESET}\n\n"
+exit 0

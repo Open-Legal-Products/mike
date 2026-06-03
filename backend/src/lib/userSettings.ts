@@ -22,6 +22,8 @@ function resolveTitleModel(apiKeys: UserApiKeys): string {
     if (apiKeys.gemini?.trim()) return DEFAULT_TITLE_MODEL;
     if (apiKeys.openai?.trim()) return OPENAI_LOW_MODELS[0];
     if (apiKeys.claude?.trim()) return "claude-haiku-4-5";
+    // Concentrate routes the default slug to a low-tier model internally.
+    if (apiKeys.concentrate?.trim()) return DEFAULT_TITLE_MODEL;
     return DEFAULT_TITLE_MODEL;
 }
 

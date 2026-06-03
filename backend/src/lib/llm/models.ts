@@ -42,14 +42,29 @@ const ALL_MODELS = new Set<string>([
 // Provider inference
 // ---------------------------------------------------------------------------
 
+// Returns the native provider for a model ID by prefix. Unknown prefixes
+// (e.g. Concentrate-only authors like meta/, mistral/) fall through to
+// "concentrate" as the catch-all router.
 export function providerForModel(model: string): Provider {
     if (model.startsWith("claude")) return "claude";
     if (model.startsWith("gemini")) return "gemini";
     if (model.startsWith("gpt-")) return "openai";
-    throw new Error(`Unknown model id: ${model}`);
+    if (/^o[1-9]/.test(model)) return "openai";
+    if (model.endsWith("-chat-latest") || model === "chat-latest") return "openai";
+    return "concentrate";
 }
 
+export function isStaticModel(id: string): boolean {
+    return ALL_MODELS.has(id);
+}
+
+// Accept any plausible model ID — static or from a live catalog. The static
+// allowlist used to double as validation but that gating now lives in pick()
+// (provider key check) and looksLikeModelId() on the frontend. Restricting
+// to ALL_MODELS here would silently downgrade dynamic catalog selections.
+const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9./:_-]{0,199}$/;
+
 export function resolveModel(id: string | null | undefined, fallback: string): string {
-    if (id && ALL_MODELS.has(id)) return id;
+    if (id && MODEL_ID_RE.test(id)) return id;
     return fallback;
 }

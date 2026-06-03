@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertCircle, Check, ChevronDown, Eye, EyeOff } from "lucide-react";
+import { AlertCircle, Check, ChevronDown, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,6 +20,8 @@ import {
     modelGroupToProvider,
     providerLabel,
 } from "@/app/lib/modelAvailability";
+import { clearProviderModelsCache } from "@/app/lib/providerModels";
+import { clearConcentrateModelsCache } from "@/app/lib/concentrateModels";
 
 const API_KEY_FIELDS = [
     {
@@ -37,10 +39,34 @@ const API_KEY_FIELDS = [
         label: "OpenAI API Key",
         placeholder: "sk-…",
     },
+    {
+        provider: "concentrate",
+        label: "Concentrate API Key",
+        placeholder: "sk-cn-…",
+        description:
+            "Optional. When set, Mike routes Zero Data Retention (ZDR) tagged models through Concentrate so prompts and outputs are never stored or used for training. Models not yet in the ZDR catalog fall through to your direct provider key and may be used by the provider for training.",
+    },
 ] as const;
 
 export default function ModelsAndApiKeysPage() {
     const { profile, updateModelPreference, updateApiKey } = useUserProfile();
+    const [refreshing, setRefreshing] = useState(false);
+    const [refreshed, setRefreshed] = useState(false);
+
+    const hasAnyKey = Object.values(profile?.apiKeys ?? {}).some(
+        (k) => k.configured,
+    );
+
+    const handleRefresh = () => {
+        setRefreshing(true);
+        clearProviderModelsCache();
+        clearConcentrateModelsCache();
+        setTimeout(() => {
+            setRefreshing(false);
+            setRefreshed(true);
+            setTimeout(() => setRefreshed(false), 2000);
+        }, 400);
+    };
 
     return (
         <div className="space-y-4">
@@ -71,6 +97,24 @@ export default function ModelsAndApiKeysPage() {
                             }
                         />
                     </div>
+                    {hasAnyKey && (
+                        <div className="flex items-center gap-3 pt-1">
+                            <button
+                                type="button"
+                                onClick={handleRefresh}
+                                disabled={refreshing}
+                                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-50 transition-colors"
+                            >
+                                <RefreshCw
+                                    className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`}
+                                />
+                                {refreshed ? "Model list refreshed" : "Refresh model list"}
+                            </button>
+                            <span className="text-xs text-gray-400">
+                                Model lists update automatically when you open the picker.
+                            </span>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -96,6 +140,11 @@ export default function ModelsAndApiKeysPage() {
                             key={field.provider}
                             label={field.label}
                             placeholder={field.placeholder}
+                            description={
+                                "description" in field
+                                    ? field.description
+                                    : undefined
+                            }
                             hasSavedKey={
                                 !!profile?.apiKeys[field.provider].configured
                             }
@@ -183,7 +232,7 @@ function TabularModelDropdown({
                                         className="cursor-pointer"
                                         onSelect={() => onChange(m.id)}
                                         title={
-                                            !available
+                                            !available && provider
                                                 ? `Add a ${providerLabel(provider)} API key to use this model`
                                                 : undefined
                                         }
@@ -213,6 +262,7 @@ function TabularModelDropdown({
 function ApiKeyField({
     label,
     placeholder,
+    description,
     hasSavedKey,
     isServerConfigured,
     onSave,
@@ -220,6 +270,7 @@ function ApiKeyField({
 }: {
     label: string;
     placeholder: string;
+    description?: string;
     hasSavedKey: boolean;
     isServerConfigured: boolean;
     onSave: (value: string) => Promise<boolean>;
@@ -259,6 +310,9 @@ function ApiKeyField({
     return (
         <div>
             <label className="text-sm text-gray-600 block mb-2">{label}</label>
+            {description && (
+                <p className="text-xs text-gray-400 mb-2">{description}</p>
+            )}
             {isServerConfigured && (
                 <div className="mb-2 rounded-md border border-blue-100 bg-blue-50 px-3 py-2">
                     <p className="text-xs text-blue-800">
