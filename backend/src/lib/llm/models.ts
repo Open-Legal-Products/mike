@@ -58,7 +58,13 @@ export function isStaticModel(id: string): boolean {
     return ALL_MODELS.has(id);
 }
 
+// Accept any plausible model ID — static or from a live catalog. The static
+// allowlist used to double as validation but that gating now lives in pick()
+// (provider key check) and looksLikeModelId() on the frontend. Restricting
+// to ALL_MODELS here would silently downgrade dynamic catalog selections.
+const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9./:_-]{0,199}$/;
+
 export function resolveModel(id: string | null | undefined, fallback: string): string {
-    if (id && ALL_MODELS.has(id)) return id;
+    if (id && MODEL_ID_RE.test(id)) return id;
     return fallback;
 }
