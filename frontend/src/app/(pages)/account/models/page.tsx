@@ -89,7 +89,7 @@ export default function ModelsAndApiKeysPage() {
                         <TabularModelDropdown
                             value={
                                 profile?.tabularModel ??
-                                "gemini-2.5-flash"
+                                "gemini-3-flash-preview"
                             }
                             apiKeys={profile?.apiKeys}
                             onChange={(id) =>

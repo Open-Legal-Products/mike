@@ -44,7 +44,7 @@ export interface ModelOption {
  */
 const STATIC_FALLBACK: ModelOption[] = [
     { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", group: "Anthropic" },
-    { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", group: "Google" },
+    { id: "gemini-3-flash-preview", label: "Gemini 3 Flash", group: "Google" },
     { id: "gpt-4o-mini", label: "GPT-4o Mini", group: "OpenAI" },
 ];
 
@@ -54,7 +54,7 @@ const STATIC_FALLBACK: ModelOption[] = [
  * picker UI itself does NOT use this — it fetches live catalogs.
  */
 export const MODELS: ModelOption[] = STATIC_FALLBACK;
-export const DEFAULT_MODEL_ID = "gemini-2.5-flash";
+export const DEFAULT_MODEL_ID = "gemini-3-flash-preview";
 export const ALLOWED_MODEL_IDS = new Set(STATIC_FALLBACK.map((m) => m.id));
 
 const STATIC_GROUP_ORDER = ["Anthropic", "Google", "OpenAI"];

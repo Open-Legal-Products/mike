@@ -93,7 +93,7 @@ export function TRView({ reviewId, projectId }: Props) {
     const router = useRouter();
     const { profile } = useUserProfile();
     const apiKeys = profile?.apiKeys;
-    const tabularModel = profile?.tabularModel ?? "gemini-2.5-flash";
+    const tabularModel = profile?.tabularModel ?? "gemini-3-flash-preview";
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
