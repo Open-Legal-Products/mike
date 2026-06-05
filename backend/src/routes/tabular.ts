@@ -32,6 +32,7 @@ import {
     listAccessibleProjectIds,
 } from "../lib/access";
 import { safeErrorLog, safeErrorMessage } from "../lib/safeError";
+import { startSseStream } from "../lib/sse";
 
 function formatPromptSuffix(format?: string, tags?: string[]): string {
     switch (format) {
@@ -946,13 +947,8 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
         });
     }
 
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no");
-    res.flushHeaders();
-
-    const write = (line: string) => res.write(line);
+    const stream = startSseStream(req, res);
+    const { write } = stream;
 
     try {
         await Promise.all(
@@ -1073,6 +1069,7 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
             /* ignore */
         }
     } finally {
+        stream.close();
         res.end();
     }
 });
@@ -1414,17 +1411,8 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
         review.title || "Untitled Review",
     );
 
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no");
-    res.flushHeaders();
-    const write = (line: string) => res.write(line);
-    const streamAbort = new AbortController();
-    let streamFinished = false;
-    res.on("close", () => {
-        if (!streamFinished) streamAbort.abort();
-    });
+    const stream = startSseStream(req, res);
+    const { write } = stream;
 
     if (chatId) {
         write(`data: ${JSON.stringify({ type: "chat_id", chatId })}\n\n`);
@@ -1445,7 +1433,7 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
                 extractTabularAnnotations(text, tabularStore),
             model: tabular_model,
             apiKeys: api_keys,
-            signal: streamAbort.signal,
+            signal: stream.signal,
         });
 
         const persistedEvents = stripTransientAssistantEvents(events);
@@ -1555,7 +1543,7 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
             /* ignore */
         }
     } finally {
-        streamFinished = true;
+        stream.close();
         res.end();
     }
 });
