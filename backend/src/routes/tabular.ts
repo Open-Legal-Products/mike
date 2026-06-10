@@ -534,6 +534,14 @@ tabularRouter.patch("/:reviewId", requireAuth, async (req, res) => {
     );
     if (!access.ok)
         return void res.status(404).json({ detail: "Review not found" });
+    if (
+        (req.body.title != null || req.body.document_ids != null) &&
+        !access.isOwner
+    ) {
+        return void res.status(403).json({
+            detail: "Only the review owner can change review settings",
+        });
+    }
     if (req.body.columns_config != null) {
         if (!access.isOwner) {
             return void res.status(403).json({
