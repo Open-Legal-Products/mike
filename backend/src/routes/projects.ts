@@ -743,6 +743,7 @@ projectsRouter.delete("/:projectId/folders/:folderId", requireAuth, async (req, 
 
   const access = await checkProjectAccess(projectId, userId, userEmail, db);
   if (!access.ok) return void res.status(404).json({ detail: "Project not found" });
+  if (!access.isOwner) return void res.status(404).json({ detail: "Project not found" });
 
   const { data: allFolders, error: foldersError } = await db
     .from("project_subfolders")
