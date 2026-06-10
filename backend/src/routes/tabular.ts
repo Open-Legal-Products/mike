@@ -927,7 +927,22 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
             .select("id, current_version_id")
             .eq("project_id", review.project_id)
             .order("created_at", { ascending: true });
-        docs = data ?? [];
+        const projectDocs = (data ?? []) as Record<string, unknown>[];
+        const accessibleProjectDocIds = new Set(
+            await filterAccessibleDocumentIds(
+                projectDocs
+                    .map((doc) => doc.id)
+                    .filter((id): id is string => typeof id === "string"),
+                userId,
+                userEmail,
+                db,
+            ),
+        );
+        docs = projectDocs.filter(
+            (doc) =>
+                typeof doc.id === "string" &&
+                accessibleProjectDocIds.has(doc.id),
+        );
     }
     await attachActiveVersionPaths(
         db,
