@@ -472,7 +472,7 @@ function TRAssistantMessage({
                                         title={`${cit.col_name} · ${cit.doc_name.replace(/\.[^.]+$/, "")}`}
                                         className="mx-0.5 inline-flex items-center justify-center rounded-full w-4 h-4 text-[10px] font-medium bg-gray-100 text-gray-900 hover:bg-gray-200 transition-colors align-super font-serif"
                                     >
-                                        {idx + 1}
+                                        {cit.ref}
                                     </button>
                                 );
                             }

@@ -16,6 +16,7 @@ export interface PageHeaderBreadcrumb {
     label?: ReactNode;
     suffix?: ReactNode;
     onClick?: () => void;
+    cursor?: "text";
     loading?: boolean;
     skeletonClassName?: string;
     title?: string;
@@ -30,7 +31,6 @@ type PageHeaderButtonAction = {
     title?: string;
     variant?: "default" | "danger";
     iconOnly?: boolean;
-    className?: string;
     tooltip?: ReactNode;
 };
 
@@ -70,18 +70,28 @@ export type PageHeaderAction =
     | PageHeaderCustomAction
     | ReactNode;
 
+type PageHeaderActionGap = "xs" | "sm" | "md" | "lg";
+type PageHeaderActionGroup =
+    | PageHeaderAction[]
+    | {
+          actions: PageHeaderAction[];
+          gap?: PageHeaderActionGap;
+      };
+
 interface PageHeaderProps {
     children?: ReactNode;
     actions?: PageHeaderAction[];
-    actionGroups?: PageHeaderAction[][];
+    actionGroups?: PageHeaderActionGroup[];
     align?: "center" | "start";
     shrink?: boolean;
     className?: string;
-    actionGap?: "sm" | "md" | "lg";
+    actionGap?: PageHeaderActionGap;
     breadcrumbs?: PageHeaderBreadcrumb[];
+    loading?: boolean;
 }
 
 const actionGapClassName = {
+    xs: "gap-1",
     sm: "gap-2.5",
     md: "gap-2.5",
     lg: "gap-2.5",
@@ -96,18 +106,24 @@ export function PageHeader({
     className,
     actionGap = "sm",
     breadcrumbs,
+    loading = false,
 }: PageHeaderProps) {
     const headerContent = breadcrumbs?.length ? (
         <PageHeaderBreadcrumbs items={breadcrumbs} />
     ) : (
         children
     );
+    const actionsDisabled =
+        loading || !!breadcrumbs?.some((item) => item.loading);
     const actionItems = actions?.filter(Boolean) ?? [];
-    const groupedActionItems =
+    const groupedActionItems = (
         actionGroups
-            ?.map((group) => group.filter(Boolean))
-            .filter((group) => group.length > 0) ??
-        (actionItems.length > 0 ? [actionItems] : []);
+            ?.map((group) => normalizeActionGroup(group, actionGap))
+            .filter((group) => group.actions.length > 0) ??
+        (actionItems.length > 0
+            ? [{ actions: actionItems, gap: actionGap }]
+            : [])
+    );
 
     return (
         <div
@@ -128,13 +144,16 @@ export function PageHeader({
                             key={groupIndex}
                             className={cn(
                                 "flex shrink-0 items-center",
-                                actionGapClassName[actionGap],
+                                actionGapClassName[group.gap],
                                 "rounded-full border border-white/70 bg-white px-1 py-1 shadow-[0_-1px_3px_rgba(15,23,42,0.03),0_2px_7px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.82),inset_0_-3px_7px_rgba(255,255,255,0.13)] backdrop-blur-2xl",
                             )}
                         >
-                            {group.map((action, index) => (
+                            {group.actions.map((action, index) => (
                                 <Fragment key={index}>
-                                    <PageHeaderActionRenderer action={action} />
+                                    <PageHeaderActionRenderer
+                                        action={action}
+                                        disabled={actionsDisabled}
+                                    />
                                 </Fragment>
                             ))}
                         </div>
@@ -145,21 +164,80 @@ export function PageHeader({
     );
 }
 
-function PageHeaderActionRenderer({ action }: { action: PageHeaderAction }) {
-    if (!isPageHeaderActionObject(action)) return <>{action}</>;
+function normalizeActionGroup(
+    group: PageHeaderActionGroup,
+    fallbackGap: PageHeaderActionGap,
+) {
+    if (Array.isArray(group)) {
+        return {
+            actions: group.filter(Boolean),
+            gap: fallbackGap,
+        };
+    }
+    return {
+        actions: group.actions.filter(Boolean),
+        gap: group.gap ?? fallbackGap,
+    };
+}
+
+function PageHeaderActionRenderer({
+    action,
+    disabled,
+}: {
+    action: PageHeaderAction;
+    disabled: boolean;
+}) {
+    if (!isPageHeaderActionObject(action)) {
+        return disabled ? (
+            <span className="inline-flex h-7 items-center opacity-40 pointer-events-none">
+                {action}
+            </span>
+        ) : (
+            <>{action}</>
+        );
+    }
 
     switch (action.type) {
         case "search":
-            return <PageHeaderSearchActionControl action={action} />;
+            return (
+                <PageHeaderSearchActionControl
+                    action={action}
+                    disabled={disabled}
+                />
+            );
         case "delete":
-            return <PageHeaderDeleteActionControl action={action} />;
+            return (
+                <PageHeaderDeleteActionControl
+                    action={action}
+                    disabled={disabled}
+                />
+            );
         case "new":
-            return <PageHeaderNewActionControl action={action} />;
+            return (
+                <PageHeaderNewActionControl
+                    action={action}
+                    disabled={disabled}
+                />
+            );
         case "custom":
-            return <>{action.render}</>;
+            return (
+                <span
+                    className={cn(
+                        "inline-flex h-7 items-center",
+                        disabled && "pointer-events-none opacity-40",
+                    )}
+                >
+                    {action.render}
+                </span>
+            );
         case "button":
         default:
-            return <PageHeaderButtonActionControl action={action} />;
+            return (
+                <PageHeaderButtonActionControl
+                    action={action}
+                    disabled={disabled}
+                />
+            );
     }
 }
 
@@ -171,20 +249,21 @@ function isPageHeaderActionObject(
 
 function PageHeaderButtonActionControl({
     action,
+    disabled,
 }: {
     action: PageHeaderButtonAction;
+    disabled: boolean;
 }) {
     const iconOnly = action.iconOnly ?? !action.label;
     return (
         <div className={action.tooltip ? "relative group" : undefined}>
             <PageHeaderActionButton
                 onClick={action.onClick}
-                disabled={action.disabled}
+                disabled={disabled || action.disabled}
                 title={action.title}
                 aria-label={action.title}
                 variant={action.variant}
                 iconOnly={iconOnly}
-                className={action.className}
             >
                 {action.icon}
                 {action.label}
@@ -200,14 +279,16 @@ function PageHeaderButtonActionControl({
 
 function PageHeaderNewActionControl({
     action,
+    disabled,
 }: {
     action: PageHeaderNewAction;
+    disabled: boolean;
 }) {
     const title = action.title ?? "New";
     return (
         <PageHeaderActionButton
             onClick={action.onClick}
-            disabled={action.disabled || action.loading}
+            disabled={disabled || action.disabled || action.loading}
             title={title}
             aria-label={title}
             iconOnly
@@ -223,14 +304,16 @@ function PageHeaderNewActionControl({
 
 function PageHeaderDeleteActionControl({
     action,
+    disabled,
 }: {
     action: PageHeaderDeleteAction;
+    disabled: boolean;
 }) {
     const title = action.title ?? "Delete";
     return (
         <PageHeaderActionButton
             onClick={action.onClick}
-            disabled={action.disabled || action.loading}
+            disabled={disabled || action.disabled || action.loading}
             title={title}
             aria-label={title}
             iconOnly
@@ -247,8 +330,10 @@ function PageHeaderDeleteActionControl({
 
 function PageHeaderSearchActionControl({
     action,
+    disabled,
 }: {
     action: PageHeaderSearchAction;
+    disabled: boolean;
 }) {
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
@@ -280,6 +365,7 @@ function PageHeaderSearchActionControl({
                     <Search className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                     <input
                         autoFocus
+                        disabled={disabled}
                         type="text"
                         placeholder={placeholder}
                         value={action.value}
@@ -290,6 +376,7 @@ function PageHeaderSearchActionControl({
             ) : (
                 <PageHeaderActionButton
                     onClick={() => setOpen(true)}
+                    disabled={disabled}
                     iconOnly
                     title={placeholder}
                     aria-label={placeholder}
@@ -301,7 +388,10 @@ function PageHeaderSearchActionControl({
     );
 }
 
-type PageHeaderActionButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+type PageHeaderActionButtonProps = Omit<
+    ButtonHTMLAttributes<HTMLButtonElement>,
+    "className"
+> & {
     variant?: "default" | "danger";
     iconOnly?: boolean;
 };
@@ -333,7 +423,6 @@ function pageHeaderActionControlClassName({
 
 function PageHeaderActionButton({
     children,
-    className,
     variant = "default",
     iconOnly = false,
     disabled,
@@ -346,7 +435,6 @@ function PageHeaderActionButton({
                 variant,
                 iconOnly,
                 disabled,
-                className,
             })}
             {...props}
         >
@@ -411,13 +499,21 @@ function BreadcrumbItem({
         />
     ) : (
         <>
-            <span className="truncate">{item.label}</span>
+            <span
+                className={cn(
+                    "truncate",
+                    item.cursor === "text" && "cursor-text",
+                )}
+            >
+                {item.label}
+            </span>
             {showSuffix && item.suffix}
         </>
     );
 
     const className = cn(
         "min-w-0 truncate transition-colors",
+        item.cursor === "text" && "cursor-text",
         current
             ? "text-gray-900"
             : item.onClick

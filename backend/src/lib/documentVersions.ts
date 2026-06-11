@@ -66,6 +66,7 @@ export async function loadActiveVersion(
             "id, document_id, storage_path, pdf_storage_path, version_number, filename, source, file_type, size_bytes, page_count",
         )
         .eq("id", targetVersionId)
+        .is("deleted_at", null)
         .single();
     if (!v || v.document_id !== documentId || !v.storage_path) return null;
     return {
@@ -111,7 +112,8 @@ export async function attachActiveVersionPaths<T extends VersionPathRow>(
         .select(
             "id, storage_path, pdf_storage_path, version_number, filename, file_type, size_bytes, page_count",
         )
-        .in("id", versionIds);
+        .in("id", versionIds)
+        .is("deleted_at", null);
     const byId = new Map<
         string,
         {
@@ -174,6 +176,7 @@ export async function attachLatestVersionNumbers<T extends DocRow>(
         .select("document_id, version_number")
         .in("document_id", ids)
         .eq("source", "assistant_edit")
+        .is("deleted_at", null)
         .not("version_number", "is", null);
 
     const latestByDoc = new Map<string, number>();

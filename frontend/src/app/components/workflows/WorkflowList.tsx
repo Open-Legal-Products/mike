@@ -361,6 +361,7 @@ export function WorkflowList() {
             {/* Page header */}
             <PageHeader
                 shrink
+                loading={loading}
                 actions={[
                     {
                         type: "search",
@@ -421,11 +422,13 @@ export function WorkflowList() {
                                     key={i}
                                     className="flex items-center h-10 pr-3 md:pr-10 border-b border-gray-50"
                                 >
-                                    <div className={`${NAME_COL_W} flex shrink-0 items-center gap-4 pl-4 pr-2`}>
-                                        <div className="h-2.5 w-2.5 shrink-0 rounded bg-gray-100 animate-pulse" />
-                                        <div className="h-3.5 w-48 rounded bg-gray-100 animate-pulse" />
+                                    <div className={`sticky left-0 z-[60] ${NAME_COL_W} ${stickyCellBg} py-2 pl-4 pr-2`}>
+                                        <div className="flex items-center gap-4">
+                                            <div className="h-2.5 w-2.5 shrink-0 rounded bg-gray-100 animate-pulse" />
+                                            <div className="h-3.5 w-48 rounded bg-gray-100 animate-pulse" />
+                                        </div>
                                     </div>
-                                    <div className="w-28 shrink-0">
+                                    <div className="ml-auto w-28 shrink-0">
                                         <div className="h-3 w-16 rounded bg-gray-100 animate-pulse" />
                                     </div>
                                     <div className="w-40 shrink-0">

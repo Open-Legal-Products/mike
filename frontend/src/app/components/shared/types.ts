@@ -32,6 +32,8 @@ export interface Document {
   project_id: string | null;
   folder_id?: string | null;
   filename: string;
+  owner_email?: string | null;
+  owner_display_name?: string | null;
   file_type: string | null; // pdf | docx | doc
   storage_path: string | null;
   pdf_storage_path: string | null;

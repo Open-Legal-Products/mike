@@ -536,8 +536,11 @@ export function DocView({
         return (
             <DocxView
                 documentId={doc.document_id}
+                versionId={doc.version_id ?? null}
                 quotes={quotes}
                 quoteFocusKey={quoteFocusKey}
+                rounded={rounded}
+                bordered={bordered}
             />
         );
     }

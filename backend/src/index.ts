@@ -128,6 +128,10 @@ app.post("/chat/create", chatCreateLimiter);
 app.post("/chat/:chatId/generate-title", chatCreateLimiter);
 app.post("/single-documents", uploadLimiter);
 app.post("/single-documents/:documentId/versions", uploadLimiter);
+app.put(
+  "/single-documents/:documentId/versions/:versionId/file",
+  uploadLimiter,
+);
 app.post("/projects/:projectId/documents", uploadLimiter);
 app.get("/user/export", exportLimiter);
 app.get("/user/chats/export", exportLimiter);

@@ -51,3 +51,31 @@ export async function getUserApiKeys(
     const client = db ?? createServerSupabase();
     return getStoredUserApiKeys(userId, client);
 }
+
+/**
+ * Whether the user has US legal research (CourtListener) tools enabled in
+ * chat. Controlled by the Features > Legal Research > Jurisdiction > US
+ * toggle in account settings. Defaults to enabled — both when the user has
+ * no profile row yet and when the column is missing (migration not applied),
+ * so existing behaviour is preserved on partially-migrated deployments.
+ */
+export async function getLegalResearchUsEnabled(
+    userId: string,
+    db?: ReturnType<typeof createServerSupabase>,
+): Promise<boolean> {
+    const client = db ?? createServerSupabase();
+    try {
+        const { data, error } = await client
+            .from("user_profiles")
+            .select("legal_research_us")
+            .eq("user_id", userId)
+            .maybeSingle();
+        if (error || !data) return true;
+        return (
+            (data as { legal_research_us?: boolean | null })
+                .legal_research_us !== false
+        );
+    } catch {
+        return true;
+    }
+}

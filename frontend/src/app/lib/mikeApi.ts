@@ -222,6 +222,7 @@ export interface UserProfile {
     titleModel: string;
     tabularModel: string;
     mfaOnLogin: boolean;
+    legalResearchUs: boolean;
     apiKeyStatus: ApiKeyStatus;
 }
 
@@ -234,6 +235,7 @@ export async function updateUserProfile(payload: {
     organisation?: string | null;
     titleModel?: string;
     tabularModel?: string;
+    legalResearchUs?: boolean;
 }): Promise<UserProfile> {
     return apiRequest<UserProfile>("/user/profile", {
         method: "PATCH",
@@ -435,6 +437,8 @@ export interface DocumentVersion {
     file_type?: string | null;
     size_bytes?: number | null;
     page_count?: number | null;
+    deleted_at?: string | null;
+    deleted_by?: string | null;
 }
 
 export async function listDocumentVersions(documentId: string): Promise<{
@@ -457,6 +461,28 @@ export async function uploadDocumentVersion(
         `${API_BASE}/single-documents/${documentId}/versions`,
         {
             method: "POST",
+            headers: { ...authHeaders },
+            body: form,
+        },
+    );
+    if (!response.ok) throw new Error(await response.text());
+    return response.json() as Promise<DocumentVersion>;
+}
+
+export async function replaceDocumentVersionFile(
+    documentId: string,
+    versionId: string,
+    file: File,
+    filename?: string,
+): Promise<DocumentVersion> {
+    const authHeaders = await getAuthHeader();
+    const form = new FormData();
+    form.append("file", file);
+    if (filename) form.append("filename", filename);
+    const response = await fetch(
+        `${API_BASE}/single-documents/${documentId}/versions/${versionId}/file`,
+        {
+            method: "PUT",
             headers: { ...authHeaders },
             body: form,
         },

@@ -30,30 +30,25 @@ export function AssistantWorkflowModal({
     const [loading, setLoading] = useState(false);
     const [selected, setSelected] = useState<Workflow | null>(null);
     const [search, setSearch] = useState("");
-    const [rightVisible, setRightVisible] = useState(false);
 
     useEffect(() => {
-        if (!selected) {
-            setRightVisible(false);
-            return;
-        }
-        const frame = requestAnimationFrame(() => setRightVisible(true));
-        return () => cancelAnimationFrame(frame);
-    }, [selected]);
-
-    useEffect(() => {
-        if (!open) {
-            setSelected(null);
-            setSearch("");
-            return;
-        }
+        if (!open) return;
+        let cancelled = false;
         const builtins = BUILT_IN_WORKFLOWS.filter(
             (w) => w.type === "assistant",
         );
-        setWorkflows(builtins);
-        setLoading(true);
+        const frame = requestAnimationFrame(() => {
+            if (cancelled) return;
+            setWorkflows(builtins);
+            setLoading(true);
+            if (initialWorkflowId) {
+                const match = builtins.find((w) => w.id === initialWorkflowId);
+                if (match) setSelected(match);
+            }
+        });
         listWorkflows("assistant")
             .then((custom) => {
+                if (cancelled) return;
                 const all = [...builtins, ...custom];
                 setWorkflows(all);
                 if (initialWorkflowId) {
@@ -62,17 +57,19 @@ export function AssistantWorkflowModal({
                 }
             })
             .catch(() => {
+                if (cancelled) return;
                 if (initialWorkflowId) {
                     const match = builtins.find((w) => w.id === initialWorkflowId);
                     if (match) setSelected(match);
                 }
             })
-            .finally(() => setLoading(false));
-        // Pre-select from builtins immediately if possible
-        if (initialWorkflowId) {
-            const match = builtins.find((w) => w.id === initialWorkflowId);
-            if (match) setSelected(match);
-        }
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+        return () => {
+            cancelled = true;
+            cancelAnimationFrame(frame);
+        };
     }, [open, initialWorkflowId]);
 
     if (!open) return null;
@@ -81,10 +78,16 @@ export function AssistantWorkflowModal({
         ? workflows.filter((w) => w.title.toLowerCase().includes(search.toLowerCase()))
         : workflows;
 
+    function handleClose() {
+        setSelected(null);
+        setSearch("");
+        onClose();
+    }
+
     function handleUse() {
         if (!selected) return;
         onSelect(selected);
-        onClose();
+        handleClose();
     }
 
     const breadcrumbs = projectName
@@ -99,7 +102,7 @@ export function AssistantWorkflowModal({
     return (
         <Modal
             open={open}
-            onClose={onClose}
+            onClose={handleClose}
             size={selected ? "xl" : "lg"}
             breadcrumbs={breadcrumbs}
             primaryAction={{
@@ -110,13 +113,13 @@ export function AssistantWorkflowModal({
             }}
         >
                 {/* Content */}
-                <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
+                <div className="flex flex-row flex-1 min-h-0 overflow-hidden gap-3">
                     {/* Left panel — workflow list */}
                     <div
-                        className={`overflow-y-auto ${selected ? "w-80 shrink-0" : "flex-1"}`}
+                        className={`flex flex-col overflow-hidden ${selected ? "w-80 shrink-0" : "flex-1"}`}
                     >
                         {/* Search */}
-                        <div className="pt-3 pb-2 shrink-0">
+                        <div className="px-2 pt-3 pb-2 shrink-0">
                             <div className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1">
                                 <Search className="h-3 w-3 text-gray-400 shrink-0" />
                                 <input
@@ -135,11 +138,11 @@ export function AssistantWorkflowModal({
                         </div>
 
                         {loading ? (
-                            <div className="space-y-px pt-1">
+                            <div className="space-y-1 px-2 pb-2 pt-1">
                                 {[60, 45, 75, 50, 65, 40, 55].map((w, i) => (
                                     <div
                                         key={i}
-                                        className="flex items-center justify-between gap-3 py-3 border-b border-gray-50"
+                                        className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5"
                                     >
                                         <div
                                             className="h-3 rounded bg-gray-100 animate-pulse"
@@ -154,35 +157,37 @@ export function AssistantWorkflowModal({
                                 {search ? "No matches found" : "No assistant workflows found"}
                             </p>
                         ) : (
-                            filteredWorkflows.map((wf) => (
-                                <button
-                                    key={wf.id}
-                                    type="button"
-                                    onClick={() =>
-                                        setSelected((prev) =>
-                                            prev?.id === wf.id ? null : wf,
-                                        )
-                                    }
-                                    className={`w-full flex items-center gap-3 px-4 py-3 text-xs text-left transition-colors border-b border-gray-50 ${
-                                        selected?.id === wf.id
-                                            ? "bg-gray-50"
-                                            : "hover:bg-gray-50"
-                                    }`}
-                                >
-                                    <span className="flex-1 truncate text-gray-800">
-                                        {wf.title}
-                                    </span>
-                                    <span className="shrink-0 text-xs text-gray-400">
-                                        {wf.is_system ? "Built-in" : "Custom"}
-                                    </span>
-                                </button>
-                            ))
+                            <div className="overflow-y-auto">
+                                {filteredWorkflows.map((wf) => (
+                                    <button
+                                        key={wf.id}
+                                        type="button"
+                                        onClick={() =>
+                                            setSelected((prev) =>
+                                                prev?.id === wf.id ? null : wf,
+                                            )
+                                        }
+                                        className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-xs text-left transition-colors ${
+                                            selected?.id === wf.id
+                                                ? "bg-gray-100"
+                                                : "hover:bg-gray-50"
+                                        }`}
+                                    >
+                                        <span className="flex-1 truncate text-gray-800">
+                                            {wf.title}
+                                        </span>
+                                        <span className="shrink-0 text-xs text-gray-400">
+                                            {wf.is_system ? "Built-in" : "Custom"}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
                         )}
                     </div>
 
                     {/* Right panel — prompt preview */}
                     {selected && (
-                        <div className={`flex-1 border-l border-gray-100 flex flex-col overflow-hidden px-3 pb-3 transition-opacity duration-200 ${rightVisible ? "opacity-100" : "opacity-0"}`}>
+                        <div className="flex-1 flex flex-col overflow-hidden">
                             <div className="flex items-center justify-between py-3 shrink-0">
                                 <p className="text-xs font-medium text-gray-700">
                                     Workflow Prompt

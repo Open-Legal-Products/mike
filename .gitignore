@@ -11,6 +11,7 @@ build
 !.env.local.example
 
 *.log
+*.raw-llm-stream.json
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store

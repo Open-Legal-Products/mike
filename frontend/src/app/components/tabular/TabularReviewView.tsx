@@ -2,10 +2,24 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Plus, Loader2, Play, ChevronDown, MessageSquare, Download, Users, Upload, X } from "lucide-react";
+import {
+    Plus,
+    Loader2,
+    Play,
+    ChevronDown,
+    MessageSquare,
+    Download,
+    Users,
+    Upload,
+    X,
+    Pencil,
+    Trash2,
+    WandSparkles,
+} from "lucide-react";
 
 import {
     clearTabularCells,
+    deleteTabularReview,
     getTabularReview,
     getProject,
     getTabularReviewPeople,
@@ -20,14 +34,17 @@ import type {
     Project,
     TabularCell,
     TabularReview,
+    Workflow,
 } from "../shared/types";
 import { AddColumnModal } from "./AddColumnModal";
+import { ApplyWorkflowPresetModal } from "./ApplyWorkflowPresetModal";
 import { AddDocumentsModal } from "../shared/AddDocumentsModal";
 import { AddProjectDocsModal } from "../shared/AddProjectDocsModal";
 import { PeopleModal } from "../shared/PeopleModal";
 import { OwnerOnlyModal } from "../shared/OwnerOnlyModal";
 import { ApiKeyMissingModal } from "../shared/ApiKeyMissingModal";
-import { RenameableTitle } from "../shared/RenameableTitle";
+import { ConfirmPopup } from "../shared/ConfirmPopup";
+import { HeaderActionsMenu } from "../shared/HeaderActionsMenu";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import {
@@ -62,6 +79,14 @@ export function TRView({ reviewId, projectId }: Props) {
     const [addColOpen, setAddColOpen] = useState(false);
     const [addDocsOpen, setAddDocsOpen] = useState(false);
     const [peopleModalOpen, setPeopleModalOpen] = useState(false);
+    const [workflowPresetModalOpen, setWorkflowPresetModalOpen] =
+        useState(false);
+    const [applyingWorkflowPreset, setApplyingWorkflowPreset] = useState(false);
+    const [deleteReviewConfirmOpen, setDeleteReviewConfirmOpen] =
+        useState(false);
+    const [deleteReviewStatus, setDeleteReviewStatus] = useState<
+        "idle" | "deleting" | "deleted"
+    >("idle");
     const [ownerOnlyAction, setOwnerOnlyAction] = useState<string | null>(null);
     const { user } = useAuth();
     const [expandedCell, setExpandedCell] = useState<TabularCell | null>(null);
@@ -516,8 +541,95 @@ export function TRView({ reviewId, projectId }: Props) {
 
     async function handleTitleCommit(newTitle: string) {
         if (!newTitle || newTitle === review?.title) return;
+        if (review?.is_owner === false) {
+            setOwnerOnlyAction("rename this tabular review");
+            return;
+        }
         setReview((prev) => (prev ? { ...prev, title: newTitle } : prev));
         await updateTabularReview(reviewId, { title: newTitle });
+    }
+
+    function requestReviewRename() {
+        if (review?.is_owner === false) {
+            setOwnerOnlyAction("rename this tabular review");
+            return;
+        }
+        const nextTitle = window.prompt(
+            "Rename tabular review",
+            review?.title ?? "Untitled Review",
+        );
+        const trimmed = nextTitle?.trim();
+        if (!trimmed) return;
+        void handleTitleCommit(trimmed);
+    }
+
+    function requestReviewDelete() {
+        if (review?.is_owner === false) {
+            setOwnerOnlyAction("delete this tabular review");
+            return;
+        }
+        setDeleteReviewStatus("idle");
+        setDeleteReviewConfirmOpen(true);
+    }
+
+    async function confirmReviewDelete() {
+        if (deleteReviewStatus === "deleting") return;
+        setDeleteReviewStatus("deleting");
+        try {
+            await deleteTabularReview(reviewId);
+            setDeleteReviewStatus("deleted");
+            setTimeout(() => {
+                router.push(
+                    projectId
+                        ? `/projects/${projectId}?tab=reviews`
+                        : "/tabular-reviews",
+                );
+            }, 250);
+        } catch (err) {
+            setDeleteReviewStatus("idle");
+            console.error("Failed to delete tabular review", err);
+        }
+    }
+
+    function requestWorkflowPreset() {
+        if (review?.is_owner === false) {
+            setOwnerOnlyAction("apply a preset workflow");
+            return;
+        }
+        setWorkflowPresetModalOpen(true);
+    }
+
+    async function handleApplyWorkflowPreset(workflow: Workflow) {
+        if (!workflow.columns_config?.length) return;
+        const nextColumns = workflow.columns_config.map((column, index) => ({
+            ...column,
+            index,
+        }));
+        const previousColumns = columns;
+        const previousCells = cells;
+        setApplyingWorkflowPreset(true);
+        setColumns(nextColumns);
+        setCells([]);
+        try {
+            await saveColumnsConfig(nextColumns);
+            if (documents.length > 0) {
+                try {
+                    await clearTabularCells(
+                        reviewId,
+                        documents.map((document) => document.id),
+                    );
+                } catch (err) {
+                    console.error("Failed to clear old tabular cells", err);
+                }
+            }
+            setWorkflowPresetModalOpen(false);
+        } catch (err) {
+            setColumns(previousColumns);
+            setCells(previousCells);
+            console.error("Failed to apply workflow preset", err);
+        } finally {
+            setApplyingWorkflowPreset(false);
+        }
     }
 
     const q = search.toLowerCase();
@@ -573,75 +685,94 @@ export function TRView({ reviewId, projectId }: Props) {
                                   skeletonClassName: "w-40",
                               }
                             : {
-                                  label: (
-                                      <RenameableTitle
-                                          value={review?.title || "Untitled Review"}
-                                          onCommit={handleTitleCommit}
-                                      />
-                                  ),
+                                  label: review?.title || "Untitled Review",
                               },
                     ]}
-                    actions={
-                        !loading
-                            ? [
-                                  {
-                                      type: "search",
-                                      value: search,
-                                      onChange: setSearch,
-                                      placeholder: "Search documents…",
-                                  },
-                                  !projectId
-                                      ? {
-                                            onClick: () =>
-                                                setPeopleModalOpen(true),
-                                            disabled: loading,
-                                            iconOnly: true,
-                                            title: "People with access",
-                                            icon: <Users className="h-4 w-4" />,
-                                        }
-                                      : null,
-                                  {
-                                      onClick: () =>
-                                          exportTabularReviewToExcel({
-                                              reviewTitle:
-                                                  review?.title ||
-                                                  "Tabular Review",
-                                              columns,
-                                              documents,
-                                              cells,
-                                          }),
-                                      disabled:
-                                          columns.length === 0 ||
-                                          documents.length === 0,
-                                      title: "Export to Excel",
-                                      icon: <Download className="h-4 w-4" />,
-                                      label: (
-                                          <span className="hidden sm:inline">
-                                              Export
-                                          </span>
-                                      ),
-                                  },
-                                  {
-                                      onClick: handleGenerate,
-                                      disabled:
-                                          generating ||
-                                          columns.length === 0 ||
-                                          documents.length === 0 ||
-                                          savingColumnsConfig,
-                                      icon: generating ? (
-                                          <Loader2 className="h-4 w-4 animate-spin" />
-                                      ) : (
-                                          <Play className="h-4 w-4" />
-                                      ),
-                                      label: (
-                                          <span className="hidden sm:inline">
-                                              {generating ? "Running…" : "Run"}
-                                          </span>
-                                      ),
-                                  },
-                              ]
-                            : undefined
-                    }
+                    actionGroups={[
+                        [
+                            {
+                                type: "search",
+                                value: search,
+                                onChange: setSearch,
+                                placeholder: "Search documents…",
+                            },
+                            !projectId
+                                ? {
+                                      onClick: () => setPeopleModalOpen(true),
+                                      disabled: loading,
+                                      iconOnly: true,
+                                      title: "People with access",
+                                      icon: <Users className="h-4 w-4" />,
+                                  }
+                                : null,
+                            {
+                                type: "custom",
+                                render: (
+                                    <HeaderActionsMenu
+                                        items={[
+                                            {
+                                                label: "Rename",
+                                                icon: Pencil,
+                                                onSelect: requestReviewRename,
+                                            },
+                                            {
+                                                label: "Apply preset workflow",
+                                                icon: WandSparkles,
+                                                onSelect:
+                                                    requestWorkflowPreset,
+                                            },
+                                            {
+                                                label: "Delete",
+                                                icon: Trash2,
+                                                onSelect: requestReviewDelete,
+                                                variant: "danger",
+                                            },
+                                        ]}
+                                    />
+                                ),
+                            },
+                        ],
+                        [
+                            {
+                                onClick: () =>
+                                    exportTabularReviewToExcel({
+                                        reviewTitle:
+                                            review?.title || "Tabular Review",
+                                        columns,
+                                        documents,
+                                        cells,
+                                    }),
+                                disabled:
+                                    columns.length === 0 ||
+                                    documents.length === 0,
+                                title: "Export to Excel",
+                                icon: <Download className="h-4 w-4" />,
+                                label: (
+                                    <span className="hidden sm:inline">
+                                        Export
+                                    </span>
+                                ),
+                            },
+                            {
+                                onClick: handleGenerate,
+                                disabled:
+                                    generating ||
+                                    columns.length === 0 ||
+                                    documents.length === 0 ||
+                                    savingColumnsConfig,
+                                icon: generating ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Play className="h-4 w-4" />
+                                ),
+                                label: (
+                                    <span className="hidden sm:inline">
+                                        {generating ? "Running…" : "Run"}
+                                    </span>
+                                ),
+                            },
+                        ],
+                    ]}
                 />
 
                 {/* Toolbar */}
@@ -924,6 +1055,37 @@ export function TRView({ reviewId, projectId }: Props) {
                               );
                           }
                 }
+            />
+
+            <ApplyWorkflowPresetModal
+                open={workflowPresetModalOpen}
+                applying={applyingWorkflowPreset}
+                onClose={() => {
+                    if (applyingWorkflowPreset) return;
+                    setWorkflowPresetModalOpen(false);
+                }}
+                onApply={handleApplyWorkflowPreset}
+            />
+
+            <ConfirmPopup
+                open={deleteReviewConfirmOpen}
+                title="Delete tabular review?"
+                message="This will permanently delete the tabular review and its generated cells."
+                confirmLabel="Delete"
+                confirmStatus={
+                    deleteReviewStatus === "deleting"
+                        ? "loading"
+                        : deleteReviewStatus === "deleted"
+                          ? "complete"
+                          : "idle"
+                }
+                cancelLabel="Cancel"
+                onCancel={() => {
+                    if (deleteReviewStatus === "deleting") return;
+                    setDeleteReviewConfirmOpen(false);
+                    setDeleteReviewStatus("idle");
+                }}
+                onConfirm={() => void confirmReviewDelete()}
             />
 
             <OwnerOnlyModal
