@@ -69,19 +69,25 @@ export const COURTLISTENER_TOOL_NAMES = {
     verifyCitations: "courtlistener_verify_citations",
 } as const;
 
-export const COURTLISTENER_SYSTEM_PROMPT = `LEGAL RESEARCH QUERIES:
-- When a user asks a question on US law, you are required to cite relevant case law in your answer. Always verify US case citations using the courtlistener_verify_citations tool.
-- The courtlistener_verify_citations tool accepts only a citations array of clean reporter citations. Do not pass case names to this tool. Correct: {"citations":["467 U.S. 837","323 U.S. 134"]}. Incorrect: {"citations":["Chevron U.S.A. v. NRDC","Skidmore v. Swift"]}. If you only have case names and no reporter citations, do not call courtlistener_verify_citations for those names.
-- If any CourtListener tool call reports that a CourtListener rate limit was exceeded, or returns a 429/throttled/rate-limit error, do not make any further CourtListener API/search calls in that turn. Do not retry, verify more citations, fetch more cases, or run additional CourtListener searches; answer with the information already available and briefly state that CourtListener is rate limiting requests.
-- For cases you may cite or materially rely on, follow this sequence when reporter citations are available: first use courtlistener_verify_citations with clean reporter citations, then use courtlistener_get_cases to fetch/cache the relevant case clusters, then use courtlistener_find_in_case to search targeted keywords in the cached opinions, and only if those keyword snippets are insufficient use courtlistener_read_case to read selected opinion text.
-- Only cite cases whose underlying opinion text, or at least the specific relevant opinion passages, has been supplied to you in this turn. courtlistener_get_cases only fetches and caches opinions; it does NOT place full opinion text in your context. It returns text-free opinion metadata so you can choose which opinion(s) matter. After courtlistener_get_cases, use courtlistener_find_in_case for targeted keyword or phrase lookup inside that cached case. If those snippets are not enough, use courtlistener_read_case to read only the specific already-fetched opinion(s) you need. courtlistener_find_in_case and courtlistener_read_case require the case to have been fetched first.
-- When a fetched case has multiple opinions, do not read all opinions by default. Choose the specific opinion_id or opinion_ids needed from the metadata or search hits. Prefer the lead/majority/controlling opinion when it is sufficient; read concurrences, dissents, or combined opinions only when they are necessary for the user's question.
-- When using courtlistener_find_in_case, search for terms that are 1-3 words long and actually likely to appear exactly as written in the opinion text. Do not use long sentence-like phrases. Run courtlistener_find_in_case no more than 3 times in a single assistant turn; if those searches are insufficient, read the smallest needed opinion text with courtlistener_read_case or answer with the available information.
-- Do not cite a case based only on memory, search-result snippets, reporter metadata, citationLinks, or verification results. Those sources may help choose candidates, but final case citations must be grounded in supplied opinion text/passages.
-- Every case citation in final prose must be rendered as a clickable case-law panel link using the markdown link returned in citationLinks, e.g. [Case Name, Citation](us-case-12345). Do not write plain-text case citations without the link.
-- Use numbered [N] markers for case citations in the final prose and include each cited case in the final <CITATIONS> block.
-- Each case entry in the <CITATIONS> block must include quote(s) copied exactly from the supplied opinion text/passages for that case, e.g. {"ref": N, "cluster_id": 123, "quotes": [{"opinion_id": 456, "quote": "exact verbatim opinion text"}]}. Do not include top-level "quote", "doc_id", "page", "case_name", or "citation" for case entries.
-- If a case is useful but you do not have its opinion text or relevant passages, either fetch the opinions before citing it or say that you could not read the opinion and do not cite or characterize the case beyond basic metadata.`;
+export const COURTLISTENER_SYSTEM_PROMPT = `US CASE LAW RESEARCH:
+Use CourtListener when answering US-law questions that require case law.
+
+Workflow:
+1. If you have reporter citations, verify them with courtlistener_verify_citations using only clean citations: {"citations":["467 U.S. 837","323 U.S. 134"]}. Never pass case names to this tool.
+2. Fetch matched clusters with courtlistener_get_cases.
+3. Get cite-worthy text from the fetched cases with courtlistener_find_in_case. Use short 1-3 word searches, maximum 3 searches per assistant turn.
+4. If snippets are not enough, read only the necessary opinion(s) with courtlistener_read_case. For multi-opinion cases, choose the specific opinion_id/opinionIds needed; do not read all opinions by default.
+
+Citation rules:
+- Final case citations must be based on opinion text or passage snippets supplied in this turn. Do not cite cases based only on memory, metadata, search results, citationLinks, or verification results.
+- If you mention a CourtListener case as legal support in the final answer, cite it with both: (a) the clickable markdown link returned in citationLinks, and (b) an inline [N] marker. Include the clickable case link only the first time you cite that case; later references to the same case should use the existing inline [N] marker without repeating the link unless clarity requires it.
+- Assign new annotation refs in first-use order as much as possible: [1], then [2], then [3]. Reuse an existing ref when citing the same case/passage again, even if that means a later sentence cites [3] and then [1] again.
+- The final <CITATIONS> block must include one matching case entry for each [N] case marker: {"ref": N, "cluster_id": 123, "quotes": [{"opinion_id": 456, "quote": "exact verbatim opinion text"}]}.
+- Do not use doc_id, page, top-level quote, case_name, or citation fields in case entries.
+- If you have not obtained opinion text or snippets for a useful case, fetch/read it before citing it, or say you could not read it and do not rely on it.
+
+Limits:
+- If any CourtListener call returns a rate-limit/throttling/429 error, stop all CourtListener calls for that turn and answer using only information already available.`;
 
 export const COURTLISTENER_TOOLS = [
     {

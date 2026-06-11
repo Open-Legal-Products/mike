@@ -15,7 +15,9 @@ import {
     PROJECT_EXTRA_TOOLS,
     type ChatMessage,
 } from "../lib/chatTools";
-import { getUserApiKeys } from "../lib/userSettings";
+import {
+    getUserModelSettings,
+} from "../lib/userSettings";
 import { checkProjectAccess } from "../lib/access";
 import { safeErrorLog, safeErrorMessage } from "../lib/safeError";
 
@@ -141,10 +143,16 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         systemPromptExtra += `\n\nUSER-ATTACHED DOCUMENTS FOR THIS TURN:\nThe user has attached the following document(s) directly to their latest message. Treat these as the primary focus of the request unless their message clearly says otherwise.\n${lines.join("\n")}`;
     }
 
+    const {
+        api_keys: apiKeys,
+        legal_research_us: legalResearchUs,
+    } = await getUserModelSettings(userId, db);
     const apiMessages = buildMessages(
         messagesForLLM,
         docAvailability,
         systemPromptExtra,
+        undefined,
+        legalResearchUs,
     );
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
@@ -162,8 +170,6 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         if (!streamFinished) streamAbort.abort();
     });
 
-    const apiKeys = await getUserApiKeys(userId, db);
-
     try {
         write(`data: ${JSON.stringify({ type: "chat_id", chatId })}\n\n`);
 
@@ -176,6 +182,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             write,
             extraTools: PROJECT_EXTRA_TOOLS,
             workflowStore,
+            includeResearchTools: legalResearchUs,
             model,
             apiKeys,
             signal: streamAbort.signal,

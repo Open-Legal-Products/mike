@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import {
     getProject,
+    deleteProject,
     deleteDocument,
     createTabularReview,
     updateProject,
@@ -33,6 +34,7 @@ import {
     renameProjectDocument,
     listDocumentVersions,
     uploadDocumentVersion,
+    replaceDocumentVersionFile,
     copyDocumentVersionFromDocument,
     deleteDocumentVersion,
     uploadProjectDocument,
@@ -61,6 +63,7 @@ import {
 import { PeopleModal } from "@/app/components/shared/PeopleModal";
 import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
 import { useAuth } from "@/contexts/AuthContext";
+import { useUserProfile } from "@/contexts/UserProfileContext";
 import { AddNewTRModal } from "@/app/components/tabular/AddNewTRModal";
 import { WarningPopup } from "@/app/components/shared/WarningPopup";
 import { ConfirmPopup } from "@/app/components/shared/ConfirmPopup";
@@ -76,12 +79,12 @@ import {
     formatBytes,
     formatDate,
     ProjectPageHeader,
-    ProjectPageSkeleton,
     treeNameCellStyle,
     type ProjectContextMenu,
     type ProjectTab,
 } from "./ProjectPageParts";
 import { DocumentSidePanel } from "./DocumentSidePanel";
+import { ProjectDetailsModal } from "./ProjectDetailsModal";
 import { ProjectAssistantTab } from "./ProjectAssistantTab";
 import { ProjectReviewsTab } from "./ProjectReviewsTab";
 
@@ -108,6 +111,157 @@ function apiErrorDetail(error: unknown): string | null {
     return error.message || null;
 }
 
+function ProjectTableLoading({
+    tab,
+    stickyCellBg,
+}: {
+    tab: ProjectTab;
+    stickyCellBg: string;
+}) {
+    if (tab === "assistant") {
+        return (
+            <>
+                <div className="flex items-center h-8 pr-8 border-b border-gray-200 text-xs text-gray-500 font-medium select-none">
+                    <div
+                        className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${stickyCellBg} flex items-center gap-4 self-stretch pl-4 pr-2 text-left`}
+                    >
+                        <div className="h-2.5 w-2.5 rounded bg-gray-100 animate-pulse" />
+                        <span>Chats</span>
+                    </div>
+                    <div className="ml-auto w-32 shrink-0 text-left">
+                        Created
+                    </div>
+                    <div className="w-8 shrink-0" />
+                </div>
+                {[1, 2, 3, 4, 5].map((i) => (
+                    <div
+                        key={i}
+                        className="flex items-center h-10 pr-8 border-b border-gray-50"
+                    >
+                        <div
+                            className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${stickyCellBg} py-2 pl-4 pr-2`}
+                        >
+                            <div className="flex items-center gap-4">
+                                <div className="h-2.5 w-2.5 shrink-0 rounded bg-gray-100 animate-pulse" />
+                                <div
+                                    className="h-3.5 rounded bg-gray-100 animate-pulse"
+                                    style={{ width: `${44 + i * 7}px` }}
+                                />
+                            </div>
+                        </div>
+                        <div className="ml-auto w-32 shrink-0">
+                            <div className="h-3 w-16 rounded bg-gray-100 animate-pulse" />
+                        </div>
+                        <div className="w-8 shrink-0" />
+                    </div>
+                ))}
+            </>
+        );
+    }
+
+    if (tab === "reviews") {
+        return (
+            <>
+                <div className="flex items-center h-8 pr-8 border-b border-gray-200 text-xs text-gray-500 font-medium select-none">
+                    <div
+                        className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${stickyCellBg} flex items-center gap-4 self-stretch pl-4 pr-2 text-left`}
+                    >
+                        <div className="h-2.5 w-2.5 rounded bg-gray-100 animate-pulse" />
+                        <span>Name</span>
+                    </div>
+                    <div className="ml-auto w-24 shrink-0 text-left">
+                        Columns
+                    </div>
+                    <div className="w-24 shrink-0 text-left">Documents</div>
+                    <div className="w-32 shrink-0 text-left">Created</div>
+                    <div className="w-8 shrink-0" />
+                </div>
+                {[1, 2, 3, 4, 5].map((i) => (
+                    <div
+                        key={i}
+                        className="flex items-center h-10 pr-8 border-b border-gray-50"
+                    >
+                        <div
+                            className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${stickyCellBg} py-2 pl-4 pr-2`}
+                        >
+                            <div className="flex items-center gap-4">
+                                <div className="h-2.5 w-2.5 shrink-0 rounded bg-gray-100 animate-pulse" />
+                                <div
+                                    className="h-3.5 rounded bg-gray-100 animate-pulse"
+                                    style={{ width: `${180 + i * 18}px` }}
+                                />
+                            </div>
+                        </div>
+                        <div className="ml-auto w-24 shrink-0">
+                            <div className="h-3 w-8 rounded bg-gray-100 animate-pulse" />
+                        </div>
+                        <div className="w-24 shrink-0">
+                            <div className="h-3 w-8 rounded bg-gray-100 animate-pulse" />
+                        </div>
+                        <div className="w-32 shrink-0">
+                            <div className="h-3 w-16 rounded bg-gray-100 animate-pulse" />
+                        </div>
+                        <div className="w-8 shrink-0" />
+                    </div>
+                ))}
+            </>
+        );
+    }
+
+    return (
+        <div className="flex-1 flex flex-col min-h-0">
+            <div className="flex items-center h-8 pr-8 border-b border-gray-200 text-xs text-gray-500 font-medium select-none shrink-0">
+                <div
+                    className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${stickyCellBg} flex items-center gap-4 self-stretch pl-4 pr-2 text-left`}
+                >
+                    <div className="h-2.5 w-2.5 rounded bg-gray-100 animate-pulse" />
+                    <span>Name</span>
+                </div>
+                <div className="ml-auto w-20 shrink-0 text-left">Type</div>
+                <div className="w-24 shrink-0 text-left">Size</div>
+                <div className="w-20 shrink-0 text-left">Version</div>
+                <div className="w-32 shrink-0 text-left">Created</div>
+                <div className="w-32 shrink-0 text-left">Updated</div>
+                <div className="w-8 shrink-0" />
+            </div>
+            {[1, 2, 3, 4, 5].map((i) => (
+                <div
+                    key={i}
+                    className="flex items-center h-10 pr-8 border-b border-gray-50"
+                >
+                    <div
+                        className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${stickyCellBg} py-2 pl-4 pr-2`}
+                    >
+                        <div className="flex items-center gap-4">
+                            <div className="h-2.5 w-2.5 shrink-0 rounded bg-gray-100 animate-pulse" />
+                            <div
+                                className="h-3.5 rounded bg-gray-100 animate-pulse"
+                                style={{ width: `${210 + i * 16}px` }}
+                            />
+                        </div>
+                    </div>
+                    <div className="ml-auto w-20 shrink-0">
+                        <div className="h-3 w-8 rounded bg-gray-100 animate-pulse" />
+                    </div>
+                    <div className="w-24 shrink-0">
+                        <div className="h-3 w-12 rounded bg-gray-100 animate-pulse" />
+                    </div>
+                    <div className="w-20 shrink-0">
+                        <div className="h-3 w-5 rounded bg-gray-100 animate-pulse" />
+                    </div>
+                    <div className="w-32 shrink-0">
+                        <div className="h-3 w-16 rounded bg-gray-100 animate-pulse" />
+                    </div>
+                    <div className="w-32 shrink-0">
+                        <div className="h-3 w-16 rounded bg-gray-100 animate-pulse" />
+                    </div>
+                    <div className="w-8 shrink-0" />
+                </div>
+            ))}
+        </div>
+    );
+}
+
 export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
     const [project, setProject] = useState<Project | null>(null);
     const [folders, setFolders] = useState<ProjectFolder[]>([]);
@@ -122,9 +276,11 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
             : initialTab;
     const [addDocsOpen, setAddDocsOpen] = useState(false);
     const [peopleModalOpen, setPeopleModalOpen] = useState(false);
+    const [projectDetailsOpen, setProjectDetailsOpen] = useState(false);
     const [ownerOnlyAction, setOwnerOnlyAction] = useState<string | null>(null);
     const { user } = useAuth();
-    const stickyCellBg = "bg-[#fcfcfd]";
+    const { profile } = useUserProfile();
+    const stickyCellBg = "bg-[#fafbfc]";
     const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
     const [viewingDocVersion, setViewingDocVersion] = useState<{
         id: string;
@@ -248,16 +404,31 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
         }
     }
 
+    async function replaceVersionFile(
+        docId: string,
+        versionId: string,
+        file: File,
+        filename: string,
+    ) {
+        await replaceDocumentVersionFile(docId, versionId, file, filename);
+        const res = await refreshDocumentVersionState(docId);
+        const replaced = res.versions.find(
+            (version) => version.id === versionId,
+        );
+        if (replaced) {
+            setViewingDocVersion({
+                id: replaced.id,
+                label: replaced.filename?.trim() || "Version",
+            });
+        }
+    }
+
     async function refreshDocumentVersionState(docId: string) {
         // Refresh project so doc.active_version_number and filename advance.
         const updated = await getProject(projectId);
         setProject(updated);
-        // Re-fetch versions for this doc (invalidate cache first).
-        setVersionsByDocId((prev) => {
-            const next = new Map(prev);
-            next.delete(docId);
-            return next;
-        });
+        // Re-fetch versions while keeping the previous rows visible until the
+        // updated list arrives.
         const res = await listDocumentVersions(docId);
         setVersionsByDocId((prev) => {
             const next = new Map(prev);
@@ -318,11 +489,14 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
         try {
             await deleteDocumentVersion(docId, versionId);
             const res = await refreshDocumentVersionState(docId);
+            const activeVersions = res.versions.filter(
+                (version) => version.deleted_at == null,
+            );
             const nextVersion =
-                res.versions.find(
+                activeVersions.find(
                     (version) => version.id === res.current_version_id,
                 ) ??
-                res.versions[res.versions.length - 1] ??
+                activeVersions[activeVersions.length - 1] ??
                 null;
             setViewingDocVersion(
                 nextVersion
@@ -385,6 +559,9 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
     const [uploadingDroppedFilenames, setUploadingDroppedFilenames] = useState<
         string[]
     >([]);
+    const [deletingDocIds, setDeletingDocIds] = useState<Set<string>>(
+        () => new Set(),
+    );
     const [documentUploadWarning, setDocumentUploadWarning] = useState<
         string | null
     >(null);
@@ -411,6 +588,11 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
         documentCount: number;
     } | null>(null);
     const [pendingDeleteFolderStatus, setPendingDeleteFolderStatus] = useState<
+        "idle" | "deleting" | "deleted"
+    >("idle");
+    const [deleteProjectConfirmOpen, setDeleteProjectConfirmOpen] =
+        useState(false);
+    const [deleteProjectStatus, setDeleteProjectStatus] = useState<
         "idle" | "deleting" | "deleted"
     >("idle");
 
@@ -860,21 +1042,39 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
             setOwnerOnlyAction("delete this document");
             return;
         }
-        await deleteDocument(docId);
-        setProject((prev) =>
-            prev
-                ? {
-                      ...prev,
-                      documents:
-                          prev.documents?.filter((d) => d.id !== docId) || [],
-                  }
-                : prev,
-        );
+        setDeletingDocIds((prev) => new Set([...prev, docId]));
+        try {
+            await deleteDocument(docId);
+            setProject((prev) =>
+                prev
+                    ? {
+                          ...prev,
+                          documents:
+                              prev.documents?.filter((d) => d.id !== docId) ||
+                              [],
+                      }
+                    : prev,
+            );
+        } finally {
+            setDeletingDocIds((prev) => {
+                const next = new Set(prev);
+                next.delete(docId);
+                return next;
+            });
+        }
     }
 
     function requestRemoveDoc(doc: Document) {
         if (doc && user?.id && doc.user_id && doc.user_id !== user.id) {
             setOwnerOnlyAction("delete this document");
+            return;
+        }
+        const versionCount =
+            versionsByDocId.get(doc.id)?.versions.length ??
+            currentVersionNumber(doc) ??
+            1;
+        if (versionCount <= 1) {
+            void handleRemoveDoc(doc.id);
             return;
         }
         setPendingDeleteStatus("idle");
@@ -937,16 +1137,55 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
         }
     }
 
-    async function handleTitleCommit(newName: string) {
-        if (!newName || newName === project?.name) return;
-        // Server-side this would 404 silently for non-owners; surface a
-        // clear permission warning instead.
+    async function handleProjectDetailsSave(values: {
+        name: string;
+        cmNumber: string;
+    }) {
         if (project && project.is_owner === false) {
-            setOwnerOnlyAction("rename this project");
+            setOwnerOnlyAction("edit project details");
             return;
         }
-        setProject((prev) => (prev ? { ...prev, name: newName } : prev));
-        await updateProject(projectId, { name: newName });
+        const name = values.name.trim();
+        const cmNumber = values.cmNumber.trim();
+        if (!name) return;
+        const updated = await updateProject(projectId, {
+            name,
+            cm_number: cmNumber,
+        });
+        setProject((prev) =>
+            prev
+                ? {
+                      ...prev,
+                      name: updated.name,
+                      cm_number: updated.cm_number,
+                      updated_at: updated.updated_at,
+                  }
+                : prev,
+        );
+    }
+
+    function requestProjectDelete() {
+        if (project?.is_owner === false) {
+            setOwnerOnlyAction("delete this project");
+            return;
+        }
+        setDeleteProjectStatus("idle");
+        setDeleteProjectConfirmOpen(true);
+    }
+
+    async function confirmProjectDelete() {
+        if (deleteProjectStatus === "deleting") return;
+        setDeleteProjectStatus("deleting");
+        try {
+            await deleteProject(projectId);
+            setDeleteProjectStatus("deleted");
+            setTimeout(() => {
+                router.push("/projects");
+            }, 250);
+        } catch (err) {
+            setDeleteProjectStatus("idle");
+            console.error("Failed to delete project", err);
+        }
     }
 
     async function submitChatRename(chatId: string) {
@@ -1166,6 +1405,10 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
 
     function currentVersionNumber(doc: Document): number | null {
         return doc.active_version_number ?? doc.latest_version_number ?? null;
+    }
+
+    function isSharedDocument(doc: Document | null | undefined): boolean {
+        return !!(doc?.user_id && user?.id && doc.user_id !== user.id);
     }
 
     async function handleDropProjectFiles(files: File[]) {
@@ -1414,10 +1657,22 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
         );
     }
 
-    function renderUploadingDocumentRows(depth: number) {
-        return uploadingDroppedFilenames.map((filename) => (
+    function renderDocumentActivityRow({
+        key,
+        filename,
+        fileType,
+        depth,
+        statusLabel,
+    }: {
+        key: string;
+        filename: string;
+        fileType: string | null;
+        depth: number;
+        statusLabel: string;
+    }) {
+        return (
             <div
-                key={`uploading-doc-${filename}`}
+                key={key}
                 className="group flex items-center h-10 pr-8 border-b border-gray-50"
             >
                 <div
@@ -1425,31 +1680,40 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                     style={treeNameCellStyle(depth)}
                 >
                     <div className="flex items-center gap-4">
-                        <input
-                            type="checkbox"
-                            disabled
-                            className="h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-default accent-black disabled:opacity-100"
-                        />
-                        <Loader2 className="h-4 w-4 animate-spin text-gray-400 shrink-0" />
+                        <Loader2 className="h-2.5 w-2.5 animate-spin text-gray-400 shrink-0" />
+                        <DocIcon fileType={fileType} />
                         <span className="text-sm text-gray-400 truncate">
                             {filename}
                         </span>
                     </div>
                 </div>
                 <div className="ml-auto w-20 shrink-0 text-xs text-gray-300 uppercase truncate">
-                    {filename.includes(".")
-                        ? filename.split(".").pop()
-                        : "file"}
+                    {fileType ??
+                        (filename.includes(".")
+                            ? filename.split(".").pop()
+                            : "file")}
                 </div>
                 <div className="w-24 shrink-0 text-sm text-gray-300">
-                    Uploading
+                    {statusLabel}
                 </div>
                 <div className="w-20 shrink-0 text-sm text-gray-300">—</div>
                 <div className="w-32 shrink-0 text-sm text-gray-300">—</div>
                 <div className="w-32 shrink-0 text-sm text-gray-300">—</div>
                 <div className="w-8 shrink-0" />
             </div>
-        ));
+        );
+    }
+
+    function renderUploadingDocumentRows(depth: number) {
+        return uploadingDroppedFilenames.map((filename) =>
+            renderDocumentActivityRow({
+                key: `uploading-doc-${filename}`,
+                filename,
+                fileType: null,
+                depth,
+                statusLabel: "Uploading",
+            }),
+        );
     }
 
     function renderLevel(parentId: string | null, depth: number) {
@@ -1477,6 +1741,16 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                     const isUploadingVersion = uploadingVersionDocIds.has(
                         doc.id,
                     );
+                    const isDeletingDoc = deletingDocIds.has(doc.id);
+                    if (isDeletingDoc) {
+                        return renderDocumentActivityRow({
+                            key: `deleting-doc-${doc.id}`,
+                            filename: doc.filename,
+                            fileType: doc.file_type,
+                            depth,
+                            statusLabel: "Deleting...",
+                        });
+                    }
                     return (
                         <div key={`doc-${doc.id}`}>
                             <div
@@ -1535,39 +1809,41 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                                 style={treeNameCellStyle(depth)}
                                             >
                                                 <div className="flex items-center gap-4">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={selectedDocIds.includes(
-                                                            doc.id,
-                                                        )}
-                                                        onChange={() =>
-                                                            setSelectedDocIds(
-                                                                (prev) =>
-                                                                    prev.includes(
-                                                                        doc.id,
-                                                                    )
-                                                                        ? prev.filter(
-                                                                              (
-                                                                                  x,
-                                                                              ) =>
-                                                                                  x !==
-                                                                                  doc.id,
-                                                                          )
-                                                                        : [
-                                                                              ...prev,
-                                                                              doc.id,
-                                                                          ],
-                                                            )
-                                                        }
-                                                        onClick={(e) =>
-                                                            e.stopPropagation()
-                                                        }
-                                                        className="h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-pointer accent-black"
-                                                    />
                                                     {isProcessing ||
                                                     isUploadingVersion ? (
-                                                        <Loader2 className="h-4 w-4 animate-spin text-gray-400 shrink-0" />
-                                                    ) : isError ? (
+                                                        <Loader2 className="h-2.5 w-2.5 animate-spin text-gray-400 shrink-0" />
+                                                    ) : (
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedDocIds.includes(
+                                                                doc.id,
+                                                            )}
+                                                            onChange={() =>
+                                                                setSelectedDocIds(
+                                                                    (prev) =>
+                                                                        prev.includes(
+                                                                            doc.id,
+                                                                        )
+                                                                            ? prev.filter(
+                                                                                  (
+                                                                                      x,
+                                                                                  ) =>
+                                                                                      x !==
+                                                                                      doc.id,
+                                                                              )
+                                                                            : [
+                                                                                  ...prev,
+                                                                                  doc.id,
+                                                                              ],
+                                                                )
+                                                            }
+                                                            onClick={(e) =>
+                                                                e.stopPropagation()
+                                                            }
+                                                            className="h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-pointer accent-black"
+                                                        />
+                                                    )}
+                                                    {isError ? (
                                                         <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
                                                     ) : (
                                                         <DocIcon
@@ -1738,6 +2014,9 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                                                 doc,
                                                             )
                                                         }
+                                                        deleteDisabled={isSharedDocument(
+                                                            doc,
+                                                        )}
                                                     />
                                                 )}
                                             </div>
@@ -1749,7 +2028,6 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                 <DocVersionHistory
                                     docId={doc.id}
                                     filename={docName}
-                                    fileType={doc.file_type}
                                     activeVersionNumber={versionNumber}
                                     loading={loadingVersionDocIds.has(doc.id)}
                                     versions={
@@ -1944,9 +2222,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
 
     // ── Loading skeleton ──────────────────────────────────────────────────────
 
-    if (loading) return <ProjectPageSkeleton />;
-
-    if (!project) {
+    if (!loading && !project) {
         return (
             <div className="flex h-full items-center justify-center">
                 <p className="text-gray-400">Project not found</p>
@@ -1954,12 +2230,11 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
         );
     }
 
-    const docs = project.documents || [];
+    const docs = project?.documents || [];
     const sidePanelDoc = viewingDoc
         ? (docs.find((doc) => doc.id === viewingDoc.id) ?? viewingDoc)
         : null;
-    const versionUploadAccept =
-        versionUploadTargetDoc?.file_type === "pdf" ? ".pdf" : ".docx,.doc";
+    const versionUploadAccept = ".pdf,.docx,.doc";
     const q = search.toLowerCase();
     const filteredDocs = q
         ? docs.filter((d) => d.filename.toLowerCase().includes(q))
@@ -2057,17 +2332,20 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                 <>
                     <button
                         onClick={() => {
+                            if (loading) return;
                             setCreatingFolderIn(null);
                             setNewFolderName("");
                         }}
-                        className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                        disabled={loading}
+                        className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors disabled:cursor-default disabled:text-gray-300 disabled:hover:text-gray-300"
                     >
                         <FolderPlus className="h-3.5 w-3.5" />
                         <span className="hidden sm:inline">Add Subfolder</span>
                     </button>
                     <button
                         onClick={() => setAddDocsOpen(true)}
-                        className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                        disabled={loading}
+                        className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors disabled:cursor-default disabled:text-gray-300 disabled:hover:text-gray-300"
                     >
                         <Upload className="h-3.5 w-3.5" />
                         <span className="hidden sm:inline">Add Documents</span>
@@ -2102,7 +2380,9 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
         </div>
     ) : undefined;
     const pendingDeleteDocVersionCount = pendingDeleteDoc
-        ? currentVersionNumber(pendingDeleteDoc)
+        ? (versionsByDocId.get(pendingDeleteDoc.id)?.versions.length ??
+          currentVersionNumber(pendingDeleteDoc) ??
+          1)
         : 0;
     const pendingDeleteDocMessage = pendingDeleteDoc ? (
         <div className="space-y-2">
@@ -2234,13 +2514,15 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
             />
             <ProjectPageHeader
                 project={project}
-                tab={tab}
                 search={search}
                 creatingChat={creatingChat}
                 creatingReview={creatingReview}
                 docsCount={docs.length}
+                isOwner={project?.is_owner !== false}
                 onBackToProjects={() => router.push("/projects")}
-                onTitleCommit={handleTitleCommit}
+                onOwnerOnly={setOwnerOnlyAction}
+                onOpenDetails={() => setProjectDetailsOpen(true)}
+                onDeleteProject={requestProjectDelete}
                 onSearchChange={setSearch}
                 onOpenPeople={() => setPeopleModalOpen(true)}
                 onNewChat={handleNewChat}
@@ -2261,6 +2543,13 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
             {/* Table content */}
             <div className="w-full flex-1 min-h-0 overflow-x-auto">
                 <div className="min-w-max flex min-h-full flex-col">
+                    {loading ? (
+                        <ProjectTableLoading
+                            tab={tab}
+                            stickyCellBg={stickyCellBg}
+                        />
+                    ) : (
+                        <>
                     {/* Tab: Documents */}
                     {tab === "documents" && (
                         <div className="flex-1 flex flex-col min-h-0">
@@ -2437,6 +2726,24 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                                         uploadingVersionDocIds.has(
                                                             doc.id,
                                                         );
+                                                    const isDeletingDoc =
+                                                        deletingDocIds.has(
+                                                            doc.id,
+                                                        );
+                                                    if (isDeletingDoc) {
+                                                        return renderDocumentActivityRow(
+                                                            {
+                                                                key: `deleting-doc-${doc.id}`,
+                                                                filename:
+                                                                    doc.filename,
+                                                                fileType:
+                                                                    doc.file_type,
+                                                                depth: 0,
+                                                                statusLabel:
+                                                                    "Deleting...",
+                                                            },
+                                                        );
+                                                    }
                                                     return (
                                                         <div key={doc.id}>
                                                             <div
@@ -2520,43 +2827,45 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                                                     className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${isVersionDragOver ? "bg-blue-50" : selectedDocIds.includes(doc.id) ? "bg-gray-50" : stickyCellBg} py-2 pl-4 pr-2 transition-colors ${isVersionDragOver ? "" : "group-hover:bg-gray-100"}`}
                                                                 >
                                                                     <div className="flex items-center gap-4">
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            checked={selectedDocIds.includes(
-                                                                                doc.id,
-                                                                            )}
-                                                                            onChange={() =>
-                                                                                setSelectedDocIds(
-                                                                                    (
-                                                                                        prev,
-                                                                                    ) =>
-                                                                                        prev.includes(
-                                                                                            doc.id,
-                                                                                        )
-                                                                                            ? prev.filter(
-                                                                                                  (
-                                                                                                      x,
-                                                                                                  ) =>
-                                                                                                      x !==
-                                                                                                      doc.id,
-                                                                                              )
-                                                                                            : [
-                                                                                                  ...prev,
-                                                                                                  doc.id,
-                                                                                              ],
-                                                                                )
-                                                                            }
-                                                                            onClick={(
-                                                                                e,
-                                                                            ) =>
-                                                                                e.stopPropagation()
-                                                                            }
-                                                                            className="h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-pointer accent-black"
-                                                                        />
                                                                         {isProcessing ||
                                                                         isUploadingVersion ? (
-                                                                            <Loader2 className="h-4 w-4 animate-spin text-gray-400 shrink-0" />
-                                                                        ) : isError ? (
+                                                                            <Loader2 className="h-2.5 w-2.5 animate-spin text-gray-400 shrink-0" />
+                                                                        ) : (
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={selectedDocIds.includes(
+                                                                                    doc.id,
+                                                                                )}
+                                                                                onChange={() =>
+                                                                                    setSelectedDocIds(
+                                                                                        (
+                                                                                            prev,
+                                                                                        ) =>
+                                                                                            prev.includes(
+                                                                                                doc.id,
+                                                                                            )
+                                                                                                ? prev.filter(
+                                                                                                      (
+                                                                                                          x,
+                                                                                                      ) =>
+                                                                                                          x !==
+                                                                                                          doc.id,
+                                                                                                  )
+                                                                                                : [
+                                                                                                      ...prev,
+                                                                                                      doc.id,
+                                                                                                  ],
+                                                                                    )
+                                                                                }
+                                                                                onClick={(
+                                                                                    e,
+                                                                                ) =>
+                                                                                    e.stopPropagation()
+                                                                                }
+                                                                                className="h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-pointer accent-black"
+                                                                            />
+                                                                        )}
+                                                                        {isError ? (
                                                                             <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
                                                                         ) : (
                                                                             <DocIcon
@@ -2741,6 +3050,9 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                                                                     doc,
                                                                                 )
                                                                             }
+                                                                            deleteDisabled={isSharedDocument(
+                                                                                doc,
+                                                                            )}
                                                                         />
                                                                     )}
                                                                 </div>
@@ -2752,9 +3064,6 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                                                     }
                                                                     filename={
                                                                         docName
-                                                                    }
-                                                                    fileType={
-                                                                        doc.file_type
                                                                     }
                                                                     activeVersionNumber={
                                                                         versionNumber
@@ -2907,6 +3216,9 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                                                                 menuDoc,
                                                             )
                                                         }
+                                                        deleteDisabled={isSharedDocument(
+                                                            menuDoc,
+                                                        )}
                                                     />
                                                 ) : (
                                                     <RowActionMenuItems
@@ -3035,21 +3347,27 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                             setRenameReviewValue={setRenameReviewValue}
                         />
                     )}
+                        </>
+                    )}
                 </div>
             </div>
 
-            <AddDocumentsModal
-                open={addDocsOpen}
-                onClose={() => setAddDocsOpen(false)}
-                onSelect={handleDocsSelected}
-                breadcrumb={[
-                    "Projects",
-                    project.name +
-                        (project.cm_number ? ` (${project.cm_number})` : ""),
-                    "Add Documents",
-                ]}
-                projectId={projectId}
-            />
+            {project && (
+                <AddDocumentsModal
+                    open={addDocsOpen}
+                    onClose={() => setAddDocsOpen(false)}
+                    onSelect={handleDocsSelected}
+                    breadcrumb={[
+                        "Projects",
+                        project.name +
+                            (project.cm_number
+                                ? ` (${project.cm_number})`
+                                : ""),
+                        "Add Documents",
+                    ]}
+                    projectId={projectId}
+                />
+            )}
 
             <DocumentSidePanel
                 doc={sidePanelDoc}
@@ -3083,6 +3401,9 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                 onRenameVersion={handleRenameVersion}
                 onDeleteVersion={handleDeleteVersion}
                 onUploadNewVersion={submitNewVersion}
+                onReplaceVersion={replaceVersionFile}
+                canDelete={!isSharedDocument(sidePanelDoc)}
+                onOwnerOnlyAction={setOwnerOnlyAction}
                 onDelete={async (doc) => {
                     await handleRemoveDoc(doc.id);
                 }}
@@ -3105,41 +3426,79 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                 onClose={() => setOwnerOnlyAction(null)}
             />
 
-            <PeopleModal
-                open={peopleModalOpen}
-                onClose={() => setPeopleModalOpen(false)}
-                resource={project}
-                fetchPeople={getProjectPeople}
+            <ProjectDetailsModal
+                open={projectDetailsOpen}
+                project={project}
+                canEdit={project?.is_owner !== false}
+                currentUserDisplayName={profile?.displayName ?? null}
                 currentUserEmail={user?.email ?? null}
-                breadcrumb={[
-                    "Projects",
-                    project
-                        ? project.name +
-                          (project.cm_number ? ` (${project.cm_number})` : "")
-                        : "",
-                    "People",
-                ]}
-                // Only owners may modify the member list. Without this prop
-                // PeopleModal renders read-only — non-owners can still see
-                // who has access but the add/remove controls are hidden.
-                onSharedWithChange={
-                    project.is_owner === false
-                        ? undefined
-                        : async (next) => {
-                              const updated = await updateProject(projectId, {
-                                  shared_with: next,
-                              });
-                              setProject((prev) =>
-                                  prev
-                                      ? {
-                                            ...prev,
-                                            shared_with: updated.shared_with,
-                                        }
-                                      : prev,
-                              );
-                          }
-                }
+                fetchPeople={getProjectPeople}
+                onClose={() => setProjectDetailsOpen(false)}
+                onSave={handleProjectDetailsSave}
+                onShareProject={() => {
+                    setProjectDetailsOpen(false);
+                    setPeopleModalOpen(true);
+                }}
             />
+
+            <ConfirmPopup
+                open={deleteProjectConfirmOpen}
+                title="Delete project?"
+                message="This will permanently delete the project and its related documents, chats, and tabular reviews."
+                confirmLabel="Delete"
+                confirmStatus={
+                    deleteProjectStatus === "deleting"
+                        ? "loading"
+                        : deleteProjectStatus === "deleted"
+                          ? "complete"
+                          : "idle"
+                }
+                cancelLabel="Cancel"
+                onCancel={() => {
+                    if (deleteProjectStatus === "deleting") return;
+                    setDeleteProjectConfirmOpen(false);
+                    setDeleteProjectStatus("idle");
+                }}
+                onConfirm={() => void confirmProjectDelete()}
+            />
+
+            {project && (
+                <PeopleModal
+                    open={peopleModalOpen}
+                    onClose={() => setPeopleModalOpen(false)}
+                    resource={project}
+                    fetchPeople={getProjectPeople}
+                    currentUserEmail={user?.email ?? null}
+                    breadcrumb={[
+                        "Projects",
+                        project.name +
+                            (project.cm_number
+                                ? ` (${project.cm_number})`
+                                : ""),
+                        "People",
+                    ]}
+                    // Only owners may modify the member list. Without this prop
+                    // PeopleModal renders read-only — non-owners can still see
+                    // who has access but the add/remove controls are hidden.
+                    onSharedWithChange={
+                        project.is_owner === false
+                            ? undefined
+                            : async (next) => {
+                                  const updated = await updateProject(projectId, {
+                                      shared_with: next,
+                                  });
+                                  setProject((prev) =>
+                                      prev
+                                          ? {
+                                              ...prev,
+                                              shared_with: updated.shared_with,
+                                          }
+                                          : prev,
+                                  );
+                              }
+                    }
+                />
+            )}
         </div>
     );
 }

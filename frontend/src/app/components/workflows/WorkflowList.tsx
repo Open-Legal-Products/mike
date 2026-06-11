@@ -26,6 +26,7 @@ import { RowActions } from "../shared/RowActions";
 import { MikeIcon } from "@/components/chat/mike-icon";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/app/components/shared/PageHeader";
+import { workflowDetailPath } from "./workflowRoutes";
 
 type Tab = "all" | "builtin" | "custom" | "hidden";
 
@@ -41,7 +42,7 @@ const TABS: { id: Tab; label: string }[] = [
 export function WorkflowList() {
     const router = useRouter();
     const { user } = useAuth();
-    const stickyCellBg = "bg-[#fcfcfd]";
+    const stickyCellBg = "bg-[#fafbfc]";
     const [custom, setCustom] = useState<Workflow[]>([]);
     const [loading, setLoading] = useState(true);
     const [selected, setSelected] = useState<Workflow | null>(null);
@@ -361,6 +362,7 @@ export function WorkflowList() {
             {/* Page header */}
             <PageHeader
                 shrink
+                loading={loading}
                 actions={[
                     {
                         type: "search",
@@ -421,11 +423,13 @@ export function WorkflowList() {
                                     key={i}
                                     className="flex items-center h-10 pr-3 md:pr-10 border-b border-gray-50"
                                 >
-                                    <div className={`${NAME_COL_W} flex shrink-0 items-center gap-4 pl-4 pr-2`}>
-                                        <div className="h-2.5 w-2.5 shrink-0 rounded bg-gray-100 animate-pulse" />
-                                        <div className="h-3.5 w-48 rounded bg-gray-100 animate-pulse" />
+                                    <div className={`sticky left-0 z-[60] ${NAME_COL_W} ${stickyCellBg} py-2 pl-4 pr-2`}>
+                                        <div className="flex items-center gap-4">
+                                            <div className="h-2.5 w-2.5 shrink-0 rounded bg-gray-100 animate-pulse" />
+                                            <div className="h-3.5 w-48 rounded bg-gray-100 animate-pulse" />
+                                        </div>
                                     </div>
-                                    <div className="w-28 shrink-0">
+                                    <div className="ml-auto w-28 shrink-0">
                                         <div className="h-3 w-16 rounded bg-gray-100 animate-pulse" />
                                     </div>
                                     <div className="w-40 shrink-0">
@@ -603,7 +607,7 @@ export function WorkflowList() {
                 onCreated={(wf) => {
                     setCustom((prev) => [wf, ...prev]);
                     setNewModalOpen(false);
-                    router.push(`/workflows/${wf.id}`);
+                    router.push(workflowDetailPath(wf));
                 }}
             />
         </div>

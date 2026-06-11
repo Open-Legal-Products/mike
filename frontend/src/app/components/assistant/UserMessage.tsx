@@ -29,11 +29,11 @@ export function UserMessage({ content, files, workflow }: Props) {
                             return (
                                 <div
                                     key={i}
-                                    className="inline-flex items-center gap-1 pl-2 pr-2.5 py-0.5 rounded-full text-xs text-white shadow border border-black bg-black"
+                                    className="inline-flex items-center gap-1 rounded-[10px] border border-white/70 bg-white py-0.5 pl-2 pr-2.5 text-xs text-gray-800 shadow-[0_2px_6px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-xl"
                                 >
                                     {isPdf
-                                        ? <FileText className="h-2.5 w-2.5 shrink-0 text-red-400" />
-                                        : <File className="h-2.5 w-2.5 shrink-0 text-blue-400" />
+                                        ? <FileText className="h-2.5 w-2.5 shrink-0 text-red-500" />
+                                        : <File className="h-2.5 w-2.5 shrink-0 text-blue-500" />
                                     }
                                     <span className="max-w-[140px] truncate">{f.filename}</span>
                                 </div>

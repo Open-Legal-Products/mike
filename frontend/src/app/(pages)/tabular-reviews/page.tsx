@@ -55,7 +55,7 @@ export default function TabularReviewsPage() {
     const actionsRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
     const { user } = useAuth();
-    const stickyCellBg = "bg-[#fcfcfd]";
+    const stickyCellBg = "bg-[#fafbfc]";
 
     useEffect(() => {
         Promise.all([
@@ -269,6 +269,7 @@ export default function TabularReviewsPage() {
         <div className="flex-1 overflow-y-auto">
             {/* Page header */}
             <PageHeader
+                loading={loading}
                 actions={[
                     {
                         type: "search",

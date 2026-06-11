@@ -207,9 +207,10 @@ export function PeopleModal({
                       } with access.`
             }
         >
+            <div className="flex min-h-0 flex-1 flex-col gap-6">
                 {/* Add-member row */}
                 {onSharedWithChange && (
-                    <div className="pt-1 pb-2">
+                    <section className="space-y-2">
                         <div className="flex items-center gap-2">
                             <div className="flex flex-1 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                                 <UserPlus className="h-3.5 w-3.5 text-gray-400 shrink-0" />
@@ -269,90 +270,92 @@ export function PeopleModal({
                                 {error}
                             </p>
                         )}
-                    </div>
+                    </section>
                 )}
 
-                {/* Section heading */}
-                <div className="pt-3 pb-1 flex items-center gap-2">
-                    <h3 className="text-xs font-medium text-gray-500">
-                        People with Access
-                    </h3>
-                    {peopleLoading && (
-                        <Loader2 className="h-3 w-3 animate-spin text-gray-400" />
-                    )}
-                </div>
-
-                {/* Member list */}
-                {roster.length === 0 ? (
-                    <div className="flex h-full items-center justify-center text-sm text-gray-400">
-                        No one has access yet.
+                <section className="min-h-0 flex-1">
+                    <div className="mb-2 flex items-center gap-2">
+                        <h3 className="text-xs font-medium text-gray-500">
+                            People with Access
+                        </h3>
+                        {peopleLoading && (
+                            <Loader2 className="h-3 w-3 animate-spin text-gray-400" />
+                        )}
                     </div>
-                ) : (
-                    <ul className="divide-y divide-gray-100 [&>li:nth-child(2)]:border-t-0">
-                        {roster.map((entry) => {
-                            const isYou =
-                                !!currentUserEmail &&
-                                entry.email.toLowerCase() ===
-                                    currentUserEmail.toLowerCase();
-                            const isRemoving =
-                                busy === "remove" &&
-                                removingEmail === entry.email;
-                            const primary =
-                                entry.display_name?.trim() || entry.email;
-                            const showSecondary =
-                                !!entry.display_name?.trim() &&
-                                primary !== entry.email;
-                            return (
-                                <li
-                                    key={`${entry.role}-${entry.email}`}
-                                    className="flex items-center gap-3 py-3"
-                                >
-                                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-900 text-white">
-                                        <User className="h-3 w-3" />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="truncate text-sm text-gray-800">
-                                            {primary}
-                                            {isYou && (
-                                                <span className="ml-1.5 text-xs text-gray-400">
-                                                    (You)
-                                                </span>
-                                            )}
-                                            {entry.role === "owner" && (
-                                                <span className="ml-1.5 text-[10px] text-gray-400">
-                                                    Owner
-                                                </span>
-                                            )}
-                                        </p>
-                                        {showSecondary && (
-                                            <p className="truncate text-xs text-gray-400">
-                                                {entry.email}
-                                            </p>
-                                        )}
-                                    </div>
-                                    {entry.role === "member" &&
-                                        onSharedWithChange && (
-                                            <button
-                                                onClick={() =>
-                                                    void handleRemove(
-                                                        entry.email,
-                                                    )
-                                                }
-                                                disabled={busy !== null}
-                                                title="Remove access"
-                                                className="self-center inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                                            >
-                                                {isRemoving && (
-                                                    <Loader2 className="h-3 w-3 animate-spin" />
+
+                    {/* Member list */}
+                    {roster.length === 0 ? (
+                        <div className="flex h-full items-center justify-center text-sm text-gray-400">
+                            No one has access yet.
+                        </div>
+                    ) : (
+                        <ul className="divide-y divide-gray-100 [&>li:nth-child(2)]:border-t-0">
+                            {roster.map((entry) => {
+                                const isYou =
+                                    !!currentUserEmail &&
+                                    entry.email.toLowerCase() ===
+                                        currentUserEmail.toLowerCase();
+                                const isRemoving =
+                                    busy === "remove" &&
+                                    removingEmail === entry.email;
+                                const primary =
+                                    entry.display_name?.trim() || entry.email;
+                                const showSecondary =
+                                    !!entry.display_name?.trim() &&
+                                    primary !== entry.email;
+                                return (
+                                    <li
+                                        key={`${entry.role}-${entry.email}`}
+                                        className="flex items-center gap-3 py-3"
+                                    >
+                                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-900 text-white">
+                                            <User className="h-3 w-3" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="truncate text-sm text-gray-800">
+                                                {primary}
+                                                {isYou && (
+                                                    <span className="ml-1.5 text-xs text-gray-400">
+                                                        (You)
+                                                    </span>
                                                 )}
-                                                Remove
-                                            </button>
-                                        )}
-                                </li>
-                            );
-                        })}
-                    </ul>
-                )}
+                                                {entry.role === "owner" && (
+                                                    <span className="ml-1.5 text-[10px] text-gray-400">
+                                                        Owner
+                                                    </span>
+                                                )}
+                                            </p>
+                                            {showSecondary && (
+                                                <p className="truncate text-xs text-gray-400">
+                                                    {entry.email}
+                                                </p>
+                                            )}
+                                        </div>
+                                        {entry.role === "member" &&
+                                            onSharedWithChange && (
+                                                <button
+                                                    onClick={() =>
+                                                        void handleRemove(
+                                                            entry.email,
+                                                        )
+                                                    }
+                                                    disabled={busy !== null}
+                                                    title="Remove access"
+                                                    className="self-center inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                                                >
+                                                    {isRemoving && (
+                                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                                    )}
+                                                    Remove
+                                                </button>
+                                            )}
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    )}
+                </section>
+            </div>
 
         </Modal>
     );

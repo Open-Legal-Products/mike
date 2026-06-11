@@ -1195,11 +1195,11 @@ function MarkdownContent({
                                         onClick={() =>
                                             onCitationClick?.(annotation)
                                         }
-                                        data-citation-ref={idx + 1}
+                                        data-citation-ref={annotation.ref}
                                         className={`${RESPONSE_GLASS_ANNOTATION} mx-0.5 align-super`}
                                         title={tooltipText}
                                     >
-                                        {idx + 1}
+                                        {annotation.ref}
                                     </button>
                                 );
                             }
@@ -1380,7 +1380,7 @@ function ensureTerminalPeriod(value: string): string {
 function buildCitationAppendix(citations: CitationAnnotation[]) {
     if (citations.length === 0) return { html: "", text: "" };
     let previousSourceKey: string | null = null;
-    const entries = citations.map((annotation, index) => {
+    const entries = citations.map((annotation) => {
         const sourceKey = citationSourceKey(annotation);
         const label =
             sourceKey === previousSourceKey
@@ -1388,7 +1388,7 @@ function buildCitationAppendix(citations: CitationAnnotation[]) {
                 : citationSourceLabel(annotation);
         previousSourceKey = sourceKey;
         return {
-            number: index + 1,
+            number: annotation.ref,
             label,
             quote: displayCitationQuote(annotation).trim(),
         };
@@ -1484,7 +1484,7 @@ function CitationsBlock({
                                                 }
                                                 title={`${formatCitationPage(annotation)}: "${displayCitationQuote(annotation)}"`}
                                             >
-                                                {index + 1}
+                                                {annotation.ref}
                                             </button>
                                         ),
                                     )}

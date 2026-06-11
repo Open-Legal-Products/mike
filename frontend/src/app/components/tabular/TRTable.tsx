@@ -67,7 +67,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
     },
     ref,
 ) {
-    const stickyCellBg = "bg-[#fcfcfd]";
+    const stickyCellBg = "bg-[#fafbfc]";
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const sortedColumns = [...columns].sort((a, b) => a.index - b.index);
     const totalContentWidth =

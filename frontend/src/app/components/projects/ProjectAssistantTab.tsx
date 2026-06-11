@@ -41,7 +41,7 @@ export function ProjectAssistantTab({
     setRenamingChatId: Dispatch<SetStateAction<string | null>>;
     setRenameChatValue: Dispatch<SetStateAction<string>>;
 }) {
-    const stickyCellBg = "bg-[#fcfcfd]";
+    const stickyCellBg = "bg-[#fafbfc]";
 
     return (
         <>

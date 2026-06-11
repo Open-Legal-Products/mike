@@ -41,7 +41,7 @@ export function ProjectsOverview() {
     const actionsRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
     const { user, isAuthenticated, authLoading } = useAuth();
-    const stickyCellBg = "bg-[#fcfcfd]";
+    const stickyCellBg = "bg-[#fafbfc]";
 
     useEffect(() => {
         if (authLoading) {
@@ -206,6 +206,7 @@ export function ProjectsOverview() {
         <div className="flex-1 overflow-y-auto">
             {/* Page header */}
             <PageHeader
+                loading={loading}
                 actions={[
                     {
                         type: "search",

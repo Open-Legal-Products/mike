@@ -117,13 +117,13 @@ export function Modal({
                         </button>
                     </div>
                 )}
-                <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-1 pb-2">
+                <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4">
                     {children}
                 </div>
                 {hasFooter && (
                     <div
                         className={cn(
-                            "flex items-center gap-3 p-4",
+                            "flex items-center gap-3 p-3",
                             secondaryAction || footerInfo
                                 ? "justify-between"
                                 : "justify-end",
@@ -186,7 +186,7 @@ function ModalActionButton({
                     "rounded-full border border-gray-700/40 bg-gray-950/88 text-white shadow-[0_3px_9px_rgba(15,23,42,0.16),inset_0_1px_0_rgba(255,255,255,0.22),inset_0_-4px_9px_rgba(15,23,42,0.2)] backdrop-blur-xl hover:bg-gray-900/90 active:scale-[0.98] disabled:active:scale-100",
                 variant === "secondary" && "text-gray-600 hover:text-gray-950",
                 fallbackVariant === "secondary" &&
-                    "rounded-full border border-gray-200/80 bg-gray-100/70 shadow-[0_1px_4px_rgba(15,23,42,0.045),inset_0_1px_0_rgba(255,255,255,0.78),inset_0_-3px_8px_rgba(148,163,184,0.14)] backdrop-blur-xl hover:bg-gray-100",
+                    "rounded-full border border-blue-500/35 bg-blue-600/90 text-white shadow-[0_3px_9px_rgba(37,99,235,0.16),inset_0_1px_0_rgba(255,255,255,0.28),inset_0_-4px_9px_rgba(29,78,216,0.2)] backdrop-blur-xl hover:bg-blue-600 hover:text-white active:scale-[0.98] disabled:active:scale-100",
                 variant === "danger" &&
                     "rounded-full border border-red-700/35 bg-red-600/90 text-white shadow-[0_3px_9px_rgba(127,29,29,0.16),inset_0_1px_0_rgba(255,255,255,0.22),inset_0_-4px_9px_rgba(127,29,29,0.18)] backdrop-blur-xl hover:bg-red-600 active:scale-[0.98] disabled:active:scale-100",
             )}

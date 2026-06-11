@@ -15,6 +15,8 @@ import {
     ChevronRight,
     FileText,
     Loader2,
+    Pencil,
+    Trash2,
     Upload,
     X,
 } from "lucide-react";
@@ -45,6 +47,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useSidebar } from "@/app/contexts/SidebarContext";
 import { PageHeader } from "@/app/components/shared/PageHeader";
+import { HeaderActionsMenu } from "@/app/components/shared/HeaderActionsMenu";
 import type {
     CitationQuote,
     CitationAnnotation,
@@ -252,6 +255,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
         setNewChatMessages,
         chats,
         saveChat,
+        renameChat: renameChatInHistory,
     } = useChatHistoryContext();
     const [initialMessages] = useState<Message[]>(newChatMessages ?? []);
     const { messages, isResponseLoading, handleChat, setMessages, cancel } =
@@ -591,6 +595,21 @@ export default function ProjectAssistantChatPage({ params }: Props) {
         }
     }
 
+    async function handleRenameChat() {
+        if (chatOwnerId && user?.id && chatOwnerId !== user.id) {
+            setOwnerOnlyAction("rename this chat");
+            return;
+        }
+        const nextTitle = window.prompt(
+            "Rename chat",
+            chatTitle ?? "Untitled New Chat",
+        );
+        const trimmed = nextTitle?.trim();
+        if (!trimmed || trimmed === chatTitle) return;
+        setChatTitle(trimmed);
+        await renameChatInHistory(chatId, trimmed);
+    }
+
     // ── Upload ────────────────────────────────────────────────────────────────
     async function uploadFiles(files: File[]) {
         if (!files.length) return;
@@ -763,18 +782,15 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                     project
                         ? {
                               label: project.name,
-                              suffix: project.cm_number ? (
-                                  <span className="ml-1 text-gray-400">
-                                      (#{project.cm_number})
-                                  </span>
-                              ) : null,
-                              onClick: () => router.push(`/projects/${projectId}`),
+                              onClick: () =>
+                                  router.push(`/projects/${projectId}?tab=assistant`),
                               title: "Back to project",
                           }
                         : {
                               loading: true,
                               skeletonClassName: "w-32",
-                              onClick: () => router.push(`/projects/${projectId}`),
+                              onClick: () =>
+                                  router.push(`/projects/${projectId}?tab=assistant`),
                               title: "Back to project",
                           },
                     chatLoaded
@@ -794,10 +810,29 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                         title: "New chat",
                     },
                     {
-                        type: "delete",
-                        onClick: handleDeleteChat,
-                        loading: deletingChat,
-                        title: "Delete chat",
+                        type: "custom",
+                        render: (
+                            <HeaderActionsMenu
+                                items={[
+                                    {
+                                        label: "Rename",
+                                        icon: Pencil,
+                                        onSelect: () =>
+                                            void handleRenameChat(),
+                                    },
+                                    {
+                                        label: deletingChat
+                                            ? "Deleting..."
+                                            : "Delete",
+                                        icon: Trash2,
+                                        onSelect: () =>
+                                            void handleDeleteChat(),
+                                        disabled: deletingChat,
+                                        variant: "danger",
+                                    },
+                                ]}
+                            />
+                        ),
                     },
                 ]}
             />

@@ -99,7 +99,13 @@ export function WorkflowPromptEditor({
     }, [value, editor]);
 
     return (
-        <div className="flex flex-col h-full border border-gray-200 rounded-md overflow-hidden bg-white">
+        <div
+            className={`flex h-full flex-col overflow-hidden bg-white ${
+                readOnly
+                    ? "rounded-md border border-gray-200"
+                    : "rounded-md border border-gray-200"
+            }`}
+        >
             {!readOnly && editor && (
                 <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-gray-100 bg-gray-50 shrink-0">
                     <ToolbarBtn
@@ -181,7 +187,18 @@ export function WorkflowPromptEditor({
                     </ToolbarBtn>
                 </div>
             )}
-            <div className="flex-1 overflow-y-auto">
+            {readOnly && (
+                <div className="flex h-9 shrink-0 items-center bg-gray-50 px-5">
+                    <span className="text-xs font-medium text-gray-500">
+                        Read-only
+                    </span>
+                </div>
+            )}
+            <div
+                className={`flex-1 overflow-y-auto ${
+                    readOnly ? "border-t border-gray-100" : ""
+                }`}
+            >
                 <EditorContent editor={editor} />
             </div>
         </div>

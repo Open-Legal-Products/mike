@@ -157,7 +157,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                     onClick={onToggle}
                     className={cn(
                         "h-9 w-9 p-2.5 items-center flex transition-colors",
-                        "rounded-xl hover:bg-gray-100",
+                        "rounded-md hover:bg-gray-100",
                     )}
                     title={isOpen ? "Close sidebar" : "Open sidebar"}
                 >

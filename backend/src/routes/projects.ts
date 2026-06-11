@@ -60,6 +60,45 @@ async function deleteProjectDocumentsAndVersionFiles(
   return error ?? null;
 }
 
+async function attachDocumentOwnerLabels(
+  db: ReturnType<typeof createServerSupabase>,
+  docs: { user_id?: string | null }[],
+) {
+  const ownerIds = docs
+    .map((doc) => doc.user_id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0)
+    .filter((id, index, arr) => arr.indexOf(id) === index);
+  if (ownerIds.length === 0) return;
+
+  const displayNameByUserId = new Map<string, string>();
+  const { data: profiles, error: profilesError } = await db
+    .from("user_profiles")
+    .select("user_id, display_name")
+    .in("user_id", ownerIds);
+  if (profilesError) {
+    console.warn("[projects] failed to load document owner profiles", profilesError);
+  }
+  for (const profile of profiles ?? []) {
+    const displayName =
+      typeof profile.display_name === "string"
+        ? profile.display_name.trim()
+        : "";
+    if (displayName) {
+      displayNameByUserId.set(profile.user_id as string, displayName);
+    }
+  }
+
+  for (const doc of docs as ({
+    user_id?: string | null;
+    owner_email?: string | null;
+    owner_display_name?: string | null;
+  })[]) {
+    if (!doc.user_id) continue;
+    doc.owner_email = null;
+    doc.owner_display_name = displayNameByUserId.get(doc.user_id) ?? null;
+  }
+}
+
 // GET /projects
 projectsRouter.get("/", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
@@ -190,10 +229,12 @@ projectsRouter.get("/:projectId", requireAuth, async (req, res) => {
   ]);
   const docsTyped = (docs ?? []) as unknown as {
     id: string;
+    user_id?: string | null;
     current_version_id?: string | null;
   }[];
   await attachLatestVersionNumbers(db, docsTyped);
   await attachActiveVersionPaths(db, docsTyped);
+  await attachDocumentOwnerLabels(db, docsTyped);
   res.json({
     ...project,
     is_owner: project.user_id === userId,
@@ -335,9 +376,11 @@ projectsRouter.patch("/:projectId", requireAuth, async (req, res) => {
   ]);
   const docsTyped = (docs ?? []) as unknown as {
     id: string;
+    user_id?: string | null;
     current_version_id?: string | null;
   }[];
   await attachActiveVersionPaths(db, docsTyped);
+  await attachDocumentOwnerLabels(db, docsTyped);
   res.json({ ...data, documents: docsTyped, folders: folderData ?? [] });
 });
 

@@ -364,7 +364,7 @@ documentsRouter.get("/:documentId/versions", requireAuth, async (req, res) => {
   const { data: rows } = await db
     .from("document_versions")
     .select(
-      "id, version_number, source, created_at, filename, file_type, size_bytes, page_count",
+      "id, version_number, source, created_at, filename, file_type, size_bytes, page_count, deleted_at, deleted_by",
     )
     .eq("document_id", documentId)
     .order("created_at", { ascending: true });
@@ -433,19 +433,12 @@ documentsRouter.post(
       });
     }
 
-    const targetActive = await loadActiveVersion(documentId, db);
-    const targetType = targetActive?.file_type ?? "";
     const active = await loadActiveVersion(sourceDocumentId, db);
     if (!active)
       return void res
         .status(404)
         .json({ detail: "Source document has no active version." });
     const sourceType = active.file_type ?? "";
-    if (targetType && sourceType && targetType !== sourceType) {
-      return void res.status(400).json({
-        detail: `Source document type (${sourceType}) does not match document type (${targetType}).`,
-      });
-    }
 
     const bytes = await downloadFile(active.storage_path);
     if (!bytes)
@@ -603,22 +596,12 @@ documentsRouter.post(
     if (!access.ok)
       return void res.status(404).json({ detail: "Document not found" });
 
-    // Reject if the uploaded file's extension doesn't match the document's
-    // declared type — otherwise every downstream viewer/extractor breaks.
     const suffix = file.originalname.includes(".")
       ? file.originalname.split(".").pop()!.toLowerCase()
       : "";
     if (!ALLOWED_TYPES.has(suffix)) {
       return void res.status(400).json({
         detail: `Unsupported file type: ${suffix}. Allowed: pdf, docx, doc`,
-      });
-    }
-
-    const currentActive = await loadActiveVersion(documentId, db);
-    const expectedType = currentActive?.file_type ?? "";
-    if (expectedType && expectedType !== suffix) {
-      return void res.status(400).json({
-        detail: `Uploaded file type (${suffix}) does not match document type (${expectedType}).`,
       });
     }
 
@@ -777,6 +760,7 @@ documentsRouter.patch(
       .update({ filename })
       .eq("id", versionId)
       .eq("document_id", documentId)
+      .is("deleted_at", null)
       .select(
         "id, version_number, source, created_at, filename, file_type, size_bytes, page_count",
       )
@@ -784,6 +768,160 @@ documentsRouter.patch(
     if (error || !updated) {
       return void res.status(404).json({ detail: "Version not found" });
     }
+    res.json(updated);
+  },
+);
+
+// PUT /single-documents/:documentId/versions/:versionId/file
+// Replace the file bytes and metadata for an existing version while keeping
+// its version number and id. This is destructive and owner-only.
+documentsRouter.put(
+  "/:documentId/versions/:versionId/file",
+  requireAuth,
+  singleFileUpload("file"),
+  async (req, res) => {
+    const userId = res.locals.userId as string;
+    const userEmail = res.locals.userEmail as string | undefined;
+    const { documentId, versionId } = req.params;
+    const db = createServerSupabase();
+
+    const file = req.file;
+    if (!file)
+      return void res.status(400).json({ detail: "file is required" });
+
+    const { data: doc } = await db
+      .from("documents")
+      .select("id, user_id, project_id")
+      .eq("id", documentId)
+      .single();
+    if (!doc)
+      return void res.status(404).json({ detail: "Document not found" });
+    const access = await ensureDocAccess(doc, userId, userEmail, db);
+    if (!access.ok || !access.isOwner)
+      return void res.status(404).json({ detail: "Document not found" });
+
+    const { data: target, error: targetErr } = await db
+      .from("document_versions")
+      .select("id, storage_path, pdf_storage_path, file_type, deleted_at")
+      .eq("id", versionId)
+      .eq("document_id", documentId)
+      .single();
+    if (targetErr || !target)
+      return void res.status(404).json({ detail: "Version not found" });
+    if (target.deleted_at)
+      return void res.status(400).json({ detail: "Version is deleted." });
+
+    const suffix = file.originalname.includes(".")
+      ? file.originalname.split(".").pop()!.toLowerCase()
+      : "";
+    if (!ALLOWED_TYPES.has(suffix)) {
+      return void res.status(400).json({
+        detail: `Unsupported file type: ${suffix}. Allowed: pdf, docx, doc`,
+      });
+    }
+    if (target.file_type && target.file_type !== suffix) {
+      return void res.status(400).json({
+        detail: `Uploaded file type (${suffix}) does not match version type (${target.file_type}).`,
+      });
+    }
+
+    const versionSlug = crypto.randomUUID().replace(/-/g, "");
+    const key = versionStorageKey(
+      userId,
+      documentId,
+      versionSlug,
+      file.originalname,
+    );
+    const contentType =
+      suffix === "pdf"
+        ? "application/pdf"
+        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+    try {
+      await uploadFile(
+        key,
+        file.buffer.buffer.slice(
+          file.buffer.byteOffset,
+          file.buffer.byteOffset + file.buffer.byteLength,
+        ) as ArrayBuffer,
+        contentType,
+      );
+    } catch (e) {
+      console.error("[versions/replace] storage write failed", e);
+      return void res
+        .status(500)
+        .json({ detail: "Failed to upload replacement version." });
+    }
+
+    let pdfStoragePath: string | null = null;
+    if (suffix === "docx" || suffix === "doc") {
+      try {
+        const pdfBuf = await docxToPdf(file.buffer);
+        const pdfKey = `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`;
+        await uploadFile(
+          pdfKey,
+          pdfBuf.buffer.slice(
+            pdfBuf.byteOffset,
+            pdfBuf.byteOffset + pdfBuf.byteLength,
+          ) as ArrayBuffer,
+          "application/pdf",
+        );
+        pdfStoragePath = pdfKey;
+      } catch (err) {
+        console.error(
+          `[versions/replace] DOCX→PDF conversion failed for ${file.originalname}:`,
+          err,
+        );
+      }
+    } else if (suffix === "pdf") {
+      pdfStoragePath = key;
+    }
+
+    const rawBuf = file.buffer.buffer.slice(
+      file.buffer.byteOffset,
+      file.buffer.byteOffset + file.buffer.byteLength,
+    ) as ArrayBuffer;
+    const pageCount = suffix === "pdf" ? await countPdfPages(rawBuf) : null;
+    const requestedFilename =
+      typeof req.body?.filename === "string" && req.body.filename.trim()
+        ? req.body.filename.trim().slice(0, 200)
+        : file.originalname;
+    const uploadedAt = new Date().toISOString();
+
+    const { data: updated, error: updateErr } = await db
+      .from("document_versions")
+      .update({
+        storage_path: key,
+        pdf_storage_path: pdfStoragePath,
+        filename: requestedFilename,
+        file_type: suffix,
+        size_bytes: file.buffer.byteLength,
+        page_count: pageCount,
+        created_at: uploadedAt,
+      })
+      .eq("id", versionId)
+      .eq("document_id", documentId)
+      .select(
+        "id, version_number, source, created_at, filename, file_type, size_bytes, page_count",
+      )
+      .single();
+    if (updateErr || !updated) {
+      await Promise.all(
+        [key, pdfStoragePath]
+          .filter((path): path is string => !!path)
+          .map((path) => deleteFile(path).catch(() => {})),
+      );
+      return void res.status(500).json({
+        detail: updateErr?.message ?? "Failed to replace version.",
+      });
+    }
+
+    await Promise.all(
+      [target.storage_path, target.pdf_storage_path]
+        .filter((path): path is string => !!path)
+        .map((path) => deleteFile(path).catch(() => {})),
+    );
+
     res.json(updated);
   },
 );
@@ -813,8 +951,11 @@ documentsRouter.delete(
 
     const { data: versions, error: versionsErr } = await db
       .from("document_versions")
-      .select("id, storage_path, pdf_storage_path, version_number, created_at")
-      .eq("document_id", documentId);
+      .select(
+        "id, storage_path, pdf_storage_path, version_number, created_at, deleted_at",
+      )
+      .eq("document_id", documentId)
+      .is("deleted_at", null);
     if (versionsErr) {
       return void res.status(500).json({ detail: versionsErr.message });
     }
@@ -825,6 +966,7 @@ documentsRouter.delete(
       pdf_storage_path: string | null;
       version_number: number | null;
       created_at: string | null;
+      deleted_at?: string | null;
     }[];
     const target = rows.find((row) => row.id === versionId);
     if (!target)
@@ -850,6 +992,7 @@ documentsRouter.delete(
       doc.current_version_id === versionId
         ? (remaining[0]?.id ?? null)
         : doc.current_version_id;
+    const deletedAt = new Date().toISOString();
 
     if (doc.current_version_id === versionId) {
       const { error: updateErr } = await db
@@ -866,9 +1009,15 @@ documentsRouter.delete(
 
     const { error: deleteErr } = await db
       .from("document_versions")
-      .delete()
+      .update({
+        storage_path: null,
+        pdf_storage_path: null,
+        deleted_at: deletedAt,
+        deleted_by: userId,
+      })
       .eq("id", versionId)
-      .eq("document_id", documentId);
+      .eq("document_id", documentId)
+      .is("deleted_at", null);
     if (deleteErr) {
       return void res.status(500).json({ detail: deleteErr.message });
     }
@@ -882,6 +1031,7 @@ documentsRouter.delete(
     res.json({
       deleted_version_id: versionId,
       current_version_id: nextCurrentVersionId,
+      deleted_at: deletedAt,
     });
   },
 );

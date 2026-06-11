@@ -15,7 +15,9 @@ import {
     type ChatMessage,
 } from "../lib/chatTools";
 import { completeText } from "../lib/llm";
-import { getUserApiKeys, getUserModelSettings } from "../lib/userSettings";
+import {
+    getUserModelSettings,
+} from "../lib/userSettings";
 import { checkProjectAccess } from "../lib/access";
 import { safeErrorLog, safeErrorMessage } from "../lib/safeError";
 
@@ -552,7 +554,17 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         db,
         docIndex,
     );
-    const apiMessages = buildMessages(enrichedMessages, docAvailability);
+    const {
+        api_keys: apiKeys,
+        legal_research_us: legalResearchUs,
+    } = await getUserModelSettings(userId, db);
+    const apiMessages = buildMessages(
+        enrichedMessages,
+        docAvailability,
+        undefined,
+        undefined,
+        legalResearchUs,
+    );
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
 
@@ -575,8 +587,6 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         if (!streamFinished) streamAbort.abort();
     });
 
-    const apiKeys = await getUserApiKeys(userId, db);
-
     try {
         write(`data: ${JSON.stringify({ type: "chat_id", chatId })}\n\n`);
 
@@ -588,6 +598,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             db,
             write,
             workflowStore,
+            includeResearchTools: legalResearchUs,
             model,
             apiKeys,
             signal: streamAbort.signal,

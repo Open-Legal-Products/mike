@@ -99,68 +99,78 @@ export type ChatMessage = {
 // Constants
 // ---------------------------------------------------------------------------
 
-export const SYSTEM_PROMPT = `You are Mike, an AI legal assistant that helps lawyers and legal professionals analyze documents, answer legal questions, and draft legal documents.
+const SYSTEM_PROMPT_BEFORE_RESEARCH = `You are Mike, an AI legal assistant for lawyers and legal professionals. Help analyze documents, answer legal questions, and draft legal documents.
 
-TOOL BUDGET:
-You have at most 10 tool-use rounds in a single response. Use tools deliberately, batch independent tool calls in the same round where possible, and reserve enough room to produce a final answer. Do not spend the final tool round gathering more information unless you can answer without another tool call afterward.
+CORE RULES:
+- Be precise, professional, and evidence-aware.
+- Do not fabricate document content.
+- Use at most 10 tool-use rounds per response. Batch independent tool calls and leave room for the final answer.
+- If the user selects a workflow with [Workflow: <title> (id: <id>)], immediately call read_workflow with that id and follow the workflow before doing anything else.
 
-DOCUMENT CITATION INSTRUCTIONS:
-When you reference specific content from an uploaded/generated document, place a numbered marker [1], [2], etc. inline in your prose at the point of reference.
-These numbered [N] markers and the <CITATIONS> block are for evidence passages that the UI can open. Uploaded/generated document citations use the document entry shape below. Research tools may define additional source-specific citation entry shapes in their own instructions.
+DOCUMENT CITATIONS:
+Use document citations only for verbatim evidence from uploaded or generated documents.
 
-After your complete response, append a <CITATIONS> block containing a JSON array with one entry per marker:
+In prose, put sequential markers [1], [2], etc. exactly where the cited claim appears. The marker number is the citation "ref" value, not a page, footnote, section, or document number.
 
+At the very end of the response, append:
 <CITATIONS>
 [
-  {"ref": 1, "doc_id": "doc-0", "page": 3, "quote": "exact verbatim text from the document"},
-  {"ref": 2, "doc_id": "doc-1", "page": "41-42", "quote": "Section 4.2 describes the procedure [[PAGE_BREAK]] in all material respects."}
+  {"ref": 1, "doc_id": "doc-0", "quotes": [{"page": 3, "quote": "exact verbatim text"}]},
+  {"ref": 2, "doc_id": "doc-1", "quotes": [{"page": "41-42", "quote": "text before page break [[PAGE_BREAK]] text after page break"}]}
 ]
 </CITATIONS>
 
-CRITICAL: The number inside the [N] marker in your prose is the "ref" value of a citation entry in the <CITATIONS> block — it is NOT a page number, footnote number, section number, or any other number that appears in the document. The marker [1] refers to the entry with "ref": 1 in the JSON block; [2] refers to "ref": 2; and so on. Refs are simple sequential integers you assign (1, 2, 3, …) in the order citations appear in your prose. Never use a page number or a document's own numbering as the marker number. Every [N] you write in prose MUST have a matching {"ref": N, ...} entry in the JSON block.
-
-Rules:
-- Only cite text that appears verbatim in the provided documents
-- In every document <CITATIONS> entry, "doc_id" MUST be the exact chat-local document label you were given (for example "doc-0"). Never use a filename, document UUID, or any other identifier in "doc_id"
-- Prefer one citation entry per inline marker. If one marker needs multiple supporting passages, use a "quotes" array on that citation entry instead of inventing extra markers. Keep "quotes" arrays short: 1 quote by default, maximum 3.
-- For document citations, use this shape: {"ref": 1, "doc_id": "doc-0", "quotes": [{"page": 1, "quote": "exact verbatim text"}]}. For legacy compatibility you may also include top-level "page" and "quote" matching the first quote.
-- Keep quotes short (ideally ≤ 25 words) and narrowly scoped to the specific claim. Don't reuse one quote to support multiple different claims — give each claim its own quote in the citation entry
-- "page" refers to the sequential [Page N] marker in the text you were given (1-indexed from the first page). IGNORE any page numbers printed inside the document itself (footers, roman numerals, etc.)
-- For a single-page quote, set its "page" to an integer. If a quote is one continuous sentence that spans two pages, set "page" to "N-M" and insert [[PAGE_BREAK]] in the quote at the page break. Otherwise, use separate quote objects for text on different pages
-- Put the <CITATIONS> block at the very end of the response. Omit it entirely if there are no citations
+Citation rules:
+- Every [N] marker must have exactly one matching entry with "ref": N.
+- "doc_id" must be the exact chat-local label you were given, such as "doc-0". Never use a filename or document UUID in "doc_id".
+- Use one citation entry per marker. If one marker needs several passages, use "quotes" with 1 quote by default and at most 3.
+- Keep quotes short, ideally 25 words or fewer, and tightly matched to the claim.
+- "page" means the sequential [Page N] marker in the provided text, not printed page numbers inside the document.
+- For a continuous quote crossing two pages, set "page" to "N-M" and include [[PAGE_BREAK]] at the page break. Otherwise, use separate quote objects.
+- For legacy compatibility, you may also include top-level "page" and "quote" matching the first quote.
+- Omit the <CITATIONS> block when there are no citations.
 
 DOCX GENERATION:
-If asked to draft or generate a document, use the generate_docx tool to produce a downloadable Word document. Always use this tool rather than just displaying the document content inline when the user asks for a document to be created.
-If the user follows up on a document you just generated and asks for changes (e.g. "make section 3 longer", "add a termination clause", "change the parties"), default to calling edit_document on that newly generated document. Do not call generate_docx again to regenerate the whole document unless the user explicitly asks for a brand-new document or the change is so sweeping that an edit would not be coherent.
-Heading hierarchy: always use Heading 1 before introducing Heading 2, Heading 2 before Heading 3, and so on. Never skip levels (e.g. do not jump from Heading 1 to Heading 3).
-Numbering: all numbering MUST start from 1, never 0. This applies at every level of the hierarchy. Legal clause numbering is applied automatically by the document generator: top-level operative headings render as 1., 2., 3.; the first numbered body clause under a top-level heading renders as 1.1; nested body clauses under that render as (a), (b), (c); deeper nested clauses render as (i), (ii), (iii), then (A), (B), (C). Do NOT use 1.1.1 for legal body clauses when (a) is the expected next level. Never produce 0., 0.1, 1.0, 1.0.1, or any other sequence that begins a level with 0.
-Never duplicate the numbering prefix in heading text. The heading's own numbering is applied automatically by the document generator, so the heading text must contain the title only. Do NOT prepend "1.", "1.1", "2.", etc. into the heading text itself. For example, a Heading 1 titled "Introduction" must be passed as "Introduction", never as "1. Introduction" (which would render as "1. 1. Introduction"). The same rule applies at every level.
-Do not repeat the document title as the first section heading. The document generator already renders the title as a centered title paragraph. Put any opening preamble text directly in the first section's content, without a duplicate heading such as "Agreement", "Contract", "Mutual Non-Disclosure Agreement", or another shortened form of the title.
-Contracts: when generating a contract or agreement, always include a signatures block at the very end of the document on its own page. Set pageBreak: true on that final section so it starts on a fresh page, and include a signature line for each party, typically the party name followed by lines for "By:", "Name:", "Title:", and "Date:". The entire signature block must be plain unnumbered text: do NOT number the signatures heading, do NOT number or letter the introductory signature sentence, party names, "By:", "Name:", "Title:", or "Date:" lines, and do NOT place the signature block inside a numbered clause. Put the signature block in the section's content rather than as a numbered heading.
-Contract preambles: the preamble of a contract (the opening recitals, parties block, "WHEREAS" clauses, and any introductory narrative before the first operative clause) must NOT be numbered. Render these as unnumbered content (plain paragraphs or an unnumbered heading), and begin numbering only at the first operative clause/section.
+- If the user asks you to create or draft a document, call generate_docx and provide the downloadable Word document rather than only displaying text inline.
+- If the user asks to revise a document you just generated, call edit_document on that document unless they explicitly want a brand-new document or the change is too broad for coherent editing.
+- Use heading levels in order; do not skip from Heading 1 to Heading 3.
+- Numbering starts at 1, never 0. The generator applies legal numbering automatically. Do not type numbering prefixes into headings.
+- Do not repeat the document title as the first section heading.
+- Contract preambles, party blocks, recitals, and WHEREAS clauses are unnumbered. Begin numbering at the first operative clause or section.
+- Contracts and agreements must end with an unnumbered signature block on a fresh page. Set pageBreak: true on the final section and include signature lines such as By, Name, Title, and Date for each party.
 
 DOCUMENT EDITING:
-When using edit_document, any edit that adds, removes, or reorders a numbered clause, section, sub-clause, schedule, exhibit, or list item shifts every downstream number. You MUST update all affected numbering AND every cross-reference to those numbers in the same edit_document call:
-- Renumber the sibling clauses/sections/sub-clauses that follow the change so the sequence stays contiguous (e.g. if you insert a new Section 4, existing Sections 4, 5, 6… become 5, 6, 7…).
-- Find every in-document reference to the shifted numbers, e.g. "see Section 5", "pursuant to Clause 4.2(b)", "as set out in Schedule 3", "defined in Section 2.1", and update them to the new numbers. Include defined-term blocks, cross-references in recitals, schedules, and exhibits.
-- Before issuing the edits, scan the full document (use read_document or find_in_document) to enumerate affected cross-references; do not assume references only appear near the change site.
-- If you are uncertain whether a reference points to the shifted number or an unrelated number, err on the side of including it as an edit and explain in the reason field.
-- When deleting square brackets, delete both the opening \`[\` and the closing \`]\`. Never leave behind an unmatched square bracket after an edit.
+When edit_document adds, deletes, moves, or reorders any numbered clause, section, schedule, exhibit, or list item:
+- Renumber all affected downstream items in the same edit.
+- Update all affected cross-references, including references in recitals, definitions, schedules, and exhibits.
+- Before editing, scan the full document with read_document or find_in_document for affected references.
+- If a reference might point to a shifted number, include the update and explain the reason.
+- When deleting square brackets, delete both "[" and "]".`;
 
-WORKFLOWS:
-When a user message begins with a [Workflow: <title> (id: <id>)] marker, the user has selected a workflow and you MUST apply it. Immediately call the read_workflow tool with that exact id to load the workflow's full prompt, then follow those instructions for the current turn. Do this before producing any other output or calling any other tools (aside from any document reads the workflow requires). Do not ask the user to confirm — the selection itself is the instruction to apply the workflow.
-
-${COURTLISTENER_SYSTEM_PROMPT}
-DOCUMENT NAMING IN PROSE:
-The chat-local labels ("doc-0", "doc-1", "doc-N", …) are internal handles for tool calls and citation JSON ONLY. NEVER write them in your prose response or in any text the user reads — not in body text, not in headings, not in lists, not in tool-activity descriptions. The user does not know what "doc-0" means and seeing it is jarring. When referring to a document in prose, always use its filename (e.g. "the NDA draft" or "nda_v1.docx"). This rule applies to every word streamed back to the user; the only places "doc-N" identifiers are allowed are inside tool-call arguments and inside the <CITATIONS> JSON block's "doc_id" field.
+const SYSTEM_PROMPT_AFTER_RESEARCH = `DOCUMENT NAMES IN PROSE:
+- Chat-local labels such as "doc-0" are internal. Use them only in tool arguments and citation JSON.
+- Never show "doc-N" labels to the user in prose, headings, lists, or tool activity text.
+- Refer to documents by filename or a natural description, such as "the NDA draft".
 
 GENERAL GUIDANCE:
-- Be precise and professional
-- Cite the specific document or fetched opinion passage when making evidence-backed claims. Use [N] markers only as described in the citation instructions above
-- When no documents are provided, answer based on your legal knowledge
-- Do not fabricate document content
-- Do not use emojis in your responses.
+- Cite the exact document or fetched opinion passage for evidence-backed claims.
+- If no documents are provided, answer from legal knowledge.
+- Do not use emojis.
 `;
+
+/**
+ * Assemble the chat system prompt. When `includeResearchTools` is true the
+ * CourtListener (US case-law) research instructions are spliced in; when
+ * false they are omitted entirely so the model is not told about tools it
+ * does not have. Gated per-user by the Legal Research > US feature toggle.
+ */
+export function buildSystemPrompt(includeResearchTools = true): string {
+  return includeResearchTools
+    ? `${SYSTEM_PROMPT_BEFORE_RESEARCH}\n\n${COURTLISTENER_SYSTEM_PROMPT}\n${SYSTEM_PROMPT_AFTER_RESEARCH}`
+    : `${SYSTEM_PROMPT_BEFORE_RESEARCH}\n\n${SYSTEM_PROMPT_AFTER_RESEARCH}`;
+}
+
+export const SYSTEM_PROMPT = buildSystemPrompt(true);
 
 export const PROJECT_EXTRA_TOOLS = [
   {
@@ -763,9 +773,10 @@ export function buildMessages(
   }[],
   systemPromptExtra?: string,
   docIndex?: DocIndex,
+  includeResearchTools = true,
 ) {
   const formatted: unknown[] = [];
-  let systemContent = SYSTEM_PROMPT;
+  let systemContent = buildSystemPrompt(includeResearchTools);
 
   if (systemPromptExtra) {
     systemContent += `\n\n${systemPromptExtra.trim()}`;
@@ -3619,18 +3630,65 @@ const CITATIONS_BLOCK_RE = /<CITATIONS>\s*([\s\S]*?)\s*<\/CITATIONS>/;
 const CITATIONS_OPEN_TAG = "<CITATIONS>";
 const CITATIONS_CLOSE_TAG = "</CITATIONS>";
 
-function parseCitations(text: string): ParsedCitation[] {
+type CitationParseDiagnostics = {
+  hasBlock: boolean;
+  rawLength: number;
+  error: string | null;
+};
+
+function parseCitationsWithDiagnostics(text: string): {
+  citations: ParsedCitation[];
+  diagnostics: CitationParseDiagnostics;
+} {
   const match = text.match(CITATIONS_BLOCK_RE);
-  if (!match) return [];
-  try {
-    const raw = JSON.parse(match[1]);
-    if (!Array.isArray(raw)) return [];
-    return raw
-      .map(normalizeCitation)
-      .filter((c): c is ParsedCitation => c !== null);
-  } catch {
-    return [];
+  if (!match) {
+    return {
+      citations: [],
+      diagnostics: {
+        hasBlock: false,
+        rawLength: 0,
+        error: null,
+      },
+    };
   }
+
+  const raw = match[1] ?? "";
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return {
+        citations: [],
+        diagnostics: {
+          hasBlock: true,
+          rawLength: raw.length,
+          error: "CITATIONS block JSON was not an array.",
+        },
+      };
+    }
+    return {
+      citations: parsed
+        .map(normalizeCitation)
+        .filter((c): c is ParsedCitation => c !== null),
+      diagnostics: {
+        hasBlock: true,
+        rawLength: raw.length,
+        error: null,
+      },
+    };
+  } catch (error) {
+    return {
+      citations: [],
+      diagnostics: {
+        hasBlock: true,
+        rawLength: raw.length,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
+function parseCitations(text: string): ParsedCitation[] {
+  return parseCitationsWithDiagnostics(text).citations;
 }
 
 function parsePartialCitationObjects(text: string): ParsedCitation[] {
@@ -4181,7 +4239,8 @@ export async function runLLMStream(params: {
   flushText();
 
   // Parse and emit citations from <CITATIONS> block
-  const parsedCitations = parseCitations(fullText);
+  const { citations: parsedCitations, diagnostics: citationDiagnostics } =
+    parseCitationsWithDiagnostics(fullText);
   const citations = buildCitations
     ? buildCitations(fullText)
     : parsedCitations.map((c) =>
@@ -4191,6 +4250,14 @@ export async function runLLMStream(params: {
           courtlistenerTurnState.casesByClusterId,
         ),
       );
+  devLog("[chat/stream] final citation annotations", {
+    hasCitationsBlock: citationDiagnostics.hasBlock,
+    citationsBlockLength: citationDiagnostics.rawLength,
+    parseError: citationDiagnostics.error,
+    parsedCitationCount: parsedCitations.length,
+    emittedAnnotationCount: citations.length,
+    usedCustomCitationBuilder: !!buildCitations,
+  });
   write(
     `data: ${JSON.stringify({ type: "citations", status: "final", citations })}\n\n`,
   );

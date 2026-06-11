@@ -84,6 +84,8 @@ export function ShareWorkflowModal({
                 disabled: saving || pendingEmails.length === 0,
             }}
         >
+            <div className="flex min-h-0 flex-1 flex-col gap-6">
+                <section className="space-y-3">
                 <EmailPillInput
                     emails={pendingEmails}
                     onChange={setPendingEmails}
@@ -101,9 +103,10 @@ export function ShareWorkflowModal({
                         {error}
                     </div>
                 ) : null}
+                </section>
 
                 {/* Permission toggle */}
-                <div className="flex flex-col gap-2">
+                <section className="flex flex-col gap-3">
                     <span className="text-xs font-medium text-gray-700">Allow editing by share recipients</span>
                     <button
                         type="button"
@@ -112,10 +115,10 @@ export function ShareWorkflowModal({
                     >
                         <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 ${allowEdit ? "translate-x-4" : "translate-x-0"}`} />
                     </button>
-                </div>
+                </section>
 
                 {/* Existing access */}
-                <div>
+                <section className="min-h-0 flex-1">
                     <p className="text-xs font-medium text-gray-700 mb-2">People with access</p>
                     {loading ? (
                         <div className="space-y-2">
@@ -146,7 +149,8 @@ export function ShareWorkflowModal({
                                 ))}
                             </div>
                         )}
-                    </div>
+                    </section>
+            </div>
         </Modal>
     );
 }

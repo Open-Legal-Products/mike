@@ -45,7 +45,7 @@ export function ProjectReviewsTab({
     setRenamingReviewId: Dispatch<SetStateAction<string | null>>;
     setRenameReviewValue: Dispatch<SetStateAction<string>>;
 }) {
-    const stickyCellBg = "bg-[#fcfcfd]";
+    const stickyCellBg = "bg-[#fafbfc]";
 
     return (
         <>

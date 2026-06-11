@@ -30,6 +30,7 @@ interface Props {
     onUploadNewVersion?: () => void;
     onNewSubfolder?: () => void;
     deleting?: boolean;
+    deleteDisabled?: boolean;
     onRename?: () => void;
     onUpdateCmNumber?: () => void;
     newSubfolderLabel?: string;
@@ -47,6 +48,7 @@ export function RowActionMenuItems({
     onUploadNewVersion,
     onNewSubfolder,
     deleting,
+    deleteDisabled = false,
     onRename,
     onUpdateCmNumber,
     newSubfolderLabel = "New subfolder",
@@ -139,9 +141,17 @@ export function RowActionMenuItems({
             )}
             {onDelete && (
                 <button
-                    onClick={() => { onClose(); onDelete(); }}
-                    disabled={deleting}
-                    className="flex items-center gap-2 w-full px-3 py-2 text-xs text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                    onClick={() => {
+                        if (deleteDisabled || deleting) return;
+                        onClose();
+                        onDelete();
+                    }}
+                    disabled={deleting || deleteDisabled}
+                    className={`flex items-center gap-2 w-full px-3 py-2 text-xs text-red-500 transition-colors disabled:opacity-40 ${
+                        deleteDisabled
+                            ? "cursor-not-allowed opacity-40 hover:bg-transparent"
+                            : "hover:bg-red-50"
+                    }`}
                 >
                     <Trash2 className="h-3.5 w-3.5" />
                     {deleteLabel}
