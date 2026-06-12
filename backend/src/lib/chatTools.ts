@@ -15,6 +15,7 @@ import {
 import { buildDownloadUrl } from "./downloadTokens";
 import {
   attachActiveVersionPaths,
+  contentSha256,
   loadActiveVersion,
 } from "./documentVersions";
 import {
@@ -1329,6 +1330,7 @@ export async function generateDocx(
         file_type: "docx",
         size_bytes: buf.byteLength,
         page_count: null,
+        content_sha256: contentSha256(buf),
       })
       .select("id")
       .single();
@@ -1470,6 +1472,7 @@ export async function runEditDocument(params: {
         file_type: "docx",
         size_bytes: editedBytes.byteLength,
         page_count: null,
+        content_sha256: contentSha256(editedBytes),
       })
       .eq("id", versionRowId);
   } else {
@@ -1521,6 +1524,7 @@ export async function runEditDocument(params: {
         file_type: "docx",
         size_bytes: editedBytes.byteLength,
         page_count: null,
+        content_sha256: contentSha256(editedBytes),
       })
       .select("id")
       .single();
@@ -3374,6 +3378,7 @@ export async function runToolCalls(
                 file_type: active?.file_type ?? sourceInfo.file_type,
                 size_bytes: active?.size_bytes ?? raw.byteLength,
                 page_count: active?.page_count ?? null,
+                content_sha256: contentSha256(raw),
               }));
               const { data: insertedVersions, error: verErr } = await db
                 .from("document_versions")

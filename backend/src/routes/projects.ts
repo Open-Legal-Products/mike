@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import {
   attachActiveVersionPaths,
   attachLatestVersionNumbers,
+  contentSha256,
 } from "../lib/documentVersions";
 import {
   deleteFile,
@@ -14,6 +15,10 @@ import {
 } from "../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../lib/convert";
 import { checkProjectAccess } from "../lib/access";
+import {
+  buildProjectExportManifest,
+  projectManifestFilename,
+} from "../lib/userDataExport";
 import { singleFileUpload } from "../lib/upload";
 import { deleteUserProjects } from "../lib/userDataCleanup";
 
@@ -424,6 +429,36 @@ projectsRouter.get("/:projectId/documents", requireAuth, async (req, res) => {
   res.json(docsTyped);
 });
 
+// GET /projects/:projectId/export — tamper-evident manifest of the
+// project's documents: every version with its content_sha256 plus the
+// accept/reject trail. Recompute a downloaded file's SHA-256 and compare
+// to verify an export matches what the workspace held.
+projectsRouter.get("/:projectId/export", requireAuth, async (req, res) => {
+  const userId = res.locals.userId as string;
+  const userEmail = res.locals.userEmail as string | undefined;
+  const { projectId } = req.params;
+  const db = createServerSupabase();
+
+  const access = await checkProjectAccess(projectId, userId, userEmail, db);
+  if (!access.ok)
+    return void res.status(404).json({ detail: "Project not found" });
+
+  try {
+    const data = await buildProjectExportManifest(db, projectId);
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${projectManifestFilename(projectId)}"`,
+    );
+    res.json(data);
+  } catch (err) {
+    console.error("[projects/export] failed", { projectId, error: String(err) });
+    res
+      .status(500)
+      .json({ detail: "Failed to build project export manifest" });
+  }
+});
+
 // POST /projects/:projectId/documents/:documentId — assign or copy existing doc into project
 projectsRouter.post(
   "/:projectId/documents/:documentId",
@@ -561,6 +596,7 @@ projectsRouter.post(
               (srcV.size_bytes as number | null) ?? doc.size_bytes ?? null,
             page_count:
               (srcV.page_count as number | null) ?? doc.page_count ?? null,
+            content_sha256: contentSha256(srcBytes),
           })
           .select("id")
           .single();
@@ -972,6 +1008,7 @@ export async function handleDocumentUpload(
         file_type: suffix,
         size_bytes: content.byteLength,
         page_count: pageCount,
+        content_sha256: contentSha256(content),
       })
       .select("id")
       .single();

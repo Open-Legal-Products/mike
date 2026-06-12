@@ -128,6 +128,7 @@ create table if not exists public.document_versions (
   file_type text,
   size_bytes integer,
   page_count integer,
+  content_sha256 text,
   deleted_at timestamptz,
   deleted_by uuid,
   created_at timestamptz not null default now(),
