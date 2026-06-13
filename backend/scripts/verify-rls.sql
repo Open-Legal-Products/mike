@@ -21,7 +21,7 @@ begin
         join pg_class c on c.relname = t.table_name and c.relnamespace = n.oid
         where t.table_schema = 'public'
           and t.table_type = 'BASE TABLE'
-          and c.relrowsecurity is false
+          and not c.relrowsecurity
         order by t.table_name
     loop
         raise warning 'RLS not enabled on public.%', missing_rls.table_name;
@@ -59,9 +59,20 @@ begin
         failure_count := failure_count + 1;
     end loop;
 
+    -- 3. The event trigger must be installed and enabled so future tables are
+    --    automatically protected. evtenabled = 'O' means ORIGIN (fires normally).
+    if not exists (
+        select 1 from pg_event_triggers
+        where evtname = 'enforce_rls_on_public_tables'
+          and evtenabled = 'O'
+    ) then
+        raise warning 'Event trigger enforce_rls_on_public_tables is not installed or is disabled';
+        failure_count := failure_count + 1;
+    end if;
+
     if failure_count > 0 then
         raise exception 'verify-rls: % assertion(s) failed', failure_count;
     end if;
 
-    raise notice 'verify-rls: all public base tables have RLS enabled and a deny-all read+write policy.';
+    raise notice 'verify-rls: all public base tables have RLS enabled, a deny-all read+write policy, and the event trigger is active.';
 end$$;

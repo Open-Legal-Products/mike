@@ -49,7 +49,7 @@ The schema lives in two places:
 
 ### Row Level Security
 
-Every new table in the `public` schema must have RLS enabled with a deny-all policy for the `anon` and `authenticated` roles. An event trigger (`enforce_rls_on_public_tables`) installed by `20260516_enable_rls_deny_all.sql` does this automatically for any `CREATE TABLE` in `public`, so in normal flow you do not need to repeat the policy. If you disable the trigger temporarily, restore it before merging.
+Every new table in the `public` schema must have RLS enabled with a deny-all policy for the `anon` and `authenticated` roles. An event trigger (`enforce_rls_on_public_tables`) does this automatically for any `CREATE TABLE` in `public` — it is installed by `backend/migrations/20260516_enable_rls_deny_all.sql` for existing deployments and by `backend/schema.sql` for fresh installs. In normal flow you do not need to add the policy manually. If you disable the trigger temporarily, restore it before merging.
 
 The service role bypasses RLS, so the backend (`createServerSupabase()` via `SUPABASE_SECRET_KEY`) is unaffected; only direct PostgREST access by `anon` / `authenticated` is blocked. Do not grant direct table privileges to those roles — all application data access goes through the backend.
 
