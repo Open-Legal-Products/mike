@@ -1,56 +1,54 @@
 /**
- * Cloudflare R2 storage utilities for Mike document management.
- * R2 is S3-compatible — uses @aws-sdk/client-s3.
+ * Local on-disk file storage for Mike document management.
  *
- * Required env vars:
- *   R2_ENDPOINT_URL     — https://<account-id>.r2.cloudflarestorage.com
- *   R2_ACCESS_KEY_ID    — R2 API token (Access Key ID)
- *   R2_SECRET_ACCESS_KEY — R2 API token (Secret Access Key)
- *   R2_BUCKET_NAME      — bucket name (default: "mike")
+ * Drop-in replacement for the previous Cloudflare R2 / S3 backend: same
+ * exported functions and signatures, so no calling code changed. Files are
+ * stored under an `uploads/` directory in the backend, keyed by the same
+ * "documents/<user>/<doc>/…" paths that were used as R2 object keys.
+ *
+ * Env vars:
+ *   UPLOAD_DIR        — override the storage directory (default: backend/uploads)
+ *   PUBLIC_BASE_URL   — backend's externally reachable base URL, used to build
+ *                       absolute download links (default: http://localhost:<PORT>)
  */
 
-import {
-  S3Client,
-  PutObjectCommand,
-  DeleteObjectCommand,
-  ListObjectsV2Command,
-} from "@aws-sdk/client-s3";
-import * as S3Commands from "@aws-sdk/client-s3";
-import { getSignedUrl as awsGetSignedUrl } from "@aws-sdk/s3-request-presigner";
+import fs from "fs/promises";
+import path from "path";
+import { buildDownloadUrl } from "./downloadTokens";
 
-const GetObjectCommand = (S3Commands as any).GetObjectCommand;
+const UPLOAD_DIR =
+  process.env.UPLOAD_DIR || path.resolve(__dirname, "../../uploads");
 
-let cachedClient: S3Client | undefined;
+// Local disk is always available — no external service to configure.
+export const storageEnabled = true;
 
-function getClient(): S3Client {
-  if (!cachedClient) {
-    cachedClient = new S3Client({
-      region: "auto",
-      endpoint: process.env.R2_ENDPOINT_URL!,
-      forcePathStyle: true,
-      credentials: {
-        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-      },
-    });
-  }
-  return cachedClient;
+function publicBaseUrl(): string {
+  return (
+    process.env.PUBLIC_BASE_URL ||
+    `http://localhost:${process.env.PORT ?? 3001}`
+  );
 }
 
-const BUCKET = process.env.R2_BUCKET_NAME ?? "mike";
-
-export const storageEnabled = Boolean(
-  process.env.R2_ENDPOINT_URL &&
-  process.env.R2_ACCESS_KEY_ID &&
-  process.env.R2_SECRET_ACCESS_KEY,
-);
-
-function requireStorageConfig(): void {
-  if (!storageEnabled) {
-    throw new Error(
-      "R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY must be set",
-    );
+/**
+ * Map a storage key to an absolute path inside UPLOAD_DIR, guarding against
+ * path traversal. Keys are generated internally (see the *Key helpers below)
+ * so this is belt-and-suspenders.
+ */
+function resolveKeyPath(key: string): string {
+  const normalized = path
+    .normalize(key)
+    .replace(/^(\.\.(\/|\\|$))+/, "")
+    .replace(/^[/\\]+/, "");
+  const full = path.resolve(UPLOAD_DIR, normalized);
+  if (full !== UPLOAD_DIR && !full.startsWith(UPLOAD_DIR + path.sep)) {
+    throw new Error("Invalid storage key");
   }
+  return full;
+}
+
+/** Ensure the base uploads directory exists. Called on startup. */
+export async function ensureUploadDir(): Promise<void> {
+  await fs.mkdir(UPLOAD_DIR, { recursive: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -60,18 +58,11 @@ function requireStorageConfig(): void {
 export async function uploadFile(
   key: string,
   content: ArrayBuffer,
-  contentType: string,
+  _contentType: string,
 ): Promise<void> {
-  requireStorageConfig();
-  const client = getClient();
-  await client.send(
-    new PutObjectCommand({
-      Bucket: BUCKET,
-      Key: key,
-      Body: Buffer.from(content),
-      ContentType: contentType,
-    }),
-  );
+  const filePath = resolveKeyPath(key);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, Buffer.from(content));
 }
 
 // ---------------------------------------------------------------------------
@@ -79,38 +70,41 @@ export async function uploadFile(
 // ---------------------------------------------------------------------------
 
 export async function downloadFile(key: string): Promise<ArrayBuffer | null> {
-  if (!storageEnabled) return null;
   try {
-    const client = getClient();
-    const response = (await client.send(
-      new GetObjectCommand({ Bucket: BUCKET, Key: key }),
-    )) as any;
-    if (!response.Body) return null;
-    const bytes = await response.Body.transformToByteArray();
-    return bytes.buffer as ArrayBuffer;
+    const filePath = resolveKeyPath(key);
+    const buf = await fs.readFile(filePath);
+    return buf.buffer.slice(
+      buf.byteOffset,
+      buf.byteOffset + buf.byteLength,
+    ) as ArrayBuffer;
   } catch {
     return null;
   }
 }
 
 export async function listFiles(prefix: string): Promise<string[]> {
-  if (!storageEnabled) return [];
-  const client = getClient();
   const keys: string[] = [];
-  let ContinuationToken: string | undefined;
-  do {
-    const response = await client.send(
-      new ListObjectsV2Command({
-        Bucket: BUCKET,
-        Prefix: prefix,
-        ContinuationToken,
-      }),
-    );
-    for (const item of response.Contents ?? []) {
-      if (item.Key) keys.push(item.Key);
+
+  async function walk(dir: string): Promise<void> {
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
     }
-    ContinuationToken = response.NextContinuationToken;
-  } while (ContinuationToken);
+    for (const entry of entries) {
+      const abs = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(abs);
+      } else {
+        // Reconstruct the forward-slash storage key relative to UPLOAD_DIR.
+        const key = path.relative(UPLOAD_DIR, abs).split(path.sep).join("/");
+        if (key.startsWith(prefix)) keys.push(key);
+      }
+    }
+  }
+
+  await walk(UPLOAD_DIR);
   return keys;
 }
 
@@ -119,39 +113,27 @@ export async function listFiles(prefix: string): Promise<string[]> {
 // ---------------------------------------------------------------------------
 
 export async function deleteFile(key: string): Promise<void> {
-  if (!storageEnabled) return;
-  const client = getClient();
-  await client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
+  try {
+    await fs.unlink(resolveKeyPath(key));
+  } catch {
+    // Already gone — nothing to do.
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Signed URL (pre-signed for temporary direct access)
+// "Signed" URL — locally this is just an HMAC-signed /download link served by
+// the backend (see routes/downloads.ts). It streams the bytes with the right
+// Content-Disposition, so the previous presigned-URL behaviour is preserved.
 // ---------------------------------------------------------------------------
 
 export async function getSignedUrl(
   key: string,
-  expiresIn = 3600,
+  _expiresIn = 3600,
   downloadFilename?: string,
 ): Promise<string | null> {
-  if (!storageEnabled) return null;
-  try {
-    const client = getClient();
-    // Override the response Content-Disposition so the browser uses this
-    // filename on download, instead of the last path segment of the R2 key
-    // (which includes the document UUID). The `download` attribute on <a>
-    // is ignored for cross-origin URLs, so we have to set it server-side.
-    const responseContentDisposition = downloadFilename
-      ? buildContentDisposition("attachment", downloadFilename)
-      : undefined;
-    const command = new GetObjectCommand({
-      Bucket: BUCKET,
-      Key: key,
-      ResponseContentDisposition: responseContentDisposition,
-    }) as any;
-    return await awsGetSignedUrl(client, command, { expiresIn });
-  } catch {
-    return null;
-  }
+  const filename =
+    downloadFilename || normalizeDownloadFilename(key.split("/").pop() ?? "download");
+  return `${publicBaseUrl()}${buildDownloadUrl(key, filename)}`;
 }
 
 export function normalizeDownloadFilename(name: string): string {
@@ -182,7 +164,7 @@ export function buildContentDisposition(
 }
 
 // ---------------------------------------------------------------------------
-// Storage key helpers
+// Storage key helpers (unchanged)
 // ---------------------------------------------------------------------------
 
 export function storageKey(

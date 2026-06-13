@@ -133,7 +133,7 @@ async function removeEmailFromSharedWith(
         .map((row) => {
             const sharedWith = Array.isArray(row.shared_with)
                 ? row.shared_with.filter(
-                      (value) =>
+                      (value: unknown) =>
                           typeof value !== "string" ||
                           value.trim().toLowerCase() !== normalizedEmail,
                   )

@@ -17,3 +17,7 @@ next-env.d.ts
 .DS_Store
 .vercel
 coverage
+
+# Local Postgres data (docker compose) and on-disk file storage
+pgdata/
+backend/uploads/

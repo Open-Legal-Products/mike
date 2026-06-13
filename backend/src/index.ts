@@ -1,8 +1,10 @@
 import "dotenv/config";
+import path from "path";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import { ensureUploadDir } from "./lib/storage";
 import { chatRouter } from "./routes/chat";
 import { projectsRouter } from "./routes/projects";
 import { projectChatRouter } from "./routes/projectChat";
@@ -156,8 +158,17 @@ app.use("/users", userRouter);
 app.use("/download", downloadsRouter);
 app.use("/case-law", caseLawRouter);
 
+// Local on-disk file storage. Files are written under backend/uploads by
+// src/lib/storage.ts; this serves them directly (alongside the signed
+// /download routes used for attachment downloads).
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-app.listen(PORT, () => {
-  console.log(`Mike backend running on port ${PORT}`);
-});
+ensureUploadDir()
+  .catch((err) => console.error("Failed to create uploads directory", err))
+  .finally(() => {
+    app.listen(PORT, () => {
+      console.log(`Mike backend running on port ${PORT}`);
+    });
+  });
