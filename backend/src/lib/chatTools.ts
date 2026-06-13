@@ -38,6 +38,11 @@ import {
   type OpenAIToolSchema,
 } from "./llm";
 import { safeErrorMessage } from "./safeError";
+import {
+    integrationToolDisplayName,
+    runConfiguredIntegrationToolCall,
+    withConfiguredIntegrationTools,
+} from "./integrations";
 
 const STANDARD_FONT_DATA_URL = (() => {
   try {
@@ -3587,6 +3592,20 @@ export async function runToolCalls(
         tool_call_id: tc.id,
         content: JSON.stringify(toolResultPayload),
       });
+    } else {
+      const integrationToolResult =
+        await runConfiguredIntegrationToolCall(tc, args);
+      if (integrationToolResult) {
+        toolResults.push(integrationToolResult);
+      } else {
+        toolResults.push({
+          role: "tool",
+          tool_call_id: tc.id,
+          content: JSON.stringify({
+            error: `Unknown tool: ${tc.function.name}`,
+          }),
+        });
+      }
     }
   }
 
@@ -3926,9 +3945,11 @@ export async function runLLMStream(params: {
   } = params;
   const researchTools = includeResearchTools ? COURTLISTENER_TOOLS : [];
   const baseTools = [...TOOLS, ...researchTools, ...WORKFLOW_TOOLS];
-  const activeTools = extraTools?.length
-    ? [...baseTools, ...extraTools]
-    : baseTools;
+  const activeTools = withConfiguredIntegrationTools(
+    (extraTools?.length
+      ? [...baseTools, ...extraTools]
+      : baseTools) as OpenAIToolSchema[],
+  );
 
   // Extract system prompt; pass remaining turns to the adapter as
   // plain user/assistant messages.
@@ -4104,6 +4125,7 @@ export async function runLLMStream(params: {
             `data: ${JSON.stringify({
               type: "tool_call_start",
               name: call.name,
+              displayName: integrationToolDisplayName(call.name),
             })}\n\n`,
           );
         },

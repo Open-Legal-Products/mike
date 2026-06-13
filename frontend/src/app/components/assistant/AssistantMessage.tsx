@@ -32,7 +32,8 @@ const RESPONSE_GLASS_SURFACE =
 const RESPONSE_GLASS_ANNOTATION =
     "inline-flex h-4 w-4 items-center justify-center rounded-full border border-gray-200/60 bg-gray-200/80 text-[12px] font-serif font-medium text-gray-800 shadow-[0_1px_2px_rgba(15,23,42,0.04),inset_0_1px_0_rgba(243,244,246,0.85),inset_0_-2px_4px_rgba(229,231,235,0.65)] backdrop-blur-xl transition-colors hover:bg-gray-200 hover:text-gray-950";
 
-function toolCallLabel(name: string): string {
+function toolCallLabel(name: string, displayName?: string | null): string {
+    if (displayName) return `Running ${displayName}...`;
     if (name === "generate_docx") return "Creating document...";
     if (name === "edit_document") return "Editing document...";
     if (name === "read_document") return "Reading document...";
@@ -1914,7 +1915,7 @@ export function AssistantMessage({
                     )}
                     <div className="w-1.5 h-1.5 rounded-full border border-gray-400 border-t-transparent animate-spin shrink-0" />
                     <span className="font-medium ml-2">
-                        {toolCallLabel(event.name)}
+                        {toolCallLabel(event.name, event.displayName)}
                     </span>
                 </div>
             );
