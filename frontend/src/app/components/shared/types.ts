@@ -14,6 +14,8 @@ export interface Project {
   id: string;
   user_id: string;
   is_owner?: boolean;
+  owner_display_name?: string | null;
+  owner_email?: string | null;
   name: string;
   cm_number: string | null;
   shared_with: string[];
@@ -61,6 +63,7 @@ export interface Chat {
   id: string;
   project_id: string | null;
   user_id: string;
+  creator_display_name?: string | null;
   title: string | null;
   created_at: string;
 }
@@ -91,6 +94,16 @@ export type AssistantEvent =
       type: "tool_call_start";
       name: string;
       displayName?: string | null;
+      isStreaming?: boolean;
+    }
+  | {
+      type: "mcp_tool_call";
+      connector_id: string;
+      connector_name: string;
+      tool_name: string;
+      openai_tool_name: string;
+      status: "ok" | "error";
+      error?: string;
       isStreaming?: boolean;
     }
   | { type: "thinking"; isStreaming?: boolean }

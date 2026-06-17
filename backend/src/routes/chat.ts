@@ -161,29 +161,10 @@ chatRouter.get("/", requireAuth, async (req, res) => {
         ? Math.min(Math.max(requestedLimit, 1), 100)
         : null;
 
-    const { data: ownProjects, error: projErr } = await db
-        .from("projects")
-        .select("id")
-        .eq("user_id", userId);
-    if (projErr) return void res.status(500).json({ detail: projErr.message });
-    const ownProjectIds = ((ownProjects ?? []) as { id: string }[]).map(
-        (p) => p.id,
-    );
-
-    const filter =
-        ownProjectIds.length > 0
-            ? `user_id.eq.${userId},project_id.in.(${ownProjectIds.join(",")})`
-            : `user_id.eq.${userId}`;
-
-    let query = db
-        .from("chats")
-        .select("*")
-        .or(filter)
-        .order("created_at", { ascending: false });
-
-    if (limit) query = query.limit(limit);
-
-    const { data, error } = await query;
+    const { data, error } = await db.rpc("get_chats_overview", {
+        p_user_id: userId,
+        p_limit: limit,
+    });
     if (error) return void res.status(500).json({ detail: error.message });
     res.json(data ?? []);
 });

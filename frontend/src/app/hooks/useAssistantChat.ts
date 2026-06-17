@@ -627,6 +627,50 @@ export function useAssistantChat({
               continue;
             }
 
+            if (data.type === "mcp_tool_start") {
+              pushEvent({
+                type: "mcp_tool_call",
+                connector_id: "",
+                connector_name: "",
+                tool_name: (data.name as string) ?? "",
+                openai_tool_name: (data.name as string) ?? "",
+                status: "ok",
+                isStreaming: true,
+              });
+              continue;
+            }
+
+            if (data.type === "mcp_tool_result") {
+              const openaiToolName = (data.name as string) ?? "";
+              updateMatchingEvent(
+                (e) =>
+                  e.type === "mcp_tool_call" &&
+                  e.openai_tool_name === openaiToolName &&
+                  !!e.isStreaming,
+                () => ({
+                  type: "mcp_tool_call",
+                  connector_id: "",
+                  connector_name:
+                    typeof data.connector_name === "string"
+                      ? (data.connector_name as string)
+                      : "",
+                  tool_name:
+                    typeof data.tool_name === "string"
+                      ? (data.tool_name as string)
+                      : openaiToolName,
+                  openai_tool_name: openaiToolName,
+                  status: data.status === "error" ? "error" : "ok",
+                  error:
+                    typeof data.error === "string"
+                      ? (data.error as string)
+                      : undefined,
+                  isStreaming: false,
+                }),
+              );
+              pushThinkingPlaceholder();
+              continue;
+            }
+
             if (data.type === "courtlistener_search_case_law_start") {
               pushEvent({
                 type: "courtlistener_search_case_law",

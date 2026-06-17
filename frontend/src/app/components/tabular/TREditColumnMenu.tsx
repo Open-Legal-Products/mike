@@ -129,7 +129,7 @@ export function TREditColumnMenu({
 
             {open && (
                 <div
-                    className="absolute right-0 top-full z-20 mt-1.5 w-72 rounded-xl border border-gray-100 bg-white p-3 shadow-lg"
+                    className="absolute right-0 top-full z-20 mt-1.5 w-72 rounded-2xl border border-white/70 bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-10px_24px_rgba(255,255,255,0.18)] backdrop-blur-2xl"
                     onClick={(e) => e.stopPropagation()}
                 >
                     <div className="flex items-center justify-between mb-3">
@@ -293,7 +293,7 @@ export function TREditColumnMenu({
                                 !name.trim() ||
                                 !prompt.trim()
                             }
-                            className="rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-40"
+                            className="rounded-full border border-gray-700/40 bg-gray-950/88 px-3 py-1 text-xs font-medium text-white shadow-[0_3px_9px_rgba(15,23,42,0.16),inset_0_1px_0_rgba(255,255,255,0.22),inset_0_-4px_9px_rgba(15,23,42,0.2)] backdrop-blur-xl transition-colors hover:bg-gray-900/90 disabled:opacity-40"
                         >
                             {saving ? "Saving…" : "Save"}
                         </button>

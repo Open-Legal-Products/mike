@@ -21,8 +21,8 @@ import {
 import {
     accountGlassDangerOutlineButtonClassName,
     accountGlassPrimaryButtonClassName,
-    accountGlassSectionClassName,
 } from "../accountStyles";
+import { AccountSection } from "../AccountSection";
 
 type DeleteDataAction = "chats" | "tabular-reviews" | "projects";
 type ExportDataAction = "export-chats" | "export-tabular-reviews" | "export-account";
@@ -221,7 +221,7 @@ export default function PrivacyDataPage() {
                 <h2 className="text-2xl font-medium font-serif text-gray-900">
                     Export data
                 </h2>
-                <div className={accountGlassSectionClassName}>
+                <AccountSection>
                     <div className="flex flex-col gap-3 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
                         <div className="space-y-1">
                             <p className="text-sm font-medium text-gray-900">
@@ -294,14 +294,14 @@ export default function PrivacyDataPage() {
                             {isExportingAccount ? "Exporting..." : "Export"}
                         </Button>
                     </div>
-                </div>
+                </AccountSection>
             </section>
 
             <section className="space-y-3">
                 <h2 className="text-2xl font-medium font-serif text-gray-900">
                     Delete data
                 </h2>
-                <div className={accountGlassSectionClassName}>
+                <AccountSection>
                     <div className="flex flex-col gap-3 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
                         <div className="space-y-1">
                             <p className="text-sm font-medium text-gray-900">
@@ -368,7 +368,7 @@ export default function PrivacyDataPage() {
                             Delete
                         </Button>
                     </div>
-                </div>
+                </AccountSection>
             </section>
             <ConfirmPopup
                 open={!!pendingDeleteAction}

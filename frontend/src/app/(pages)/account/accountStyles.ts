@@ -2,13 +2,13 @@ import { cn } from "@/lib/utils";
 
 export const accountGlassInputClassName = cn(
     "rounded-lg px-3 text-gray-900 placeholder:text-gray-400",
-    "border border-transparent bg-gray-100 shadow-none",
+    "border border-gray-200 bg-gray-50 shadow-none",
     "focus-visible:border-gray-200 focus-visible:ring-2 focus-visible:ring-gray-300/45",
     "disabled:cursor-not-allowed disabled:text-gray-700 disabled:opacity-100 disabled:placeholder:text-gray-600",
 );
 
 export const accountGlassSectionClassName =
-    "overflow-hidden rounded-xl bg-white";
+    "overflow-hidden rounded-xl border border-white/70 bg-white/55 shadow-[0_3px_9px_rgba(15,23,42,0.03),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-4px_9px_rgba(255,255,255,0.05)] backdrop-blur-2xl";
 
 export const accountGlassButtonClassName = cn(
     "rounded-lg border border-transparent bg-transparent px-3 text-gray-700 shadow-none transition-colors hover:bg-gray-100 hover:text-gray-950 active:bg-gray-200",

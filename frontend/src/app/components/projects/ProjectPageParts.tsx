@@ -18,8 +18,9 @@ import type { Project } from "@/app/components/shared/types";
 import type { DocumentVersion } from "@/app/lib/mikeApi";
 import { RowActions } from "@/app/components/shared/RowActions";
 import { HeaderActionsMenu } from "@/app/components/shared/HeaderActionsMenu";
+import { TABLE_PRIMARY_CELL_WIDTH_CLASS } from "@/app/components/shared/TablePrimitive";
 
-export type ProjectTab = "documents" | "assistant" | "reviews";
+export type ProjectWorkspaceSection = "documents" | "assistant" | "reviews";
 
 export type ProjectContextMenu = {
     x: number;
@@ -29,7 +30,7 @@ export type ProjectContextMenu = {
     showFolderActions: boolean;
 };
 
-export const NAME_COL_W = "w-[332px] shrink-0";
+export const NAME_COL_W = TABLE_PRIMARY_CELL_WIDTH_CLASS;
 export const DOC_NAME_COL_W =
     "w-[292px] sm:w-[332px] md:w-[392px] lg:w-[452px] xl:w-[532px] 2xl:w-[592px] shrink-0";
 
@@ -422,8 +423,6 @@ export function ProjectPageHeader({
                           }),
                 },
             ]}
-            align="start"
-            actionGap="lg"
             actionGroups={[
                 [
                     {
@@ -465,12 +464,10 @@ export function ProjectPageHeader({
                     },
                 ],
                 {
-                    gap: "xs",
                     actions: [
                         {
                             onClick: onNewChat,
                             disabled: creatingChat,
-                            compact: true,
                             icon: creatingChat ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
@@ -485,7 +482,6 @@ export function ProjectPageHeader({
                         {
                             onClick: onNewReview,
                             disabled: docsCount === 0 || creatingReview,
-                            compact: true,
                             icon: creatingReview ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (

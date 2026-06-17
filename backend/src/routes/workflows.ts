@@ -41,53 +41,6 @@ function withWorkflowAccess<T extends Record<string, unknown>>(
   };
 }
 
-async function loadSharerNames(
-  db: Db,
-  sharerIds: string[],
-): Promise<Map<string, string>> {
-  const uniqueIds = [...new Set(sharerIds.filter(Boolean))];
-  const names = new Map<string, string>();
-  if (uniqueIds.length === 0) return names;
-
-  try {
-    const { data: profiles, error } = await db
-      .from("user_profiles")
-      .select("user_id, display_name")
-      .in("user_id", uniqueIds);
-
-    if (error) {
-      console.warn("[workflows] failed to load sharer profiles", error);
-    } else {
-      for (const profile of profiles ?? []) {
-        if (profile.user_id && profile.display_name) {
-          names.set(profile.user_id, profile.display_name);
-        }
-      }
-    }
-  } catch (err) {
-    console.warn("[workflows] sharer profile lookup threw", err);
-  }
-
-  const missingIds = uniqueIds.filter((id) => !names.has(id));
-  const results = await Promise.allSettled(
-    missingIds.map(async (id) => {
-      const { data, error } = await db.auth.admin.getUserById(id);
-      if (error) throw error;
-      return { id, email: data.user?.email ?? null };
-    }),
-  );
-
-  for (const result of results) {
-    if (result.status === "fulfilled" && result.value.email) {
-      names.set(result.value.id, result.value.email);
-    } else if (result.status === "rejected") {
-      console.warn("[workflows] failed to load sharer email", result.reason);
-    }
-  }
-
-  return names;
-}
-
 async function resolveWorkflowAccess(
   workflowId: string,
   userId: string,
@@ -122,56 +75,18 @@ async function resolveWorkflowAccess(
 // GET /workflows
 workflowsRouter.get("/", requireAuth, asyncRoute(async (req, res) => {
   const userId = res.locals.userId as string;
-  const userEmail = res.locals.userEmail as string;
+  const userEmail = res.locals.userEmail as string | undefined;
   const { type } = req.query as { type?: string };
   const db = createServerSupabase();
 
-  // Own workflows
-  let ownQuery = db
-    .from("workflows")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("is_system", false)
-    .order("created_at", { ascending: false });
-  if (type) ownQuery = ownQuery.eq("type", type);
-  const { data: own, error: ownErr } = await ownQuery;
-  if (ownErr) return void res.status(500).json({ detail: ownErr.message });
+  const { data, error } = await db.rpc("get_workflows_overview", {
+    p_user_id: userId,
+    p_user_email: userEmail ?? null,
+    p_type: typeof type === "string" && type ? type : null,
+  });
+  if (error) return void res.status(500).json({ detail: error.message });
 
-  // Shared workflows (where the current user's email appears in workflow_shares)
-  const normalizedUserEmail = userEmail.trim().toLowerCase();
-  const { data: shares } = await db
-    .from("workflow_shares")
-    .select("workflow_id, shared_by_user_id, allow_edit")
-    .eq("shared_with_email", normalizedUserEmail);
-
-  let sharedWorkflows: Record<string, unknown>[] = [];
-  if (shares && shares.length > 0) {
-    const sharedIds = shares.map((s) => s.workflow_id);
-    let sharedQuery = db.from("workflows").select("*").in("id", sharedIds);
-    if (type) sharedQuery = sharedQuery.eq("type", type);
-    const { data: wfs } = await sharedQuery;
-
-    if (wfs && wfs.length > 0) {
-      const sharerIds = [...new Set(shares.map((s) => s.shared_by_user_id).filter(Boolean))];
-      const sharerNames = await loadSharerNames(db, sharerIds);
-
-      sharedWorkflows = wfs.map((wf) => {
-        const share = shares.find((s) => s.workflow_id === wf.id);
-        const sharerId = share?.shared_by_user_id;
-        const shared_by_name = sharerId ? sharerNames.get(sharerId) ?? null : null;
-        return withWorkflowAccess(wf, {
-          allowEdit: !!share?.allow_edit,
-          isOwner: false,
-          sharedByName: shared_by_name,
-        });
-      });
-    }
-  }
-
-  const ownWithFlag = (own ?? []).map((wf) =>
-    withWorkflowAccess(wf, { allowEdit: true, isOwner: true }),
-  );
-  res.json([...ownWithFlag, ...sharedWorkflows]);
+  res.json(data ?? []);
 }));
 
 // POST /workflows

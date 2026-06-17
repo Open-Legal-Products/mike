@@ -13,6 +13,12 @@ const authGlassCardClassName =
     "rounded-2xl border border-white/70 bg-white/72 p-8 shadow-[0_4px_14px_rgba(15,23,42,0.045),inset_0_1px_0_rgba(255,255,255,0.86),inset_0_-8px_18px_rgba(255,255,255,0.12)] backdrop-blur-2xl";
 const authInputClassName =
     "rounded-lg border border-transparent bg-gray-100 px-3 shadow-none focus-visible:border-gray-200 focus-visible:ring-2 focus-visible:ring-gray-300/45";
+const authToggleClassName =
+    "flex gap-1 rounded-full bg-gray-200 p-1 text-xs font-medium";
+const authToggleActiveClassName =
+    "inline-flex h-6 items-center rounded-full border border-white/80 bg-white/86 px-3 text-gray-900 shadow-[0_2px_7px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-3px_7px_rgba(229,231,235,0.32)] backdrop-blur-xl";
+const authToggleInactiveClassName =
+    "inline-flex h-6 items-center rounded-full border border-transparent px-3 text-gray-500 transition-colors hover:bg-white/38 hover:text-gray-900";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -58,16 +64,16 @@ export default function LoginPage() {
                 {/* Login Form */}
                 <div className={`${authGlassCardClassName} mb-4`}>
                     <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-left text-2xl font-serif">
+                        <h2 className="text-left text-2xl font-medium font-serif text-gray-950">
                             Log In
                         </h2>
-                        <div className="bg-gray-200/70 p-1 rounded-lg flex text-xs font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.65),inset_0_-3px_8px_rgba(148,163,184,0.16)] backdrop-blur-xl">
-                            <span className="text-gray-700 px-3 py-1 bg-white/85 rounded-md shadow-[0_1px_4px_rgba(15,23,42,0.06)]">
+                        <div className={authToggleClassName}>
+                            <span className={authToggleActiveClassName}>
                                 Log in
                             </span>
                             <Link
                                 href="/signup"
-                                className="px-3 py-1 text-gray-500 hover:text-gray-900"
+                                className={authToggleInactiveClassName}
                             >
                                 Sign up
                             </Link>
@@ -125,12 +131,6 @@ export default function LoginPage() {
                         </Button>
                     </form>
                 </div>
-                <p className="text-center text-xs text-gray-500 leading-relaxed px-2">
-                    Mike hosted on MikeOSS.com is currently a demo service.
-                    Please do not upload, submit, or store sensitive,
-                    confidential, privileged, client, or personally
-                    identifiable documents.
-                </p>
             </div>
         </div>
     );

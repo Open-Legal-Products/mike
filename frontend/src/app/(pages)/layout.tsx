@@ -124,7 +124,7 @@ export default function MikeLayout({
                                         className="ml-auto flex min-w-0 flex-1 items-center justify-end"
                                     />
                                 </div>
-                                <main className="flex-1 overflow-y-auto md:overflow-hidden w-full h-full">
+                                <main className="flex h-full w-full flex-1 flex-col overflow-y-auto md:overflow-hidden">
                                     {children}
                                 </main>
                             </div>

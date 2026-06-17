@@ -12,8 +12,8 @@ import { isMfaRequiredError } from "@/app/lib/mikeApi";
 import {
     accountGlassIconButtonClassName,
     accountGlassInputClassName,
-    accountGlassSectionClassName,
 } from "../accountStyles";
+import { AccountSection } from "../AccountSection";
 
 const MODEL_API_KEY_FIELDS = [
     {
@@ -61,7 +61,7 @@ export default function ApiKeysPage() {
                 your API keys into the .env file if you are running your own
                 instance of Mike. All API keys are encrypted in storage.
             </p>
-            <div className={accountGlassSectionClassName}>
+            <AccountSection>
                 {MODEL_API_KEY_FIELDS.map((field, index) => (
                     <div key={field.provider}>
                         <ApiKeyField
@@ -87,9 +87,9 @@ export default function ApiKeysPage() {
                         )}
                     </div>
                 ))}
-            </div>
+            </AccountSection>
 
-            <div className={`mt-8 ${accountGlassSectionClassName}`}>
+            <AccountSection className="mt-8">
                 {OTHER_API_KEY_FIELDS.map((field) => (
                     <ApiKeyField
                         key={field.provider}
@@ -108,7 +108,7 @@ export default function ApiKeysPage() {
                         onRemove={() => updateApiKey(field.provider, null)}
                     />
                 ))}
-            </div>
+            </AccountSection>
         </div>
     );
 }

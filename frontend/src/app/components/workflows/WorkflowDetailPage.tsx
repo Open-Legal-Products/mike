@@ -266,7 +266,6 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
             {/* Page header */}
             <PageHeader
                 shrink
-                actionGap="md"
                 breadcrumbs={[
                     {
                         label: "Workflows",

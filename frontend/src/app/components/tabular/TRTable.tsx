@@ -9,6 +9,11 @@ import type {
 } from "../shared/types";
 import { TabularCell as TabularCellComponent } from "./TabularCell";
 import { TREditColumnMenu } from "./TREditColumnMenu";
+import {
+    TABLE_CHECKBOX_CLASS,
+    SkeletonDot,
+    SkeletonLine,
+} from "../shared/TablePrimitive";
 
 const SKELETON_COLS = 4;
 const SKELETON_ROWS = 5;
@@ -72,6 +77,8 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
     const sortedColumns = [...columns].sort((a, b) => a.index - b.index);
     const totalContentWidth =
         DOC_COL_W_PX + sortedColumns.length * DATA_COL_W_PX + 32;
+    const skeletonContentWidth =
+        DOC_COL_W_PX + SKELETON_COLS * DATA_COL_W_PX + 32;
 
     useImperativeHandle(ref, () => ({
         scrollToCell(colIdx: number, rowIdx: number) {
@@ -130,41 +137,48 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
 
     if (loading) {
         return (
-            <div className="flex-1 overflow-hidden">
+            <div className="flex flex-1 flex-col overflow-hidden">
                 {/* Header */}
-                <div className="flex border-b border-gray-200">
+                <div
+                    className={`flex h-8 ${stickyCellBg}`}
+                    style={{ minWidth: skeletonContentWidth }}
+                >
                     <div
-                        className={`${DOC_COL_W} flex items-center gap-4 border-r border-gray-200 py-2 pl-4 pr-2 text-xs font-medium text-gray-500`}
+                        className={`${DOC_COL_W} flex items-center gap-4 border-b border-r border-gray-200 py-2 pl-4 pr-2 text-xs font-medium text-gray-500`}
                     >
-                        <div className="h-2.5 w-2.5 shrink-0 rounded bg-gray-100 animate-pulse" />
+                        <SkeletonDot />
                         <span>Document</span>
                     </div>
                     {Array.from({ length: SKELETON_COLS }).map((_, i) => (
                         <div
                             key={i}
-                            className={`${COL_W} border-r border-gray-200 p-2`}
+                            className={`${COL_W} flex items-center border-b border-r border-gray-200 p-2`}
                         >
-                            <div className="h-4 w-28 rounded bg-gray-100 animate-pulse" />
+                            <SkeletonLine className="h-4 w-28" />
                         </div>
                     ))}
-                    <div className="flex-1" />
+                    <div className="flex-1 border-b border-gray-200 min-w-8" />
                 </div>
                 {/* Rows */}
                 {Array.from({ length: SKELETON_ROWS }).map((_, row) => (
                     <div
                         key={row}
-                        className={`flex border-b border-gray-50 ${row % 2 === 0 ? "" : "bg-gray-50/50"}`}
+                        className={`flex h-10 ${row % 2 === 0 ? stickyCellBg : "bg-gray-50"}`}
+                        style={{ minWidth: skeletonContentWidth }}
                     >
-                        <div className={`${DOC_COL_W} flex items-center gap-4 py-2 pl-4 pr-2`}>
-                            <div className="h-2.5 w-2.5 shrink-0 rounded bg-gray-100 animate-pulse" />
-                            <div className="h-4 w-32 rounded bg-gray-100 animate-pulse" />
+                        <div className={`${DOC_COL_W} flex items-center gap-4 border-b border-r border-gray-200 py-2 pl-4 pr-2`}>
+                            <SkeletonDot />
+                            <SkeletonLine className="h-4 w-32" />
                         </div>
                         {Array.from({ length: SKELETON_COLS }).map((_, col) => (
-                            <div key={col} className={`${COL_W} p-2`}>
-                                <div className="h-4 rounded bg-gray-100 animate-pulse" />
+                            <div
+                                key={col}
+                                className={`${COL_W} flex items-center border-b border-r border-gray-200 p-2`}
+                            >
+                                <SkeletonLine className="h-4" />
                             </div>
                         ))}
-                        <div className="flex-1" />
+                        <div className="flex-1 border-b border-gray-200 min-w-8" />
                     </div>
                 ))}
             </div>
@@ -239,7 +253,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                             if (el) el.indeterminate = someSelected;
                         }}
                         onChange={toggleAll}
-                        className="h-2.5 w-2.5 rounded border-gray-200 cursor-pointer accent-black"
+                        className={TABLE_CHECKBOX_CLASS}
                     />
                     <span>Document</span>
                 </div>
@@ -278,7 +292,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                 {uploadingFilenames.map((filename) => (
                     <div
                         key={`uploading-${filename}`}
-                        className="flex"
+                        className="flex h-10"
                         style={{ minWidth: totalContentWidth }}
                     >
                         <div
@@ -299,7 +313,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                                 key={col.index}
                                 className={`${COL_W} border-b border-r border-gray-200 p-2`}
                             >
-                                <div className="h-4 w-20 rounded bg-gray-100 animate-pulse" />
+                                <SkeletonLine className="h-4 w-20" />
                             </div>
                         ))}
                         <div className="flex-1 border-b border-gray-200 min-h-8 min-w-8" />
@@ -324,7 +338,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                                     type="checkbox"
                                     checked={selectedDocIds.includes(doc.id)}
                                     onChange={() => toggleDoc(doc.id)}
-                                    className="h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-pointer accent-black"
+                                    className={TABLE_CHECKBOX_CLASS}
                                 />
                                 <span
                                     className="line-clamp-1"

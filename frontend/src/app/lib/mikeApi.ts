@@ -288,6 +288,120 @@ export async function saveApiKey(
     });
 }
 
+export interface McpToolSummary {
+    id: string;
+    toolName: string;
+    openaiToolName: string;
+    title: string | null;
+    description: string | null;
+    enabled: boolean;
+    readOnly: boolean;
+    destructive: boolean;
+    requiresConfirmation: boolean;
+    lastSeenAt: string;
+}
+
+export interface McpConnectorSummary {
+    id: string;
+    name: string;
+    transport: "streamable_http";
+    serverUrl: string;
+    authType: "none" | "bearer" | "oauth";
+    enabled: boolean;
+    hasAuthConfig: boolean;
+    customHeaderKeys: string[];
+    oauthConnected: boolean;
+    toolPolicy: Record<string, unknown>;
+    tools: McpToolSummary[];
+    toolCount: number;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export async function listMcpConnectors(): Promise<McpConnectorSummary[]> {
+    return apiRequest<McpConnectorSummary[]>("/user/mcp-connectors");
+}
+
+export async function getMcpConnector(
+    connectorId: string,
+): Promise<McpConnectorSummary> {
+    return apiRequest<McpConnectorSummary>(
+        `/user/mcp-connectors/${connectorId}`,
+    );
+}
+
+export async function createMcpConnector(payload: {
+    name: string;
+    serverUrl: string;
+    bearerToken?: string | null;
+    headers?: Record<string, string>;
+}): Promise<McpConnectorSummary> {
+    return apiRequest<McpConnectorSummary>("/user/mcp-connectors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function updateMcpConnector(
+    connectorId: string,
+    payload: {
+        name?: string;
+        serverUrl?: string;
+        enabled?: boolean;
+        bearerToken?: string | null;
+        headers?: Record<string, string>;
+    },
+): Promise<McpConnectorSummary> {
+    return apiRequest<McpConnectorSummary>(
+        `/user/mcp-connectors/${connectorId}`,
+        {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        },
+    );
+}
+
+export async function deleteMcpConnector(connectorId: string): Promise<void> {
+    return apiRequest<void>(`/user/mcp-connectors/${connectorId}`, {
+        method: "DELETE",
+    });
+}
+
+export async function refreshMcpConnectorTools(
+    connectorId: string,
+): Promise<McpConnectorSummary> {
+    return apiRequest<McpConnectorSummary>(
+        `/user/mcp-connectors/${connectorId}/refresh-tools`,
+        { method: "POST" },
+    );
+}
+
+export async function startMcpConnectorOAuth(
+    connectorId: string,
+): Promise<{ authorizationUrl: string | null; alreadyAuthorized: boolean }> {
+    return apiRequest<{ authorizationUrl: string | null; alreadyAuthorized: boolean }>(
+        `/user/mcp-connectors/${connectorId}/oauth/start`,
+        { method: "POST" },
+    );
+}
+
+export async function setMcpToolEnabled(
+    connectorId: string,
+    toolId: string,
+    enabled: boolean,
+): Promise<McpConnectorSummary> {
+    return apiRequest<McpConnectorSummary>(
+        `/user/mcp-connectors/${connectorId}/tools/${toolId}`,
+        {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled }),
+        },
+    );
+}
+
 export async function getProject(projectId: string): Promise<Project> {
     return apiRequest<Project>(`/projects/${projectId}`);
 }

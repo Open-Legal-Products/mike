@@ -9,7 +9,7 @@ Website: [mikeoss.com](https://mikeoss.com)
 - `frontend/` - Next.js application
 - `backend/` - Express API, Supabase access, document processing, and database schema
 - `backend/schema.sql` - Supabase schema for fresh databases
-- `backend/oss-migrations/` - OSS-specific migrations that should be applied to existing open-source deployments
+- `backend/migrations/` - dated, incremental schema migrations; on an existing database, apply the files dated after the Mike version you deployed
 
 ## Prerequisites
 
@@ -33,7 +33,7 @@ For a new Supabase database, open the Supabase SQL editor and run:
 
 The schema file is for fresh deployments and already includes the latest database shape.
 
-For an existing database, do not run the full schema file over production data. Apply the relevant incremental files in `backend/oss-migrations/` instead; these capture schema changes for open-source deployments.
+For an existing database, do not run the full schema file over production data. Instead, apply the incremental files in `backend/migrations/`: run the migrations dated **after** the version of Mike you currently have deployed, in filename order. Each file is named `YYYYMMDD_<name>.sql` (the date is also recorded in a comment at the top of the file) and is written to be safe to re-run, so when unsure you can re-apply the most recent migrations without harm.
 
 ## Environment
 
@@ -89,7 +89,7 @@ Mike can use CourtListener for US case law citation verification, case fetching,
 
 To enable live CourtListener access, set `COURTLISTENER_API_TOKEN` in `backend/.env` and restart the backend. Users can also add their own CourtListener token from **Account > Models & API Keys** when the instance does not provide one globally.
 
-Fresh databases created from `backend/schema.sql` already include the CourtListener support tables. Existing OSS deployments should apply the matching migration in `backend/oss-migrations/` before enabling the feature.
+Fresh databases created from `backend/schema.sql` already include the CourtListener support tables. Existing deployments should apply the matching dated migration in `backend/migrations/` before enabling the feature.
 
 Bulk data is optional. When `COURTLISTENER_BULK_DATA_ENABLED=true`, Mike first tries local Supabase/R2 data before falling back to CourtListener's API:
 

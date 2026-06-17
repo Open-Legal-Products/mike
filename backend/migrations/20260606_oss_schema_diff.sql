@@ -1,3 +1,5 @@
+-- Migration date: 2026-06-06
+
 -- OSS migration for the current backend/schema.sql diff.
 --
 -- This brings existing OSS Supabase databases in line with the updated fresh

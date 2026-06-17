@@ -32,7 +32,6 @@ type PageHeaderButtonAction = {
     title?: string;
     variant?: "default" | "danger";
     iconOnly?: boolean;
-    compact?: boolean;
     tooltip?: ReactNode;
 };
 
@@ -72,41 +71,28 @@ export type PageHeaderAction =
     | PageHeaderCustomAction
     | ReactNode;
 
-type PageHeaderActionGap = "xs" | "sm" | "md" | "lg";
 type PageHeaderActionGroup =
     | PageHeaderAction[]
     | {
           actions: PageHeaderAction[];
-          gap?: PageHeaderActionGap;
       };
 
 interface PageHeaderProps {
     children?: ReactNode;
     actions?: PageHeaderAction[];
     actionGroups?: PageHeaderActionGroup[];
-    align?: "center" | "start";
     shrink?: boolean;
     className?: string;
-    actionGap?: PageHeaderActionGap;
     breadcrumbs?: PageHeaderBreadcrumb[];
     loading?: boolean;
 }
-
-const actionGapClassName = {
-    xs: "gap-1",
-    sm: "gap-2.5",
-    md: "gap-2.5",
-    lg: "gap-2.5",
-};
 
 export function PageHeader({
     children,
     actions,
     actionGroups,
-    align = "center",
     shrink = false,
     className,
-    actionGap = "sm",
     breadcrumbs,
     loading = false,
 }: PageHeaderProps) {
@@ -121,19 +107,16 @@ export function PageHeader({
     const actionItems = actions?.filter(Boolean) ?? [];
     const groupedActionItems = (
         actionGroups
-            ?.map((group) => normalizeActionGroup(group, actionGap))
+            ?.map(normalizeActionGroup)
             .filter((group) => group.actions.length > 0) ??
-        (actionItems.length > 0
-            ? [{ actions: actionItems, gap: actionGap }]
-            : [])
+        (actionItems.length > 0 ? [{ actions: actionItems }] : [])
     );
     const hasActions = groupedActionItems.length > 0;
 
     return (
         <div
             className={cn(
-                "flex justify-between",
-                align === "start" ? "items-start" : "items-center",
+                "flex items-center justify-between",
                 "px-4 md:px-10",
                 "min-h-[76px] pb-4 pt-5.5",
                 shrink && "shrink-0",
@@ -170,7 +153,6 @@ function PageHeaderActionGroups({
 }: {
     groupedActionItems: {
         actions: PageHeaderAction[];
-        gap: PageHeaderActionGap;
     }[];
     actionsDisabled: boolean;
 }) {
@@ -180,8 +162,7 @@ function PageHeaderActionGroups({
                 <div
                     key={groupIndex}
                     className={cn(
-                        "flex shrink-0 items-center",
-                        actionGapClassName[group.gap],
+                        "flex shrink-0 items-center gap-2",
                         "rounded-full border border-white/70 bg-white px-1 py-1 shadow-[0_8px_24px_rgba(15,23,42,0.06)] backdrop-blur-2xl",
                     )}
                 >
@@ -199,19 +180,14 @@ function PageHeaderActionGroups({
     );
 }
 
-function normalizeActionGroup(
-    group: PageHeaderActionGroup,
-    fallbackGap: PageHeaderActionGap,
-) {
+function normalizeActionGroup(group: PageHeaderActionGroup) {
     if (Array.isArray(group)) {
         return {
             actions: group.filter(Boolean),
-            gap: fallbackGap,
         };
     }
     return {
         actions: group.actions.filter(Boolean),
-        gap: group.gap ?? fallbackGap,
     };
 }
 
@@ -299,7 +275,6 @@ function PageHeaderButtonActionControl({
                 aria-label={action.title}
                 variant={action.variant}
                 iconOnly={iconOnly}
-                compact={action.compact}
             >
                 {action.icon}
                 {action.label}
@@ -430,13 +405,11 @@ type PageHeaderActionButtonProps = Omit<
 > & {
     variant?: "default" | "danger";
     iconOnly?: boolean;
-    compact?: boolean;
 };
 
 type PageHeaderActionControlClassNameOptions = {
     variant?: "default" | "danger";
     iconOnly?: boolean;
-    compact?: boolean;
     disabled?: boolean;
     className?: string;
 };
@@ -444,13 +417,14 @@ type PageHeaderActionControlClassNameOptions = {
 function pageHeaderActionControlClassName({
     variant = "default",
     iconOnly = false,
-    compact = false,
     disabled = false,
     className,
 }: PageHeaderActionControlClassNameOptions = {}) {
     return cn(
         "flex h-7 items-center justify-center rounded-full text-sm transition-colors hover:bg-gray-100 active:bg-gray-100 disabled:cursor-default disabled:text-gray-300 disabled:hover:bg-transparent disabled:hover:text-gray-300",
-        iconOnly ? "w-7" : compact ? "gap-1.5 px-2" : "gap-1.5 px-3",
+        iconOnly
+            ? "w-7"
+            : "w-7 gap-1.5 px-0 sm:w-auto sm:px-3",
         disabled ? "cursor-default" : "cursor-pointer",
         "hover:bg-gray-100 active:bg-gray-100",
         variant === "danger"
@@ -464,7 +438,6 @@ function PageHeaderActionButton({
     children,
     variant = "default",
     iconOnly = false,
-    compact = false,
     disabled,
     ...props
 }: PageHeaderActionButtonProps) {
@@ -474,7 +447,6 @@ function PageHeaderActionButton({
             className={pageHeaderActionControlClassName({
                 variant,
                 iconOnly,
-                compact,
                 disabled,
             })}
             {...props}

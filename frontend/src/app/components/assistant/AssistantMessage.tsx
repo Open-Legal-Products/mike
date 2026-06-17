@@ -50,6 +50,7 @@ function toolCallLabel(name: string, displayName?: string | null): string {
     if (name === "courtlistener_read_case") return "Reading case...";
     if (name === "courtlistener_verify_citations")
         return "Verifying citations...";
+    if (name.startsWith("mcp_")) return "Using connector...";
     return name ? `Running ${name}...` : "Working...";
 }
 
@@ -1931,6 +1932,41 @@ export function AssistantMessage({
                     )}
                     <div className="w-1.5 h-1.5 rounded-full border border-gray-400 border-t-transparent animate-spin shrink-0" />
                     <span className="ml-2">Thinking...</span>
+                </div>
+            );
+        }
+        if (event.type === "mcp_tool_call") {
+            const isError = event.status === "error";
+            const label = event.connector_name
+                ? `${event.connector_name}: ${event.tool_name}`
+                : toolCallLabel(event.openai_tool_name);
+            return (
+                <div
+                    key={globalIdx}
+                    className="flex items-start text-sm font-serif text-gray-500 relative"
+                >
+                    {showConnector && (
+                        <div className="absolute bottom-0 w-[1px] bg-gray-300 top-[13px] left-[2.5px] h-[calc(100%+11px)]" />
+                    )}
+                    <div
+                        className={
+                            event.isStreaming
+                                ? "mt-[7px] h-1.5 w-1.5 shrink-0 animate-spin rounded-full border border-gray-400 border-t-transparent"
+                                : isError
+                                  ? "mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-red-500"
+                                  : "mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-gray-400"
+                        }
+                    />
+                    <div className="ml-2 min-w-0">
+                        <span className="font-medium">
+                            {event.isStreaming ? "Using connector..." : label}
+                        </span>
+                        {isError && event.error && (
+                            <p className="mt-0.5 text-xs text-red-600">
+                                {event.error}
+                            </p>
+                        )}
+                    </div>
                 </div>
             );
         }

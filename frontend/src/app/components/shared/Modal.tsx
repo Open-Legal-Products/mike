@@ -22,6 +22,7 @@ interface ModalProps {
     breadcrumbs?: ReactNode[];
     title?: ReactNode;
     icon?: ReactNode;
+    headerAction?: ReactNode;
     size?: ModalSize;
     className?: string;
     footerInfo?: ReactNode;
@@ -45,6 +46,7 @@ export function Modal({
     breadcrumbs,
     title,
     icon,
+    headerAction,
     size = "lg",
     className,
     footerInfo,
@@ -77,7 +79,7 @@ export function Modal({
         >
             <div
                 className={cn(
-                    "w-full rounded-2xl flex h-[600px] flex-col",
+                    "w-full rounded-3xl flex h-[600px] flex-col",
                     sizeClassName[size],
                     "border border-white/70 bg-white/94 shadow-[0_12px_36px_rgba(15,23,42,0.1)] backdrop-blur-2xl",
                     className,
@@ -87,25 +89,31 @@ export function Modal({
                 {hasHeader && (
                     <div className="flex items-start justify-between gap-3 px-4 py-4">
                         {breadcrumbs?.length ? (
-                            <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-gray-400">
-                                {breadcrumbs.map((segment, index) => (
-                                    <span
-                                        key={index}
-                                        className="flex items-center gap-1.5"
-                                    >
-                                        {index > 0 && <span>›</span>}
-                                        <span className="truncate">
-                                            {segment}
+                            <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                                <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-gray-400">
+                                    {breadcrumbs.map((segment, index) => (
+                                        <span
+                                            key={index}
+                                            className="flex items-center gap-1.5"
+                                        >
+                                            {index > 0 && <span>›</span>}
+                                            <span className="truncate">
+                                                {segment}
+                                            </span>
                                         </span>
-                                    </span>
-                                ))}
+                                    ))}
+                                </div>
+                                {headerAction}
                             </div>
                         ) : (
-                            <div className="flex min-w-0 items-center gap-2">
-                                {icon}
-                                <h2 className="truncate text-base font-medium text-gray-900">
-                                    {title}
-                                </h2>
+                            <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                                <div className="flex min-w-0 items-center gap-2">
+                                    {icon}
+                                    <h2 className="truncate text-base font-medium text-gray-900">
+                                        {title}
+                                    </h2>
+                                </div>
+                                {headerAction}
                             </div>
                         )}
                         <button
@@ -186,9 +194,10 @@ function ModalActionButton({
                     "rounded-full border border-gray-700/40 bg-gray-950/88 text-white shadow-[0_3px_9px_rgba(15,23,42,0.16),inset_0_1px_0_rgba(255,255,255,0.22),inset_0_-4px_9px_rgba(15,23,42,0.2)] backdrop-blur-xl hover:bg-gray-900/90 active:scale-[0.98] disabled:active:scale-100",
                 variant === "secondary" && "text-gray-600 hover:text-gray-950",
                 fallbackVariant === "secondary" &&
+                    variant === "secondary" &&
                     "rounded-full border border-blue-500/35 bg-blue-600/90 text-white shadow-[0_3px_9px_rgba(37,99,235,0.16),inset_0_1px_0_rgba(255,255,255,0.28),inset_0_-4px_9px_rgba(29,78,216,0.2)] backdrop-blur-xl hover:bg-blue-600 hover:text-white active:scale-[0.98] disabled:active:scale-100",
                 variant === "danger" &&
-                    "rounded-full border border-red-700/35 bg-red-600/90 text-white shadow-[0_3px_9px_rgba(127,29,29,0.16),inset_0_1px_0_rgba(255,255,255,0.22),inset_0_-4px_9px_rgba(127,29,29,0.18)] backdrop-blur-xl hover:bg-red-600 active:scale-[0.98] disabled:active:scale-100",
+                    "px-1 text-red-600 hover:text-red-700 active:scale-[0.98] disabled:active:scale-100",
             )}
             {...props}
         >

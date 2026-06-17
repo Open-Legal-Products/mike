@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
     ChevronDown,
-    ChevronLeft,
     MessageSquare,
     Search,
     Table2,
@@ -16,6 +15,7 @@ import { formatIcon, formatLabel } from "../tabular/columnFormat";
 import { TAG_COLORS } from "../tabular/pillUtils";
 
 type WorkflowPreviewMode = "auto" | "prompt" | "columns";
+type MobilePickerPane = "list" | "details";
 
 interface WorkflowPickerContentProps {
     workflows: Workflow[];
@@ -47,11 +47,18 @@ export function WorkflowPickerContent({
     allowClearPreview = true,
 }: WorkflowPickerContentProps) {
     const selectedRowRef = useRef<HTMLButtonElement>(null);
+    const [mobilePane, setMobilePane] = useState<MobilePickerPane>(
+        selected ? "details" : "list",
+    );
 
     useEffect(() => {
         if (selectedRowRef.current) {
             selectedRowRef.current.scrollIntoView({ block: "nearest" });
         }
+    }, [selected?.id]);
+
+    useEffect(() => {
+        setMobilePane(selected ? "details" : "list");
     }, [selected?.id]);
 
     const normalizedSearch = search.trim().toLowerCase();
@@ -74,13 +81,23 @@ export function WorkflowPickerContent({
             : workflowType === "all"
               ? "No workflows found"
               : `No ${workflowType} workflows found`);
+    const handleSelectWorkflow = (workflow: Workflow | null) => {
+        onSelect(workflow);
+        setMobilePane(workflow ? "details" : "list");
+    };
+    const handleClearPreview = () => {
+        onSelect(null);
+        setMobilePane("list");
+    };
 
     return (
-        <div className="flex min-h-0 flex-1 flex-row gap-3 overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden md:flex-row">
             <div
-                className={`flex flex-col overflow-hidden ${selected ? "w-80 shrink-0" : "flex-1"}`}
+                className={`min-h-0 flex-1 flex-col overflow-hidden ${
+                    selected ? "md:w-80 md:flex-none md:shrink-0" : ""
+                } ${mobilePane === "details" && selected ? "hidden md:flex" : "flex"}`}
             >
-                <div className="shrink-0 px-2 pb-2 pt-3">
+                <div className="shrink-0 pb-2 pt-3">
                     <div className="flex h-9 items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3">
                         <Search className="h-3.5 w-3.5 shrink-0 text-gray-400" />
                         <input
@@ -104,80 +121,90 @@ export function WorkflowPickerContent({
                     </div>
                 </div>
 
-                {loading ? (
-                    <div className="space-y-1">
-                        {[60, 45, 75, 50, 65, 40, 55].map((width, index) => (
-                            <div
-                                key={index}
-                                className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5"
-                            >
-                                <div
-                                    className="h-3 animate-pulse rounded bg-gray-100"
-                                    style={{ width: `${width}%` }}
-                                />
-                                <div className="h-3 w-10 shrink-0 animate-pulse rounded bg-gray-100" />
-                            </div>
-                        ))}
-                    </div>
-                ) : filteredWorkflows.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-gray-400">
-                        {resolvedEmptyMessage}
-                    </p>
-                ) : (
-                    <div className="space-y-1 overflow-y-auto">
-                        {filteredWorkflows.map((workflow) => {
-                            const disabled = disabledWorkflow?.(workflow) ?? false;
-                            const isSelected = selected?.id === workflow.id;
-                            const TypeIcon =
-                                workflow.type === "tabular"
-                                    ? Table2
-                                    : MessageSquare;
-                            return (
-                                <button
-                                    key={workflow.id}
-                                    ref={isSelected ? selectedRowRef : null}
-                                    type="button"
-                                    disabled={disabled}
-                                    onClick={() =>
-                                        onSelect(isSelected ? null : workflow)
-                                    }
-                                    className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-xs transition-colors ${
-                                        isSelected
-                                            ? "bg-gray-100 text-gray-900"
-                                            : "hover:bg-gray-50"
-                                    } ${disabled ? "cursor-not-allowed opacity-45" : ""}`}
-                                >
-                                    <span
-                                        className={`flex-1 truncate ${
-                                            isSelected
-                                                ? "font-medium text-gray-900"
-                                                : "text-gray-700"
-                                        }`}
+                <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-gray-200 bg-white">
+                    {loading ? (
+                        <div>
+                            {[60, 45, 75, 50, 65, 40, 55].map(
+                                (width, index) => (
+                                    <div
+                                        key={index}
+                                        className="flex items-center justify-between gap-3 px-3 py-2.5"
                                     >
-                                        {workflow.title}
-                                    </span>
-                                    {showTypeIcon ? (
-                                        <TypeIcon className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                                    ) : (
-                                        <span className="shrink-0 text-xs text-gray-400">
-                                            {workflow.is_system
-                                                ? "Built-in"
-                                                : "Custom"}
+                                        <div
+                                            className="h-3 animate-pulse rounded bg-gray-100"
+                                            style={{ width: `${width}%` }}
+                                        />
+                                        <div className="h-3 w-10 shrink-0 animate-pulse rounded bg-gray-100" />
+                                    </div>
+                                ),
+                            )}
+                        </div>
+                    ) : filteredWorkflows.length === 0 ? (
+                        <p className="py-8 text-center text-sm text-gray-400">
+                            {resolvedEmptyMessage}
+                        </p>
+                    ) : (
+                        <div>
+                            {filteredWorkflows.map((workflow) => {
+                                const disabled =
+                                    disabledWorkflow?.(workflow) ?? false;
+                                const isSelected = selected?.id === workflow.id;
+                                const TypeIcon =
+                                    workflow.type === "tabular"
+                                        ? Table2
+                                        : MessageSquare;
+                                return (
+                                    <button
+                                        key={workflow.id}
+                                        ref={isSelected ? selectedRowRef : null}
+                                        type="button"
+                                        disabled={disabled}
+                                        onClick={() =>
+                                            handleSelectWorkflow(
+                                                isSelected ? null : workflow,
+                                            )
+                                        }
+                                        className={`flex w-full items-center gap-3 px-3 py-2 text-left text-xs transition-colors ${
+                                            isSelected
+                                                ? "bg-gray-50 text-gray-900"
+                                                : "hover:bg-gray-50"
+                                        } ${disabled ? "cursor-not-allowed opacity-45" : ""}`}
+                                    >
+                                        <span
+                                            className={`flex-1 truncate ${
+                                                isSelected
+                                                    ? "font-medium text-gray-900"
+                                                    : "text-gray-700"
+                                            }`}
+                                        >
+                                            {workflow.title}
                                         </span>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </div>
-                )}
+                                        {showTypeIcon ? (
+                                            <TypeIcon className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                                        ) : (
+                                            <span className="shrink-0 text-xs text-gray-400">
+                                                {workflow.is_system
+                                                    ? "Built-in"
+                                                    : "Custom"}
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
             </div>
 
             {selected && (
                 <WorkflowPreview
                     workflow={selected}
                     mode={previewMode}
-                    onClear={() => onSelect(null)}
+                    onClear={handleClearPreview}
                     allowClear={allowClearPreview}
+                    className={
+                        mobilePane === "details" ? "flex" : "hidden md:flex"
+                    }
                 />
             )}
         </div>
@@ -189,11 +216,13 @@ function WorkflowPreview({
     mode,
     onClear,
     allowClear,
+    className = "flex",
 }: {
     workflow: Workflow;
     mode: WorkflowPreviewMode;
     onClear: () => void;
     allowClear: boolean;
+    className?: string;
 }) {
     const resolvedMode =
         mode === "auto"
@@ -202,38 +231,51 @@ function WorkflowPreview({
                 : "prompt"
             : mode;
     return (
-        <div className="flex flex-1 flex-col overflow-hidden">
-            <div className="flex h-14 shrink-0 items-center justify-between pb-2 pt-3">
-                <p className="text-sm font-medium text-gray-700">
-                    Workflow Details
-                </p>
-                {allowClear ? (
-                    <button
-                        type="button"
-                        onClick={onClear}
-                        className="rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
-                    >
-                        <ChevronLeft className="h-3.5 w-3.5" />
-                    </button>
-                ) : null}
+        <div
+            className={`${className} min-h-0 flex-1 flex-col overflow-hidden pt-3`}
+        >
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-gray-200 bg-white">
+                <div className="flex h-10 shrink-0 items-center justify-between border-b border-gray-200 bg-white px-3">
+                    <p className="truncate text-sm font-medium text-gray-700">
+                        {workflow.title}
+                    </p>
+                    {allowClear ? (
+                        <button
+                            type="button"
+                            onClick={onClear}
+                            className="rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </button>
+                    ) : null}
+                </div>
+                {resolvedMode === "columns" ? (
+                    <WorkflowColumnPreview
+                        columns={workflow.columns_config ?? []}
+                    />
+                ) : (
+                    <WorkflowPromptPreview
+                        content={workflow.prompt_md ?? "_No prompt defined._"}
+                    />
+                )}
             </div>
-            {resolvedMode === "columns" ? (
-                <WorkflowColumnPreview columns={workflow.columns_config ?? []} />
-            ) : (
-                <WorkflowPromptPreview
-                    content={workflow.prompt_md ?? "_No prompt defined._"}
-                />
-            )}
         </div>
     );
 }
 
 function WorkflowPromptPreview({ content }: { content: string }) {
+    const previewContent = stripLeadingMarkdownHeading(content);
+
     return (
-        <div className="flex-1 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 px-4 py-3 font-serif text-sm leading-relaxed text-gray-600">
-            <WorkflowPromptMarkdown content={content} />
+        <div className="flex-1 overflow-y-auto bg-gray-50 px-4 py-3 font-serif text-sm leading-relaxed text-gray-600">
+            <WorkflowPromptMarkdown content={previewContent} />
         </div>
     );
+}
+
+function stripLeadingMarkdownHeading(content: string) {
+    const stripped = content.replace(/^\s{0,3}#{1,6}\s+[^\n]+(?:\n+|$)/, "");
+    return stripped.trimStart() || content;
 }
 
 function WorkflowPromptMarkdown({ content }: { content: string }) {
@@ -287,7 +329,7 @@ function WorkflowColumnPreview({ columns }: { columns: ColumnConfig[] }) {
     const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
     const sortedColumns = [...columns].sort((a, b) => a.index - b.index);
     return (
-        <div className="flex-1 overflow-y-auto rounded-md border border-gray-200 bg-gray-50">
+        <div className="flex-1 overflow-y-auto bg-gray-50">
             {sortedColumns.length === 0 ? (
                 <p className="px-4 py-6 text-center text-xs text-gray-400">
                     No columns defined

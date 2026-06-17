@@ -99,61 +99,56 @@ async function attachDocumentOwnerLabels(
   }
 }
 
+async function attachChatCreatorLabels(
+  db: ReturnType<typeof createServerSupabase>,
+  chats: { user_id?: string | null }[],
+) {
+  const creatorIds = chats
+    .map((chat) => chat.user_id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0)
+    .filter((id, index, arr) => arr.indexOf(id) === index);
+  if (creatorIds.length === 0) return;
+
+  const displayNameByUserId = new Map<string, string>();
+  const { data: profiles, error: profilesError } = await db
+    .from("user_profiles")
+    .select("user_id, display_name")
+    .in("user_id", creatorIds);
+  if (profilesError) {
+    console.warn("[projects] failed to load chat creator profiles", profilesError);
+  }
+  for (const profile of profiles ?? []) {
+    const displayName =
+      typeof profile.display_name === "string"
+        ? profile.display_name.trim()
+        : "";
+    if (displayName) {
+      displayNameByUserId.set(profile.user_id as string, displayName);
+    }
+  }
+
+  for (const chat of chats as ({
+    user_id?: string | null;
+    creator_display_name?: string | null;
+  })[]) {
+    if (!chat.user_id) continue;
+    chat.creator_display_name = displayNameByUserId.get(chat.user_id) ?? null;
+  }
+}
+
 // GET /projects
 projectsRouter.get("/", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
-  const userEmail = res.locals.userEmail as string;
+  const userEmail = res.locals.userEmail as string | undefined;
   const db = createServerSupabase();
 
-  const { data: ownProjects, error: ownError } = await db
-    .from("projects")
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
-  if (ownError) return void res.status(500).json({ detail: ownError.message });
+  const { data, error } = await db.rpc("get_projects_overview", {
+    p_user_id: userId,
+    p_user_email: userEmail ?? null,
+  });
+  if (error) return void res.status(500).json({ detail: error.message });
 
-  const { data: sharedProjects, error: sharedError } = userEmail
-    ? await db
-        .from("projects")
-        .select("*")
-        .filter("shared_with", "cs", JSON.stringify([userEmail]))
-        .neq("user_id", userId)
-        .order("created_at", { ascending: false })
-    : { data: [], error: null };
-  if (sharedError)
-    return void res.status(500).json({ detail: sharedError.message });
-
-  const projects = [...(ownProjects ?? []), ...(sharedProjects ?? [])].sort(
-    (a, b) =>
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-  );
-
-  const result = await Promise.all(
-    projects.map(async (p) => {
-      const [docs, chats, reviews] = await Promise.all([
-        db
-          .from("documents")
-          .select("id", { count: "exact", head: true })
-          .eq("project_id", p.id),
-        db
-          .from("chats")
-          .select("id", { count: "exact", head: true })
-          .eq("project_id", p.id),
-        db
-          .from("tabular_reviews")
-          .select("id", { count: "exact", head: true })
-          .eq("project_id", p.id),
-      ]);
-      return {
-        ...p,
-        is_owner: p.user_id === userId,
-        document_count: docs.count ?? 0,
-        chat_count: chats.count ?? 0,
-        review_count: reviews.count ?? 0,
-      };
-    }),
-  );
-  res.json(result);
+  res.json(data ?? []);
 });
 
 // POST /projects
@@ -706,7 +701,9 @@ projectsRouter.get("/:projectId/chats", requireAuth, async (req, res) => {
     .eq("project_id", projectId)
     .order("created_at", { ascending: false });
   if (error) return void res.status(500).json({ detail: error.message });
-  res.json(data ?? []);
+  const chats = data ?? [];
+  await attachChatCreatorLabels(db, chats);
+  res.json(chats);
 });
 
 // ── Folder routes ─────────────────────────────────────────────────────────────

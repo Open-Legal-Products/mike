@@ -24,8 +24,8 @@ import {
 } from "@/app/lib/modelAvailability";
 import {
     accountGlassInputClassName,
-    accountGlassSectionClassName,
 } from "../accountStyles";
+import { AccountSection } from "../AccountSection";
 
 type ModelPreferenceField = "titleModel" | "tabularModel";
 
@@ -79,7 +79,7 @@ export default function ModelPreferencesPage() {
                     Model Preferences
                 </h2>
             </div>
-            <div className={accountGlassSectionClassName}>
+            <AccountSection>
                 <div className="px-4 py-5">
                     <label className="text-sm font-medium text-gray-700 block mb-2">
                         Title generation model
@@ -122,7 +122,7 @@ export default function ModelPreferencesPage() {
                         onChange={(id) => handleModelChange("tabularModel", id)}
                     />
                 </div>
-            </div>
+            </AccountSection>
         </div>
     );
 }

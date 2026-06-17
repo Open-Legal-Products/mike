@@ -339,7 +339,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                 setChatOwnerId(chat.user_id ?? null);
                 if (loaded.length > 0) setMessages(loaded);
             })
-            .catch(() => router.replace(`/projects/${projectId}?tab=assistant`))
+            .catch(() => router.replace(`/projects/${projectId}/assistant`))
             .finally(() => setChatLoaded(true));
     }, [chatId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -589,7 +589,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
         setDeletingChat(true);
         try {
             await deleteChat(chatId);
-            router.push(`/projects/${projectId}?tab=assistant`);
+            router.push(`/projects/${projectId}/assistant`);
         } finally {
             setDeletingChat(false);
         }
@@ -783,14 +783,14 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                         ? {
                               label: project.name,
                               onClick: () =>
-                                  router.push(`/projects/${projectId}?tab=assistant`),
+                                  router.push(`/projects/${projectId}/assistant`),
                               title: "Back to project",
                           }
                         : {
                               loading: true,
                               skeletonClassName: "w-32",
                               onClick: () =>
-                                  router.push(`/projects/${projectId}?tab=assistant`),
+                                  router.push(`/projects/${projectId}/assistant`),
                               title: "Back to project",
                           },
                     chatLoaded

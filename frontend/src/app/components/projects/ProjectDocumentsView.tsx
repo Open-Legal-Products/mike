@@ -1,7 +1,6 @@
 "use client";
 
 import { type DragEvent, useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
 import {
     Upload,
     Loader2,
@@ -13,17 +12,8 @@ import {
     FolderPlus,
 } from "lucide-react";
 import {
-    getProject,
-    deleteProject,
     deleteDocument,
-    createTabularReview,
-    updateProject,
-    listProjectChats,
-    deleteChat,
-    renameChat,
-    listTabularReviews,
-    deleteTabularReview,
-    updateTabularReview,
+    getProject,
     getDocumentUrl,
     downloadDocumentsZip,
     createProjectFolder,
@@ -39,18 +29,12 @@ import {
     deleteDocumentVersion,
     uploadProjectDocument,
     renameDocumentVersion,
-    getProjectPeople,
     type DocumentVersion,
 } from "@/app/lib/mikeApi";
 import type {
     Document,
     Folder as ProjectFolder,
-    Project,
-    Chat,
-    TabularReview,
-    ColumnConfig,
 } from "@/app/components/shared/types";
-import { ToolbarTabs } from "@/app/components/shared/ToolbarTabs";
 import {
     closeRowActionMenus,
     RowActionMenuItems,
@@ -60,14 +44,9 @@ import {
     AddDocumentsModal,
     invalidateDirectoryCache,
 } from "@/app/components/shared/AddDocumentsModal";
-import { PeopleModal } from "@/app/components/shared/PeopleModal";
-import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
 import { useAuth } from "@/contexts/AuthContext";
-import { useUserProfile } from "@/contexts/UserProfileContext";
-import { AddNewTRModal } from "@/app/components/tabular/AddNewTRModal";
 import { WarningPopup } from "@/app/components/shared/WarningPopup";
 import { ConfirmPopup } from "@/app/components/shared/ConfirmPopup";
-import { useChatHistoryContext } from "@/app/contexts/ChatHistoryContext";
 import {
     formatUnsupportedDocumentWarning,
     partitionSupportedDocumentFiles,
@@ -78,19 +57,14 @@ import {
     DocVersionHistory,
     formatBytes,
     formatDate,
-    ProjectPageHeader,
     treeNameCellStyle,
     type ProjectContextMenu,
-    type ProjectTab,
 } from "./ProjectPageParts";
 import { DocumentSidePanel } from "./DocumentSidePanel";
-import { ProjectDetailsModal } from "./ProjectDetailsModal";
-import { ProjectAssistantTab } from "./ProjectAssistantTab";
-import { ProjectReviewsTab } from "./ProjectReviewsTab";
+import { ProjectSectionToolbar, useProjectWorkspace } from "./ProjectWorkspace";
 
 interface Props {
     projectId: string;
-    initialTab?: ProjectTab;
 }
 
 function apiErrorDetail(error: unknown): string | null {
@@ -112,102 +86,10 @@ function apiErrorDetail(error: unknown): string | null {
 }
 
 function ProjectTableLoading({
-    tab,
     stickyCellBg,
 }: {
-    tab: ProjectTab;
     stickyCellBg: string;
 }) {
-    if (tab === "assistant") {
-        return (
-            <>
-                <div className="flex items-center h-8 pr-8 border-b border-gray-200 text-xs text-gray-500 font-medium select-none">
-                    <div
-                        className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${stickyCellBg} flex items-center gap-4 self-stretch pl-4 pr-2 text-left`}
-                    >
-                        <div className="h-2.5 w-2.5 rounded bg-gray-100 animate-pulse" />
-                        <span>Chats</span>
-                    </div>
-                    <div className="ml-auto w-32 shrink-0 text-left">
-                        Created
-                    </div>
-                    <div className="w-8 shrink-0" />
-                </div>
-                {[1, 2, 3, 4, 5].map((i) => (
-                    <div
-                        key={i}
-                        className="flex items-center h-10 pr-8 border-b border-gray-50"
-                    >
-                        <div
-                            className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${stickyCellBg} py-2 pl-4 pr-2`}
-                        >
-                            <div className="flex items-center gap-4">
-                                <div className="h-2.5 w-2.5 shrink-0 rounded bg-gray-100 animate-pulse" />
-                                <div
-                                    className="h-3.5 rounded bg-gray-100 animate-pulse"
-                                    style={{ width: `${44 + i * 7}px` }}
-                                />
-                            </div>
-                        </div>
-                        <div className="ml-auto w-32 shrink-0">
-                            <div className="h-3 w-16 rounded bg-gray-100 animate-pulse" />
-                        </div>
-                        <div className="w-8 shrink-0" />
-                    </div>
-                ))}
-            </>
-        );
-    }
-
-    if (tab === "reviews") {
-        return (
-            <>
-                <div className="flex items-center h-8 pr-8 border-b border-gray-200 text-xs text-gray-500 font-medium select-none">
-                    <div
-                        className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${stickyCellBg} flex items-center gap-4 self-stretch pl-4 pr-2 text-left`}
-                    >
-                        <div className="h-2.5 w-2.5 rounded bg-gray-100 animate-pulse" />
-                        <span>Name</span>
-                    </div>
-                    <div className="ml-auto w-24 shrink-0 text-left">
-                        Columns
-                    </div>
-                    <div className="w-24 shrink-0 text-left">Documents</div>
-                    <div className="w-32 shrink-0 text-left">Created</div>
-                    <div className="w-8 shrink-0" />
-                </div>
-                {[1, 2, 3, 4, 5].map((i) => (
-                    <div
-                        key={i}
-                        className="flex items-center h-10 pr-8 border-b border-gray-50"
-                    >
-                        <div
-                            className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${stickyCellBg} py-2 pl-4 pr-2`}
-                        >
-                            <div className="flex items-center gap-4">
-                                <div className="h-2.5 w-2.5 shrink-0 rounded bg-gray-100 animate-pulse" />
-                                <div
-                                    className="h-3.5 rounded bg-gray-100 animate-pulse"
-                                    style={{ width: `${180 + i * 18}px` }}
-                                />
-                            </div>
-                        </div>
-                        <div className="ml-auto w-24 shrink-0">
-                            <div className="h-3 w-8 rounded bg-gray-100 animate-pulse" />
-                        </div>
-                        <div className="w-24 shrink-0">
-                            <div className="h-3 w-8 rounded bg-gray-100 animate-pulse" />
-                        </div>
-                        <div className="w-32 shrink-0">
-                            <div className="h-3 w-16 rounded bg-gray-100 animate-pulse" />
-                        </div>
-                        <div className="w-8 shrink-0" />
-                    </div>
-                ))}
-            </>
-        );
-    }
-
     return (
         <div className="flex-1 flex flex-col min-h-0">
             <div className="flex items-center h-8 pr-8 border-b border-gray-200 text-xs text-gray-500 font-medium select-none shrink-0">
@@ -262,38 +144,28 @@ function ProjectTableLoading({
     );
 }
 
-export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
-    const [project, setProject] = useState<Project | null>(null);
-    const [folders, setFolders] = useState<ProjectFolder[]>([]);
-    const [chats, setChats] = useState<Chat[]>([]);
-    const [projectReviews, setProjectReviews] = useState<TabularReview[]>([]);
-    const [loading, setLoading] = useState(true);
-    const searchParams = useSearchParams();
-    const tabParam = searchParams.get("tab");
-    const tab: ProjectTab =
-        tabParam === "assistant" || tabParam === "reviews"
-            ? tabParam
-            : initialTab;
+export function ProjectDocumentsView({ projectId }: Props) {
+    const workspace = useProjectWorkspace();
+    const project = workspace.project;
+    const setProject = workspace.setProject;
+    const folders = workspace.folders;
+    const setFolders = workspace.setFolders;
+    const loading = workspace.projectLoading;
+    const prefetchProjectSections = workspace.prefetchProjectSections;
     const [addDocsOpen, setAddDocsOpen] = useState(false);
-    const [peopleModalOpen, setPeopleModalOpen] = useState(false);
-    const [projectDetailsOpen, setProjectDetailsOpen] = useState(false);
-    const [ownerOnlyAction, setOwnerOnlyAction] = useState<string | null>(null);
+    const setOwnerOnlyAction = workspace.setOwnerOnlyAction;
     const { user } = useAuth();
-    const { profile } = useUserProfile();
     const stickyCellBg = "bg-[#fafbfc]";
     const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
     const [viewingDocVersion, setViewingDocVersion] = useState<{
         id: string;
         label: string;
     } | null>(null);
-    const [creatingChat, setCreatingChat] = useState(false);
-    const [creatingReview, setCreatingReview] = useState(false);
-    const [newTRModalOpen, setNewTRModalOpen] = useState(false);
-
-    // Per-tab selection
     const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
-    const [selectedChatIds, setSelectedChatIds] = useState<string[]>([]);
-    const [selectedReviewIds, setSelectedReviewIds] = useState<string[]>([]);
+
+    useEffect(() => {
+        if (!loading) prefetchProjectSections();
+    }, [loading, prefetchProjectSections]);
 
     // Version-history expansion (per-doc). versionsByDocId caches fetched
     // versions so toggling closed + open again doesn't refetch. loadingIds
@@ -512,13 +384,6 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
         }
     }
 
-    // Inline rename for chats and reviews
-    const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
-    const [renameChatValue, setRenameChatValue] = useState("");
-    const [renamingReviewId, setRenamingReviewId] = useState<string | null>(
-        null,
-    );
-    const [renameReviewValue, setRenameReviewValue] = useState("");
     const [renamingDocumentId, setRenamingDocumentId] = useState<string | null>(
         null,
     );
@@ -590,51 +455,21 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
     const [pendingDeleteFolderStatus, setPendingDeleteFolderStatus] = useState<
         "idle" | "deleting" | "deleted"
     >("idle");
-    const [deleteProjectConfirmOpen, setDeleteProjectConfirmOpen] =
-        useState(false);
-    const [deleteProjectStatus, setDeleteProjectStatus] = useState<
-        "idle" | "deleting" | "deleted"
-    >("idle");
-
     // Actions dropdown
     const [actionsOpen, setActionsOpen] = useState(false);
     const actionsRef = useRef<HTMLDivElement>(null);
-    const [search, setSearch] = useState("");
-
-    const router = useRouter();
-    const { saveChat } = useChatHistoryContext();
-
-    function handleTabChange(newTab: ProjectTab) {
-        const base = `/projects/${projectId}`;
-        const url = newTab === "documents" ? base : `${base}?tab=${newTab}`;
-        router.push(url);
-    }
+    const search = workspace.search;
 
     useEffect(() => {
-        Promise.all([
-            getProject(projectId),
-            listProjectChats(projectId).catch(() => [] as Chat[]),
-            listTabularReviews(projectId).catch(() => []),
-        ])
-            .then(([proj, projectChats, projectReviews]) => {
-                setProject(proj);
-                const loadedFolders = proj.folders ?? [];
-                setFolders(loadedFolders);
-                setExpandedFolderIds(new Set(loadedFolders.map((f) => f.id)));
-                setChats(projectChats);
-                setProjectReviews(projectReviews);
-            })
-            .finally(() => setLoading(false));
-    }, [projectId]);
+        if (loading) return;
+        setExpandedFolderIds(new Set(folders.map((f) => f.id)));
+    }, [loading, folders]);
 
-    // Reset selection and close dropdowns when tab changes
     useEffect(() => {
         setSelectedDocIds([]);
-        setSelectedChatIds([]);
-        setSelectedReviewIds([]);
         setActionsOpen(false);
         setContextMenu(null);
-    }, [tab]);
+    }, [projectId]);
 
     useEffect(() => {
         function handleClick(e: MouseEvent) {
@@ -1098,126 +933,6 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
         }
     }
 
-    async function handleNewChat() {
-        setCreatingChat(true);
-        try {
-            const id = await saveChat(projectId);
-            if (id) router.push(`/projects/${projectId}/assistant/chat/${id}`);
-        } finally {
-            setCreatingChat(false);
-        }
-    }
-
-    function handleNewReview() {
-        const docs =
-            project?.documents?.filter((d) => d.status === "ready") || [];
-        if (docs.length === 0) return;
-        setNewTRModalOpen(true);
-    }
-
-    async function handleCreateReview(
-        title: string,
-        _projectId?: string,
-        documentIds?: string[],
-        columnsConfig?: ColumnConfig[] | null,
-    ) {
-        setCreatingReview(true);
-        try {
-            const docs =
-                project?.documents?.filter((d) => d.status === "ready") || [];
-            const review = await createTabularReview({
-                title: title || undefined,
-                document_ids: documentIds ?? docs.map((d) => d.id),
-                columns_config: columnsConfig ?? [],
-                project_id: projectId,
-            });
-            router.push(`/projects/${projectId}/tabular-reviews/${review.id}`);
-        } finally {
-            setCreatingReview(false);
-        }
-    }
-
-    async function handleProjectDetailsSave(values: {
-        name: string;
-        cmNumber: string;
-    }) {
-        if (project && project.is_owner === false) {
-            setOwnerOnlyAction("edit project details");
-            return;
-        }
-        const name = values.name.trim();
-        const cmNumber = values.cmNumber.trim();
-        if (!name) return;
-        const updated = await updateProject(projectId, {
-            name,
-            cm_number: cmNumber,
-        });
-        setProject((prev) =>
-            prev
-                ? {
-                      ...prev,
-                      name: updated.name,
-                      cm_number: updated.cm_number,
-                      updated_at: updated.updated_at,
-                  }
-                : prev,
-        );
-    }
-
-    function requestProjectDelete() {
-        if (project?.is_owner === false) {
-            setOwnerOnlyAction("delete this project");
-            return;
-        }
-        setDeleteProjectStatus("idle");
-        setDeleteProjectConfirmOpen(true);
-    }
-
-    async function confirmProjectDelete() {
-        if (deleteProjectStatus === "deleting") return;
-        setDeleteProjectStatus("deleting");
-        try {
-            await deleteProject(projectId);
-            setDeleteProjectStatus("deleted");
-            setTimeout(() => {
-                router.push("/projects");
-            }, 250);
-        } catch (err) {
-            setDeleteProjectStatus("idle");
-            console.error("Failed to delete project", err);
-        }
-    }
-
-    async function submitChatRename(chatId: string) {
-        const trimmed = renameChatValue.trim();
-        setRenamingChatId(null);
-        if (!trimmed) return;
-        const chat = chats.find((c) => c.id === chatId);
-        if (chat && user?.id && chat.user_id !== user.id) {
-            setOwnerOnlyAction("rename this chat");
-            return;
-        }
-        setChats((prev) =>
-            prev.map((c) => (c.id === chatId ? { ...c, title: trimmed } : c)),
-        );
-        await renameChat(chatId, trimmed);
-    }
-
-    async function submitReviewRename(reviewId: string) {
-        const trimmed = renameReviewValue.trim();
-        setRenamingReviewId(null);
-        if (!trimmed) return;
-        const review = projectReviews.find((r) => r.id === reviewId);
-        if (review && user?.id && review.user_id !== user.id) {
-            setOwnerOnlyAction("rename this tabular review");
-            return;
-        }
-        setProjectReviews((prev) =>
-            prev.map((r) => (r.id === reviewId ? { ...r, title: trimmed } : r)),
-        );
-        await updateTabularReview(reviewId, { title: trimmed });
-    }
-
     async function downloadDoc(docId: string) {
         const { url, filename } = await getDocumentUrl(docId);
         const a = document.createElement("a");
@@ -1314,62 +1029,6 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                 `delete ${blocked} of the selected documents — only the document creator can delete a document`,
             );
         }
-    }
-
-    async function handleDeleteSelectedChats() {
-        const ids = [...selectedChatIds];
-        setActionsOpen(false);
-        const owned = ids.filter((id) => {
-            const c = chats.find((cc) => cc.id === id);
-            return !c || !user?.id || c.user_id === user.id;
-        });
-        const blocked = ids.length - owned.length;
-        setSelectedChatIds([]);
-        await Promise.all(owned.map((id) => deleteChat(id).catch(() => {})));
-        setChats((prev) => prev.filter((c) => !owned.includes(c.id)));
-        if (blocked > 0) {
-            setOwnerOnlyAction(
-                `delete ${blocked} of the selected chats — only the chat creator can delete a chat`,
-            );
-        }
-    }
-
-    async function handleDeleteSelectedReviews() {
-        const ids = [...selectedReviewIds];
-        setActionsOpen(false);
-        const owned = ids.filter((id) => {
-            const r = projectReviews.find((rr) => rr.id === id);
-            return !r || !user?.id || r.user_id === user.id;
-        });
-        const blocked = ids.length - owned.length;
-        setSelectedReviewIds([]);
-        await Promise.all(
-            owned.map((id) => deleteTabularReview(id).catch(() => {})),
-        );
-        setProjectReviews((prev) => prev.filter((r) => !owned.includes(r.id)));
-        if (blocked > 0) {
-            setOwnerOnlyAction(
-                `delete ${blocked} of the selected reviews — only the review creator can delete a review`,
-            );
-        }
-    }
-
-    async function handleDeleteChatRow(chat: Chat) {
-        if (user?.id && chat.user_id !== user.id) {
-            setOwnerOnlyAction("delete this chat");
-            return;
-        }
-        await deleteChat(chat.id);
-        setChats((prev) => prev.filter((c) => c.id !== chat.id));
-    }
-
-    async function handleDeleteReviewRow(review: TabularReview) {
-        if (user?.id && review.user_id !== user.id) {
-            setOwnerOnlyAction("delete this tabular review");
-            return;
-        }
-        await deleteTabularReview(review.id);
-        setProjectReviews((prev) => prev.filter((r) => r.id !== review.id));
     }
 
     // ── Drag & drop ───────────────────────────────────────────────────────────
@@ -2239,14 +1898,6 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
     const filteredDocs = q
         ? docs.filter((d) => d.filename.toLowerCase().includes(q))
         : docs;
-    const filteredChats = q
-        ? chats.filter((c) => (c.title ?? "").toLowerCase().includes(q))
-        : chats;
-    const filteredReviews = q
-        ? projectReviews.filter((r) =>
-              (r.title ?? "").toLowerCase().includes(q),
-          )
-        : projectReviews;
 
     const allDocsSelected =
         filteredDocs.length > 0 &&
@@ -2254,35 +1905,9 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
     const someDocsSelected =
         !allDocsSelected &&
         filteredDocs.some((d) => selectedDocIds.includes(d.id));
-    const allChatsSelected =
-        filteredChats.length > 0 &&
-        filteredChats.every((c) => selectedChatIds.includes(c.id));
-    const someChatsSelected =
-        !allChatsSelected &&
-        filteredChats.some((c) => selectedChatIds.includes(c.id));
-    const allReviewsSelected =
-        filteredReviews.length > 0 &&
-        filteredReviews.every((r) => selectedReviewIds.includes(r.id));
-    const someReviewsSelected =
-        !allReviewsSelected &&
-        filteredReviews.some((r) => selectedReviewIds.includes(r.id));
-
-    const currentSelectionCount =
-        tab === "documents"
-            ? selectedDocIds.length
-            : tab === "assistant"
-              ? selectedChatIds.length
-              : selectedReviewIds.length;
-
-    const handleDeleteSelected =
-        tab === "documents"
-            ? handleDeleteSelectedDocs
-            : tab === "assistant"
-              ? handleDeleteSelectedChats
-              : handleDeleteSelectedReviews;
 
     const actionsDropdown =
-        currentSelectionCount > 0 ? (
+        selectedDocIds.length > 0 ? (
             <div ref={actionsRef} className="relative">
                 <button
                     onClick={() => setActionsOpen((v) => !v)}
@@ -2293,29 +1918,26 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                 </button>
                 {actionsOpen && (
                     <div className="absolute top-full right-0 mt-1 w-36 rounded-lg border border-gray-100 bg-white shadow-lg z-[120] overflow-hidden">
-                        {tab === "documents" && (
+                        <button
+                            onClick={handleDownloadSelectedDocs}
+                            className="w-full px-3 py-1.5 text-left text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+                        >
+                            Download
+                        </button>
+                        {selectedDocIds.some(
+                            (id) =>
+                                docs.find((d) => d.id === id)?.folder_id !=
+                                null,
+                        ) && (
                             <button
-                                onClick={handleDownloadSelectedDocs}
+                                onClick={handleRemoveSelectedFromFolder}
                                 className="w-full px-3 py-1.5 text-left text-xs text-gray-600 hover:bg-gray-50 transition-colors"
                             >
-                                Download
+                                Remove from subfolder
                             </button>
                         )}
-                        {tab === "documents" &&
-                            selectedDocIds.some(
-                                (id) =>
-                                    docs.find((d) => d.id === id)?.folder_id !=
-                                    null,
-                            ) && (
-                                <button
-                                    onClick={handleRemoveSelectedFromFolder}
-                                    className="w-full px-3 py-1.5 text-left text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-                                >
-                                    Remove from subfolder
-                                </button>
-                            )}
                         <button
-                            onClick={handleDeleteSelected}
+                            onClick={handleDeleteSelectedDocs}
                             className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 transition-colors"
                         >
                             Delete
@@ -2328,32 +1950,29 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
     const toolbarActions = (
         <div className="flex items-center gap-5">
             {actionsDropdown}
-            {tab === "documents" && (
-                <>
-                    <button
-                        onClick={() => {
-                            if (loading) return;
-                            setCreatingFolderIn(null);
-                            setNewFolderName("");
-                        }}
-                        disabled={loading}
-                        className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors disabled:cursor-default disabled:text-gray-300 disabled:hover:text-gray-300"
-                    >
-                        <FolderPlus className="h-3.5 w-3.5" />
-                        <span className="hidden sm:inline">Add Subfolder</span>
-                    </button>
-                    <button
-                        onClick={() => setAddDocsOpen(true)}
-                        disabled={loading}
-                        className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors disabled:cursor-default disabled:text-gray-300 disabled:hover:text-gray-300"
-                    >
-                        <Upload className="h-3.5 w-3.5" />
-                        <span className="hidden sm:inline">Add Documents</span>
-                    </button>
-                </>
-            )}
+            <button
+                onClick={() => {
+                    if (loading) return;
+                    setCreatingFolderIn(null);
+                    setNewFolderName("");
+                }}
+                disabled={loading}
+                className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors disabled:cursor-default disabled:text-gray-300 disabled:hover:text-gray-300"
+            >
+                <FolderPlus className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Add Subfolder</span>
+            </button>
+            <button
+                onClick={() => setAddDocsOpen(true)}
+                disabled={loading}
+                className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors disabled:cursor-default disabled:text-gray-300 disabled:hover:text-gray-300"
+            >
+                <Upload className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Add Documents</span>
+            </button>
         </div>
     );
+
     const pendingVersionDropMessage = pendingVersionDrop ? (
         <div className="space-y-2">
             <p>
@@ -2432,7 +2051,7 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
     ) : undefined;
 
     return (
-        <div className="relative flex-1 overflow-y-auto flex flex-col h-full">
+        <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
             <input
                 ref={versionUploadInputRef}
                 type="file"
@@ -2512,46 +2131,13 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                 }}
                 onConfirm={() => void confirmDeletePendingFolder()}
             />
-            <ProjectPageHeader
-                project={project}
-                search={search}
-                creatingChat={creatingChat}
-                creatingReview={creatingReview}
-                docsCount={docs.length}
-                isOwner={project?.is_owner !== false}
-                onBackToProjects={() => router.push("/projects")}
-                onOwnerOnly={setOwnerOnlyAction}
-                onOpenDetails={() => setProjectDetailsOpen(true)}
-                onDeleteProject={requestProjectDelete}
-                onSearchChange={setSearch}
-                onOpenPeople={() => setPeopleModalOpen(true)}
-                onNewChat={handleNewChat}
-                onNewReview={handleNewReview}
-            />
-
-            <ToolbarTabs
-                tabs={[
-                    { id: "documents", label: "Documents" },
-                    { id: "assistant", label: "Assistant Chats" },
-                    { id: "reviews", label: "Tabular Reviews" },
-                ]}
-                active={tab}
-                onChange={handleTabChange}
-                actions={<>{toolbarActions}</>}
-            />
-
             {/* Table content */}
-            <div className="w-full flex-1 min-h-0 overflow-x-auto">
+            <ProjectSectionToolbar actions={toolbarActions} />
+            <div className="w-full flex-1 min-h-0 overflow-auto">
                 <div className="min-w-max flex min-h-full flex-col">
                     {loading ? (
-                        <ProjectTableLoading
-                            tab={tab}
-                            stickyCellBg={stickyCellBg}
-                        />
+                        <ProjectTableLoading stickyCellBg={stickyCellBg} />
                     ) : (
-                        <>
-                    {/* Tab: Documents */}
-                    {tab === "documents" && (
                         <div className="flex-1 flex flex-col min-h-0">
                             {/* Table header */}
                             <div className="flex items-center h-8 pr-8 border-b border-gray-200 text-xs text-gray-500 font-medium select-none shrink-0">
@@ -3293,62 +2879,6 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                             {/* end blue ring wrapper */}
                         </div>
                     )}
-
-                    {/* Tab: Assistant */}
-                    {tab === "assistant" && (
-                        <ProjectAssistantTab
-                            chats={chats}
-                            filteredChats={filteredChats}
-                            selectedChatIds={selectedChatIds}
-                            allChatsSelected={allChatsSelected}
-                            someChatsSelected={someChatsSelected}
-                            renamingChatId={renamingChatId}
-                            renameChatValue={renameChatValue}
-                            currentUserId={user?.id}
-                            onCreateChat={handleNewChat}
-                            onOpenChat={(chatId) =>
-                                router.push(
-                                    `/projects/${projectId}/assistant/chat/${chatId}`,
-                                )
-                            }
-                            onDeleteChat={handleDeleteChatRow}
-                            onOwnerOnlyAction={setOwnerOnlyAction}
-                            submitChatRename={submitChatRename}
-                            setSelectedChatIds={setSelectedChatIds}
-                            setRenamingChatId={setRenamingChatId}
-                            setRenameChatValue={setRenameChatValue}
-                        />
-                    )}
-
-                    {/* Tab: Reviews */}
-                    {tab === "reviews" && (
-                        <ProjectReviewsTab
-                            docs={docs}
-                            reviews={projectReviews}
-                            filteredReviews={filteredReviews}
-                            selectedReviewIds={selectedReviewIds}
-                            allReviewsSelected={allReviewsSelected}
-                            someReviewsSelected={someReviewsSelected}
-                            renamingReviewId={renamingReviewId}
-                            renameReviewValue={renameReviewValue}
-                            creatingReview={creatingReview}
-                            currentUserId={user?.id}
-                            onCreateReview={handleNewReview}
-                            onOpenReview={(reviewId) =>
-                                router.push(
-                                    `/projects/${projectId}/tabular-reviews/${reviewId}`,
-                                )
-                            }
-                            onDeleteReview={handleDeleteReviewRow}
-                            onOwnerOnlyAction={setOwnerOnlyAction}
-                            submitReviewRename={submitReviewRename}
-                            setSelectedReviewIds={setSelectedReviewIds}
-                            setRenamingReviewId={setRenamingReviewId}
-                            setRenameReviewValue={setRenameReviewValue}
-                        />
-                    )}
-                        </>
-                    )}
                 </div>
             </div>
 
@@ -3409,96 +2939,6 @@ export function ProjectPage({ projectId, initialTab = "documents" }: Props) {
                 }}
             />
 
-            <AddNewTRModal
-                open={newTRModalOpen}
-                onClose={() => setNewTRModalOpen(false)}
-                onAdd={handleCreateReview}
-                projectDocs={project?.documents?.filter(
-                    (d) => d.status === "ready",
-                )}
-                projectName={project?.name}
-                projectCmNumber={project?.cm_number}
-            />
-
-            <OwnerOnlyModal
-                open={!!ownerOnlyAction}
-                action={ownerOnlyAction ?? undefined}
-                onClose={() => setOwnerOnlyAction(null)}
-            />
-
-            <ProjectDetailsModal
-                open={projectDetailsOpen}
-                project={project}
-                canEdit={project?.is_owner !== false}
-                currentUserDisplayName={profile?.displayName ?? null}
-                currentUserEmail={user?.email ?? null}
-                fetchPeople={getProjectPeople}
-                onClose={() => setProjectDetailsOpen(false)}
-                onSave={handleProjectDetailsSave}
-                onShareProject={() => {
-                    setProjectDetailsOpen(false);
-                    setPeopleModalOpen(true);
-                }}
-            />
-
-            <ConfirmPopup
-                open={deleteProjectConfirmOpen}
-                title="Delete project?"
-                message="This will permanently delete the project and its related documents, chats, and tabular reviews."
-                confirmLabel="Delete"
-                confirmStatus={
-                    deleteProjectStatus === "deleting"
-                        ? "loading"
-                        : deleteProjectStatus === "deleted"
-                          ? "complete"
-                          : "idle"
-                }
-                cancelLabel="Cancel"
-                onCancel={() => {
-                    if (deleteProjectStatus === "deleting") return;
-                    setDeleteProjectConfirmOpen(false);
-                    setDeleteProjectStatus("idle");
-                }}
-                onConfirm={() => void confirmProjectDelete()}
-            />
-
-            {project && (
-                <PeopleModal
-                    open={peopleModalOpen}
-                    onClose={() => setPeopleModalOpen(false)}
-                    resource={project}
-                    fetchPeople={getProjectPeople}
-                    currentUserEmail={user?.email ?? null}
-                    breadcrumb={[
-                        "Projects",
-                        project.name +
-                            (project.cm_number
-                                ? ` (${project.cm_number})`
-                                : ""),
-                        "People",
-                    ]}
-                    // Only owners may modify the member list. Without this prop
-                    // PeopleModal renders read-only — non-owners can still see
-                    // who has access but the add/remove controls are hidden.
-                    onSharedWithChange={
-                        project.is_owner === false
-                            ? undefined
-                            : async (next) => {
-                                  const updated = await updateProject(projectId, {
-                                      shared_with: next,
-                                  });
-                                  setProject((prev) =>
-                                      prev
-                                          ? {
-                                              ...prev,
-                                              shared_with: updated.shared_with,
-                                          }
-                                          : prev,
-                                  );
-                              }
-                    }
-                />
-            )}
         </div>
     );
 }

@@ -18,8 +18,8 @@ import {
     accountGlassDangerOutlineButtonClassName,
     accountGlassInputClassName,
     accountGlassPrimaryButtonClassName,
-    accountGlassSectionClassName,
 } from "./accountStyles";
+import { AccountSection } from "./AccountSection";
 
 const isDev = process.env.NODE_ENV !== "production";
 const devLog = (...args: Parameters<typeof console.log>) => {
@@ -173,7 +173,7 @@ export default function AccountPage() {
                 <h2 className="text-2xl font-medium font-serif text-gray-900">
                     Profile
                 </h2>
-                <div className={`${accountGlassSectionClassName} p-4`}>
+                <AccountSection className="p-4">
                     <div className="divide-y divide-gray-200">
                         <div className="pb-4">
                             <label className="text-sm text-gray-600 block mb-2">
@@ -249,7 +249,7 @@ export default function AccountPage() {
                             </div>
                         </div>
                     </div>
-                </div>
+                </AccountSection>
             </section>
 
             {/* Email */}
@@ -257,7 +257,7 @@ export default function AccountPage() {
                 <h2 className="text-2xl font-medium font-serif text-gray-900">
                     Email
                 </h2>
-                <div className={`${accountGlassSectionClassName} p-4`}>
+                <AccountSection className="p-4">
                     <div className="space-y-2">
                         <Input
                             type="email"
@@ -308,7 +308,7 @@ export default function AccountPage() {
                             </button>
                         </div>
                     </div>
-                </div>
+                </AccountSection>
             </section>
 
             {/* Plan */}
@@ -316,13 +316,13 @@ export default function AccountPage() {
                 <h2 className="text-2xl font-medium font-serif text-gray-900">
                     Usage Plan
                 </h2>
-                <div className={`${accountGlassSectionClassName} p-4`}>
+                <AccountSection className="p-4">
                     <div>
                         <p className="text-base font-medium text-gray-500 capitalize">
                             {profile?.tier || "Free"}
                         </p>
                     </div>
-                </div>
+                </AccountSection>
             </section>
 
             {/* Actions */}
@@ -345,9 +345,7 @@ export default function AccountPage() {
                 <h2 className="text-2xl font-medium font-serif text-red-600">
                     Danger Zone
                 </h2>
-                <div
-                    className={`${accountGlassSectionClassName} flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between`}
-                >
+                <AccountSection className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="space-y-1">
                         <p className="text-sm font-medium text-gray-900">
                             Delete account
@@ -366,7 +364,7 @@ export default function AccountPage() {
                         <Trash2 className="h-4 w-4 shrink-0" />
                         Delete account
                     </Button>
-                </div>
+                </AccountSection>
             </section>
             <ConfirmPopup
                 open={deleteConfirm}

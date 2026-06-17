@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { Router } from "express";
 import { requireAuth, requireMfaIfEnrolled } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
@@ -15,6 +16,18 @@ import {
     normalizeApiKeyProvider,
     saveUserApiKey,
 } from "../lib/userApiKeys";
+import {
+    completeUserMcpConnectorOAuth,
+    createUserMcpConnector,
+    deleteUserMcpConnector,
+    getUserMcpConnector,
+    listUserMcpConnectors,
+    McpOAuthRequiredError,
+    refreshUserMcpConnectorTools,
+    setUserMcpToolEnabled,
+    startUserMcpConnectorOAuth,
+    updateUserMcpConnector,
+} from "../lib/mcpConnectors";
 import {
     deleteAllUserChats,
     deleteAllUserTabularReviews,
@@ -63,6 +76,87 @@ function errorMessage(error: unknown): string {
         );
     }
     return String(error);
+}
+
+function backendPublicUrl(req: {
+    protocol: string;
+    get(name: string): string | undefined;
+}) {
+    return (
+        process.env.API_PUBLIC_URL ||
+        process.env.BACKEND_URL ||
+        `${req.protocol}://${req.get("host")}`
+    ).replace(/\/+$/, "");
+}
+
+function frontendUrl(path = "/account/connectors") {
+    const base = (process.env.FRONTEND_URL ?? "http://localhost:3000").replace(
+        /\/+$/,
+        "",
+    );
+    return `${base}${path}`;
+}
+
+function shortHash(value: string) {
+    return value
+        ? crypto.createHash("sha256").update(value).digest("hex").slice(0, 12)
+        : null;
+}
+
+function mcpOAuthPopupHtml(payload: {
+    success: boolean;
+    connectorId?: string;
+    detail?: string;
+}, nonce: string) {
+    const targetOrigin = new URL(frontendUrl()).origin;
+    const targetUrl = frontendUrl();
+    const message = JSON.stringify({
+        type: "mcp_oauth_result",
+        ...payload,
+    });
+    return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MCP authorization</title>
+    <style>
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #111827; background: #f9fafb; }
+      main { max-width: 360px; padding: 24px; text-align: center; }
+      p { color: #6b7280; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>${payload.success ? "Authorization complete" : "Authorization failed"}</h1>
+      <p>${payload.success ? "You can return to Mike." : "Return to Mike and try connecting again."}</p>
+    </main>
+    <script nonce="${nonce}">
+      const message = ${message};
+      const targetUrl = ${JSON.stringify(targetUrl)};
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage(message, ${JSON.stringify(targetOrigin)});
+      }
+      setTimeout(() => window.close(), ${payload.success ? 600 : 2500});
+      ${
+          payload.success
+              ? "setTimeout(() => window.location.assign(targetUrl), 1000);"
+              : ""
+      }
+    </script>
+  </body>
+</html>`;
+}
+
+function mcpOAuthPopupCsp(nonce: string) {
+    return [
+        "default-src 'none'",
+        `script-src 'nonce-${nonce}'`,
+        "style-src 'unsafe-inline'",
+        "base-uri 'none'",
+        "form-action 'none'",
+        "frame-ancestors 'none'",
+    ].join("; ");
 }
 
 const PROFILE_SELECT =
@@ -535,6 +629,310 @@ userRouter.put(
                 error: detail,
             });
             res.status(500).json({ detail });
+        }
+    },
+);
+
+// GET /user/mcp-connectors
+userRouter.get("/mcp-connectors", requireAuth, async (_req, res) => {
+    const userId = res.locals.userId as string;
+    const db = createServerSupabase();
+    try {
+        res.json(
+            await listUserMcpConnectors(userId, db, { includeTools: false }),
+        );
+    } catch (err) {
+        const detail = errorMessage(err);
+        console.error("[user/mcp-connectors] list failed", {
+            userId,
+            error: detail,
+        });
+        res.status(500).json({ detail });
+    }
+});
+
+// GET /user/mcp-connectors/:connectorId
+userRouter.get(
+    "/mcp-connectors/:connectorId",
+    requireAuth,
+    async (req, res) => {
+        const userId = res.locals.userId as string;
+        const db = createServerSupabase();
+        try {
+            res.json(
+                await getUserMcpConnector(userId, req.params.connectorId, db),
+            );
+        } catch (err) {
+            const detail = errorMessage(err);
+            console.error("[user/mcp-connectors] get failed", {
+                userId,
+                connectorId: req.params.connectorId,
+                error: detail,
+            });
+            res.status(404).json({ detail });
+        }
+    },
+);
+
+// POST /user/mcp-connectors
+userRouter.post(
+    "/mcp-connectors",
+    requireAuth,
+    requireMfaIfEnrolled,
+    async (req, res) => {
+        const userId = res.locals.userId as string;
+        const name = typeof req.body?.name === "string" ? req.body.name : "";
+        const serverUrl =
+            typeof req.body?.serverUrl === "string" ? req.body.serverUrl : "";
+        const bearerToken =
+            typeof req.body?.bearerToken === "string"
+                ? req.body.bearerToken
+                : null;
+        const headers =
+            req.body?.headers &&
+            typeof req.body.headers === "object" &&
+            !Array.isArray(req.body.headers)
+                ? (req.body.headers as Record<string, unknown>)
+                : undefined;
+        const db = createServerSupabase();
+        try {
+            const connector = await createUserMcpConnector(
+                userId,
+                { name, serverUrl, bearerToken, headers },
+                db,
+            );
+            res.status(201).json(connector);
+        } catch (err) {
+            const detail = errorMessage(err);
+            console.error("[user/mcp-connectors] create failed", {
+                userId,
+                error: detail,
+            });
+            res.status(400).json({ detail });
+        }
+    },
+);
+
+// PATCH /user/mcp-connectors/:connectorId
+userRouter.patch(
+    "/mcp-connectors/:connectorId",
+    requireAuth,
+    requireMfaIfEnrolled,
+    async (req, res) => {
+        const userId = res.locals.userId as string;
+        const db = createServerSupabase();
+        const body = req.body ?? {};
+        try {
+            const connector = await updateUserMcpConnector(
+                userId,
+                req.params.connectorId,
+                {
+                    ...(typeof body.name === "string"
+                        ? { name: body.name }
+                        : {}),
+                    ...(typeof body.serverUrl === "string"
+                        ? { serverUrl: body.serverUrl }
+                        : {}),
+                    ...(typeof body.enabled === "boolean"
+                        ? { enabled: body.enabled }
+                        : {}),
+                    ...("bearerToken" in body
+                        ? {
+                              bearerToken:
+                                  typeof body.bearerToken === "string"
+                                      ? body.bearerToken
+                                      : null,
+                          }
+                        : {}),
+                    ...("headers" in body
+                        ? {
+                              headers:
+                                  body.headers &&
+                                  typeof body.headers === "object" &&
+                                  !Array.isArray(body.headers)
+                                      ? (body.headers as Record<
+                                            string,
+                                            unknown
+                                        >)
+                                      : {},
+                          }
+                        : {}),
+                },
+                db,
+            );
+            res.json(connector);
+        } catch (err) {
+            const detail = errorMessage(err);
+            console.error("[user/mcp-connectors] update failed", {
+                userId,
+                connectorId: req.params.connectorId,
+                error: detail,
+            });
+            res.status(400).json({ detail });
+        }
+    },
+);
+
+// DELETE /user/mcp-connectors/:connectorId
+userRouter.delete(
+    "/mcp-connectors/:connectorId",
+    requireAuth,
+    requireMfaIfEnrolled,
+    async (req, res) => {
+        const userId = res.locals.userId as string;
+        const db = createServerSupabase();
+        try {
+            await deleteUserMcpConnector(userId, req.params.connectorId, db);
+            res.status(204).send();
+        } catch (err) {
+            const detail = errorMessage(err);
+            console.error("[user/mcp-connectors] delete failed", {
+                userId,
+                connectorId: req.params.connectorId,
+                error: detail,
+            });
+            res.status(500).json({ detail });
+        }
+    },
+);
+
+// POST /user/mcp-connectors/:connectorId/oauth/start
+userRouter.post(
+    "/mcp-connectors/:connectorId/oauth/start",
+    requireAuth,
+    requireMfaIfEnrolled,
+    async (req, res) => {
+        const userId = res.locals.userId as string;
+        const db = createServerSupabase();
+        try {
+            const redirectUri = `${backendPublicUrl(req)}/user/mcp-connectors/oauth/callback`;
+            const result = await startUserMcpConnectorOAuth(
+                userId,
+                req.params.connectorId,
+                redirectUri,
+                db,
+            );
+            res.json(result);
+        } catch (err) {
+            const detail = errorMessage(err);
+            console.error("[user/mcp-connectors] oauth start failed", {
+                userId,
+                connectorId: req.params.connectorId,
+                error: detail,
+            });
+            res.status(400).json({ detail });
+        }
+    },
+);
+
+// GET /user/mcp-connectors/oauth/callback
+userRouter.get("/mcp-connectors/oauth/callback", async (req, res) => {
+    const nonce = crypto.randomBytes(16).toString("base64");
+    const state = typeof req.query.state === "string" ? req.query.state : "";
+    const code = typeof req.query.code === "string" ? req.query.code : "";
+    const error =
+        typeof req.query.error === "string" ? req.query.error : undefined;
+    const db = createServerSupabase();
+    try {
+        if (error) throw new Error(error);
+        if (!state || !code)
+            throw new Error("OAuth callback is missing state or code.");
+        const result = await completeUserMcpConnectorOAuth(state, code, db);
+        res.set("Content-Security-Policy", mcpOAuthPopupCsp(nonce))
+            .type("html")
+            .send(
+                mcpOAuthPopupHtml(
+                    {
+                        success: true,
+                        connectorId: result.connectorId,
+                    },
+                    nonce,
+                ),
+            );
+    } catch (err) {
+        const detail = errorMessage(err);
+        console.error("[user/mcp-connectors] oauth callback failed", {
+            error: detail,
+            stateHash: shortHash(state),
+            hasCode: !!code,
+            hasError: !!error,
+            issuer:
+                typeof req.query.iss === "string" ? req.query.iss : undefined,
+            scope:
+                typeof req.query.scope === "string"
+                    ? req.query.scope
+                    : undefined,
+        });
+        res.status(400)
+            .set("Content-Security-Policy", mcpOAuthPopupCsp(nonce))
+            .type("html")
+            .send(mcpOAuthPopupHtml({ success: false, detail }, nonce));
+    }
+});
+
+// POST /user/mcp-connectors/:connectorId/refresh-tools
+userRouter.post(
+    "/mcp-connectors/:connectorId/refresh-tools",
+    requireAuth,
+    requireMfaIfEnrolled,
+    async (req, res) => {
+        const userId = res.locals.userId as string;
+        const db = createServerSupabase();
+        try {
+            const connector = await refreshUserMcpConnectorTools(
+                userId,
+                req.params.connectorId,
+                db,
+            );
+            res.json(connector);
+        } catch (err) {
+            const detail = errorMessage(err);
+            console.error("[user/mcp-connectors] refresh failed", {
+                userId,
+                connectorId: req.params.connectorId,
+                error: detail,
+            });
+            if (err instanceof McpOAuthRequiredError) {
+                return void res.status(401).json({
+                    code: err.code,
+                    detail,
+                });
+            }
+            res.status(400).json({ detail });
+        }
+    },
+);
+
+// PATCH /user/mcp-connectors/:connectorId/tools/:toolId
+userRouter.patch(
+    "/mcp-connectors/:connectorId/tools/:toolId",
+    requireAuth,
+    requireMfaIfEnrolled,
+    async (req, res) => {
+        const userId = res.locals.userId as string;
+        const parsed = readBooleanBodyField(req.body, "enabled");
+        if (!parsed.ok)
+            return void res.status(400).json({ detail: parsed.detail });
+
+        const db = createServerSupabase();
+        try {
+            const connector = await setUserMcpToolEnabled(
+                userId,
+                req.params.connectorId,
+                req.params.toolId,
+                parsed.value,
+                db,
+            );
+            res.json(connector);
+        } catch (err) {
+            const detail = errorMessage(err);
+            console.error("[user/mcp-connectors] tool toggle failed", {
+                userId,
+                connectorId: req.params.connectorId,
+                toolId: req.params.toolId,
+                error: detail,
+            });
+            res.status(400).json({ detail });
         }
     },
 );

@@ -59,6 +59,7 @@ import { TRChatPanel } from "./TRChatPanel";
 import { exportTabularReviewToExcel } from "./exportToExcel";
 import { useSidebar } from "@/app/contexts/SidebarContext";
 import { PageHeader } from "../shared/PageHeader";
+import { TableToolbar } from "../shared/TableToolbar";
 
 interface Props {
     reviewId: string;
@@ -523,8 +524,7 @@ export function TRView({ reviewId, projectId }: Props) {
         }
     }
 
-    async function handleClearResults() {
-        const docIds = [...selectedDocIds];
+    async function clearResultsForDocuments(docIds: string[]) {
         if (docIds.length === 0) return;
         setCells((prev) =>
             prev.map((c) =>
@@ -536,6 +536,14 @@ export function TRView({ reviewId, projectId }: Props) {
         setSelectedDocIds([]);
         setActionsOpen(false);
         await clearTabularCells(reviewId, docIds);
+    }
+
+    async function handleClearResults() {
+        await clearResultsForDocuments([...selectedDocIds]);
+    }
+
+    async function handleClearAllResults() {
+        await clearResultsForDocuments(documents.map((document) => document.id));
     }
 
     async function handleTitleCommit(newTitle: string) {
@@ -580,7 +588,7 @@ export function TRView({ reviewId, projectId }: Props) {
             setTimeout(() => {
                 router.push(
                     projectId
-                        ? `/projects/${projectId}?tab=reviews`
+                        ? `/projects/${projectId}/tabular-reviews`
                         : "/tabular-reviews",
                 );
             }, 250);
@@ -641,7 +649,6 @@ export function TRView({ reviewId, projectId }: Props) {
             <div className="flex flex-1 flex-col overflow-hidden">
                 {/* Header */}
                 <PageHeader
-                    align="start"
                     shrink
                     className="gap-4"
                     breadcrumbs={[
@@ -657,7 +664,7 @@ export function TRView({ reviewId, projectId }: Props) {
                                             skeletonClassName: "w-32",
                                             onClick: () =>
                                                 router.push(
-                                                    `/projects/${projectId}?tab=reviews`,
+                                                    `/projects/${projectId}/tabular-reviews`,
                                                 ),
                                             title: "Back to project",
                                         }
@@ -665,7 +672,7 @@ export function TRView({ reviewId, projectId }: Props) {
                                             label: project?.name ?? "",
                                             onClick: () =>
                                                 router.push(
-                                                    `/projects/${projectId}?tab=reviews`,
+                                                    `/projects/${projectId}/tabular-reviews`,
                                                 ),
                                             title: "Back to project",
                                         },
@@ -719,6 +726,29 @@ export function TRView({ reviewId, projectId }: Props) {
                                                 onSelect: requestWorkflow,
                                             },
                                             {
+                                                label: "Export",
+                                                icon: Download,
+                                                onSelect: () =>
+                                                    exportTabularReviewToExcel({
+                                                        reviewTitle:
+                                                            review?.title ||
+                                                            "Tabular Review",
+                                                        columns,
+                                                        documents,
+                                                        cells,
+                                                    }),
+                                                disabled:
+                                                    columns.length === 0 ||
+                                                    documents.length === 0,
+                                            },
+                                            {
+                                                label: "Clear results",
+                                                icon: X,
+                                                onSelect: handleClearAllResults,
+                                                disabled:
+                                                    documents.length === 0,
+                                            },
+                                            {
                                                 label: "Delete",
                                                 icon: Trash2,
                                                 onSelect: requestReviewDelete,
@@ -729,135 +759,130 @@ export function TRView({ reviewId, projectId }: Props) {
                                 ),
                             },
                         ],
-                        [
-                            {
-                                onClick: () =>
-                                    exportTabularReviewToExcel({
-                                        reviewTitle:
-                                            review?.title || "Tabular Review",
-                                        columns,
-                                        documents,
-                                        cells,
-                                    }),
-                                disabled:
-                                    columns.length === 0 ||
-                                    documents.length === 0,
-                                title: "Export to Excel",
-                                icon: <Download className="h-4 w-4" />,
-                                label: (
-                                    <span className="hidden sm:inline">
-                                        Export
-                                    </span>
-                                ),
-                            },
-                            {
-                                onClick: handleGenerate,
-                                disabled:
-                                    generating ||
-                                    columns.length === 0 ||
-                                    documents.length === 0 ||
-                                    savingColumnsConfig,
-                                icon: generating ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    <Play className="h-4 w-4" />
-                                ),
-                                label: (
-                                    <span className="hidden sm:inline">
-                                        {generating ? "Running…" : "Run"}
-                                    </span>
-                                ),
-                            },
-                        ],
+                        {
+                            actions: [
+                                {
+                                    onClick: () => {
+                                        if (!chatOpen) setSidebarOpen(false);
+                                        if (chatOpen) setSelectedChatId(null);
+                                        setChatOpen((v) => !v);
+                                    },
+                                    disabled:
+                                        loading ||
+                                        columns.length === 0 ||
+                                        documents.length === 0,
+                                    title: chatOpen
+                                        ? "Close assistant"
+                                        : "Open assistant",
+                                    icon: chatOpen ? (
+                                        <X className="h-4 w-4" />
+                                    ) : (
+                                        <MessageSquare className="h-4 w-4" />
+                                    ),
+                                    label: (
+                                        <span className="hidden sm:inline">
+                                            Assistant
+                                        </span>
+                                    ),
+                                },
+                                {
+                                    onClick: handleGenerate,
+                                    disabled:
+                                        generating ||
+                                        columns.length === 0 ||
+                                        documents.length === 0 ||
+                                        savingColumnsConfig,
+                                    icon: generating ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <Play className="h-4 w-4" />
+                                    ),
+                                    label: (
+                                        <span className="hidden sm:inline">
+                                            {generating ? "Running…" : "Run"}
+                                        </span>
+                                    ),
+                                },
+                            ],
+                        },
                     ]}
                 />
 
                 {/* Toolbar */}
-                <div className="flex items-center h-10 px-4 md:px-10 border-b border-gray-200 gap-4">
-                    <button
-                        onClick={() => {
-                            if (!chatOpen) setSidebarOpen(false);
-                            if (chatOpen) setSelectedChatId(null);
-                            setChatOpen((v) => !v);
-                        }}
-                        disabled={loading || columns.length === 0 || documents.length === 0}
-                        className={`flex items-center gap-1 text-xs font-medium transition-colors ${
-                            loading || columns.length === 0 || documents.length === 0
-                                ? "text-gray-300 cursor-default"
-                                : "text-gray-700 hover:text-gray-900"
-                        }`}
-                    >
-                        {chatOpen ? (
-                            <X className="h-3.5 w-3.5" />
-                        ) : (
-                            <MessageSquare className="h-3.5 w-3.5" />
-                        )}
-                        Assistant
-                    </button>
-                    <div className="ml-auto flex items-center gap-5">
-                        {loading ? (
-                            <>
-                                <div className="h-3 w-24 rounded bg-gray-100 animate-pulse" />
-                                <div className="h-3 w-20 rounded bg-gray-100 animate-pulse" />
-                            </>
-                        ) : null}
-                        {!loading && selectedDocIds.length > 0 && (
-                            <div ref={actionsRef} className="relative">
-                                <button
-                                    onClick={() => setActionsOpen((v) => !v)}
-                                    className="flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors"
-                                >
-                                    Actions
-                                    <ChevronDown className="h-3.5 w-3.5" />
-                                </button>
-                                {actionsOpen && (
-                                    <div className="absolute top-full right-0 mt-1 w-36 rounded-lg border border-gray-100 bg-white shadow-lg z-50 overflow-hidden">
-                                        <button
-                                            onClick={handleClearResults}
-                                            className="w-full px-3 py-1.5 text-left text-xs text-gray-700 hover:bg-gray-50 transition-colors"
-                                        >
-                                            Clear results
-                                        </button>
-                                        <button
-                                            onClick={handleDeleteDocuments}
-                                            className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 transition-colors"
-                                        >
-                                            Delete
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                        {!loading && (
-                            <>
-                                <button
-                                    onClick={() => setAddDocsOpen(true)}
-                                    disabled={savingColumnsConfig}
-                                    className={`flex items-center gap-1 text-xs font-medium transition-colors ${
-                                        savingColumnsConfig
-                                            ? "text-gray-300 cursor-default"
-                                            : "text-gray-700 hover:text-gray-900"
-                                    }`}
-                                >
-                                    <Upload className="h-3.5 w-3.5" />
-                                    Add Documents
-                                </button>
-                                <button
-                                    onClick={() => setAddColOpen(true)}
-                                    disabled={savingColumn || savingColumnsConfig}
-                                    className={`flex items-center gap-1 text-xs font-medium transition-colors ${
-                                        savingColumn || savingColumnsConfig
-                                            ? "text-gray-300 cursor-default"
-                                            : "text-gray-700 hover:text-gray-900"
-                                    }`}
-                                >
-                                    <Plus className="h-3.5 w-3.5" />
-                                    Add Columns
-                                </button>
-                            </>
-                        )}
-                    </div>
-                </div>
+                <TableToolbar
+                    items={[]}
+                    active="table"
+                    onChange={() => undefined}
+                    actions={
+                        <div className="ml-auto flex items-center gap-5">
+                            {loading ? (
+                                <>
+                                    <div className="h-3 w-24 rounded bg-gray-100 animate-pulse" />
+                                    <div className="h-3 w-20 rounded bg-gray-100 animate-pulse" />
+                                </>
+                            ) : null}
+                            {!loading && selectedDocIds.length > 0 && (
+                                <div ref={actionsRef} className="relative">
+                                    <button
+                                        onClick={() =>
+                                            setActionsOpen((v) => !v)
+                                        }
+                                        className="flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors"
+                                    >
+                                        Actions
+                                        <ChevronDown className="h-3.5 w-3.5" />
+                                    </button>
+                                    {actionsOpen && (
+                                        <div className="absolute top-full right-0 mt-1 w-36 rounded-lg border border-gray-100 bg-white shadow-lg z-50 overflow-hidden">
+                                            <button
+                                                onClick={handleClearResults}
+                                                className="w-full px-3 py-1.5 text-left text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                                            >
+                                                Clear results
+                                            </button>
+                                            <button
+                                                onClick={handleDeleteDocuments}
+                                                className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 transition-colors"
+                                            >
+                                                Delete
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            {!loading && (
+                                <>
+                                    <button
+                                        onClick={() => setAddDocsOpen(true)}
+                                        disabled={savingColumnsConfig}
+                                        className={`flex items-center gap-1 text-xs font-medium transition-colors ${
+                                            savingColumnsConfig
+                                                ? "text-gray-300 cursor-default"
+                                                : "text-gray-700 hover:text-gray-900"
+                                        }`}
+                                    >
+                                        <Upload className="h-3.5 w-3.5" />
+                                        Add Documents
+                                    </button>
+                                    <button
+                                        onClick={() => setAddColOpen(true)}
+                                        disabled={
+                                            savingColumn || savingColumnsConfig
+                                        }
+                                        className={`flex items-center gap-1 text-xs font-medium transition-colors ${
+                                            savingColumn || savingColumnsConfig
+                                                ? "text-gray-300 cursor-default"
+                                                : "text-gray-700 hover:text-gray-900"
+                                        }`}
+                                    >
+                                        <Plus className="h-3.5 w-3.5" />
+                                        Add Columns
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    }
+                />
 
                 {/* Table area */}
                 <div className="flex flex-1 overflow-hidden">

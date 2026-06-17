@@ -280,7 +280,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                                             : "text-gray-700 hover:bg-gray-100",
                                                     )}
                                                 >
-                                                    <FolderOpen className="h-3.5 w-3.5 shrink-0 text-gray-500" />
+                                                    <FolderOpen className="h-3.5 w-3.5 shrink-0 text-gray-600" />
                                                     <span className="min-w-0 flex-1 truncate">
                                                         {project.name}
                                                     </span>

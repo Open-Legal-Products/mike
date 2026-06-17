@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { useUserProfile } from "@/contexts/UserProfileContext";
-import { accountGlassSectionClassName } from "../accountStyles";
+import { AccountSection } from "../AccountSection";
 
 export default function FeaturesPage() {
     const { profile, updateLegalResearchUs } = useUserProfile();
@@ -52,7 +52,7 @@ export default function FeaturesPage() {
                         Legal Research
                     </h2>
                 </div>
-                <div className={accountGlassSectionClassName}>
+                <AccountSection>
                     <div className="px-4 py-5">
                         <div className="space-y-1">
                             <p className="text-sm font-medium text-gray-900">
@@ -113,7 +113,7 @@ export default function FeaturesPage() {
                             </button>
                         </div>
                     </div>
-                </div>
+                </AccountSection>
             </section>
         </div>
     );

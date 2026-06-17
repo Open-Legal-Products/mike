@@ -1,3 +1,5 @@
+-- Migration date: 2026-06-10
+
 -- Keep document version tombstones after deleting version file bytes.
 -- Deleted versions remain visible in history but are ignored by active-file
 -- lookups and cannot be opened/downloaded/replaced.

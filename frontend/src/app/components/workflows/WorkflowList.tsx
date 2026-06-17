@@ -8,7 +8,6 @@ import {
     MessageSquare,
     User,
     ChevronDown,
-    Check,
 } from "lucide-react";
 import {
     listWorkflows,
@@ -21,18 +20,36 @@ import type { Workflow } from "../shared/types";
 import { BUILT_IN_WORKFLOWS, BUILT_IN_IDS } from "./builtinWorkflows";
 import { DisplayWorkflowModal } from "./DisplayWorkflowModal";
 import { NewWorkflowModal } from "./NewWorkflowModal";
-import { ToolbarTabs } from "../shared/ToolbarTabs";
-import { RowActions } from "../shared/RowActions";
+import { TableToolbar } from "../shared/TableToolbar";
+import { RowActionMenuItems, RowActions } from "../shared/RowActions";
 import { MikeIcon } from "@/components/chat/mike-icon";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/app/components/shared/PageHeader";
 import { workflowDetailPath } from "./workflowRoutes";
+import {
+    GLASS_DROPDOWN,
+    GLASS_MENU_ITEM,
+    HeaderFilterDropdown,
+} from "../shared/HeaderFilterDropdown";
+import {
+    TABLE_CHECKBOX_CLASS,
+    TABLE_STICKY_CELL_BG,
+    SkeletonDot,
+    SkeletonLine,
+    TableBody,
+    TableCell,
+    TableEmptyState,
+    TableHeaderCell,
+    TableHeaderRow,
+    TablePrimaryCell,
+    TableRow,
+    TableScrollArea,
+    TableStickyCell,
+} from "../shared/TablePrimitive";
 
-type Tab = "all" | "builtin" | "custom" | "hidden";
+type WorkflowScope = "all" | "builtin" | "custom" | "hidden";
 
-const NAME_COL_W = "w-[332px] shrink-0";
-
-const TABS: { id: Tab; label: string }[] = [
+const WORKFLOW_SCOPES: { id: WorkflowScope; label: string }[] = [
     { id: "all", label: "All" },
     { id: "builtin", label: "Built-in" },
     { id: "custom", label: "Custom" },
@@ -42,25 +59,20 @@ const TABS: { id: Tab; label: string }[] = [
 export function WorkflowList() {
     const router = useRouter();
     const { user } = useAuth();
-    const stickyCellBg = "bg-[#fafbfc]";
     const [custom, setCustom] = useState<Workflow[]>([]);
     const [loading, setLoading] = useState(true);
     const [selected, setSelected] = useState<Workflow | null>(null);
-    const [activeTab, setActiveTab] = useState<Tab>("all");
+    const [activeScope, setActiveScope] = useState<WorkflowScope>("all");
     const [newModalOpen, setNewModalOpen] = useState(false);
     const [hiddenBuiltinIds, setHiddenBuiltinIds] = useState<string[]>([]);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [actionsOpen, setActionsOpen] = useState(false);
     const [practiceFilter, setPracticeFilter] = useState<string | null>(null);
-    const [practiceFilterOpen, setPracticeFilterOpen] = useState(false);
     const [typeFilter, setTypeFilter] = useState<Workflow["type"] | null>(
         null,
     );
-    const [typeFilterOpen, setTypeFilterOpen] = useState(false);
     const [search, setSearch] = useState("");
     const actionsRef = useRef<HTMLDivElement>(null);
-    const practiceFilterRef = useRef<HTMLDivElement>(null);
-    const typeFilterRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         Promise.all([
@@ -79,7 +91,7 @@ export function WorkflowList() {
     useEffect(() => {
         setSelectedIds([]);
         setActionsOpen(false);
-    }, [activeTab, practiceFilter, typeFilter]);
+    }, [activeScope, practiceFilter, typeFilter]);
 
     useEffect(() => {
         function handleClick(e: MouseEvent) {
@@ -94,25 +106,6 @@ export function WorkflowList() {
         return () => document.removeEventListener("mousedown", handleClick);
     }, [actionsOpen]);
 
-    useEffect(() => {
-        function handleClick(e: MouseEvent) {
-            if (
-                practiceFilterRef.current &&
-                !practiceFilterRef.current.contains(e.target as Node)
-            ) {
-                setPracticeFilterOpen(false);
-            }
-            if (
-                typeFilterRef.current &&
-                !typeFilterRef.current.contains(e.target as Node)
-            ) {
-                setTypeFilterOpen(false);
-            }
-        }
-        document.addEventListener("mousedown", handleClick);
-        return () => document.removeEventListener("mousedown", handleClick);
-    }, []);
-
     const hiddenBuiltins = BUILT_IN_WORKFLOWS.filter((wf) =>
         hiddenBuiltinIds.includes(wf.id),
     );
@@ -120,19 +113,21 @@ export function WorkflowList() {
         (wf) => !hiddenBuiltinIds.includes(wf.id),
     );
     const all = [...visibleBuiltins, ...custom];
-    const byTab =
-        activeTab === "builtin"
+    const byScope =
+        activeScope === "builtin"
             ? visibleBuiltins
-            : activeTab === "custom"
+            : activeScope === "custom"
               ? custom
-              : activeTab === "hidden"
+              : activeScope === "hidden"
                 ? hiddenBuiltins
                 : all;
     const practices = Array.from(
-        new Set(byTab.map((wf) => wf.practice).filter((p): p is string => !!p)),
+        new Set(
+            byScope.map((wf) => wf.practice).filter((p): p is string => !!p),
+        ),
     ).sort();
     const q = search.toLowerCase();
-    const filtered = byTab
+    const filtered = byScope
         .filter((wf) => !practiceFilter || wf.practice === practiceFilter)
         .filter((wf) => !typeFilter || wf.type === typeFilter)
         .filter((wf) => !q || wf.title.toLowerCase().includes(q));
@@ -209,156 +204,71 @@ export function WorkflowList() {
               };
 
     const typeFilterButton = (
-        <div className="relative" ref={typeFilterRef}>
-            <button
-                onClick={() => setTypeFilterOpen((o) => !o)}
-                className={`flex items-center gap-1 text-xs font-medium transition-colors ${
-                    typeFilter
-                        ? "text-gray-700 hover:text-gray-900"
-                        : "text-gray-500 hover:text-gray-700"
-                }`}
-            >
-                {typeFilter
-                    ? typeFilter === "tabular"
-                        ? "Tabular"
-                        : "Assistant"
-                    : "Filter by type"}
-                <ChevronDown className="h-3 w-3" />
-            </button>
-            {typeFilterOpen && (
-                <div className="absolute right-0 top-full mt-1.5 z-20 w-40 rounded-xl border border-gray-100 bg-white shadow-lg overflow-hidden">
-                    <button
-                        onClick={() => {
-                            setTypeFilter(null);
-                            setTypeFilterOpen(false);
-                        }}
-                        className="flex items-center justify-between w-full px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-                    >
-                        All Types
-                        {!typeFilter && (
-                            <Check className="h-3.5 w-3.5 text-gray-400" />
-                        )}
-                    </button>
-                    <div className="border-t border-gray-100" />
-                    {(["assistant", "tabular"] as const).map((t) => {
-                        const { label, Icon, className } = getTypeMeta(t);
-                        return (
-                            <button
-                                key={t}
-                                onClick={() => {
-                                    setTypeFilter(t);
-                                    setTypeFilterOpen(false);
-                                }}
-                                className="flex items-center justify-between w-full px-3 py-2 text-xs hover:bg-gray-50 transition-colors"
-                            >
-                                <span
-                                    className={`inline-flex items-center gap-1.5 font-medium ${className}`}
-                                >
-                                    <Icon className="h-3.5 w-3.5" />
-                                    {label}
-                                </span>
-                                {typeFilter === t && (
-                                    <Check className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                                )}
-                            </button>
-                        );
-                    })}
-                </div>
-            )}
-        </div>
+        <HeaderFilterDropdown
+            label="Filter by type"
+            value={typeFilter}
+            allLabel="All Types"
+            widthClassName="w-40"
+            options={(["assistant", "tabular"] as const).map((type) => {
+                const { label, Icon, className } = getTypeMeta(type);
+                return {
+                    value: type,
+                    label,
+                    icon: Icon,
+                    className,
+                };
+            })}
+            onChange={setTypeFilter}
+        />
     );
 
     const practiceFilterButton = (
-        <div className="relative" ref={practiceFilterRef}>
-            <button
-                onClick={() => setPracticeFilterOpen((o) => !o)}
-                className={`flex items-center gap-1 text-xs font-medium transition-colors ${
-                    practiceFilter
-                        ? "text-gray-700 hover:text-gray-900"
-                        : "text-gray-500 hover:text-gray-700"
-                }`}
-            >
-                {practiceFilter ?? "Filter by practice"}
-                <ChevronDown className="h-3 w-3" />
-            </button>
-            {practiceFilterOpen && (
-                <div className="absolute right-0 top-full mt-1.5 z-20 w-52 rounded-xl border border-gray-100 bg-white shadow-lg overflow-hidden">
-                    <button
-                        onClick={() => {
-                            setPracticeFilter(null);
-                            setPracticeFilterOpen(false);
-                        }}
-                        className="flex items-center justify-between w-full px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-                    >
-                        All Practices
-                        {!practiceFilter && (
-                            <Check className="h-3.5 w-3.5 text-gray-400" />
-                        )}
-                    </button>
-                    {practices.length > 0 && (
-                        <div className="border-t border-gray-100" />
-                    )}
-                    {practices.map((p) => (
-                        <button
-                            key={p}
-                            onClick={() => {
-                                setPracticeFilter(p);
-                                setPracticeFilterOpen(false);
-                            }}
-                            className="flex items-center justify-between w-full px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-                        >
-                            <span className="truncate pr-2">{p}</span>
-                            {practiceFilter === p && (
-                                <Check className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                            )}
-                        </button>
-                    ))}
-                </div>
-            )}
-        </div>
+        <HeaderFilterDropdown
+            label="Filter by practice"
+            value={practiceFilter}
+            allLabel="All Practices"
+            options={practices.map((practice) => ({
+                value: practice,
+                label: practice,
+            }))}
+            onChange={setPracticeFilter}
+        />
     );
 
-    const toolbarActions = (
-        <>
-            {selectedIds.length > 0 && (
-                <div ref={actionsRef} className="relative">
-                    <button
-                        onClick={() => setActionsOpen((v) => !v)}
-                        className="flex items-center gap-1 text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
-                    >
-                        Actions
-                        <ChevronDown className="h-3.5 w-3.5" />
-                    </button>
-                    {actionsOpen && (
-                        <div className="absolute top-full right-0 mt-1 w-36 rounded-lg border border-gray-100 bg-white shadow-lg z-50 overflow-hidden">
-                            {activeTab === "hidden" ? (
-                                <button
-                                    onClick={handleBulkUnhide}
-                                    className="w-full px-3 py-1.5 text-left text-xs text-gray-700 hover:bg-gray-50 transition-colors"
-                                >
-                                    Unhide
-                                </button>
-                            ) : (
-                                <button
-                                    onClick={handleBulkRemove}
-                                    className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 transition-colors"
-                                >
-                                    Delete
-                                </button>
-                            )}
-                        </div>
-                    )}
-                </div>
-            )}
-            <div className="flex items-center gap-5">
-                {typeFilterButton}
-                {practiceFilterButton}
+    const toolbarActions =
+        selectedIds.length > 0 ? (
+            <div ref={actionsRef} className="relative">
+                <button
+                    onClick={() => setActionsOpen((v) => !v)}
+                    className="flex items-center gap-1 text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
+                >
+                    Actions
+                    <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+                {actionsOpen && (
+                    <div className={`absolute top-full right-0 mt-1 z-[100] w-36 overflow-hidden ${GLASS_DROPDOWN}`}>
+                        {activeScope === "hidden" ? (
+                            <button
+                                onClick={handleBulkUnhide}
+                                className={`w-full px-3 py-1.5 text-left text-xs text-gray-700 ${GLASS_MENU_ITEM}`}
+                            >
+                                Unhide
+                            </button>
+                        ) : (
+                            <button
+                                onClick={handleBulkRemove}
+                                className="w-full px-3 py-1.5 text-left text-xs text-red-600 transition-colors hover:bg-red-500/10"
+                            >
+                                Delete
+                            </button>
+                        )}
+                    </div>
+                )}
             </div>
-        </>
-    );
+        ) : undefined;
 
     return (
-        <div className="flex flex-col flex-1 overflow-hidden">
+        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
             {/* Page header */}
             <PageHeader
                 shrink
@@ -382,21 +292,20 @@ export function WorkflowList() {
                 </h1>
             </PageHeader>
 
-            <ToolbarTabs
-                tabs={TABS}
-                active={activeTab}
-                onChange={setActiveTab}
+            <TableToolbar
+                items={WORKFLOW_SCOPES}
+                active={activeScope}
+                onChange={setActiveScope}
                 actions={toolbarActions}
             />
 
             {/* Table */}
-            <div className="flex-1 overflow-auto">
-                <div className="min-w-max">
-                    {/* Column headers */}
-                    <div className="flex items-center h-8 pr-3 md:pr-10 border-b border-gray-200 text-xs text-gray-500 font-medium select-none">
-                        <div className={`sticky left-0 z-[60] ${NAME_COL_W} ${stickyCellBg} flex items-center gap-4 self-stretch pl-4 pr-2 text-left`}>
+            <TableScrollArea>
+                {/* Column headers */}
+                <TableHeaderRow>
+                        <TableStickyCell header>
                             {loading ? (
-                                <div className="h-2.5 w-2.5 shrink-0 rounded bg-gray-100 animate-pulse" />
+                                <SkeletonDot />
                             ) : (
                                 <input
                                     type="checkbox"
@@ -405,46 +314,58 @@ export function WorkflowList() {
                                         if (el) el.indeterminate = someSelected;
                                     }}
                                     onChange={toggleAll}
-                                    className="h-2.5 w-2.5 rounded border-gray-200 cursor-pointer accent-black"
+                                    className={TABLE_CHECKBOX_CLASS}
                                 />
                             )}
                             <span>Name</span>
-                        </div>
-                        <div className="ml-auto w-28 shrink-0">Type</div>
-                        <div className="w-40 shrink-0">Practice</div>
-                        <div className="w-28 shrink-0">Source</div>
-                        <div className="w-8 shrink-0" />
-                    </div>
+                        </TableStickyCell>
+                        <TableHeaderCell className="ml-auto w-28">
+                            <div className="flex items-center gap-1">
+                                <span>Type</span>
+                                {typeFilterButton}
+                            </div>
+                        </TableHeaderCell>
+                        <TableHeaderCell className="w-40">
+                            <div className="flex items-center gap-1">
+                                <span>Practice</span>
+                                {practiceFilterButton}
+                            </div>
+                        </TableHeaderCell>
+                        <TableHeaderCell className="w-28">Source</TableHeaderCell>
+                        <TableHeaderCell className="w-8" />
+                </TableHeaderRow>
 
-                    {loading && activeTab !== "builtin" ? (
-                        <div>
+                    {loading && activeScope !== "builtin" ? (
+                        <TableBody>
                             {[1, 2, 3].map((i) => (
-                                <div
+                                <TableRow
                                     key={i}
-                                    className="flex items-center h-10 pr-3 md:pr-10 border-b border-gray-50"
+                                    interactive={false}
                                 >
-                                    <div className={`sticky left-0 z-[60] ${NAME_COL_W} ${stickyCellBg} py-2 pl-4 pr-2`}>
+                                    <TableStickyCell
+                                        hover={false}
+                                    >
                                         <div className="flex items-center gap-4">
-                                            <div className="h-2.5 w-2.5 shrink-0 rounded bg-gray-100 animate-pulse" />
-                                            <div className="h-3.5 w-48 rounded bg-gray-100 animate-pulse" />
+                                            <SkeletonDot />
+                                            <SkeletonLine className="h-3.5 w-48" />
                                         </div>
-                                    </div>
-                                    <div className="ml-auto w-28 shrink-0">
-                                        <div className="h-3 w-16 rounded bg-gray-100 animate-pulse" />
-                                    </div>
-                                    <div className="w-40 shrink-0">
-                                        <div className="h-3 w-24 rounded bg-gray-100 animate-pulse" />
-                                    </div>
-                                    <div className="w-28 shrink-0">
-                                        <div className="h-3 w-14 rounded bg-gray-100 animate-pulse" />
-                                    </div>
-                                    <div className="w-8 shrink-0" />
-                                </div>
+                                    </TableStickyCell>
+                                    <TableCell className="ml-auto w-28">
+                                        <SkeletonLine className="w-16" />
+                                    </TableCell>
+                                    <TableCell className="w-40">
+                                        <SkeletonLine className="w-24" />
+                                    </TableCell>
+                                    <TableCell className="w-28">
+                                        <SkeletonLine className="w-14" />
+                                    </TableCell>
+                                    <TableCell className="w-8" />
+                                </TableRow>
                             ))}
-                        </div>
+                        </TableBody>
                     ) : filtered.length === 0 ? (
-                        <div className="flex flex-col items-start py-24 w-full max-w-xs mx-auto">
-                            {activeTab === "custom" ? (
+                        <TableEmptyState>
+                            {activeScope === "custom" ? (
                                 <>
                                     <Library className="h-8 w-8 text-gray-300 mb-4" />
                                     <p className="text-2xl font-medium font-serif text-gray-900">
@@ -462,14 +383,14 @@ export function WorkflowList() {
                                         + Create New
                                     </button>
                                 </>
-                            ) : activeTab === "hidden" ? (
+                            ) : activeScope === "hidden" ? (
                                 <>
                                     <Library className="h-8 w-8 text-gray-300 mb-4" />
                                     <p className="text-2xl font-medium font-serif text-gray-900">
                                         Hidden Workflows
                                     </p>
                                     <p className="mt-1 text-xs text-gray-400 text-left">
-                                        Built-in workflows you've hidden will
+                                        Built-in workflows you&apos;ve hidden will
                                         appear here. You can unhide them at any
                                         time.
                                     </p>
@@ -486,33 +407,68 @@ export function WorkflowList() {
                                     </p>
                                 </>
                             )}
-                        </div>
+                        </TableEmptyState>
                     ) : (
-                        filtered.map((wf) => {
+                        <TableBody>
+                            {filtered.map((wf) => {
                             const rowBg = selectedIds.includes(wf.id)
                                 ? "bg-gray-50"
-                                : stickyCellBg;
+                                : TABLE_STICKY_CELL_BG;
                             return (
-                            <div
+                            <TableRow
                                 key={wf.id}
+                                rightClickDropdown={
+                                    wf.is_system
+                                        ? activeScope === "hidden"
+                                            ? (close) => (
+                                                  <RowActionMenuItems
+                                                      onClose={close}
+                                                      onUnhide={() =>
+                                                          handleUnhideWorkflow(
+                                                              wf.id,
+                                                          )
+                                                      }
+                                                  />
+                                              )
+                                            : (close) => (
+                                                  <RowActionMenuItems
+                                                      onClose={close}
+                                                      onHide={() =>
+                                                          handleHideWorkflow(
+                                                              wf.id,
+                                                          )
+                                                      }
+                                                  />
+                                              )
+                                        : wf.is_owner === false
+                                          ? undefined
+                                          : (close) => (
+                                                <RowActionMenuItems
+                                                    onClose={close}
+                                                    onDelete={async () => {
+                                                        await deleteWorkflow(
+                                                            wf.id,
+                                                        );
+                                                        setCustom((prev) =>
+                                                            prev.filter(
+                                                                (w) =>
+                                                                    w.id !==
+                                                                    wf.id,
+                                                            ),
+                                                        );
+                                                    }}
+                                                />
+                                            )
+                                }
                                 onClick={() => setSelected(wf)}
-                                className="group flex items-center h-10 pr-3 md:pr-10 border-b border-gray-50 hover:bg-gray-100 cursor-pointer transition-colors"
                             >
-                                <div className={`sticky left-0 z-[60] ${NAME_COL_W} py-2 pl-4 pr-2 ${rowBg} transition-colors group-hover:bg-gray-100`}>
-                                    <div className="flex min-w-0 items-center gap-4">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedIds.includes(wf.id)}
-                                            onChange={() => toggleOne(wf.id)}
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-pointer accent-black"
-                                        />
-                                        <span className="min-w-0 flex-1 truncate text-sm text-gray-800">
-                                            {wf.title}
-                                        </span>
-                                    </div>
-                                </div>
-                                <div className="ml-auto w-28 shrink-0">
+                                <TablePrimaryCell
+                                    bgClassName={rowBg}
+                                    selected={selectedIds.includes(wf.id)}
+                                    onSelectionChange={() => toggleOne(wf.id)}
+                                    label={wf.title}
+                                />
+                                <TableCell className="ml-auto w-28">
                                     {(() => {
                                         const { label, Icon, className } =
                                             getTypeMeta(wf.type);
@@ -525,8 +481,8 @@ export function WorkflowList() {
                                             </span>
                                         );
                                     })()}
-                                </div>
-                                <div className="w-40 shrink-0">
+                                </TableCell>
+                                <TableCell className="w-40">
                                     {wf.practice ? (
                                         <span className="text-xs font-medium text-gray-600">
                                             {wf.practice}
@@ -536,8 +492,8 @@ export function WorkflowList() {
                                             —
                                         </span>
                                     )}
-                                </div>
-                                <div className="w-28 shrink-0">
+                                </TableCell>
+                                <TableCell className="w-28">
                                     {wf.is_system ? (
                                         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600">
                                             <MikeIcon size={14} />
@@ -556,13 +512,13 @@ export function WorkflowList() {
                                             </span>
                                         </span>
                                     )}
-                                </div>
+                                </TableCell>
                                 <div
                                     className="w-8 shrink-0 flex justify-end"
                                     onClick={(e) => e.stopPropagation()}
                                 >
                                     {wf.is_system ? (
-                                        activeTab === "hidden" ? (
+                                        activeScope === "hidden" ? (
                                             <RowActions
                                                 onUnhide={() =>
                                                     handleUnhideWorkflow(wf.id)
@@ -588,12 +544,12 @@ export function WorkflowList() {
                                         />
                                     )}
                                 </div>
-                            </div>
+                            </TableRow>
                             );
-                        })
+                        })}
+                        </TableBody>
                     )}
-                </div>
-            </div>
+            </TableScrollArea>
 
             <DisplayWorkflowModal
                 workflows={all}
