@@ -328,6 +328,7 @@ export async function deleteUserAccountData(
                   .delete()
                   .eq("shared_with_email", userEmail.trim().toLowerCase())
             : Promise.resolve({ error: null }),
+        db.from("knowledge_entries").delete().eq("user_id", userId),
         db.from("workflows").delete().eq("user_id", userId),
         db.from("projects").delete().eq("user_id", userId),
     ];

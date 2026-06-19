@@ -31,6 +31,7 @@ import {
     deleteProjectFolder,
     moveDocumentToFolder,
     moveSubfolderToFolder,
+    createProjectKnowledgeEntry,
 } from "@/app/lib/mikeApi";
 import { useAssistantChat } from "@/app/hooks/useAssistantChat";
 import { useChatHistoryContext } from "@/app/contexts/ChatHistoryContext";
@@ -53,6 +54,7 @@ import type {
     CitationAnnotation,
     Document,
     EditAnnotation,
+    KnowledgeSuggestion,
     Message,
     Project,
 } from "@/app/components/shared/types";
@@ -544,6 +546,20 @@ export default function ProjectAssistantChatPage({ params }: Props) {
     const handleEditError = (args: { documentId: string; message: string }) => {
         patchTab(args.documentId, { warning: args.message });
     };
+
+    const handleSaveKnowledgeSuggestion = useCallback(
+        async (entry: KnowledgeSuggestion) => {
+            await createProjectKnowledgeEntry(projectId, {
+                entry_type: entry.entry_type,
+                title: entry.title,
+                body: entry.body,
+                metadata: entry.metadata,
+                source_refs: entry.source_refs,
+                include_in_agent_context: true,
+            });
+        },
+        [projectId],
+    );
 
     const dismissTabWarning = (documentId: string) => {
         patchTab(documentId, { warning: null });
@@ -1217,6 +1233,9 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                                                 handleEditViewClick
                                             }
                                             onOpenDocument={handleOpenDocument}
+                                            onSaveKnowledgeSuggestion={
+                                                handleSaveKnowledgeSuggestion
+                                            }
                                             onEditResolved={handleEditResolved}
                                             onEditError={handleEditError}
                                             isDocReloading={(docId) =>

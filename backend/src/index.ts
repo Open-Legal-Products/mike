@@ -12,6 +12,7 @@ import { workflowsRouter } from "./routes/workflows";
 import { userRouter } from "./routes/user";
 import { downloadsRouter } from "./routes/downloads";
 import { caseLawRouter } from "./routes/caseLaw";
+import { knowledgeRouter } from "./routes/knowledge";
 
 const app = express();
 const PORT = process.env.PORT ?? 3001;
@@ -151,6 +152,8 @@ app.use("/projects/:projectId/chat", projectChatRouter);
 app.use("/single-documents", documentsRouter);
 app.use("/tabular-review", tabularRouter);
 app.use("/workflows", workflowsRouter);
+app.use("/knowledge", knowledgeRouter);
+app.use("/projects/:projectId/knowledge", knowledgeRouter);
 app.use("/user", userRouter);
 app.use("/users", userRouter);
 app.use("/download", downloadsRouter);

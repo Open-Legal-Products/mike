@@ -43,6 +43,15 @@ import {
   type OpenAIToolSchema,
 } from "./llm";
 import { safeErrorMessage } from "./safeError";
+import {
+  getKnowledgeForAgent,
+  isKnowledgeEntryType,
+  knowledgeEntryForTool,
+  listKnowledgeForAgent,
+  parseKnowledgeSuggestion,
+  type KnowledgeEntryType,
+  type KnowledgeSuggestion,
+} from "./knowledge";
 
 const STANDARD_FONT_DATA_URL = (() => {
   try {
@@ -292,6 +301,141 @@ export const WORKFLOW_TOOLS = [
           },
         },
         required: ["workflow_id"],
+      },
+    },
+  },
+];
+
+export const KNOWLEDGE_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "list_knowledge_entries",
+      description:
+        "List matter knowledge entries and/or personal library entries. Use this to understand stored facts, parties, key dates, clauses, positions, playbooks, and sources before answering.",
+      parameters: {
+        type: "object",
+        properties: {
+          scope: {
+            type: "string",
+            enum: ["project", "library", "all"],
+            description:
+              "Which knowledge scope to list. Defaults to all available entries.",
+          },
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 50,
+            description: "Maximum entries to return. Defaults to 20.",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_knowledge_entries",
+      description:
+        "Search matter knowledge and the user's personal library for a word or phrase. Use this when the prompt needs stored matter context, positions, clauses, or playbooks.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Word or phrase to search for.",
+          },
+          scope: {
+            type: "string",
+            enum: ["project", "library", "all"],
+            description:
+              "Which knowledge scope to search. Defaults to all available entries.",
+          },
+          entry_types: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: [
+                "fact",
+                "party",
+                "date",
+                "clause",
+                "position",
+                "playbook",
+                "source",
+              ],
+            },
+            description: "Optional entry types to include.",
+          },
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 50,
+            description: "Maximum entries to return. Defaults to 20.",
+          },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "read_knowledge_entry",
+      description:
+        "Read a single knowledge entry by ID. Use after list_knowledge_entries or search_knowledge_entries when more detail is needed.",
+      parameters: {
+        type: "object",
+        properties: {
+          entry_id: {
+            type: "string",
+            description: "Knowledge entry ID to read.",
+          },
+        },
+        required: ["entry_id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "suggest_knowledge_entries",
+      description:
+        "Suggest entries the user may want to save to the Matter OS knowledge base. This does not save anything; it only creates reviewable suggestions for the user.",
+      parameters: {
+        type: "object",
+        properties: {
+          entries: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                entry_type: {
+                  type: "string",
+                  enum: [
+                    "fact",
+                    "party",
+                    "date",
+                    "clause",
+                    "position",
+                    "playbook",
+                    "source",
+                  ],
+                },
+                title: { type: "string" },
+                body: { type: "string" },
+                metadata: { type: "object" },
+                source_refs: {
+                  type: "array",
+                  items: {},
+                },
+              },
+              required: ["entry_type", "title", "body"],
+            },
+            description: "Up to 8 suggested knowledge entries.",
+          },
+        },
+        required: ["entries"],
       },
     },
   },
@@ -2308,6 +2452,7 @@ export async function runToolCalls(
   courtlistenerEvents: CourtlistenerToolEvent[];
   caseCitationEvents: CaseCitationEvent[];
   mcpEvents: McpToolEvent[];
+  knowledgeEvents: Extract<AssistantEvent, { type: "knowledge_suggestion" }>[];
 }> {
   const toolResults: unknown[] = [];
   const docsRead: { filename: string; document_id?: string }[] = [];
@@ -2323,6 +2468,10 @@ export async function runToolCalls(
   const courtlistenerEvents: CourtlistenerToolEvent[] = [];
   const caseCitationEvents: CaseCitationEvent[] = [];
   const mcpEvents: McpToolEvent[] = [];
+  const knowledgeEvents: Extract<
+    AssistantEvent,
+    { type: "knowledge_suggestion" }
+  >[] = [];
   const courtState: CourtlistenerTurnState =
     courtlistenerState ??
     {
@@ -2511,6 +2660,88 @@ export async function runToolCalls(
         role: "tool",
         tool_call_id: tc.id,
         content: wf ? wf.prompt_md : `Workflow '${wfId}' not found.`,
+      });
+    } else if (tc.function.name === "list_knowledge_entries") {
+      const scope =
+        args.scope === "project" || args.scope === "library" || args.scope === "all"
+          ? args.scope
+          : "all";
+      const limit =
+        typeof args.limit === "number"
+          ? Math.max(1, Math.min(50, Math.floor(args.limit)))
+          : 20;
+      const entries = await listKnowledgeForAgent({
+        db,
+        userId,
+        projectId,
+        scope,
+        limit,
+      });
+      toolResults.push({
+        role: "tool",
+        tool_call_id: tc.id,
+        content: JSON.stringify(entries.map(knowledgeEntryForTool)),
+      });
+    } else if (tc.function.name === "search_knowledge_entries") {
+      const scope =
+        args.scope === "project" || args.scope === "library" || args.scope === "all"
+          ? args.scope
+          : "all";
+      const limit =
+        typeof args.limit === "number"
+          ? Math.max(1, Math.min(50, Math.floor(args.limit)))
+          : 20;
+      const entryTypes = Array.isArray(args.entry_types)
+        ? args.entry_types.filter(isKnowledgeEntryType)
+        : undefined;
+      const entries = await listKnowledgeForAgent({
+        db,
+        userId,
+        projectId,
+        scope,
+        query: typeof args.query === "string" ? args.query : "",
+        entryTypes,
+        limit,
+      });
+      toolResults.push({
+        role: "tool",
+        tool_call_id: tc.id,
+        content: JSON.stringify(entries.map(knowledgeEntryForTool)),
+      });
+    } else if (tc.function.name === "read_knowledge_entry") {
+      const entryId = typeof args.entry_id === "string" ? args.entry_id : "";
+      const entry = entryId
+        ? await getKnowledgeForAgent({ db, userId, entryId, projectId })
+        : null;
+      toolResults.push({
+        role: "tool",
+        tool_call_id: tc.id,
+        content: entry
+          ? JSON.stringify(knowledgeEntryForTool(entry))
+          : "Knowledge entry not found.",
+      });
+    } else if (tc.function.name === "suggest_knowledge_entries") {
+      const suggestions = Array.isArray(args.entries)
+        ? args.entries
+            .map(parseKnowledgeSuggestion)
+            .filter((entry): entry is KnowledgeSuggestion => !!entry)
+            .slice(0, 8)
+        : [];
+      const event = {
+        type: "knowledge_suggestion" as const,
+        entries: suggestions,
+      };
+      if (suggestions.length > 0) {
+        knowledgeEvents.push(event);
+        write(`data: ${JSON.stringify(event)}\n\n`);
+      }
+      toolResults.push({
+        role: "tool",
+        tool_call_id: tc.id,
+        content:
+          suggestions.length > 0
+            ? `Suggested ${suggestions.length} knowledge entr${suggestions.length === 1 ? "y" : "ies"} for user review.`
+            : "No valid knowledge suggestions were provided.",
       });
     } else if (tc.function.name === "read_table_cells" && tabularStore) {
       const colIndices = args.col_indices as number[] | undefined;
@@ -3659,6 +3890,7 @@ export async function runToolCalls(
     courtlistenerEvents,
     caseCitationEvents,
     mcpEvents,
+    knowledgeEvents,
   };
 }
 
@@ -3841,8 +4073,23 @@ export type EditAnnotation = {
   status: "pending" | "accepted" | "rejected";
 };
 
+type KnowledgeContextEntry = {
+  id: string;
+  entry_type: KnowledgeEntryType;
+  title: string;
+  scope?: "project" | "library";
+};
+
 type AssistantEvent =
   | { type: "reasoning"; text: string }
+  | {
+      type: "knowledge_context";
+      entries: KnowledgeContextEntry[];
+    }
+  | {
+      type: "knowledge_suggestion";
+      entries: KnowledgeSuggestion[];
+    }
   | { type: "doc_read"; filename: string; document_id?: string }
   | {
       type: "doc_find";
@@ -3943,6 +4190,7 @@ export async function runLLMStream(params: {
    * generated docs still get persisted, but as standalone documents.
    */
   projectId?: string | null;
+  knowledgeContext?: KnowledgeContextEntry[];
 }): Promise<{
   fullText: string;
   events: AssistantEvent[];
@@ -3964,10 +4212,16 @@ export async function runLLMStream(params: {
     apiKeys,
     signal,
     projectId,
+    knowledgeContext = [],
   } = params;
   const researchTools = includeResearchTools ? COURTLISTENER_TOOLS : [];
   const mcpTools = await buildUserMcpTools(userId, db);
-  const baseTools = [...TOOLS, ...researchTools, ...WORKFLOW_TOOLS];
+  const baseTools = [
+    ...TOOLS,
+    ...researchTools,
+    ...WORKFLOW_TOOLS,
+    ...KNOWLEDGE_TOOLS,
+  ];
   const activeTools = extraTools?.length
     ? [...baseTools, ...mcpTools, ...extraTools]
     : [...baseTools, ...mcpTools];
@@ -3985,6 +4239,14 @@ export async function runLLMStream(params: {
     }));
 
   const events: AssistantEvent[] = [];
+  if (knowledgeContext.length > 0) {
+    const event: Extract<AssistantEvent, { type: "knowledge_context" }> = {
+      type: "knowledge_context",
+      entries: knowledgeContext,
+    };
+    events.push(event);
+    write(`data: ${JSON.stringify(event)}\n\n`);
+  }
   // One assistant turn produces at most one document_versions row per
   // edited doc. `runToolCalls` fires once per tool-call batch; the model
   // may emit multiple batches in a single turn, so this map persists
@@ -4174,6 +4436,7 @@ export async function runLLMStream(params: {
           courtlistenerEvents,
           caseCitationEvents,
           mcpEvents,
+          knowledgeEvents,
         } = await runToolCalls(
           toolCalls,
           docStore,
@@ -4244,6 +4507,9 @@ export async function runLLMStream(params: {
           events.push(event);
         }
         for (const event of mcpEvents) {
+          events.push(event);
+        }
+        for (const event of knowledgeEvents) {
           events.push(event);
         }
         for (const event of caseCitationEvents) {

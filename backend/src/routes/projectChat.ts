@@ -20,6 +20,10 @@ import {
 } from "../lib/userSettings";
 import { checkProjectAccess } from "../lib/access";
 import { safeErrorLog, safeErrorMessage } from "../lib/safeError";
+import {
+    formatKnowledgeDigest,
+    listProjectKnowledgeContext,
+} from "../lib/knowledge";
 
 const PROJECT_SYSTEM_PROMPT_EXTRA = `PROJECT CONTEXT:
 You are operating within a project folder that contains a collection of legal documents the user has organised for a single matter. The user's questions will usually refer to one or more documents in this project — your job is to find the relevant files to work on. Use list_documents to see what is available and fetch_documents / read_document to pull in any documents you need before answering.
@@ -130,6 +134,11 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
     // knows which docs the user is highlighting *now*, distinct from
     // the broader project doc list.
     let systemPromptExtra = PROJECT_SYSTEM_PROMPT_EXTRA;
+    const knowledgeContext = await listProjectKnowledgeContext(db, projectId);
+    const knowledgeDigest = formatKnowledgeDigest(knowledgeContext);
+    if (knowledgeDigest) {
+        systemPromptExtra += `\n\nMATTER KNOWLEDGE:\nThe following curated project knowledge is approved for agent context. Treat it as useful matter context, but still cite documents/cases for evidentiary claims when needed.\n${knowledgeDigest}`;
+    }
     if (attached_documents?.length) {
         const slugByDocumentId = new Map<string, string>();
         for (const [slug, info] of Object.entries(docIndex)) {
@@ -187,6 +196,12 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             apiKeys,
             signal: streamAbort.signal,
             projectId,
+            knowledgeContext: knowledgeContext.map((entry) => ({
+                id: entry.id,
+                entry_type: entry.entry_type,
+                title: entry.title,
+                scope: "project" as const,
+            })),
         });
 
         const persistedEvents = stripTransientAssistantEvents(events);

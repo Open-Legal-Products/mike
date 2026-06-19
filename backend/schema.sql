@@ -198,6 +198,43 @@ create index if not exists idx_projects_user
 create index if not exists projects_shared_with_idx
   on public.projects using gin (shared_with);
 
+create table if not exists public.knowledge_entries (
+  id uuid primary key default gen_random_uuid(),
+  user_id text not null,
+  project_id uuid references public.projects(id) on delete cascade,
+  library_origin_id uuid references public.knowledge_entries(id) on delete set null,
+  entry_type text not null check (entry_type in (
+    'fact',
+    'party',
+    'date',
+    'clause',
+    'position',
+    'playbook',
+    'source'
+  )),
+  title text not null,
+  body text not null,
+  metadata jsonb not null default '{}'::jsonb,
+  source_refs jsonb not null default '[]'::jsonb,
+  status text not null default 'active' check (status in ('active', 'archived')),
+  include_in_agent_context boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists knowledge_entries_user_library_idx
+  on public.knowledge_entries(user_id, updated_at desc)
+  where project_id is null and status = 'active';
+
+create index if not exists knowledge_entries_project_idx
+  on public.knowledge_entries(project_id, updated_at desc)
+  where project_id is not null and status = 'active';
+
+create index if not exists knowledge_entries_library_origin_idx
+  on public.knowledge_entries(library_origin_id);
+
+alter table public.knowledge_entries enable row level security;
+
 create table if not exists public.project_subfolders (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects(id) on delete cascade,
@@ -799,6 +836,7 @@ alter table public.courtlistener_opinion_cluster_index enable row level security
 
 revoke all on public.user_profiles from anon, authenticated;
 revoke all on public.projects from anon, authenticated;
+revoke all on public.knowledge_entries from anon, authenticated;
 revoke all on public.project_subfolders from anon, authenticated;
 revoke all on public.documents from anon, authenticated;
 revoke all on public.document_versions from anon, authenticated;
