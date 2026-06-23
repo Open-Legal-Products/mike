@@ -16,6 +16,13 @@ export const GEMINI_MAIN_MODELS = [
     "gemini-3-flash-preview",
 ] as const;
 export const OPENAI_MAIN_MODELS = ["gpt-5.5", "gpt-5.4"] as const;
+export const FUGU_MAIN_MODELS = [
+    "fugu-ultra-20260615",
+    "fugu-20260615",
+] as const;
+
+// Default Sakana Fugu model.
+export const DEFAULT_SAKANA_MODEL = "fugu-ultra-20260615";
 
 // Mid-tier (used for tabular review) — user picks one in account settings.
 export const CLAUDE_MID_MODELS = ["claude-sonnet-4-6"] as const;
@@ -36,6 +43,7 @@ const ALL_MODELS = new Set<string>([
     ...CLAUDE_MAIN_MODELS,
     ...GEMINI_MAIN_MODELS,
     ...OPENAI_MAIN_MODELS,
+    ...FUGU_MAIN_MODELS,
     ...CLAUDE_MID_MODELS,
     ...GEMINI_MID_MODELS,
     ...OPENAI_MID_MODELS,
@@ -52,6 +60,7 @@ export function providerForModel(model: string): Provider {
     if (model.startsWith("claude")) return "claude";
     if (model.startsWith("gemini")) return "gemini";
     if (model.startsWith("gpt-")) return "openai";
+    if (model.startsWith("fugu-")) return "sakana";
     throw new Error(`Unknown model id: ${model}`);
 }
 
