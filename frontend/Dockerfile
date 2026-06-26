@@ -10,15 +10,9 @@ RUN npm ci
 FROM deps AS build
 COPY . .
 
-# NEXT_PUBLIC_* variables are embedded at build time.
-ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
-ARG NEXT_PUBLIC_SUPABASE_URL
-ARG NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
-ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
-ENV NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-
-RUN npm run build
+# NEXT_PUBLIC_* variables are read from frontend/.env during `next build`.
+RUN test -f .env || (echo "frontend/.env is required. Copy from .env.local.example." >&2 && exit 1) \
+    && npm run build
 
 FROM base AS runner
 ENV NODE_ENV=production
