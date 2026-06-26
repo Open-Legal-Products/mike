@@ -13,8 +13,10 @@ import {
     Download,
     File,
     FileText,
+    Library,
     Loader2,
     Scale,
+    Sparkles,
 } from "lucide-react";
 import { MikeIcon } from "@/components/chat/mike-icon";
 import { displayCitationQuote, formatCitationPage } from "../shared/types";
@@ -22,6 +24,7 @@ import type {
     AssistantEvent,
     CitationAnnotation,
     EditAnnotation,
+    KnowledgeSuggestion,
 } from "../shared/types";
 import { EditCard, applyOptimisticResolution } from "./EditCard";
 import { PreResponseWrapper } from "../shared/PreResponseWrapper";
@@ -42,6 +45,11 @@ function toolCallLabel(name: string): string {
     if (name === "read_workflow") return "Loading workflow...";
     if (name === "list_workflows") return "Loading workflows...";
     if (name === "list_documents") return "Loading documents...";
+    if (name === "list_knowledge_entries") return "Loading knowledge...";
+    if (name === "search_knowledge_entries") return "Searching knowledge...";
+    if (name === "read_knowledge_entry") return "Reading knowledge...";
+    if (name === "suggest_knowledge_entries")
+        return "Suggesting knowledge...";
     if (name === "courtlistener_search_case_law")
         return "Searching case law...";
     if (name === "courtlistener_get_cases") return "Fetching cases...";
@@ -865,6 +873,142 @@ function WorkflowAppliedBlock({
     );
 }
 
+function knowledgeTypeLabel(type: string) {
+    return type.replace(/_/g, " ");
+}
+
+function KnowledgeContextBlock({
+    entries,
+    showConnector,
+}: {
+    entries: Extract<AssistantEvent, { type: "knowledge_context" }>["entries"];
+    showConnector?: boolean;
+}) {
+    const titles = entries.map((entry) => entry.title).filter(Boolean);
+    const visibleTitles = titles.slice(0, 3).join(", ");
+    const extraCount = Math.max(0, titles.length - 3);
+
+    return (
+        <div className="flex items-start text-sm font-serif text-gray-500 relative">
+            {showConnector && (
+                <div className="absolute bottom-0 w-[1px] bg-gray-300 top-[13px] left-[2.5px] h-[calc(100%+11px)]" />
+            )}
+            <div className="mt-1.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-500">
+                <Library className="h-2.5 w-2.5" />
+            </div>
+            <div className="ml-2 min-w-0 flex-1 whitespace-normal break-words">
+                <span className="font-medium">Used matter knowledge</span>
+                {visibleTitles ? (
+                    <span>
+                        {" "}
+                        {visibleTitles}
+                        {extraCount > 0 ? ` +${extraCount}` : ""}
+                    </span>
+                ) : null}
+            </div>
+        </div>
+    );
+}
+
+function knowledgeSuggestionKey(entry: KnowledgeSuggestion, index: number) {
+    return `${entry.entry_type}:${entry.title}:${entry.body.slice(0, 64)}:${index}`;
+}
+
+function KnowledgeSuggestionBlock({
+    entries,
+    showConnector,
+    onSave,
+}: {
+    entries: KnowledgeSuggestion[];
+    showConnector?: boolean;
+    onSave?: (entry: KnowledgeSuggestion) => Promise<void> | void;
+}) {
+    const [savingKeys, setSavingKeys] = useState<Record<string, boolean>>({});
+    const [savedKeys, setSavedKeys] = useState<Record<string, boolean>>({});
+
+    const handleSave = async (
+        entry: KnowledgeSuggestion,
+        key: string,
+    ) => {
+        if (!onSave || savingKeys[key] || savedKeys[key]) return;
+        setSavingKeys((prev) => ({ ...prev, [key]: true }));
+        try {
+            await onSave(entry);
+            setSavedKeys((prev) => ({ ...prev, [key]: true }));
+        } catch (error) {
+            console.error("[AssistantMessage] failed to save knowledge", error);
+        } finally {
+            setSavingKeys((prev) => ({ ...prev, [key]: false }));
+        }
+    };
+
+    return (
+        <div className="relative">
+            {showConnector && (
+                <div className="absolute bottom-0 w-[1px] bg-gray-300 top-[13px] left-[2.5px] h-[calc(100%+11px)]" />
+            )}
+            <div className="flex items-start text-sm font-serif text-gray-500">
+                <div className="mt-1.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-500">
+                    <Sparkles className="h-2.5 w-2.5" />
+                </div>
+                <div className="ml-2 min-w-0 flex-1">
+                    <div className="font-medium">Suggested knowledge</div>
+                    <div className="mt-2 flex flex-col gap-2">
+                        {entries.map((entry, index) => {
+                            const key = knowledgeSuggestionKey(entry, index);
+                            const isSaving = !!savingKeys[key];
+                            const isSaved = !!savedKeys[key];
+                            return (
+                                <div
+                                    key={key}
+                                    className={`${RESPONSE_GLASS_SURFACE} px-3 py-2 font-sans text-gray-700`}
+                                >
+                                    <div className="flex min-w-0 items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="rounded border border-gray-200 bg-white/70 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-500">
+                                                    {knowledgeTypeLabel(
+                                                        entry.entry_type,
+                                                    )}
+                                                </span>
+                                                <span className="truncate text-sm font-medium text-gray-900">
+                                                    {entry.title}
+                                                </span>
+                                            </div>
+                                            <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-600">
+                                                {entry.body}
+                                            </p>
+                                        </div>
+                                        {onSave && (
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    void handleSave(entry, key)
+                                                }
+                                                disabled={isSaving || isSaved}
+                                                className="inline-flex h-7 shrink-0 items-center gap-1 rounded border border-gray-200 bg-white px-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60"
+                                            >
+                                                {isSaving ? (
+                                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                                ) : isSaved ? (
+                                                    <Check className="h-3 w-3" />
+                                                ) : (
+                                                    <Library className="h-3 w-3" />
+                                                )}
+                                                {isSaved ? "Saved" : "Save"}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 type CourtListenerBlockItem = {
     caseName: string | null;
     citation: string | null;
@@ -1583,6 +1727,9 @@ interface Props {
     ) => void;
     minHeight?: string;
     onWorkflowClick?: (workflowId: string) => void;
+    onSaveKnowledgeSuggestion?: (
+        entry: KnowledgeSuggestion,
+    ) => Promise<void> | void;
     onEditViewClick?: (ann: EditAnnotation, filename: string) => void;
     /**
      * Opens the editor panel for a document without auto-highlighting any
@@ -1648,6 +1795,7 @@ export function AssistantMessage({
     onCaseClick,
     minHeight = "0px",
     onWorkflowClick,
+    onSaveKnowledgeSuggestion,
     onEditViewClick,
     onOpenDocument,
     onEditResolveStart,
@@ -2046,6 +2194,25 @@ export function AssistantMessage({
                             ? () => onWorkflowClick(event.workflow_id)
                             : undefined
                     }
+                />
+            );
+        }
+        if (event.type === "knowledge_context") {
+            return (
+                <KnowledgeContextBlock
+                    key={globalIdx}
+                    entries={event.entries}
+                    showConnector={showConnector}
+                />
+            );
+        }
+        if (event.type === "knowledge_suggestion") {
+            return (
+                <KnowledgeSuggestionBlock
+                    key={globalIdx}
+                    entries={event.entries}
+                    showConnector={showConnector}
+                    onSave={onSaveKnowledgeSuggestion}
                 />
             );
         }

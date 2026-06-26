@@ -582,6 +582,32 @@ export function useAssistantChat({
               continue;
             }
 
+            if (data.type === "knowledge_context") {
+              pushEvent({
+                type: "knowledge_context",
+                entries: Array.isArray(data.entries)
+                  ? (data.entries as Extract<
+                      AssistantEvent,
+                      { type: "knowledge_context" }
+                    >["entries"])
+                  : [],
+              });
+              continue;
+            }
+
+            if (data.type === "knowledge_suggestion") {
+              pushEvent({
+                type: "knowledge_suggestion",
+                entries: Array.isArray(data.entries)
+                  ? (data.entries as Extract<
+                      AssistantEvent,
+                      { type: "knowledge_suggestion" }
+                    >["entries"])
+                  : [],
+              });
+              continue;
+            }
+
             if (data.type === "case_citation") {
               pushEvent({
                 type: "case_citation",

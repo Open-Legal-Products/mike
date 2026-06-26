@@ -11,7 +11,10 @@ import type {
     CitationAnnotation,
     Document,
     Folder,
+    KnowledgeEntry,
+    KnowledgeEntryType,
     Message,
+    ProjectActivityItem,
     Project,
     Workflow,
     TabularReview,
@@ -432,6 +435,89 @@ export interface ProjectPeople {
         display_name: string | null;
     };
     members: { email: string; display_name: string | null }[];
+}
+
+// ---------------------------------------------------------------------------
+// Matter OS knowledge and activity
+// ---------------------------------------------------------------------------
+
+export type KnowledgeEntryPayload = {
+    entry_type: KnowledgeEntryType;
+    title: string;
+    body: string;
+    metadata?: Record<string, unknown>;
+    source_refs?: unknown[];
+    include_in_agent_context?: boolean;
+};
+
+export async function listLibraryKnowledgeEntries(): Promise<KnowledgeEntry[]> {
+    return apiRequest<KnowledgeEntry[]>("/knowledge/library");
+}
+
+export async function createLibraryKnowledgeEntry(
+    payload: KnowledgeEntryPayload,
+): Promise<KnowledgeEntry> {
+    return apiRequest<KnowledgeEntry>("/knowledge/library", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function listProjectKnowledgeEntries(
+    projectId: string,
+): Promise<KnowledgeEntry[]> {
+    return apiRequest<KnowledgeEntry[]>(`/projects/${projectId}/knowledge`);
+}
+
+export async function createProjectKnowledgeEntry(
+    projectId: string,
+    payload: KnowledgeEntryPayload,
+): Promise<KnowledgeEntry> {
+    return apiRequest<KnowledgeEntry>(`/projects/${projectId}/knowledge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function linkLibraryKnowledgeEntryToProject(
+    projectId: string,
+    entryId: string,
+): Promise<KnowledgeEntry> {
+    return apiRequest<KnowledgeEntry>(
+        `/projects/${projectId}/knowledge/link-library`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ entry_id: entryId }),
+        },
+    );
+}
+
+export async function updateKnowledgeEntry(
+    entryId: string,
+    payload: Partial<KnowledgeEntryPayload> & {
+        status?: KnowledgeEntry["status"];
+    },
+): Promise<KnowledgeEntry> {
+    return apiRequest<KnowledgeEntry>(`/knowledge/${entryId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function deleteKnowledgeEntry(entryId: string): Promise<void> {
+    return apiRequest<void>(`/knowledge/${entryId}`, { method: "DELETE" });
+}
+
+export async function listProjectActivity(
+    projectId: string,
+): Promise<ProjectActivityItem[]> {
+    return apiRequest<ProjectActivityItem[]>(
+        `/projects/${projectId}/activity`,
+    );
 }
 
 export async function getProjectPeople(

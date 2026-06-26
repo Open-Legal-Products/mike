@@ -90,6 +90,7 @@ export function useProjectWorkspaceOptional() {
 function activeSectionFromSegments(
     segments: string[],
 ): ProjectWorkspaceSection {
+    if (segments[0] === "workspace") return "workspace";
     if (segments[0] === "assistant") return "assistant";
     if (segments[0] === "tabular-reviews") return "reviews";
     return "documents";
@@ -98,7 +99,11 @@ function activeSectionFromSegments(
 function shouldShowWorkspaceShell(segments: string[]) {
     if (segments.length === 0) return true;
     if (segments.length !== 1) return false;
-    return segments[0] === "assistant" || segments[0] === "tabular-reviews";
+    return (
+        segments[0] === "workspace" ||
+        segments[0] === "assistant" ||
+        segments[0] === "tabular-reviews"
+    );
 }
 
 export function ProjectWorkspaceProvider({
@@ -113,7 +118,7 @@ export function ProjectWorkspaceProvider({
     const [projectLoading, setProjectLoading] = useState(true);
     const [searchBySection, setSearchBySection] = useState<
         Record<ProjectWorkspaceSection, string>
-    >({ documents: "", assistant: "", reviews: "" });
+    >({ workspace: "", documents: "", assistant: "", reviews: "" });
     const [projectChats, setProjectChats] = useState<Chat[] | null>(null);
     const [projectReviews, setProjectReviews] = useState<
         TabularReview[] | null
@@ -533,6 +538,7 @@ export function ProjectSectionToolbar({
     return (
         <TableToolbar
             items={[
+                { id: "workspace", label: "Matter OS" },
                 { id: "documents", label: "Documents" },
                 { id: "assistant", label: "Assistant Chats" },
                 { id: "reviews", label: "Tabular Reviews" },
@@ -540,7 +546,9 @@ export function ProjectSectionToolbar({
             active={activeSection}
             onChange={(next) => {
                 const href =
-                    next === "documents"
+                    next === "workspace"
+                        ? `/projects/${projectId}/workspace`
+                        : next === "documents"
                         ? `/projects/${projectId}`
                         : next === "assistant"
                           ? `/projects/${projectId}/assistant`

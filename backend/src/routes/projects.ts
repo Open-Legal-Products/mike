@@ -136,6 +136,146 @@ async function attachChatCreatorLabels(
   }
 }
 
+type ProjectActivityItem = {
+  id: string;
+  type: string;
+  title: string;
+  detail: string | null;
+  created_at: string;
+  href?: string;
+  metadata?: Record<string, unknown>;
+};
+
+function activityDetail(value: unknown, max = 180) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  if (!trimmed) return null;
+  return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
+}
+
+function assistantEventActivity(args: {
+  event: Record<string, unknown>;
+  chatId: string;
+  messageId: string;
+  createdAt: string;
+  index: number;
+  projectId: string;
+}): ProjectActivityItem | null {
+  const { event, chatId, messageId, createdAt, index, projectId } = args;
+  const type = typeof event.type === "string" ? event.type : "";
+  const id = `${messageId}:${index}:${type}`;
+  const href = `/projects/${projectId}/assistant/chat/${chatId}`;
+  if (type === "doc_read") {
+    return {
+      id,
+      type,
+      title: `Read ${event.filename ?? "document"}`,
+      detail: null,
+      created_at: createdAt,
+      href,
+    };
+  }
+  if (type === "doc_find") {
+    return {
+      id,
+      type,
+      title: `Searched ${event.filename ?? "document"}`,
+      detail: activityDetail(event.query),
+      created_at: createdAt,
+      href,
+      metadata: { total_matches: event.total_matches },
+    };
+  }
+  if (type === "doc_created") {
+    return {
+      id,
+      type,
+      title: `Created ${event.filename ?? "document"}`,
+      detail: null,
+      created_at: createdAt,
+      href,
+    };
+  }
+  if (type === "doc_replicated") {
+    return {
+      id,
+      type,
+      title: `Copied ${event.filename ?? "document"}`,
+      detail: `${event.count ?? 1} copied document${event.count === 1 ? "" : "s"}`,
+      created_at: createdAt,
+      href,
+    };
+  }
+  if (type === "doc_edited") {
+    return {
+      id,
+      type,
+      title: `Proposed edits to ${event.filename ?? "document"}`,
+      detail: Array.isArray(event.annotations)
+        ? `${event.annotations.length} tracked change${event.annotations.length === 1 ? "" : "s"}`
+        : null,
+      created_at: createdAt,
+      href,
+    };
+  }
+  if (type === "workflow_applied") {
+    return {
+      id,
+      type,
+      title: `Applied workflow ${event.title ?? ""}`.trim(),
+      detail: null,
+      created_at: createdAt,
+      href,
+    };
+  }
+  if (type === "mcp_tool_call") {
+    return {
+      id,
+      type,
+      title: `Used connector ${event.connector_name ?? ""}`.trim(),
+      detail: activityDetail(event.tool_name),
+      created_at: createdAt,
+      href,
+      metadata: { status: event.status },
+    };
+  }
+  if (type.startsWith("courtlistener_")) {
+    return {
+      id,
+      type,
+      title: "Used legal research",
+      detail: activityDetail(event.query ?? event.citation_count),
+      created_at: createdAt,
+      href,
+    };
+  }
+  if (type === "knowledge_context") {
+    return {
+      id,
+      type,
+      title: "Used matter knowledge",
+      detail: Array.isArray(event.entries)
+        ? `${event.entries.length} context entr${event.entries.length === 1 ? "y" : "ies"}`
+        : null,
+      created_at: createdAt,
+      href,
+    };
+  }
+  if (type === "knowledge_suggestion") {
+    return {
+      id,
+      type,
+      title: "Suggested knowledge entries",
+      detail: Array.isArray(event.entries)
+        ? `${event.entries.length} suggested entr${event.entries.length === 1 ? "y" : "ies"}`
+        : null,
+      created_at: createdAt,
+      href,
+    };
+  }
+  return null;
+}
+
 // GET /projects
 projectsRouter.get("/", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
@@ -324,6 +464,176 @@ projectsRouter.get("/:projectId/people", requireAuth, async (req, res) => {
   });
 
   res.json({ owner, members });
+});
+
+// GET /projects/:projectId/activity
+projectsRouter.get("/:projectId/activity", requireAuth, async (req, res) => {
+  const userId = res.locals.userId as string;
+  const userEmail = res.locals.userEmail as string | undefined;
+  const { projectId } = req.params;
+  const db = createServerSupabase();
+
+  const access = await checkProjectAccess(projectId, userId, userEmail, db);
+  if (!access.ok)
+    return void res.status(404).json({ detail: "Project not found" });
+
+  const [{ data: chats }, { data: docs }, { data: reviews }] =
+    await Promise.all([
+      db
+        .from("chats")
+        .select("id, title, user_id, created_at")
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false })
+        .limit(20),
+      db.from("documents").select("id").eq("project_id", projectId),
+      db
+        .from("tabular_reviews")
+        .select("id, title, created_at, updated_at")
+        .eq("project_id", projectId)
+        .order("updated_at", { ascending: false })
+        .limit(20),
+    ]);
+
+  const chatRows = (chats ?? []) as {
+    id: string;
+    title: string | null;
+    user_id: string;
+    created_at: string;
+  }[];
+  const chatIds = chatRows.map((chat) => chat.id);
+  const documentIds = ((docs ?? []) as { id: string }[]).map((doc) => doc.id);
+
+  const [{ data: messages }, { data: versions }, { data: edits }] =
+    await Promise.all([
+      chatIds.length
+        ? db
+            .from("chat_messages")
+            .select("id, chat_id, role, content, created_at")
+            .in("chat_id", chatIds)
+            .eq("role", "assistant")
+            .order("created_at", { ascending: false })
+            .limit(80)
+        : Promise.resolve({ data: [] }),
+      documentIds.length
+        ? db
+            .from("document_versions")
+            .select("id, document_id, source, filename, version_number, created_at")
+            .in("document_id", documentIds)
+            .order("created_at", { ascending: false })
+            .limit(40)
+        : Promise.resolve({ data: [] }),
+      documentIds.length
+        ? db
+            .from("document_edits")
+            .select("id, document_id, status, inserted_text, deleted_text, created_at, resolved_at")
+            .in("document_id", documentIds)
+            .order("created_at", { ascending: false })
+            .limit(40)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+  const items: ProjectActivityItem[] = [];
+  for (const chat of chatRows) {
+    items.push({
+      id: `chat:${chat.id}`,
+      type: "chat_created",
+      title: chat.title ? `Started chat ${chat.title}` : "Started assistant chat",
+      detail: null,
+      created_at: chat.created_at,
+      href: `/projects/${projectId}/assistant/chat/${chat.id}`,
+    });
+  }
+
+  for (const message of (messages ?? []) as {
+    id: string;
+    chat_id: string;
+    content: unknown;
+    created_at: string;
+  }[]) {
+    if (!Array.isArray(message.content)) continue;
+    message.content.forEach((event, index) => {
+      if (!event || typeof event !== "object" || Array.isArray(event)) return;
+      const item = assistantEventActivity({
+        event: event as Record<string, unknown>,
+        chatId: message.chat_id,
+        messageId: message.id,
+        createdAt: message.created_at,
+        index,
+        projectId,
+      });
+      if (item) items.push(item);
+    });
+  }
+
+  for (const version of (versions ?? []) as {
+    id: string;
+    document_id: string;
+    source: string | null;
+    filename: string | null;
+    version_number: number | null;
+    created_at: string;
+  }[]) {
+    const sourceLabel =
+      version.source === "assistant_edit"
+        ? "Edited"
+        : version.source === "generated"
+          ? "Generated"
+          : version.source === "user_upload"
+            ? "Uploaded new version of"
+            : "Uploaded";
+    items.push({
+      id: `version:${version.id}`,
+      type: "document_version",
+      title: `${sourceLabel} ${version.filename ?? "document"}`,
+      detail:
+        typeof version.version_number === "number"
+          ? `Version ${version.version_number}`
+          : null,
+      created_at: version.created_at,
+      metadata: { document_id: version.document_id, source: version.source },
+    });
+  }
+
+  for (const edit of (edits ?? []) as {
+    id: string;
+    document_id: string;
+    status: string;
+    inserted_text: string | null;
+    deleted_text: string | null;
+    created_at: string;
+    resolved_at: string | null;
+  }[]) {
+    items.push({
+      id: `edit:${edit.id}`,
+      type: "document_edit",
+      title:
+        edit.status === "pending"
+          ? "Tracked edit pending"
+          : `Tracked edit ${edit.status}`,
+      detail: activityDetail(edit.inserted_text || edit.deleted_text),
+      created_at: edit.resolved_at ?? edit.created_at,
+      metadata: { document_id: edit.document_id, status: edit.status },
+    });
+  }
+
+  for (const review of (reviews ?? []) as {
+    id: string;
+    title: string | null;
+    created_at: string;
+    updated_at: string;
+  }[]) {
+    items.push({
+      id: `review:${review.id}`,
+      type: "tabular_review",
+      title: review.title ? `Updated review ${review.title}` : "Updated tabular review",
+      detail: null,
+      created_at: review.updated_at ?? review.created_at,
+      href: `/projects/${projectId}/tabular-reviews/${review.id}`,
+    });
+  }
+
+  items.sort((a, b) => b.created_at.localeCompare(a.created_at));
+  res.json(items.slice(0, 80));
 });
 
 // PATCH /projects/:projectId

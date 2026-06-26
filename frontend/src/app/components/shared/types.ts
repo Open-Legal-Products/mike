@@ -87,8 +87,66 @@ export interface EditAnnotation {
   status: "pending" | "accepted" | "rejected";
 }
 
+export type KnowledgeEntryType =
+  | "fact"
+  | "party"
+  | "date"
+  | "clause"
+  | "position"
+  | "playbook"
+  | "source";
+
+export interface KnowledgeSuggestion {
+  entry_type: KnowledgeEntryType;
+  title: string;
+  body: string;
+  metadata?: Record<string, unknown>;
+  source_refs?: unknown[];
+}
+
+export interface KnowledgeEntry {
+  id: string;
+  user_id: string;
+  project_id: string | null;
+  library_origin_id: string | null;
+  entry_type: KnowledgeEntryType;
+  title: string;
+  body: string;
+  metadata: Record<string, unknown>;
+  source_refs: unknown[];
+  status: "active" | "archived";
+  include_in_agent_context: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectActivityItem {
+  id: string;
+  type: string;
+  title: string;
+  detail: string | null;
+  created_at: string;
+  href?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export type AssistantEvent =
   | { type: "reasoning"; text: string; isStreaming?: boolean }
+  | {
+      type: "knowledge_context";
+      entries: {
+        id: string;
+        entry_type: KnowledgeEntryType;
+        title: string;
+        scope?: "project" | "library";
+      }[];
+      isStreaming?: boolean;
+    }
+  | {
+      type: "knowledge_suggestion";
+      entries: KnowledgeSuggestion[];
+      isStreaming?: boolean;
+    }
   | { type: "error"; message: string }
   | {
       type: "tool_call_start";

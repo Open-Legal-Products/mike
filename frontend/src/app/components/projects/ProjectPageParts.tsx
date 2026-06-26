@@ -20,7 +20,11 @@ import { RowActions } from "@/app/components/shared/RowActions";
 import { HeaderActionsMenu } from "@/app/components/shared/HeaderActionsMenu";
 import { TABLE_PRIMARY_CELL_WIDTH_CLASS } from "@/app/components/shared/TablePrimitive";
 
-export type ProjectWorkspaceSection = "documents" | "assistant" | "reviews";
+export type ProjectWorkspaceSection =
+    | "workspace"
+    | "documents"
+    | "assistant"
+    | "reviews";
 
 export type ProjectContextMenu = {
     x: number;
