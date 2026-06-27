@@ -568,6 +568,10 @@ export function useAssistantChat({
               pushEvent({
                 type: "tool_call_start",
                 name: (data.name as string) ?? "",
+                displayName:
+                  typeof data.displayName === "string"
+                    ? data.displayName
+                    : null,
                 isStreaming: true,
               });
               continue;

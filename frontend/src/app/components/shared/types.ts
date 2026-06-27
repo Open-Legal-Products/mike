@@ -93,6 +93,7 @@ export type AssistantEvent =
   | {
       type: "tool_call_start";
       name: string;
+      displayName?: string | null;
       isStreaming?: boolean;
     }
   | {
