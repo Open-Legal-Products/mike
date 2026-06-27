@@ -1,6 +1,20 @@
+import { createHash } from "node:crypto";
 import type { createServerSupabase } from "./supabase";
 
 type Supa = ReturnType<typeof createServerSupabase>;
+
+/**
+ * SHA-256 hex digest of a version's file bytes. Stored on
+ * `document_versions.content_sha256` at write time so an export can
+ * prove a file matches the bytes the workspace held. Recompute whenever
+ * stored bytes change (new version row or in-place overwrite).
+ */
+export function contentSha256(bytes: ArrayBuffer | ArrayBufferView): string {
+    const buf = ArrayBuffer.isView(bytes)
+        ? Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+        : Buffer.from(bytes);
+    return createHash("sha256").update(buf).digest("hex");
+}
 
 interface DocRow {
     id: string;
