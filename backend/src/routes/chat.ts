@@ -20,6 +20,7 @@ import {
 } from "../lib/userSettings";
 import { checkProjectAccess } from "../lib/access";
 import { safeErrorLog, safeErrorMessage } from "../lib/safeError";
+import { startSseStream } from "../lib/sse";
 
 export const chatRouter = Router();
 
@@ -555,18 +556,8 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         workflowCount: Object.keys(workflowStore).length,
     });
 
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no");
-    res.flushHeaders();
-
-    const write = (line: string) => res.write(line);
-    const streamAbort = new AbortController();
-    let streamFinished = false;
-    res.on("close", () => {
-        if (!streamFinished) streamAbort.abort();
-    });
+    const stream = startSseStream(req, res);
+    const { write } = stream;
 
     try {
         write(`data: ${JSON.stringify({ type: "chat_id", chatId })}\n\n`);
@@ -582,7 +573,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             includeResearchTools: legalResearchUs,
             model,
             apiKeys,
-            signal: streamAbort.signal,
+            signal: stream.signal,
             projectId: resolvedProjectId,
         });
 
@@ -665,7 +656,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             /* ignore */
         }
     } finally {
-        streamFinished = true;
+        stream.close();
         res.end();
     }
 });
