@@ -12,16 +12,18 @@
 #      before the bundle is built.
 #   3. Runs `npm install` if node_modules is missing.
 #   4. Checks the Mike backend (and Supabase) are reachable (warns if not).
-#   5. Installs the trusted dev HTTPS certificate if Word doesn't already trust
+#   5. Verifies port 3000 is free — the dev server + manifest are hardwired to
+#      it, and the Mike web app on :3000 collides. Fails fast with a fix.
+#   6. Installs the trusted dev HTTPS certificate if Word doesn't already trust
 #      it (this step may prompt for your keychain/admin password).
-#   6. Sources the env and runs `npm start`, which boots the webpack dev server
+#   7. Sources the env and runs `npm start`, which boots the webpack dev server
 #      on https://localhost:3000 and sideloads the add-in into Word desktop.
 #
 # Prerequisite: the Mike backend must be running (cd backend && npm run dev),
 # and frontend/.env.local must be filled in (see the repo README). The add-in
 # uses the SAME Supabase project and backend as the web app.
 #
-# Pass --setup-only to do everything except the final `npm start` (steps 1-5).
+# Pass --setup-only to do everything except the port check + final `npm start`.
 #
 set -euo pipefail
 
@@ -123,7 +125,29 @@ if [ -n "$SUPA_URL" ]; then
     fi
 fi
 
-# ── 6. Dev HTTPS certificate ─────────────────────────────────────────────────
+# ── 6. Port 3000 availability ─────────────────────────────────────────────────
+# The webpack dev server AND the add-in manifest are hardwired to
+# https://localhost:3000. The Mike web app (`npm run dev` in frontend/) also
+# binds 3000, so the two collide. Fail fast with a clear message BEFORE the cert
+# prompt / launch — otherwise `npm start` dies with an opaque EADDRINUSE.
+# (Skipped for --setup-only, which never launches; re-running while the add-in's
+# own server is already up correctly trips this too.)
+if [ "$SETUP_ONLY" != 1 ]; then
+    step "Checking port 3000 is free"
+    if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:3000 -sTCP:LISTEN >/dev/null 2>&1; then
+        holder="$(lsof -nP -iTCP:3000 -sTCP:LISTEN 2>/dev/null | awk 'NR==2{print $1" (pid "$2")"}')"
+        warn "Port 3000 is already in use by: ${holder:-another process}"
+        echo "    The add-in dev server and Word's manifest both require https://localhost:3000."
+        echo "    This is most likely the Mike web app — stop it first:"
+        echo "      lsof -nP -iTCP:3000 -sTCP:LISTEN     # confirm what it is"
+        echo "      # then stop that process (e.g. quit the frontend 'npm run dev')"
+        echo "    Then re-run this script."
+        exit 1
+    fi
+    ok "port 3000 is free"
+fi
+
+# ── 7. Dev HTTPS certificate ─────────────────────────────────────────────────
 step "Checking dev HTTPS certificate"
 if npx --no-install office-addin-dev-certs verify >/dev/null 2>&1; then
     ok "dev certificate already trusted"
@@ -134,7 +158,7 @@ else
     warn "Cert installed — fully QUIT Word (Cmd-Q) before launching so it reloads trust."
 fi
 
-# ── 7. Launch ────────────────────────────────────────────────────────────────
+# ── 8. Launch ────────────────────────────────────────────────────────────────
 if [ "$SETUP_ONLY" = 1 ]; then
     step "Setup complete"
     [ "$BACKEND_OK" = 1 ] || warn "Backend is not fully up — start Mike before launching (see above)."

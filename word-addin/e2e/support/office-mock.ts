@@ -24,6 +24,8 @@
 export interface OfficeSeed {
   /** Pre-seed the `mike_token` storage key. `null`/omitted => logged out. */
   token?: string | null;
+  /** Pre-seed the `mike_refresh_token` storage key (for refresh-flow tests). */
+  refreshToken?: string | null;
   /** Text returned by readDocumentText() / body.text. */
   documentText?: string;
   /** Text returned by getSelectedText() / selection.text. */
@@ -76,6 +78,7 @@ export function installOfficeMock(seed: OfficeSeed): void {
   // ---- OfficeRuntime.storage, backed by an in-page Map ----
   const store = new Map<string, string>();
   if (seed.token != null) store.set("mike_token", seed.token);
+  if (seed.refreshToken != null) store.set("mike_refresh_token", seed.refreshToken);
   w.__OFFICE_STORE__ = store; // exposed for assertions
   w.OfficeRuntime = {
     storage: {

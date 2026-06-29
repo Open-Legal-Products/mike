@@ -74,6 +74,8 @@ export interface Addin {
   // ----- seeding (call BEFORE gotoTaskpane) -----
   /** Start the session logged in by pre-seeding the `mike_token` storage key. */
   seedToken(token: string): void;
+  /** Pre-seed the `mike_refresh_token` so an expired access token can refresh. */
+  seedRefreshToken(token: string): void;
   /** Pre-seed the document body text returned by readDocumentText(). */
   seedDocumentText(text: string): void;
   /** Pre-seed the user's selected text returned by getSelectedText(). */
@@ -97,6 +99,8 @@ export interface Addin {
   // ----- reads -----
   /** Read the current `mike_token` from Office storage (null if logged out). */
   getToken(): Promise<string | null>;
+  /** Read the current `mike_refresh_token` from Office storage (null if absent). */
+  getRefreshToken(): Promise<string | null>;
   /** Read the recorded write-side Word calls for assertions. */
   wordCalls(): Promise<WordCalls>;
 
@@ -161,6 +165,9 @@ export const test = base.extend<{ addin: Addin }>({
       seedToken(token) {
         seed.token = token;
       },
+      seedRefreshToken(token) {
+        seed.refreshToken = token;
+      },
       seedDocumentText(text) {
         seed.documentText = text;
       },
@@ -206,6 +213,16 @@ export const test = base.extend<{ addin: Addin }>({
               OfficeRuntime: { storage: { getItem(k: string): Promise<string | null> } };
             }
           ).OfficeRuntime.storage.getItem("mike_token")
+        );
+      },
+
+      async getRefreshToken() {
+        return page.evaluate(() =>
+          (
+            window as unknown as {
+              OfficeRuntime: { storage: { getItem(k: string): Promise<string | null> } };
+            }
+          ).OfficeRuntime.storage.getItem("mike_refresh_token")
         );
       },
 

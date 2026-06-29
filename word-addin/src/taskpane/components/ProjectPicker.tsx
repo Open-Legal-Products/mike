@@ -24,9 +24,6 @@ interface ProjectDoc {
   created_at?: string;
 }
 
-const BASE_URL: string =
-  process.env.REACT_APP_API_BASE_URL ?? "http://localhost:3001";
-
 const useStyles = makeStyles({
   root: {
     display: "flex",
@@ -155,20 +152,16 @@ export function ProjectPicker(): React.ReactElement {
       const formData = new FormData();
       formData.append("file", blob, fileName);
 
-      // Use raw fetch for multipart — apiClient.post sets Content-Type: application/json
-      const token = await OfficeRuntime.storage.getItem("mike_token").catch(
-        () => null
-      );
-      const headers: Record<string, string> = {};
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-
-      const res = await fetch(
-        `${BASE_URL}/projects/${selectedProjectId}/documents`,
+      // Multipart upload: go through the shared auth-aware fetch (so an expired
+      // token is refreshed) but let the browser set the multipart Content-Type
+      // + boundary, hence includeContentType=false.
+      const res = await apiClient.fetch(
+        `/projects/${selectedProjectId}/documents`,
         {
           method: "POST",
-          headers,
           body: formData,
-        }
+        },
+        false
       );
 
       if (!res.ok) {

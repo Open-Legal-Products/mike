@@ -1,9 +1,9 @@
 /// <reference types="office-js" />
 
+import { getFreshAccessToken, refreshSession } from "../auth/session";
+
 const BASE_URL: string =
   process.env.REACT_APP_API_BASE_URL ?? "http://localhost:3001";
-
-const STORAGE_KEY = "mike_token";
 
 // The Mike API falls back to a default model when none is supplied, and that
 // default may have no configured API key — in which case the SSE stream emits a
@@ -19,16 +19,11 @@ const DEFAULT_MODEL: string =
   (typeof process !== "undefined" && process.env.REACT_APP_DEFAULT_MODEL) ||
   "claude-sonnet-4-6";
 
-async function getToken(): Promise<string | null> {
-  try {
-    return await OfficeRuntime.storage.getItem(STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-async function buildHeaders(includeContentType = true): Promise<Record<string, string>> {
-  const token = await getToken();
+function withAuth(
+  token: string | null,
+  includeContentType: boolean,
+  extra?: HeadersInit
+): Record<string, string> {
   const headers: Record<string, string> = {};
   if (includeContentType) {
     headers["Content-Type"] = "application/json";
@@ -36,15 +31,43 @@ async function buildHeaders(includeContentType = true): Promise<Record<string, s
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
-  return headers;
+  return { ...headers, ...((extra as Record<string, string>) ?? {}) };
+}
+
+/**
+ * Fetch a Mike API endpoint with the current Bearer token, transparently
+ * recovering from an expired session. The token is refreshed proactively when
+ * it's already known to be stale (getFreshAccessToken); if the server still
+ * answers 401 — e.g. the token was revoked server-side — we refresh once
+ * reactively and replay the request with the new token. A refresh that fails
+ * clears the session (handled inside refreshSession), so we don't loop.
+ */
+async function authedFetch(
+  path: string,
+  init: RequestInit,
+  includeContentType: boolean
+): Promise<Response> {
+  const token = await getFreshAccessToken();
+  let res = await fetch(`${BASE_URL}${path}`, {
+    ...init,
+    headers: withAuth(token, includeContentType, init.headers),
+  });
+
+  if (res.status === 401) {
+    const refreshed = await refreshSession();
+    if (refreshed && refreshed !== token) {
+      res = await fetch(`${BASE_URL}${path}`, {
+        ...init,
+        headers: withAuth(refreshed, includeContentType, init.headers),
+      });
+    }
+  }
+
+  return res;
 }
 
 async function get<T>(path: string): Promise<T> {
-  const headers = await buildHeaders(false);
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: "GET",
-    headers,
-  });
+  const res = await authedFetch(path, { method: "GET" }, false);
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`GET ${path} failed (${res.status}): ${body}`);
@@ -53,12 +76,14 @@ async function get<T>(path: string): Promise<T> {
 }
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
-  const headers = await buildHeaders(true);
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: "POST",
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const res = await authedFetch(
+    path,
+    {
+      method: "POST",
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    },
+    true
+  );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`POST ${path} failed (${res.status}): ${text}`);
@@ -67,11 +92,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 }
 
 async function del<T>(path: string): Promise<T> {
-  const headers = await buildHeaders(false);
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: "DELETE",
-    headers,
-  });
+  const res = await authedFetch(path, { method: "DELETE" }, false);
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`DELETE ${path} failed (${res.status}): ${text}`);
@@ -113,12 +134,11 @@ async function stream(
     }
   }
 
-  const headers = await buildHeaders(true);
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(requestBody),
-  });
+  const res = await authedFetch(
+    path,
+    { method: "POST", body: JSON.stringify(requestBody) },
+    true
+  );
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -199,4 +219,11 @@ export const apiClient = {
   post,
   delete: del,
   stream,
+  /**
+   * Escape hatch for callers that must control the request body themselves —
+   * e.g. multipart uploads, where forcing `Content-Type: application/json`
+   * would clobber the browser's multipart boundary. Still gets proactive +
+   * reactive token refresh. Pass `includeContentType: false` for FormData.
+   */
+  fetch: authedFetch,
 };
