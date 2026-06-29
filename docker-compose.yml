@@ -6,6 +6,8 @@ services:
       - "3001:3001"
     env_file:
       - ./backend/.env
+    volumes:
+      - ./volumes/backend-home:/home/mike
     restart: unless-stopped
 
   frontend:

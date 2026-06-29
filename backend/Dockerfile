@@ -20,9 +20,23 @@ RUN npm run build
 FROM base AS runner
 ENV NODE_ENV=production
 ENV PORT=3001
+ENV HOME=/home/mike
+ENV XDG_CACHE_HOME=/home/mike/.cache
+ENV XDG_CONFIG_HOME=/home/mike/.config
+ENV FONTCONFIG_CACHEDIR=/home/mike/.cache/fontconfig
+# Headless LibreOffice in containers (no X11).
+ENV SAL_USE_VCLPLUGIN=gen
 
-RUN addgroup --system --gid 1001 nodejs \
-    && adduser --system --uid 1001 --ingroup nodejs mike
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/* \
+    && addgroup --system --gid 1001 nodejs \
+    && adduser --system --uid 1001 --ingroup nodejs --home /home/mike --no-create-home mike \
+    && mkdir -p \
+        /home/mike/.cache/dconf \
+        /home/mike/.cache/fontconfig \
+        /home/mike/.config \
+    && chown -R mike:nodejs /home/mike
 
 WORKDIR /app
 
@@ -30,11 +44,15 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
+    && mkdir -p /app/logs \
+    && chown -R mike:nodejs /app/logs
 
-USER mike
 EXPOSE 3001
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD node -e "fetch('http://127.0.0.1:3001/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+    CMD gosu mike node -e "fetch('http://127.0.0.1:3001/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "dist/index.js"]
