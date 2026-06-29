@@ -17,3 +17,10 @@ next-env.d.ts
 .DS_Store
 .vercel
 coverage
+
+# Stale local build output / CLI + test state (never part of a PR)
+apps/
+/test-results/
+/e2e/.auth/
+/supabase/.branches/
+/supabase/.temp/

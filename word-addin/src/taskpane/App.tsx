@@ -3,6 +3,8 @@ import { useAuth } from "./auth/useAuth";
 import { LoginPage } from "./auth/LoginPage";
 import { ChatPanel } from "./components/ChatPanel";
 import { DocumentActions } from "./components/DocumentActions";
+import { WorkflowPicker } from "./components/WorkflowPicker";
+import { ProjectPicker } from "./components/ProjectPicker";
 import { Button } from "@mike/shared/ui/button";
 import { Spinner } from "@mike/shared/ui/spinner";
 import { MikeIcon } from "@mike/shared/chat/mike-icon";
@@ -16,16 +18,6 @@ const TABS: { value: TabValue; label: string }[] = [
   { value: "workflows", label: "Workflows" },
   { value: "projects", label: "Projects" },
 ];
-
-// Placeholder panel for tabs whose feature lands in a later PR in this stack
-// (workflows/projects → PR6). Chat and Actions are wired below.
-function PlaceholderPanel({ label }: { label: string }): React.ReactElement {
-  return (
-    <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
-      {label} — coming soon
-    </div>
-  );
-}
 
 export default function App(): React.ReactElement {
   const { token, loading, logout } = useAuth();
@@ -50,12 +42,10 @@ export default function App(): React.ReactElement {
         return <ChatPanel />;
       case "actions":
         return <DocumentActions />;
-      default:
-        return (
-          <PlaceholderPanel
-            label={TABS.find((t) => t.value === selectedTab)?.label ?? ""}
-          />
-        );
+      case "workflows":
+        return <WorkflowPicker />;
+      case "projects":
+        return <ProjectPicker />;
     }
   };
 
