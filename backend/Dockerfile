@@ -27,6 +27,8 @@ ENV HOME=/home/mike
 ENV XDG_CACHE_HOME=/home/mike/.cache
 ENV XDG_CONFIG_HOME=/home/mike/.config
 ENV FONTCONFIG_CACHEDIR=/home/mike/.cache/fontconfig
+# Agent step logs (override in backend/.env).
+ENV AGENT_LOG_DIR=/app/logs
 # Headless LibreOffice in containers (svp = no X11 display required).
 ENV SAL_USE_VCLPLUGIN=svp
 ENV SAL_DISABLE_OPENCL=1
@@ -49,9 +51,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
-    && mkdir -p /app/logs \
-    && chown -R mike:nodejs /app/logs
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 3001
 

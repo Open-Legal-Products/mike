@@ -3,8 +3,18 @@ import { existsSync } from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 
-function defaultLogDir(): string {
-  return process.env.AGENT_LOG_DIR?.trim() || path.join(process.cwd(), "logs");
+const DEFAULT_AGENT_LOG_DIR = path.join(process.cwd(), "logs");
+
+/**
+ * Root directory for agent step logs (run_yyyymmddhhiiss/ subfolders).
+ * Set via AGENT_LOG_DIR in backend/.env. Relative paths resolve from cwd.
+ */
+export function getAgentLogDir(): string {
+  const configured = process.env.AGENT_LOG_DIR?.trim();
+  if (!configured) return DEFAULT_AGENT_LOG_DIR;
+  return path.isAbsolute(configured)
+    ? configured
+    : path.resolve(process.cwd(), configured);
 }
 
 const RUN_ID_RE = /^run_\d{14}(?:_\d+)?(?:_[0-9a-f]{8})?$/i;
@@ -22,7 +32,7 @@ export function resolveAgentRunLogFilePath(
   filename: string,
 ): string | null {
   if (!RUN_ID_RE.test(runId) || !LOG_FILENAME_RE.test(filename)) return null;
-  const logsRoot = path.resolve(defaultLogDir());
+  const logsRoot = path.resolve(getAgentLogDir());
   const resolved = path.resolve(path.join(logsRoot, runId, filename));
   if (!resolved.startsWith(`${logsRoot}${path.sep}`)) return null;
   return resolved;
@@ -43,7 +53,7 @@ export function formatRunDatetime(date = new Date()): string {
  * Returns a per-run log directory: logs/run_yyyymmddhhiiss/
  * If that folder already exists (same-second collision), appends _2, _3, …
  */
-export function createAgentRunLogDir(logsRoot = defaultLogDir()): string {
+export function createAgentRunLogDir(logsRoot = getAgentLogDir()): string {
   const stamp = formatRunDatetime();
   let candidate = path.join(logsRoot, `run_${stamp}`);
   if (!existsSync(candidate)) return candidate;
@@ -83,7 +93,7 @@ export class Logger {
   private readonly logDir: string;
   private writeChain: Promise<void> = Promise.resolve();
 
-  constructor(relativeFilename: string, logDir = defaultLogDir()) {
+  constructor(relativeFilename: string, logDir = getAgentLogDir()) {
     this.logDir = logDir;
     this.filePath = path.join(logDir, relativeFilename);
   }

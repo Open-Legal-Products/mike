@@ -9,4 +9,8 @@ mkdir -p \
   /home/mike/.config
 chown -R mike:nodejs /home/mike
 
+AGENT_LOG_DIR="${AGENT_LOG_DIR:-/app/logs}"
+mkdir -p "$AGENT_LOG_DIR"
+chown -R mike:nodejs "$AGENT_LOG_DIR"
+
 exec gosu mike "$@"

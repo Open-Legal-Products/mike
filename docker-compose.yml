@@ -8,6 +8,7 @@ services:
       - ./backend/.env
     volumes:
       - ./volumes/backend-home:/home/mike
+      - ./volumes/agent-logs:/app/logs
     restart: unless-stopped
 
   frontend:
