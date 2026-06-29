@@ -51,6 +51,10 @@ export class AgentStepLogger {
     return this.runId;
   }
 
+  getLogFilename(): string {
+    return `agent-${this.sessionId}.jsonl`;
+  }
+
   private emit(args: {
     stepType: AgentStepType;
     iteration?: number | null;

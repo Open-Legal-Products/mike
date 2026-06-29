@@ -245,7 +245,13 @@ export type AssistantEvent =
         }[];
       };
     }
-  | { type: "content"; text: string; isStreaming?: boolean };
+  | { type: "content"; text: string; isStreaming?: boolean }
+  | {
+      type: "agent_run_log";
+      run_id: string;
+      filename: string;
+      download_url: string;
+    };
 
 export type CaseCitationQuote = {
   opinionId: number | null;

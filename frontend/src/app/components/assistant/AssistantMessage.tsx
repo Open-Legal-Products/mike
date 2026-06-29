@@ -2549,6 +2549,31 @@ export function AssistantMessage({
                     />
                 )}
 
+                {events &&
+                    !isStreaming &&
+                    events.some(
+                        (e) => e.type === "agent_run_log" && e.download_url,
+                    ) && (
+                        <div className="flex flex-col gap-2 mt-2 mb-3">
+                            {(
+                                events.filter(
+                                    (e) =>
+                                        e.type === "agent_run_log" &&
+                                        e.download_url,
+                                ) as Extract<
+                                    AssistantEvent,
+                                    { type: "agent_run_log" }
+                                >[]
+                            ).map((e, i) => (
+                                <DocDownloadBlock
+                                    key={`agent-run-log-${i}`}
+                                    filename={e.filename}
+                                    download_url={e.download_url}
+                                />
+                            ))}
+                        </div>
+                    )}
+
                 {/* Copy button */}
                 <div className="flex items-center gap-2 pt-2 pb-4 md:pb-8 font-sans justify-start">
                     {!isStreaming && (

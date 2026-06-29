@@ -7,6 +7,27 @@ function defaultLogDir(): string {
   return process.env.AGENT_LOG_DIR?.trim() || path.join(process.cwd(), "logs");
 }
 
+const RUN_ID_RE = /^run_\d{14}(?:_\d+)?(?:_[0-9a-f]{8})?$/i;
+const LOG_FILENAME_RE = /^agent-[0-9a-f-]+\.jsonl$/i;
+
+export function buildAgentRunLogDownloadUrl(
+  runId: string,
+  filename: string,
+): string {
+  return `/agent-run-logs/${encodeURIComponent(runId)}/${encodeURIComponent(filename)}`;
+}
+
+export function resolveAgentRunLogFilePath(
+  runId: string,
+  filename: string,
+): string | null {
+  if (!RUN_ID_RE.test(runId) || !LOG_FILENAME_RE.test(filename)) return null;
+  const logsRoot = path.resolve(defaultLogDir());
+  const resolved = path.resolve(path.join(logsRoot, runId, filename));
+  if (!resolved.startsWith(`${logsRoot}${path.sep}`)) return null;
+  return resolved;
+}
+
 /** Formats a date as yyyymmddhhiiss, e.g. 20260629173430. */
 export function formatRunDatetime(date = new Date()): string {
   const y = date.getFullYear();

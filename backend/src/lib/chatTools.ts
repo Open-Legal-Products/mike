@@ -43,7 +43,8 @@ import {
   type OpenAIToolSchema,
 } from "./llm";
 import { safeErrorMessage } from "./safeError";
-import { AgentStepLogger } from "./agentStepLogger";
+import { AgentStepLogger, isAgentStepLoggingEnabled } from "./agentStepLogger";
+import { buildAgentRunLogDownloadUrl } from "./logger";
 
 const STANDARD_FONT_DATA_URL = (() => {
   try {
@@ -3886,6 +3887,12 @@ type AssistantEvent =
   | CourtlistenerToolEvent
   | McpToolEvent
   | { type: "case_opinions"; cluster_id: number; case: unknown }
+  | {
+      type: "agent_run_log";
+      run_id: string;
+      filename: string;
+      download_url: string;
+    }
   | { type: "content"; text: string }
   | { type: "error"; message: string };
 
@@ -4369,6 +4376,21 @@ export async function runLLMStream(params: {
   write(
     `data: ${JSON.stringify({ type: "citations", status: "final", citations })}\n\n`,
   );
+
+  if (isAgentStepLoggingEnabled()) {
+    const agentRunLogEvent = {
+      type: "agent_run_log" as const,
+      run_id: agentStepLogger.getRunId(),
+      filename: agentStepLogger.getLogFilename(),
+      download_url: buildAgentRunLogDownloadUrl(
+        agentStepLogger.getRunId(),
+        agentStepLogger.getLogFilename(),
+      ),
+    };
+    events.push(agentRunLogEvent);
+    write(`data: ${JSON.stringify(agentRunLogEvent)}\n\n`);
+  }
+
   write("data: [DONE]\n\n");
 
   agentStepLogger.logCitations({ fullText }, citations);

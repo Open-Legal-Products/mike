@@ -1088,6 +1088,16 @@ export function useAssistantChat({
               continue;
             }
 
+            if (data.type === "agent_run_log") {
+              pushEvent({
+                type: "agent_run_log",
+                run_id: String(data.run_id ?? ""),
+                filename: String(data.filename ?? ""),
+                download_url: String(data.download_url ?? ""),
+              });
+              continue;
+            }
+
             if (data.type === "citations") {
               const status =
                 data.status === "started" ||

@@ -11,6 +11,7 @@ import { tabularRouter } from "./routes/tabular";
 import { workflowsRouter } from "./routes/workflows";
 import { userRouter } from "./routes/user";
 import { downloadsRouter } from "./routes/downloads";
+import { agentRunLogsRouter } from "./routes/agentRunLogs";
 import { caseLawRouter } from "./routes/caseLaw";
 
 const app = express();
@@ -154,6 +155,7 @@ app.use("/workflows", workflowsRouter);
 app.use("/user", userRouter);
 app.use("/users", userRouter);
 app.use("/download", downloadsRouter);
+app.use("/agent-run-logs", agentRunLogsRouter);
 app.use("/case-law", caseLawRouter);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
