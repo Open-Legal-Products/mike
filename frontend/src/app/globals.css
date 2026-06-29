@@ -4,6 +4,13 @@
    Single source of truth shared with the Word add-in. */
 @import "../../../shared/styles/tokens.css";
 
+/* The primitives now live in @mike/shared, outside this app's root, so Tailwind
+   v4's automatic source detection never scans them — without this their
+   primitive-only utilities (e.g. aria-invalid:ring-destructive, focus-visible
+   rings in ui/button & ui/input) get purged and the components lose styling.
+   Verified generated under both `next build` (Turbopack) and `--webpack`. */
+@source "../../../shared";
+
 .usc-section {
     font-family: var(--font-serif);
     line-height: 1.6;
