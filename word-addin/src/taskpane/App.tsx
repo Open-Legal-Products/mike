@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useAuth } from "./auth/useAuth";
 import { LoginPage } from "./auth/LoginPage";
+import { ChatPanel } from "./components/ChatPanel";
 import { Button } from "@mike/shared/ui/button";
 import { Spinner } from "@mike/shared/ui/spinner";
 import { MikeIcon } from "@mike/shared/chat/mike-icon";
@@ -16,8 +17,7 @@ const TABS: { value: TabValue; label: string }[] = [
 ];
 
 // Placeholder panel for tabs whose feature lands in a later PR in this stack
-// (chat → PR4, actions → PR5, workflows/projects → PR6). The shell, auth gate,
-// and tab routing are complete and tested here; only the panel bodies follow.
+// (actions → PR5, workflows/projects → PR6). Chat is wired below.
 function PlaceholderPanel({ label }: { label: string }): React.ReactElement {
   return (
     <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
@@ -44,8 +44,16 @@ export default function App(): React.ReactElement {
   }
 
   const renderTab = (): React.ReactElement => {
-    const label = TABS.find((t) => t.value === selectedTab)?.label ?? "";
-    return <PlaceholderPanel label={label} />;
+    switch (selectedTab) {
+      case "chat":
+        return <ChatPanel />;
+      default:
+        return (
+          <PlaceholderPanel
+            label={TABS.find((t) => t.value === selectedTab)?.label ?? ""}
+          />
+        );
+    }
   };
 
   return (
