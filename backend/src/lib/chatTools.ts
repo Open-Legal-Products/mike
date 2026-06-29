@@ -43,7 +43,7 @@ import {
   type OpenAIToolSchema,
 } from "./llm";
 import { safeErrorMessage } from "./safeError";
-import { AgentStepLogger, isAgentStepLoggingEnabled } from "./agentStepLogger";
+import { AgentStepLogger, buildToolExecutionLogs, isAgentStepLoggingEnabled } from "./agentStepLogger";
 import { buildAgentRunLogDownloadUrl } from "./logger";
 
 const STANDARD_FONT_DATA_URL = (() => {
@@ -4108,11 +4108,7 @@ export async function runLLMStream(params: {
     if (iterVisibleText) {
       const contentText = iterVisibleText;
       events.push({ type: "content", text: contentText });
-      agentStepLogger.logContent(
-        { messages: chatMessages },
-        contentText,
-        llmIteration,
-      );
+      agentStepLogger.logContent(contentText, llmIteration);
     }
     iterText = "";
     iterVisibleText = "";
@@ -4127,11 +4123,7 @@ export async function runLLMStream(params: {
     if (iterReasoning) {
       const reasoningText = iterReasoning;
       events.push({ type: "reasoning", text: reasoningText });
-      agentStepLogger.logThinking(
-        { messages: chatMessages },
-        reasoningText,
-        llmIteration,
-      );
+      agentStepLogger.logThinking(reasoningText, llmIteration);
       iterReasoning = "";
     }
   };
@@ -4166,11 +4158,7 @@ export async function runLLMStream(params: {
           if (!iterReasoning) return;
           const reasoningText = iterReasoning;
           events.push({ type: "reasoning", text: reasoningText });
-          agentStepLogger.logThinking(
-            { messages: chatMessages },
-            reasoningText,
-            llmIteration,
-          );
+          agentStepLogger.logThinking(reasoningText, llmIteration);
           write(`data: ${JSON.stringify({ type: "reasoning_block_end" })}\n\n`);
           iterReasoning = "";
         },
@@ -4203,7 +4191,6 @@ export async function runLLMStream(params: {
             arguments: JSON.stringify(c.input),
           },
         }));
-        agentStepLogger.logToolCalling(calls, llmIteration);
         const {
           toolResults,
           docsRead,
@@ -4226,91 +4213,92 @@ export async function runLLMStream(params: {
           docIndex,
           turnEditState,
           projectId,
-        courtlistenerTurnState,
-        apiKeys,
-      );
+          courtlistenerTurnState,
+          apiKeys,
+        );
         throwIfAborted(signal);
-        const batchEvents: AssistantEvent[] = [];
+        for (const entry of buildToolExecutionLogs({
+          calls,
+          toolResults: toolResults as {
+            tool_call_id: string;
+            content?: unknown;
+          }[],
+          docStoragePath: (docLabel) => {
+            const resolved =
+              resolveDocLabel(docLabel, docStore, docIndex) ?? docLabel;
+            return docStore.get(resolved)?.storage_path;
+          },
+        })) {
+          agentStepLogger.logToolExecution({
+            tool: entry.tool,
+            action: entry.action,
+            filepath: entry.filepath,
+            status: entry.status,
+            notes: entry.notes,
+            inputText: entry.inputText,
+            outputText: entry.outputText,
+          });
+        }
         for (const r of docsRead) {
-          const event = {
-            type: "doc_read" as const,
+          events.push({
+            type: "doc_read",
             filename: r.filename,
             document_id: r.document_id,
-          };
-          events.push(event);
-          batchEvents.push(event);
+          });
         }
         for (const f of docsFound) {
-          const event = {
-            type: "doc_find" as const,
+          events.push({
+            type: "doc_find",
             filename: f.filename,
             query: f.query,
             total_matches: f.total_matches,
-          };
-          events.push(event);
-          batchEvents.push(event);
+          });
         }
         for (const dl of docsCreated) {
-          const event = {
-            type: "doc_created" as const,
+          events.push({
+            type: "doc_created",
             filename: dl.filename,
             download_url: dl.download_url,
             document_id: dl.document_id,
             version_id: dl.version_id,
             version_number: dl.version_number ?? null,
-          };
-          events.push(event);
-          batchEvents.push(event);
+          });
         }
         for (const r of docsReplicated) {
-          const event = {
-            type: "doc_replicated" as const,
+          events.push({
+            type: "doc_replicated",
             filename: r.filename,
             count: r.count,
             copies: r.copies,
-          };
-          events.push(event);
-          batchEvents.push(event);
+          });
         }
         for (const wf of workflowsApplied) {
-          const event = {
-            type: "workflow_applied" as const,
+          events.push({
+            type: "workflow_applied",
             workflow_id: wf.workflow_id,
             title: wf.title,
-          };
-          events.push(event);
-          batchEvents.push(event);
+          });
         }
         for (const e of docsEdited) {
-          const event = {
-            type: "doc_edited" as const,
+          events.push({
+            type: "doc_edited",
             filename: e.filename,
             document_id: e.document_id,
             version_id: e.version_id,
             version_number: e.version_number,
             download_url: e.download_url,
             annotations: e.annotations,
-          };
-          events.push(event);
-          batchEvents.push(event);
+          });
         }
         for (const event of courtlistenerEvents) {
           events.push(event);
-          batchEvents.push(event);
         }
         for (const event of mcpEvents) {
           events.push(event);
-          batchEvents.push(event);
         }
         for (const event of caseCitationEvents) {
           events.push(event);
-          batchEvents.push(event);
         }
-        agentStepLogger.logToolResult({
-          iteration: llmIteration,
-          toolResults,
-          events: batchEvents,
-        });
 
         // Index alignment would break if any tool branch skips its
         // push (unhandled tool name, disabled store, guard failure).
@@ -4342,11 +4330,7 @@ export async function runLLMStream(params: {
     flushPartialTurn();
     const message = safeErrorMessage(err, "Stream error");
     events.push({ type: "error", message });
-    agentStepLogger.logError(
-      { messages: chatMessages },
-      message,
-      { events, fullText },
-    );
+    agentStepLogger.logError(message, { events, fullText });
     await agentStepLogger.flush();
     throw new AssistantStreamError(message, fullText, events);
   }
@@ -4393,7 +4377,7 @@ export async function runLLMStream(params: {
 
   write("data: [DONE]\n\n");
 
-  agentStepLogger.logCitations({ fullText }, citations);
+  agentStepLogger.logCitations(citations);
   agentStepLogger.logTurnComplete({ fullText, events, annotations: citations });
   await agentStepLogger.flush();
 

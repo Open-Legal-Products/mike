@@ -88,11 +88,13 @@ export class Logger {
     this.filePath = path.join(logDir, relativeFilename);
   }
 
-  log(entry: Record<string, unknown>): void {
-    const record = {
-      timestamp: new Date().toISOString(),
-      ...entry,
-    };
+  log(entry: Record<string, unknown>, options?: { omitTimestamp?: boolean }): void {
+    const record = options?.omitTimestamp
+      ? entry
+      : {
+          timestamp: new Date().toISOString(),
+          ...entry,
+        };
     const line = `${stringifyLogValue(record)}\n`;
     this.writeChain = this.writeChain
       .then(async () => {
