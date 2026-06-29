@@ -19,6 +19,8 @@ export function ChatPanel(): React.ReactElement {
   const [streaming, setStreaming] = useState(false);
   const [useDocContext, setUseDocContext] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
   const { readDocumentText, insertAtCursor, insertWithTrackChanges } = useWordDoc();
 
   // Auto-scroll on new content
@@ -27,6 +29,18 @@ export function ChatPanel(): React.ReactElement {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
   }, [messages, streaming]);
+
+  // Abort any in-flight stream when the panel unmounts (e.g. switching tabs) so
+  // we neither keep the connection open nor setState on an unmounted component.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  const handleCancel = (): void => abortRef.current?.abort();
 
   const handleSend = async (): Promise<void> => {
     const text = input.trim();
@@ -55,6 +69,9 @@ export function ChatPanel(): React.ReactElement {
     ];
     setMessages(withPlaceholder);
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       await apiClient.stream(
         "/chat",
@@ -71,9 +88,13 @@ export function ChatPanel(): React.ReactElement {
             }
             return next;
           });
-        }
+        },
+        controller.signal
       );
     } catch (e) {
+      // A user-initiated stop or an unmount aborts the request — keep whatever
+      // partial answer streamed in, don't render it as an error.
+      if (controller.signal.aborted || !mountedRef.current) return;
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
@@ -87,7 +108,8 @@ export function ChatPanel(): React.ReactElement {
         return next;
       });
     } finally {
-      setStreaming(false);
+      if (abortRef.current === controller) abortRef.current = null;
+      if (mountedRef.current) setStreaming(false);
     }
   };
 
@@ -161,6 +183,8 @@ export function ChatPanel(): React.ReactElement {
           value={input}
           onValueChange={setInput}
           onSubmit={() => void handleSend()}
+          isLoading={streaming}
+          onCancel={handleCancel}
           disabled={streaming}
           placeholder="Ask Mike…"
           leftSlot={

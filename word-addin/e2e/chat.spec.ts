@@ -187,26 +187,28 @@ test("Shift+Enter does not send the message", async ({ addin, page }) => {
   await expect(input).toHaveValue(/^Draft line one/);
 });
 
-test("input and Send are disabled while a response is streaming", async ({
+test("the composer swaps Send for a Stop control while streaming, then restores", async ({
   addin,
   page,
 }) => {
   // Hold the stream open so the streaming state is observable; release after
-  // the disabled assertions. `holdMs` keeps the /chat response pending.
+  // the assertions. `holdMs` keeps the /chat response pending.
   await addin.mockChatStream(["Slow streamed reply."], { holdMs: 1500 });
   await addin.gotoTaskpane();
   await addin.expectAuthedShell();
 
   const input = page.getByPlaceholder("Ask Mike…");
-  const sendBtn = page.getByRole("button", { name: "Send" });
 
   await input.fill("Take your time");
-  await sendBtn.click();
+  await page.getByRole("button", { name: "Send" }).click();
 
-  // While streaming: both controls are disabled.
+  // While streaming: the textarea is disabled and Send is replaced by a
+  // reachable Stop control (previously the Stop button was dead code).
   await expect(input).toBeDisabled();
-  await expect(sendBtn).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send" })).toHaveCount(0);
 
-  // Once the stream finishes the input re-enables.
+  // Once the stream finishes the input re-enables and Send returns.
   await expect(input).toBeEnabled({ timeout: 5000 });
+  await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
 });

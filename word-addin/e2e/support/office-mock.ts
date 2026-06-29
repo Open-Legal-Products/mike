@@ -148,7 +148,12 @@ export function installOfficeMock(seed: OfficeSeed): void {
   };
 
   function makeContext() {
-    const doc: any = { changeTrackingMode: ChangeTrackingMode.off };
+    const doc: any = {
+      changeTrackingMode: ChangeTrackingMode.off,
+      // Office.js requires load()+sync() before reading changeTrackingMode; the
+      // helpers snapshot it to restore the user's setting, so support load here.
+      load: (_p?: any) => undefined,
+    };
 
     const recordWrite = (text: string, location: string, original?: string) => {
       const entry: WordCall = { text, location };
