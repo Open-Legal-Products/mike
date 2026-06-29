@@ -21,7 +21,7 @@ import { preprocessCitations, type ParsedCitation } from "./citation-utils";
 import { getPillClass } from "./pillUtils";
 import { DocView } from "../shared/DocView";
 import { DocxView } from "../shared/DocxView";
-import { cn } from "@/lib/utils";
+import { cn } from "@mike/shared/lib/utils";
 
 function isDocxDocument(d: {
     file_type?: string | null;

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@mike/shared/ui/button";
 import { X, Check } from "lucide-react";
 
 interface DeleteChatsModalProps {

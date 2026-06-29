@@ -19,7 +19,7 @@ import type {
 } from "../shared/types";
 import { useSidebar } from "@/app/contexts/SidebarContext";
 import { invalidateDocxBytes } from "@/app/hooks/useFetchDocxBytes";
-import { cn } from "@/lib/utils";
+import { cn } from "@mike/shared/lib/utils";
 
 interface Props {
     chatId?: string | null;

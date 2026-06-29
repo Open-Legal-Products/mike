@@ -31,7 +31,7 @@ import {
     type ModelProvider,
 } from "@/app/lib/modelAvailability";
 import type { Document, Message } from "../shared/types";
-import { cn } from "@/lib/utils";
+import { cn } from "@mike/shared/lib/utils";
 
 export interface ChatInputHandle {
     addDoc: (doc: Document) => void;

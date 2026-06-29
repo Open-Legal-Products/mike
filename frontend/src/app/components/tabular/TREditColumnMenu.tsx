@@ -12,7 +12,7 @@ import {
     DropdownMenuRadioGroup,
     DropdownMenuRadioItem,
     DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@mike/shared/ui/dropdown-menu";
 
 export interface TREditColumnMenuProps {
     column: ColumnConfig;

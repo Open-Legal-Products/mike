@@ -9,7 +9,7 @@ import {
 } from "react";
 import { Copy, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { Button } from "@/components/ui/button";
+import { Button } from "@mike/shared/ui/button";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { isMfaRequiredError } from "@/app/lib/mikeApi";
 import { Modal } from "@/app/components/shared/Modal";

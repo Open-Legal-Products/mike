@@ -11,7 +11,7 @@ import {
     RefreshCw,
     Trash2,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Input } from "@mike/shared/ui/input";
 import { Modal } from "@/app/components/shared/Modal";
 import {
     MfaVerificationPopup,

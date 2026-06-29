@@ -7,7 +7,7 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@mike/shared/ui/dropdown-menu";
 import { uploadStandaloneDocument } from "@/app/lib/mikeApi";
 import type { Document } from "../shared/types";
 

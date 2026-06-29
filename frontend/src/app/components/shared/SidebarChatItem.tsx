@@ -7,12 +7,12 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@mike/shared/ui/dropdown-menu";
 import { useChatHistoryContext } from "@/app/contexts/ChatHistoryContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
 import type { Chat } from "@/app/components/shared/types";
-import { cn } from "@/lib/utils";
+import { cn } from "@mike/shared/lib/utils";
 
 interface Props {
     chat: Chat;

@@ -17,7 +17,7 @@ import { DocView } from "@/app/components/shared/DocView";
 import { WarningPopup } from "@/app/components/shared/WarningPopup";
 import type { Document } from "@/app/components/shared/types";
 import type { DocumentVersion } from "@/app/lib/mikeApi";
-import { cn } from "@/lib/utils";
+import { cn } from "@mike/shared/lib/utils";
 import { formatBytes } from "./ProjectPageParts";
 
 const MIN_DOC_COLUMN_WIDTH = 420;

@@ -13,7 +13,7 @@ import {
     ChevronLeft,
     Trash2,
 } from "lucide-react";
-import { MikeIcon } from "@/components/chat/mike-icon";
+import { MikeIcon } from "@mike/shared/chat/mike-icon";
 import {
     streamTabularChat,
     getTabularChats,
@@ -34,7 +34,7 @@ import {
     type ModelProvider,
 } from "@/app/lib/modelAvailability";
 import type { ApiKeyState } from "@/app/lib/mikeApi";
-import { cn } from "@/lib/utils";
+import { cn } from "@mike/shared/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Types

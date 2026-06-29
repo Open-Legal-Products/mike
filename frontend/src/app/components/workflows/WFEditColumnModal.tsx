@@ -14,7 +14,7 @@ import {
     DropdownMenuRadioGroup,
     DropdownMenuRadioItem,
     DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@mike/shared/ui/dropdown-menu";
 
 interface ColumnDraft {
     name: string;

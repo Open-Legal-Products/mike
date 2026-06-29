@@ -3,7 +3,7 @@
 import { createPortal } from "react-dom";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@mike/shared/lib/utils";
 
 type ModalSize = "sm" | "md" | "lg" | "xl";
 type ModalAction = Omit<

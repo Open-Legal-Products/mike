@@ -7,7 +7,7 @@ import {
     type MouseEvent,
     type ReactNode,
 } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@mike/shared/lib/utils";
 import {
     CLOSE_ROW_ACTIONS_EVENT,
     closeRowActionMenus,

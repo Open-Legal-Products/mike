@@ -1,4 +1,4 @@
-import { Input } from "@/components/ui/input";
+import { Input } from "@mike/shared/ui/input";
 import { ArrowUp, ArrowDown, X } from "lucide-react";
 import { useRef } from "react";
 

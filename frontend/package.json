@@ -13,6 +13,7 @@
         "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
     },
     "dependencies": {
+        "@mike/shared": "file:../shared",
         "@aws-sdk/client-s3": "^3.1025.0",
         "@aws-sdk/s3-request-presigner": "^3.1025.0",
         "@opennextjs/cloudflare": "^1.19.9",
