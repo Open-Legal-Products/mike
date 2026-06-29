@@ -445,6 +445,19 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     const project_id = parsedProjectId.projectId;
     const model = parsedModel.model;
 
+    // Optional plain-text document context supplied by the Word Office.js add-in.
+    // The add-in reads the active document body via Word.run() and posts it here
+    // as `documentContext` rather than uploading a file — there is no stored
+    // document record and no upload step. The text is injected into the LLM
+    // system prompt via buildMessages's systemPromptExtra parameter, so a
+    // separate from-text document endpoint is unnecessary.
+    const documentContext =
+        typeof (req.body as Record<string, unknown>).documentContext ===
+            "string" &&
+        ((req.body as Record<string, unknown>).documentContext as string).trim()
+            ? ((req.body as Record<string, unknown>).documentContext as string).trim()
+            : undefined;
+
     devLog("[chat/stream] incoming request", {
         userId,
         chat_id,
@@ -539,10 +552,16 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         api_keys: apiKeys,
         legal_research_us: legalResearchUs,
     } = await getUserModelSettings(userId, db);
+    // If the add-in sent document text, surface it to the model as extra
+    // system context, fenced in a tag so the model treats it as the body of
+    // the user's active Word document rather than instructions.
+    const systemPromptExtra = documentContext
+        ? `The user is working in Microsoft Word. The text below is the body of their active document:\n<word-document>\n${documentContext}\n</word-document>`
+        : undefined;
     const apiMessages = buildMessages(
         enrichedMessages,
         docAvailability,
-        undefined,
+        systemPromptExtra,
         undefined,
         legalResearchUs,
     );
