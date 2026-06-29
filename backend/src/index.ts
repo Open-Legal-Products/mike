@@ -122,13 +122,13 @@ const allowedOrigins = new Set<string>([
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow server-to-server requests (no Origin header) and any
-      // explicitly listed origin.
-      if (!origin || allowedOrigins.has(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
+      // Allow server-to-server requests (no Origin header) and any explicitly
+      // listed origin. A disallowed origin resolves to `false` (cors simply
+      // omits the Access-Control-Allow-Origin header and the browser blocks the
+      // response) rather than calling back with an Error — throwing here would
+      // propagate to Express's default handler and turn every disallowed
+      // cross-origin request, including preflight, into an HTTP 500.
+      callback(null, !origin || allowedOrigins.has(origin));
     },
     credentials: true,
     allowedHeaders: ["Authorization", "Content-Type"],

@@ -451,11 +451,14 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     // document record and no upload step. The text is injected into the LLM
     // system prompt via buildMessages's systemPromptExtra parameter, so a
     // separate from-text document endpoint is unnecessary.
+    // Cap the injected document text so an oversized body (the JSON limit is
+    // 50 MB) can't blow past the model's context window or run up token cost.
+    const MAX_DOCUMENT_CONTEXT_CHARS = 200_000;
+    const rawDocumentContext = (req.body as Record<string, unknown>)
+        .documentContext;
     const documentContext =
-        typeof (req.body as Record<string, unknown>).documentContext ===
-            "string" &&
-        ((req.body as Record<string, unknown>).documentContext as string).trim()
-            ? ((req.body as Record<string, unknown>).documentContext as string).trim()
+        typeof rawDocumentContext === "string" && rawDocumentContext.trim()
+            ? rawDocumentContext.trim().slice(0, MAX_DOCUMENT_CONTEXT_CHARS)
             : undefined;
 
     devLog("[chat/stream] incoming request", {

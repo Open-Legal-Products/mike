@@ -154,9 +154,14 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
 
     // Plain-text Word document body from the Office.js add-in, appended to the
     // project system context so the model can reason over the user's open file.
-    if (documentContext && documentContext.trim()) {
+    // Runtime-checked (a non-string would otherwise throw on .trim()) and capped
+    // so an oversized body can't blow past the context window / token budget.
+    const MAX_DOCUMENT_CONTEXT_CHARS = 200_000;
+    const docContext =
+        typeof documentContext === "string" ? documentContext.trim() : "";
+    if (docContext) {
         systemPromptExtra +=
-            `\n\nThe user is working in Microsoft Word. The text below is the body of their active document:\n<word-document>\n${documentContext.trim()}\n</word-document>`;
+            `\n\nThe user is working in Microsoft Word. The text below is the body of their active document:\n<word-document>\n${docContext.slice(0, MAX_DOCUMENT_CONTEXT_CHARS)}\n</word-document>`;
     }
 
     const {
