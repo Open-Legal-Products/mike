@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Wand2,
   SpellCheck,
@@ -17,13 +17,21 @@ interface ActionSectionState {
   loading: boolean;
   result: string;
   originalText?: string;
+  // True when `result` holds an error message rather than usable output, so the
+  // Insert / Apply buttons must not be offered over it.
+  error?: boolean;
 }
 
 const emptySection = (): ActionSectionState => ({
   loading: false,
   result: "",
   originalText: undefined,
+  error: false,
 });
+
+// Cap document text folded into a prompt so a large file can't blow past the
+// model context / token budget (the backend also caps this defensively).
+const MAX_DOC_CHARS = 200_000;
 
 function ResultBox({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
@@ -76,12 +84,30 @@ export function DocumentActions(): React.ReactElement {
   const [anon, setAnon] = useState<ActionSectionState>(emptySection());
   const [draft, setDraft] = useState<ActionSectionState>(emptySection());
   const [draftPrompt, setDraftPrompt] = useState("");
+  const [applyError, setApplyError] = useState<string | null>(null);
+
+  // Track mount + in-flight streams so switching tabs mid-action aborts the
+  // request and never calls setState on an unmounted component.
+  const mountedRef = useRef(true);
+  const controllersRef = useRef<Set<AbortController>>(new Set());
+  useEffect(() => {
+    mountedRef.current = true;
+    const controllers = controllersRef.current;
+    return () => {
+      mountedRef.current = false;
+      controllers.forEach((c) => c.abort());
+      controllers.clear();
+    };
+  }, []);
 
   // ------------------------------------------------------------------
   // 1. Improve Writing
   // ------------------------------------------------------------------
   const handleImproveWriting = async (): Promise<void> => {
+    setApplyError(null);
     setImprove({ loading: true, result: "" });
+    const controller = new AbortController();
+    controllersRef.current.add(controller);
     try {
       const selected = await getSelectedText();
       if (!selected.trim()) {
@@ -96,15 +122,22 @@ export function DocumentActions(): React.ReactElement {
         { messages: [{ role: "user", content: prompt }] },
         (chunk) => {
           accumulated += chunk;
-          setImprove({ loading: true, result: accumulated, originalText });
-        }
+          if (mountedRef.current)
+            setImprove({ loading: true, result: accumulated, originalText });
+        },
+        controller.signal
       );
-      setImprove({ loading: false, result: accumulated, originalText });
+      if (mountedRef.current)
+        setImprove({ loading: false, result: accumulated, originalText });
     } catch (e) {
+      if (controller.signal.aborted || !mountedRef.current) return;
       setImprove({
         loading: false,
         result: e instanceof Error ? e.message : "Error occurred.",
+        error: true,
       });
+    } finally {
+      controllersRef.current.delete(controller);
     }
   };
 
@@ -113,8 +146,10 @@ export function DocumentActions(): React.ReactElement {
   // ------------------------------------------------------------------
   const handleProofread = async (): Promise<void> => {
     setProof({ loading: true, result: "" });
+    const controller = new AbortController();
+    controllersRef.current.add(controller);
     try {
-      const docText = await readDocumentText();
+      const docText = (await readDocumentText()).slice(0, MAX_DOC_CHARS);
       const prompt = `Proofread the following legal document. List every grammatical error, typo, punctuation issue, and stylistic inconsistency. For each issue, state the original text and your suggested correction:\n\n${docText}`;
       let accumulated = "";
       await apiClient.stream(
@@ -122,15 +157,20 @@ export function DocumentActions(): React.ReactElement {
         { messages: [{ role: "user", content: prompt }] },
         (chunk) => {
           accumulated += chunk;
-          setProof({ loading: true, result: accumulated });
-        }
+          if (mountedRef.current) setProof({ loading: true, result: accumulated });
+        },
+        controller.signal
       );
-      setProof({ loading: false, result: accumulated });
+      if (mountedRef.current) setProof({ loading: false, result: accumulated });
     } catch (e) {
+      if (controller.signal.aborted || !mountedRef.current) return;
       setProof({
         loading: false,
         result: e instanceof Error ? e.message : "Error occurred.",
+        error: true,
       });
+    } finally {
+      controllersRef.current.delete(controller);
     }
   };
 
@@ -139,8 +179,10 @@ export function DocumentActions(): React.ReactElement {
   // ------------------------------------------------------------------
   const handleAnonymise = async (): Promise<void> => {
     setAnon({ loading: true, result: "" });
+    const controller = new AbortController();
+    controllersRef.current.add(controller);
     try {
-      const docText = await readDocumentText();
+      const docText = (await readDocumentText()).slice(0, MAX_DOC_CHARS);
       const prompt = `Identify all personally identifiable information (PII) in the following document — names, addresses, phone numbers, email addresses, dates of birth, identification numbers, and any other identifying information. For each occurrence, list: (1) the original text, and (2) an anonymised replacement. Present as a numbered list:\n\n${docText}`;
       let accumulated = "";
       await apiClient.stream(
@@ -148,15 +190,20 @@ export function DocumentActions(): React.ReactElement {
         { messages: [{ role: "user", content: prompt }] },
         (chunk) => {
           accumulated += chunk;
-          setAnon({ loading: true, result: accumulated });
-        }
+          if (mountedRef.current) setAnon({ loading: true, result: accumulated });
+        },
+        controller.signal
       );
-      setAnon({ loading: false, result: accumulated });
+      if (mountedRef.current) setAnon({ loading: false, result: accumulated });
     } catch (e) {
+      if (controller.signal.aborted || !mountedRef.current) return;
       setAnon({
         loading: false,
         result: e instanceof Error ? e.message : "Error occurred.",
+        error: true,
       });
+    } finally {
+      controllersRef.current.delete(controller);
     }
   };
 
@@ -166,6 +213,8 @@ export function DocumentActions(): React.ReactElement {
   const handleDraftClause = async (): Promise<void> => {
     if (!draftPrompt.trim()) return;
     setDraft({ loading: true, result: "" });
+    const controller = new AbortController();
+    controllersRef.current.add(controller);
     try {
       const prompt = `Draft a professional legal clause for the following purpose. Output only the clause text, ready to be inserted into a contract:\n\n${draftPrompt}`;
       let accumulated = "";
@@ -174,15 +223,20 @@ export function DocumentActions(): React.ReactElement {
         { messages: [{ role: "user", content: prompt }] },
         (chunk) => {
           accumulated += chunk;
-          setDraft({ loading: true, result: accumulated });
-        }
+          if (mountedRef.current) setDraft({ loading: true, result: accumulated });
+        },
+        controller.signal
       );
-      setDraft({ loading: false, result: accumulated });
+      if (mountedRef.current) setDraft({ loading: false, result: accumulated });
     } catch (e) {
+      if (controller.signal.aborted || !mountedRef.current) return;
       setDraft({
         loading: false,
         result: e instanceof Error ? e.message : "Error occurred.",
+        error: true,
       });
+    } finally {
+      controllersRef.current.delete(controller);
     }
   };
 
@@ -206,27 +260,39 @@ export function DocumentActions(): React.ReactElement {
         {improve.result && (
           <>
             <ResultBox>{improve.result}</ResultBox>
-            {!improve.loading && improve.originalText && (
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    void insertTrackedChange(
-                      improve.originalText!,
-                      improve.result
-                    )
-                  }
-                >
-                  Apply as tracked change
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void insertAtCursor(improve.result)}
-                >
-                  Insert at cursor
-                </Button>
-              </div>
+            {!improve.loading && improve.originalText && !improve.error && (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      setApplyError(null);
+                      const applied = await insertTrackedChange(
+                        improve.originalText!,
+                        improve.result
+                      );
+                      if (!applied)
+                        setApplyError(
+                          "Couldn't locate the selected text to replace — it may have changed, span paragraphs, or exceed Word's search limit."
+                        );
+                    }}
+                  >
+                    Apply as tracked change
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void insertAtCursor(improve.result)}
+                  >
+                    Insert at cursor
+                  </Button>
+                </div>
+                {applyError && (
+                  <p role="alert" className="text-xs text-destructive">
+                    {applyError}
+                  </p>
+                )}
+              </>
             )}
           </>
         )}
@@ -296,7 +362,7 @@ export function DocumentActions(): React.ReactElement {
         {draft.result && (
           <>
             <ResultBox>{draft.result}</ResultBox>
-            {!draft.loading && (
+            {!draft.loading && !draft.error && (
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
