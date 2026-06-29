@@ -43,7 +43,7 @@ import {
   type OpenAIToolSchema,
 } from "./llm";
 import { safeErrorMessage } from "./safeError";
-import { AgentStepLogger, buildToolExecutionLogs, isAgentStepLoggingEnabled } from "./agentStepLogger";
+import { AgentStepLogger, buildToolExecutionLogs, isAgentStepLoggingEnabled, toolExecutionIncludesUserOutput } from "./agentStepLogger";
 import { buildAgentRunLogDownloadUrl } from "./logger";
 
 const STANDARD_FONT_DATA_URL = (() => {
@@ -4023,6 +4023,15 @@ export async function runLLMStream(params: {
     messages: chatMessages,
   });
 
+  const emit: typeof write = (chunk) => {
+    if (typeof chunk === "string") {
+      for (const line of chunk.split("\n")) {
+        agentStepLogger.recordAgentStreamLine(line);
+      }
+    }
+    write(chunk);
+  };
+
   const emitCitationStreamSnapshot = (
     status: "started" | "partial",
     citations: unknown[],
@@ -4207,7 +4216,7 @@ export async function runLLMStream(params: {
           docStore,
           userId,
           db,
-          write,
+          emit,
           workflowStore,
           tabularStore,
           docIndex,
@@ -4237,6 +4246,7 @@ export async function runLLMStream(params: {
             notes: entry.notes,
             inputText: entry.inputText,
             outputText: entry.outputText,
+            includeUserOutput: toolExecutionIncludesUserOutput(entry.tool),
           });
         }
         for (const r of docsRead) {

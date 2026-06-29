@@ -7,6 +7,11 @@ export type AgentLogStatus = "success" | "error";
 
 export type AgentLogSource = "api" | "estimated";
 
+export type AgentLogArtifacts = {
+  /** User-visible assistant or tool UI text for this step. */
+  output?: string;
+};
+
 /** JSONL schema aligned with harness-style agent run logs. */
 export type AgentLogRecord = {
   step: string;
@@ -15,11 +20,26 @@ export type AgentLogRecord = {
   filepath?: string;
   status: AgentLogStatus;
   notes?: string;
+  artifacts?: AgentLogArtifacts;
   input_tokens: number;
   output_tokens: number;
   total_tokens: number;
   source: AgentLogSource;
 };
+
+const MAX_ARTIFACT_OUTPUT = 500_000;
+
+function truncateArtifactOutput(text: string, max = MAX_ARTIFACT_OUTPUT): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max)}…`;
+}
+
+function withOutput(output: string | undefined | null): Pick<AgentLogRecord, "artifacts"> {
+  const trimmed = output?.trim();
+  if (!trimmed) return {};
+  return { artifacts: { output: truncateArtifactOutput(trimmed) } };
+}
 
 export function isAgentStepLoggingEnabled(): boolean {
   return process.env.AGENT_STEP_LOGGING !== "false";
@@ -101,6 +121,10 @@ export class AgentStepLogger {
     if (!isAgentStepLoggingEnabled()) return;
     const entry: AgentLogRecord = { ...record };
     if (entry.notes) entry.notes = truncateNotes(entry.notes);
+    if (entry.artifacts?.output) {
+      entry.artifacts.output = truncateArtifactOutput(entry.artifacts.output);
+    }
+    if (!entry.artifacts?.output) delete entry.artifacts;
     if (!entry.tool) delete entry.tool;
     if (!entry.filepath) delete entry.filepath;
     if (!entry.notes) delete entry.notes;
@@ -146,6 +170,7 @@ export class AgentStepLogger {
       action: `Completed model iteration ${info.iteration}`,
       status: "success",
       notes,
+      ...withOutput(info.artifacts.text),
       ...tokenFields({
         inputTokens: hasApiUsage
           ? info.inputTokens
@@ -165,6 +190,7 @@ export class AgentStepLogger {
       action: "Recorded model reasoning block",
       status: "success",
       notes: summarizeText(text, "Reasoning"),
+      ...withOutput(text),
       ...tokenFields({
         inputTokens: 0,
         outputTokens: estimateTokens(text),
@@ -179,6 +205,7 @@ export class AgentStepLogger {
       action: "Recorded assistant response text segment",
       status: "success",
       notes: summarizeText(text, "Response"),
+      ...withOutput(text),
       ...tokenFields({
         inputTokens: 0,
         outputTokens: estimateTokens(text),
@@ -195,7 +222,15 @@ export class AgentStepLogger {
     notes?: string;
     inputText?: string;
     outputText?: string;
+    /** When false, skip artifacts.output (already logged via stream UI event). */
+    includeUserOutput?: boolean;
+    userOutput?: string;
   }): void {
+    const includeUserOutput = args.includeUserOutput ?? true;
+    const artifactOutput =
+      includeUserOutput && (args.userOutput ?? args.outputText)
+        ? args.userOutput ?? args.outputText
+        : undefined;
     this.write({
       step: args.tool,
       action: args.action,
@@ -203,12 +238,44 @@ export class AgentStepLogger {
       filepath: args.filepath,
       status: args.status ?? "success",
       notes: args.notes,
+      ...withOutput(artifactOutput),
       ...tokenFields({
         inputTokens: estimateTokens(args.inputText ?? ""),
         outputTokens: estimateTokens(args.outputText ?? ""),
         source: "estimated",
       }),
     });
+  }
+
+  logAssistantOutput(args: {
+    step: string;
+    action: string;
+    output: string;
+    tool?: string;
+    filepath?: string;
+  }): void {
+    this.write({
+      step: args.step,
+      action: args.action,
+      tool: args.tool,
+      filepath: args.filepath,
+      status: "success",
+      notes: summarizeText(args.output, "Output"),
+      ...withOutput(args.output),
+      ...tokenFields({
+        inputTokens: 0,
+        outputTokens: estimateTokens(args.output),
+        source: "estimated",
+      }),
+    });
+  }
+
+  recordAgentStreamLine(line: string): void {
+    const payload = parseSseDataPayload(line);
+    if (!payload) return;
+    const formatted = formatAgentStreamOutput(payload);
+    if (!formatted) return;
+    this.logAssistantOutput(formatted);
   }
 
   logCitations(citations: unknown[]): void {
@@ -238,6 +305,7 @@ export class AgentStepLogger {
         summarizeText(args.fullText, "Final response"),
         `${args.events.length} event(s), ${args.annotations.length} annotation(s).`,
       ].join(" "),
+      ...withOutput(args.fullText),
       ...tokenFields({
         inputTokens: estimateTokens(args.events),
         outputTokens: estimateTokens(args.fullText),
@@ -388,4 +456,166 @@ function buildToolNotes(
   }
 
   return parts.join(" ");
+}
+
+const TOOLS_WITH_STREAM_UI = new Set([
+  "read_document",
+  "find_in_document",
+  "generate_docx",
+  "edit_document",
+  "replicate_document",
+  "apply_workflow",
+]);
+
+export function toolExecutionIncludesUserOutput(tool: string): boolean {
+  return !TOOLS_WITH_STREAM_UI.has(tool);
+}
+
+export function parseSseDataPayload(line: string): Record<string, unknown> | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("data: ")) return null;
+  const data = trimmed.slice(6).trim();
+  if (!data || data === "[DONE]") return null;
+  try {
+    const parsed = JSON.parse(data) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    /* ignore malformed SSE payloads */
+  }
+  return null;
+}
+
+/** Formats SSE event payloads into the same strings shown in the chat UI. */
+export function formatAgentStreamOutput(payload: Record<string, unknown>): {
+  step: string;
+  action: string;
+  output: string;
+  tool?: string;
+  filepath?: string;
+} | null {
+  const type = payload.type;
+  if (typeof type !== "string") return null;
+
+  switch (type) {
+    case "doc_find": {
+      const query = String(payload.query ?? "");
+      const filename = String(payload.filename ?? "");
+      const total =
+        typeof payload.total_matches === "number" ? payload.total_matches : 0;
+      const matchLabel = total === 1 ? "1 match" : `${total} matches`;
+      return {
+        step: "doc_find",
+        action: `Searched document for "${query}"`,
+        output: `Found "${query}" (${matchLabel}) in ${filename}`,
+        tool: "find_in_document",
+        filepath: filename,
+      };
+    }
+    case "doc_find_start": {
+      const query = String(payload.query ?? "");
+      const filename = String(payload.filename ?? "");
+      return {
+        step: "doc_find_start",
+        action: `Searching document for "${query}"`,
+        output: `Finding "${query}" in ${filename}...`,
+        tool: "find_in_document",
+        filepath: filename,
+      };
+    }
+    case "doc_read": {
+      const filename = String(payload.filename ?? "");
+      return {
+        step: "doc_read",
+        action: "Read document",
+        output: `Read ${filename}`,
+        tool: "read_document",
+        filepath: filename,
+      };
+    }
+    case "doc_read_start": {
+      const filename = String(payload.filename ?? "");
+      return {
+        step: "doc_read_start",
+        action: "Reading document",
+        output: `Reading ${filename}...`,
+        tool: "read_document",
+        filepath: filename,
+      };
+    }
+    case "doc_created": {
+      const filename = String(payload.filename ?? "");
+      return {
+        step: "doc_created",
+        action: "Created document",
+        output: `Created ${filename}`,
+        tool: "generate_docx",
+        filepath: filename,
+      };
+    }
+    case "doc_created_start": {
+      const filename = String(payload.filename ?? "");
+      return {
+        step: "doc_created_start",
+        action: "Creating document",
+        output: `Creating ${filename}...`,
+        tool: "generate_docx",
+        filepath: filename,
+      };
+    }
+    case "doc_edited": {
+      const filename = String(payload.filename ?? "");
+      return {
+        step: "doc_edited",
+        action: "Edited document",
+        output: `Edited ${filename}`,
+        tool: "edit_document",
+        filepath: filename,
+      };
+    }
+    case "doc_edited_start": {
+      const filename = String(payload.filename ?? "");
+      return {
+        step: "doc_edited_start",
+        action: "Editing document",
+        output: `Editing ${filename}...`,
+        tool: "edit_document",
+        filepath: filename,
+      };
+    }
+    case "doc_replicated": {
+      const filename = String(payload.filename ?? "");
+      const count = typeof payload.count === "number" ? payload.count : 1;
+      const suffix = count > 1 ? ` ${count} times` : "";
+      return {
+        step: "doc_replicated",
+        action: "Replicated document",
+        output: `Replicated ${filename}${suffix}`,
+        tool: "replicate_document",
+        filepath: filename,
+      };
+    }
+    case "doc_replicate_start": {
+      const filename = String(payload.filename ?? "");
+      return {
+        step: "doc_replicate_start",
+        action: "Replicating document",
+        output: `Replicating ${filename}...`,
+        tool: "replicate_document",
+        filepath: filename,
+      };
+    }
+    case "workflow_applied": {
+      const title = String(payload.title ?? payload.workflow_id ?? "workflow");
+      return {
+        step: "workflow_applied",
+        action: "Applied workflow",
+        output: `Applied Workflow ${title}`,
+        tool: "apply_workflow",
+      };
+    }
+    default:
+      return null;
+  }
 }
