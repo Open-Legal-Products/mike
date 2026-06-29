@@ -116,7 +116,8 @@ async function del<T>(path: string): Promise<T> {
 async function stream(
   path: string,
   body: unknown,
-  onChunk: (text: string) => void
+  onChunk: (text: string) => void,
+  signal?: AbortSignal
 ): Promise<void> {
   // Inject a keyed default model into chat requests that lack one.
   let requestBody = body;
@@ -136,7 +137,7 @@ async function stream(
 
   const res = await authedFetch(
     path,
-    { method: "POST", body: JSON.stringify(requestBody) },
+    { method: "POST", body: JSON.stringify(requestBody), signal },
     true
   );
 
@@ -191,22 +192,30 @@ async function stream(
     // All other event types are intentionally ignored.
   };
 
-  while (!doneSeen) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    // Keep the last (potentially incomplete) line in the buffer
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      processLine(line);
-      if (doneSeen) break;
+  try {
+    while (!doneSeen) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      // Keep the last (potentially incomplete) line in the buffer
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        processLine(line);
+        if (doneSeen) break;
+      }
     }
-  }
 
-  // Flush any remaining content in the buffer (if we didn't already stop).
-  if (!doneSeen && buffer.trim()) {
-    processLine(buffer);
+    // Flush any remaining content in the buffer (if we didn't already stop).
+    if (!doneSeen && buffer.trim()) {
+      processLine(buffer);
+    }
+  } finally {
+    // Release the body stream / connection. On a normal `[DONE]` the server may
+    // still be sending its trailing event, so the reader never hits EOF on its
+    // own — cancel it so the socket is torn down instead of leaked (also covers
+    // the onChunk-throws and abort paths).
+    await reader.cancel().catch(() => {});
   }
 
   if (streamError !== null) {
