@@ -176,6 +176,19 @@ if [ "$BACKEND_OK" != 1 ]; then
     warn "FORCE=1 set — launching despite the backend being down."
 fi
 
+# Clear any stale sideload registration BEFORE launching. office-addin-debugging
+# registers the add-in by hard-linking manifest.xml into Word's sideload folder
+# (~/Library/Containers/com.microsoft.Word/Data/Documents/wef). If a previous run
+# exited without `npm run stop` (a crash, a Ctrl-C, a killed terminal), that link
+# is left behind — and the next `npm start` dies with
+# "EEXIST: file already exists, link 'manifest.xml' -> '…/wef/<id>.manifest.xml'".
+# A best-effort stop makes re-runs genuinely idempotent (it also shuts down any
+# orphaned dev server from that prior run). Errors are ignored: a clean machine
+# with nothing registered is the normal case.
+step "Clearing any stale add-in registration"
+npm run stop >/dev/null 2>&1 || true
+ok "ready to (re)register the add-in"
+
 step "Starting dev server + sideloading into Word"
 echo "    (webpack serves https://localhost:3000 and proxies /auth + /api to the"
 echo "     real backends; Word opens with the add-in.)"
