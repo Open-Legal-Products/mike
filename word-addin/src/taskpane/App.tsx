@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useAuth } from "./auth/useAuth";
 import { LoginPage } from "./auth/LoginPage";
 import { ChatPanel } from "./components/ChatPanel";
+import { DocumentActions } from "./components/DocumentActions";
 import { Button } from "@mike/shared/ui/button";
 import { Spinner } from "@mike/shared/ui/spinner";
 import { MikeIcon } from "@mike/shared/chat/mike-icon";
@@ -17,7 +18,7 @@ const TABS: { value: TabValue; label: string }[] = [
 ];
 
 // Placeholder panel for tabs whose feature lands in a later PR in this stack
-// (actions → PR5, workflows/projects → PR6). Chat is wired below.
+// (workflows/projects → PR6). Chat and Actions are wired below.
 function PlaceholderPanel({ label }: { label: string }): React.ReactElement {
   return (
     <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
@@ -47,6 +48,8 @@ export default function App(): React.ReactElement {
     switch (selectedTab) {
       case "chat":
         return <ChatPanel />;
+      case "actions":
+        return <DocumentActions />;
       default:
         return (
           <PlaceholderPanel
