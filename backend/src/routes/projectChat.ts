@@ -36,14 +36,23 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
     const userEmail = res.locals.userEmail as string | undefined;
     const { projectId } = req.params;
-    const { messages, chat_id, model, displayed_doc, attached_documents } =
-        req.body as {
-            messages: ChatMessage[];
-            chat_id?: string;
-            model?: string;
-            displayed_doc?: { filename: string; document_id: string };
-            attached_documents?: { filename: string; document_id: string }[];
-        };
+    const {
+        messages,
+        chat_id,
+        model,
+        displayed_doc,
+        attached_documents,
+        documentContext,
+    } = req.body as {
+        messages: ChatMessage[];
+        chat_id?: string;
+        model?: string;
+        displayed_doc?: { filename: string; document_id: string };
+        attached_documents?: { filename: string; document_id: string }[];
+        // Plain-text body of the active Word document, posted by the Office.js
+        // add-in instead of uploading a file (see chat.ts for the rationale).
+        documentContext?: string;
+    };
 
     const db = createServerSupabase();
 
@@ -141,6 +150,13 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             return slug ? `- ${slug}: ${d.filename}` : `- ${d.filename}`;
         });
         systemPromptExtra += `\n\nUSER-ATTACHED DOCUMENTS FOR THIS TURN:\nThe user has attached the following document(s) directly to their latest message. Treat these as the primary focus of the request unless their message clearly says otherwise.\n${lines.join("\n")}`;
+    }
+
+    // Plain-text Word document body from the Office.js add-in, appended to the
+    // project system context so the model can reason over the user's open file.
+    if (documentContext && documentContext.trim()) {
+        systemPromptExtra +=
+            `\n\nThe user is working in Microsoft Word. The text below is the body of their active document:\n<word-document>\n${documentContext.trim()}\n</word-document>`;
     }
 
     const {
