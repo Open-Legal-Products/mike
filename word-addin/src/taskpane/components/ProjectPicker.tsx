@@ -28,6 +28,7 @@ export function ProjectPicker(): React.ReactElement {
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [docs, setDocs] = useState<ProjectDoc[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
+  const [docsError, setDocsError] = useState<string | null>(null);
 
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -57,13 +58,32 @@ export function ProjectPicker(): React.ReactElement {
       setDocs([]);
       return;
     }
+    // `ignore` discards a slow response after the selection changed again (or
+    // the component unmounted), so a stale project's docs can't overwrite the
+    // current ones (request race).
+    let ignore = false;
     setLoadingDocs(true);
+    setDocsError(null);
     setDocs([]);
     apiClient
       .get<ProjectDoc[]>(`/projects/${selectedProjectId}/documents`)
-      .then(setDocs)
-      .catch(() => setDocs([]))
-      .finally(() => setLoadingDocs(false));
+      .then((d) => {
+        if (!ignore) setDocs(d);
+      })
+      .catch((e: unknown) => {
+        // Surface the failure instead of masking a 500 as the "no documents"
+        // empty state.
+        if (!ignore)
+          setDocsError(
+            e instanceof Error ? e.message : "Failed to load documents"
+          );
+      })
+      .finally(() => {
+        if (!ignore) setLoadingDocs(false);
+      });
+    return () => {
+      ignore = true;
+    };
   }, [selectedProjectId]);
 
   const handleUpload = async (): Promise<void> => {
@@ -207,6 +227,13 @@ export function ProjectPicker(): React.ReactElement {
         <Label>Documents in project</Label>
         {loadingDocs ? (
           <Spinner label="Loading…" />
+        ) : docsError ? (
+          <p
+            role="alert"
+            className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive"
+          >
+            {docsError}
+          </p>
         ) : docs.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
             No documents yet.
