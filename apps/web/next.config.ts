@@ -10,7 +10,7 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
     reactCompiler: true,
-    transpilePackages: ["@mike/core", "@mike/api-client", "@mike/sdk-js"],
+    transpilePackages: ["@mike/core", "@mike/api-client", "@mike/sdk-js", "@mike/shared"],
     turbopack: {
         root: path.resolve(process.cwd(), "../.."),
     },

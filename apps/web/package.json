@@ -18,6 +18,7 @@
         "@mike/api-client": "0.1.0",
         "@mike/core": "0.1.0",
         "@mike/sdk-js": "0.1.0",
+        "@mike/shared": "1.0.0",
         "@opennextjs/cloudflare": "^1.19.9",
         "@openrouter/sdk": "^0.3.11",
         "@radix-ui/react-dropdown-menu": "^2.1.16",

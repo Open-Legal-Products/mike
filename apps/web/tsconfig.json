@@ -23,6 +23,7 @@
       "@mike/api-client": ["../../packages/api-client/src/index.ts"],
       "@mike/sdk-js": ["../../packages/sdk-js/src/index.ts"],
       "@mike/core": ["../../packages/core/src/index.ts"],
+      "@mike/shared/*": ["../../packages/shared/*"],
       "@/*": ["./src/*"]
     }
   },

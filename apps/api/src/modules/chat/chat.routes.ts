@@ -487,6 +487,19 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     const project_id = parsedProjectId.projectId;
     const model = parsedModel.model;
 
+    // Optional plain-text document context supplied by the Word Office.js add-in.
+    // The add-in reads the active document body via Word.run() and posts it here
+    // as `documentContext` rather than uploading a file — there is no stored
+    // document record and no upload step. The text is injected into the LLM
+    // system prompt via buildMessages's systemPromptExtra parameter. Cap it so an
+    // oversized body can't blow past the model's context window or token budget.
+    const MAX_DOCUMENT_CONTEXT_CHARS = 200_000;
+    const rawDocumentContext = body.documentContext;
+    const documentContext =
+        typeof rawDocumentContext === "string" && rawDocumentContext.trim()
+            ? rawDocumentContext.trim().slice(0, MAX_DOCUMENT_CONTEXT_CHARS)
+            : undefined;
+
     req.log.debug({ model, messageCount: messages?.length }, "[chat/stream] incoming request");
 
     const userEmail = res.locals.userEmail as string | undefined;
@@ -578,13 +591,25 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         userId,
         db,
     );
-    // When US legal research is enabled, inject the CourtListener guidance into
-    // the system prompt — paired with includeResearchTools below so the model
-    // has both the case-law tools and the instructions for using them.
+    // Assemble the extra system context: the Word add-in's active-document body
+    // (fenced so the model treats it as data, not instructions) and — when US
+    // legal research is enabled — the CourtListener guidance, paired with
+    // includeResearchTools below so the model has both the case-law tools and
+    // the instructions for using them.
+    const wordDocumentContext = documentContext
+        ? `The user is working in Microsoft Word. The text below is the body of their active document:\n<word-document>\n${documentContext}\n</word-document>`
+        : undefined;
+    const systemPromptExtra =
+        [
+            wordDocumentContext,
+            legalResearchUs ? COURTLISTENER_SYSTEM_PROMPT : undefined,
+        ]
+            .filter(Boolean)
+            .join("\n\n") || undefined;
     const apiMessages = buildMessages(
         enrichedMessages,
         docAvailability,
-        legalResearchUs ? COURTLISTENER_SYSTEM_PROMPT : undefined,
+        systemPromptExtra,
         docIndex,
         nonce,
     );

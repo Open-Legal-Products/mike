@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@mike/shared/*": ["../packages/shared/*"],
+      "react": ["node_modules/@types/react"],
+      "react/jsx-runtime": ["node_modules/@types/react/jsx-runtime"],
+      "react/jsx-dev-runtime": ["node_modules/@types/react/jsx-dev-runtime"],
+      "react-dom": ["node_modules/@types/react-dom"],
+      "react-dom/client": ["node_modules/@types/react-dom/client"],
+      "*": ["node_modules/*"]
+    }
+  },
+  "include": ["src", "../packages/shared/**/*.ts", "../packages/shared/**/*.tsx"]
+}

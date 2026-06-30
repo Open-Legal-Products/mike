@@ -1,0 +1,53 @@
+{
+  "name": "mike-word-addin",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "webpack serve --mode development",
+    "build": "webpack --mode production",
+    "start": "office-addin-debugging start manifest.xml --dev-server \"npm run dev\" --dev-server-port 3000",
+    "stop": "office-addin-debugging stop manifest.xml",
+    "build:e2e": "REACT_APP_API_BASE_URL=http://localhost:3001 REACT_APP_SUPABASE_URL=http://localhost:54321 REACT_APP_SUPABASE_ANON_KEY=test-anon-key REACT_APP_DEFAULT_MODEL=claude-sonnet-4-6 webpack --mode production",
+    "serve:e2e": "http-server dist -p 3100 -a 127.0.0.1 -c-1 --silent",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui"
+  },
+  "dependencies": {
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@radix-ui/react-label": "^2.1.7",
+    "@radix-ui/react-separator": "^1.1.7",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@radix-ui/react-switch": "^1.2.6",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.553.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "tailwind-merge": "^3.4.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@tailwindcss/postcss": "^4.1.18",
+    "@types/office-js": "^1.0.400",
+    "@types/office-runtime": "^1.0.38",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "css-loader": "^7.1.2",
+    "html-webpack-plugin": "^5.6.0",
+    "http-server": "^14.1.1",
+    "office-addin-debugging": "^5.0.12",
+    "office-addin-dev-certs": "^2.0.9",
+    "postcss": "^8.5.6",
+    "postcss-loader": "^8.2.0",
+    "style-loader": "^4.0.0",
+    "tailwindcss": "^4.1.18",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.4.5",
+    "webpack": "^5.91.0",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^5.0.4"
+  }
+}

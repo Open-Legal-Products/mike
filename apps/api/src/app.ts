@@ -110,10 +110,29 @@ app.use(
     }),
 );
 
+// The Office.js add-in (Word task pane) runs at https://localhost:3000 during
+// development — office-addin tooling forces HTTPS even locally, so the HTTPS
+// variant must be allowed alongside the regular frontend origin.
+const allowedOrigins = new Set<string>([
+    env.FRONTEND_URL,
+    "https://localhost:3000",
+]);
+
 app.use(
     cors({
-        origin: env.FRONTEND_URL,
+        origin: (origin, callback) => {
+            // Allow server-to-server requests (no Origin header) and any
+            // explicitly listed origin. A disallowed origin resolves to `false`
+            // (cors omits the Access-Control-Allow-Origin header and the browser
+            // blocks the response) rather than calling back with an Error —
+            // throwing here would propagate to Express's default handler and turn
+            // every disallowed cross-origin request, including preflight, into an
+            // HTTP 500.
+            callback(null, !origin || allowedOrigins.has(origin));
+        },
         credentials: true,
+        allowedHeaders: ["Authorization", "Content-Type"],
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     }),
 );
 

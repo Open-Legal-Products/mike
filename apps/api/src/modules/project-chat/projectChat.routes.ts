@@ -54,6 +54,10 @@ const projectChatBodySchema = z.object({
     model: z.string().optional(),
     displayed_doc: docRefSchema.optional(),
     attached_documents: z.array(docRefSchema).optional(),
+    // Plain-text body of the active Word document, posted by the Office.js
+    // add-in instead of uploading a file (see chat.routes.ts for the rationale).
+    // Must be declared here or zod strips it from the parsed body.
+    documentContext: z.string().optional(),
 });
 
 const PROJECT_SYSTEM_PROMPT_EXTRA = `PROJECT CONTEXT:
@@ -74,14 +78,21 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
 
     const body = parseBody(projectChatBodySchema, req, res);
     if (!body) return;
-    const { messages, chat_id, model, displayed_doc, attached_documents } =
-        body as {
-            messages: ChatMessage[];
-            chat_id?: string;
-            model?: string;
-            displayed_doc?: { filename: string; document_id: string };
-            attached_documents?: { filename: string; document_id: string }[];
-        };
+    const {
+        messages,
+        chat_id,
+        model,
+        displayed_doc,
+        attached_documents,
+        documentContext,
+    } = body as {
+        messages: ChatMessage[];
+        chat_id?: string;
+        model?: string;
+        displayed_doc?: { filename: string; document_id: string };
+        attached_documents?: { filename: string; document_id: string }[];
+        documentContext?: string;
+    };
 
     const db = createServerSupabase();
 
@@ -182,6 +193,17 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             return slug ? `- ${slug}: ${d.filename}` : `- ${d.filename}`;
         });
         systemPromptExtra += `\n\nUSER-ATTACHED DOCUMENTS FOR THIS TURN:\nThe user has attached the following document(s) directly to their latest message. Treat these as the primary focus of the request unless their message clearly says otherwise.\n${lines.join("\n")}`;
+    }
+
+    // Plain-text Word document body from the Office.js add-in, appended to the
+    // project system context so the model can reason over the user's open file.
+    // Fenced as data, runtime-checked (a non-string would throw on .trim()) and
+    // capped so an oversized body can't blow past the context window / token budget.
+    const MAX_DOCUMENT_CONTEXT_CHARS = 200_000;
+    const docContext =
+        typeof documentContext === "string" ? documentContext.trim() : "";
+    if (docContext) {
+        systemPromptExtra += `\n\nThe user is working in Microsoft Word. The text below is the body of their active document:\n<word-document>\n${docContext.slice(0, MAX_DOCUMENT_CONTEXT_CHARS)}\n</word-document>`;
     }
 
     const nonce = generateSpotlightNonce();
