@@ -11,6 +11,7 @@ import {
 } from "@/app/components/projects/ProjectWorkspace";
 import type { Chat } from "@/app/components/shared/types";
 import { useAuth } from "@/contexts/AuthContext";
+import { toastError } from "@/lib/toast";
 
 interface Props {
     params: Promise<{ id: string }>;
@@ -117,10 +118,23 @@ export default function ProjectAssistantPage({ params }: Props) {
         });
         const blocked = ids.length - owned.length;
         setSelectedChatIds([]);
-        await Promise.all(owned.map((id) => deleteChat(id).catch(() => {})));
+        let failed = 0;
+        await Promise.all(
+            owned.map((id) =>
+                deleteChat(id).catch(() => {
+                    failed += 1;
+                }),
+            ),
+        );
         setProjectChats((prev) =>
             (prev ?? []).filter((chat) => !owned.includes(chat.id)),
         );
+        if (failed > 0) {
+            toastError(
+                null,
+                `Failed to delete ${failed} ${failed === 1 ? "chat" : "chats"}`,
+            );
+        }
         if (blocked > 0) {
             setOwnerOnlyAction(
                 `delete ${blocked} of the selected chats - only the chat creator can delete a chat`,

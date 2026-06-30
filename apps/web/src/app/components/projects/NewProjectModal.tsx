@@ -13,6 +13,7 @@ import { EmailPillInput } from "../shared/EmailPillInput";
 import type { Project } from "../shared/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { Modal } from "../shared/Modal";
+import { toastError } from "@/lib/toast";
 
 interface Props {
     open: boolean;
@@ -58,10 +59,25 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
                     ? sharedEmails.filter((email) => email !== ownEmail)
                     : sharedEmails,
             );
+            let attachFailures = 0;
             await Promise.all([
-                ...[...selectedDocIds].map((id) => addDocumentToProject(project.id, id).catch(() => {})),
-                ...pendingFiles.map((f) => uploadProjectDocument(project.id, f).catch(() => {})),
+                ...[...selectedDocIds].map((id) =>
+                    addDocumentToProject(project.id, id).catch(() => {
+                        attachFailures += 1;
+                    }),
+                ),
+                ...pendingFiles.map((f) =>
+                    uploadProjectDocument(project.id, f).catch(() => {
+                        attachFailures += 1;
+                    }),
+                ),
             ]);
+            if (attachFailures > 0) {
+                toastError(
+                    null,
+                    `Project created, but ${attachFailures} ${attachFailures === 1 ? "document" : "documents"} could not be added`,
+                );
+            }
             onCreated({ ...project, document_count: selectedDocIds.size + pendingFiles.length });
             resetForm();
             onClose();

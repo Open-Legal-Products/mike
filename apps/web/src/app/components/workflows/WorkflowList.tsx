@@ -26,6 +26,7 @@ import { MikeIcon } from "@/components/chat/mike-icon";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/app/components/shared/PageHeader";
 import { workflowDetailPath } from "./workflowRoutes";
+import { toastError } from "@/lib/toast";
 import {
     GLASS_DROPDOWN,
     GLASS_MENU_ITEM,
@@ -169,20 +170,35 @@ export function WorkflowList() {
         setSelectedIds([]);
         const builtinIds = ids.filter((id) => BUILT_IN_IDS.has(id));
         const customIds = ids.filter((id) => !BUILT_IN_IDS.has(id));
+        let failed = 0;
         if (builtinIds.length > 0) {
             setHiddenBuiltinIds((prev) => [
                 ...prev,
                 ...builtinIds.filter((id) => !prev.includes(id)),
             ]);
             await Promise.all(
-                builtinIds.map((id) => hideWorkflow(id).catch(() => {})),
+                builtinIds.map((id) =>
+                    hideWorkflow(id).catch(() => {
+                        failed += 1;
+                    }),
+                ),
             );
         }
         if (customIds.length > 0) {
             await Promise.all(
-                customIds.map((id) => deleteWorkflow(id).catch(() => {})),
+                customIds.map((id) =>
+                    deleteWorkflow(id).catch(() => {
+                        failed += 1;
+                    }),
+                ),
             );
             setCustom((prev) => prev.filter((w) => !customIds.includes(w.id)));
+        }
+        if (failed > 0) {
+            toastError(
+                null,
+                `Failed to remove ${failed} ${failed === 1 ? "workflow" : "workflows"}`,
+            );
         }
     }
 
@@ -191,7 +207,20 @@ export function WorkflowList() {
         setActionsOpen(false);
         setSelectedIds([]);
         setHiddenBuiltinIds((prev) => prev.filter((id) => !ids.includes(id)));
-        await Promise.all(ids.map((id) => unhideWorkflow(id).catch(() => {})));
+        let failed = 0;
+        await Promise.all(
+            ids.map((id) =>
+                unhideWorkflow(id).catch(() => {
+                    failed += 1;
+                }),
+            ),
+        );
+        if (failed > 0) {
+            toastError(
+                null,
+                `Failed to restore ${failed} ${failed === 1 ? "workflow" : "workflows"}`,
+            );
+        }
     }
 
     const getTypeMeta = (type: Workflow["type"]) =>

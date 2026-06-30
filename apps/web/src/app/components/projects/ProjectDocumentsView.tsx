@@ -59,6 +59,7 @@ import {
     PendingDeleteDocMessage,
     PendingDeleteFolderMessage,
 } from "./project-documents/ConfirmMessages";
+import { toastError } from "@/lib/toast";
 
 interface Props {
     projectId: string;
@@ -892,11 +893,20 @@ export function ProjectDocumentsView({ projectId }: Props) {
                   }
                 : prev,
         );
+        let failed = 0;
         await Promise.all(
             ids.map((id) =>
-                moveDocumentToFolder(projectId, id, null).catch(() => {}),
+                moveDocumentToFolder(projectId, id, null).catch(() => {
+                    failed += 1;
+                }),
             ),
         );
+        if (failed > 0) {
+            toastError(
+                null,
+                `Failed to move ${failed} ${failed === 1 ? "document" : "documents"} out of the folder`,
+            );
+        }
     }
 
     async function handleDeleteSelectedDocs() {

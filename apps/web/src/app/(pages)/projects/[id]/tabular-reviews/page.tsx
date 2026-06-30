@@ -14,6 +14,7 @@ import {
 } from "@/app/components/projects/ProjectWorkspace";
 import type { TabularReview } from "@/app/components/shared/types";
 import { useAuth } from "@/contexts/AuthContext";
+import { toastError } from "@/lib/toast";
 
 interface Props {
     params: Promise<{ id: string }>;
@@ -126,12 +127,23 @@ export default function ProjectTabularReviewsPage({ params }: Props) {
         });
         const blocked = ids.length - owned.length;
         setSelectedReviewIds([]);
+        let failed = 0;
         await Promise.all(
-            owned.map((id) => deleteTabularReview(id).catch(() => {})),
+            owned.map((id) =>
+                deleteTabularReview(id).catch(() => {
+                    failed += 1;
+                }),
+            ),
         );
         setProjectReviews((prev) =>
             (prev ?? []).filter((review) => !owned.includes(review.id)),
         );
+        if (failed > 0) {
+            toastError(
+                null,
+                `Failed to delete ${failed} ${failed === 1 ? "review" : "reviews"}`,
+            );
+        }
         if (blocked > 0) {
             setOwnerOnlyAction(
                 `delete ${blocked} of the selected reviews - only the review creator can delete a review`,

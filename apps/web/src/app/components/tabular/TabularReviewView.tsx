@@ -159,6 +159,8 @@ export function TRView({ reviewId, projectId }: Props) {
             fetches.push(
                 getProject(projectId)
                     .then(setProject)
+                    // Supplementary project metadata; the review renders without
+                    // it, so a failure is intentionally ignored.
                     .catch(() => {}),
             );
         }

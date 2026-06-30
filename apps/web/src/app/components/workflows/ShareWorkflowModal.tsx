@@ -10,6 +10,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { EmailPillInput } from "../shared/EmailPillInput";
 import { Modal } from "../shared/Modal";
+import { toastError } from "@/lib/toast";
 
 interface Share {
     id: string;
@@ -41,12 +42,16 @@ export function ShareWorkflowModal({
     useEffect(() => {
         listWorkflowShares(workflowId)
             .then(setExistingShares)
+            // Best-effort load of the existing share list; intentionally ignored
+            // so the modal still opens (showing no shares) if the fetch fails.
             .catch(() => {})
             .finally(() => setLoading(false));
     }, [workflowId]);
 
     async function handleRemoveShare(shareId: string) {
-        await deleteWorkflowShare(workflowId, shareId).catch(() => {});
+        await deleteWorkflowShare(workflowId, shareId).catch((e) =>
+            toastError(e, "Failed to remove share"),
+        );
         setExistingShares((prev) => prev.filter((s) => s.id !== shareId));
     }
 

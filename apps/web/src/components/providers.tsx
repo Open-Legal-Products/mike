@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
+import { Toaster } from "sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { UserProfileProvider } from "@/contexts/UserProfileContext";
 import { MfaLoginGate } from "@/app/components/shared/MfaLoginGate";
@@ -12,6 +13,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
                 <Suspense fallback={<ProviderLoader />}>
                     <MfaLoginGate>{children}</MfaLoginGate>
                 </Suspense>
+                <Toaster richColors position="top-right" />
             </UserProfileProvider>
         </AuthProvider>
     );

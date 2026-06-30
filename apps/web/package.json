@@ -57,6 +57,7 @@
         "remark-gfm-configurable": "^1.0.0",
         "remark-math": "^6.0.0",
         "resend": "^6.8.0",
+        "sonner": "^2.0.7",
         "tailwind-merge": "^3.4.0",
         "tiptap-markdown": "^0.9.0"
     },

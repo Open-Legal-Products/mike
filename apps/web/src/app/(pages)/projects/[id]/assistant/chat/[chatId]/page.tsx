@@ -272,6 +272,8 @@ export default function ProjectAssistantChatPage({ params }: Props) {
     useEffect(() => {
         getProject(projectId)
             .then(setProject)
+            // Best-effort load of project metadata for the header; the chat
+            // itself works without it, so a failure is intentionally ignored.
             .catch(() => {});
     }, [projectId]);
 
@@ -323,6 +325,8 @@ export default function ProjectAssistantChatPage({ params }: Props) {
         if (!projectMutationSignature) return;
         getProject(projectId)
             .then(setProject)
+            // Best-effort background refresh after the assistant mutates docs;
+            // a stale header is harmless, so a failure is intentionally ignored.
             .catch(() => {});
     }, [projectMutationSignature, projectId]);
 

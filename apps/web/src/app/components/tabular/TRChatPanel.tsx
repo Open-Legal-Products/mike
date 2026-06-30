@@ -832,6 +832,8 @@ export function TRChatPanel({
     useEffect(() => {
         getTabularChats(reviewId)
             .then(setChats)
+            // Best-effort load of prior chats; the panel still works empty, so
+            // a failure here is intentionally ignored.
             .catch(() => {});
     }, [reviewId]);
 
@@ -841,6 +843,8 @@ export function TRChatPanel({
         setIsLoadingMessages(true);
         getTabularChatMessages(reviewId, initialChatId)
             .then((raw) => setMessages(mapTRMessages(raw) as TRMessage[]))
+            // Best-effort load of the initial chat's history; intentionally
+            // ignored so a fetch failure just shows an empty conversation.
             .catch(() => {})
             .finally(() => setIsLoadingMessages(false));
     }, [reviewId]); // eslint-disable-line react-hooks/exhaustive-deps

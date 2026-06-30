@@ -14,6 +14,7 @@ import {
     RowActions,
 } from "@/app/components/shared/RowActions";
 import { PageHeader } from "@/app/components/shared/PageHeader";
+import { toastError } from "@/lib/toast";
 import {
     TABLE_CHECKBOX_CLASS,
     TABLE_STICKY_CELL_BG,
@@ -191,8 +192,21 @@ export function ProjectsOverview() {
         });
         const blocked = ids.length - owned.length;
         setSelectedIds([]);
-        await Promise.all(owned.map((id) => deleteProject(id).catch(() => {})));
+        let failed = 0;
+        await Promise.all(
+            owned.map((id) =>
+                deleteProject(id).catch(() => {
+                    failed += 1;
+                }),
+            ),
+        );
         setProjects((prev) => prev.filter((p) => !owned.includes(p.id)));
+        if (failed > 0) {
+            toastError(
+                null,
+                `Failed to delete ${failed} ${failed === 1 ? "project" : "projects"}`,
+            );
+        }
         if (blocked > 0) {
             setOwnerOnlyAction(
                 `delete ${blocked} of the selected projects — only the project owner can delete a project`,

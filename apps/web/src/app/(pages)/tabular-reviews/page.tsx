@@ -20,6 +20,7 @@ import { AddNewTRModal } from "@/app/components/tabular/AddNewTRModal";
 import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/app/components/shared/PageHeader";
+import { toastError } from "@/lib/toast";
 import {
     GLASS_DROPDOWN,
     HeaderFilterDropdown,
@@ -184,10 +185,21 @@ export default function TabularReviewsPage() {
         });
         const blocked = ids.length - owned.length;
         setSelectedIds([]);
+        let failed = 0;
         await Promise.all(
-            owned.map((id) => deleteTabularReview(id).catch(() => {})),
+            owned.map((id) =>
+                deleteTabularReview(id).catch(() => {
+                    failed += 1;
+                }),
+            ),
         );
         setReviews((prev) => prev.filter((r) => !owned.includes(r.id)));
+        if (failed > 0) {
+            toastError(
+                null,
+                `Failed to delete ${failed} ${failed === 1 ? "review" : "reviews"}`,
+            );
+        }
         if (blocked > 0) {
             setOwnerOnlyAction(
                 `delete ${blocked} of the selected reviews — only the review creator can delete a review`,
