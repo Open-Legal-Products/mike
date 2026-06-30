@@ -255,11 +255,13 @@ test.describe("Account Settings", () => {
             page.getByRole("heading", { name: "Profile" }),
         ).toBeVisible({ timeout: 10_000 });
 
-        // The user's email is rendered as plain text below the "Email" label
+        // The email is rendered in the (editable) Email input, so assert its
+        // value rather than page text.
         // REGRESSION: fails if user auth context is not propagated to the account page
-        await expect(page.getByText("e2e@mike.local")).toBeVisible({
-            timeout: 10_000,
-        });
+        await expect(page.getByPlaceholder("Enter your email")).toHaveValue(
+            "e2e@mike.local",
+            { timeout: 10_000 },
+        );
     });
 
     /* ── Test 6: update display name ─────────────────────────────────────── */

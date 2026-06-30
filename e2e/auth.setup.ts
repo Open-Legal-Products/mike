@@ -68,14 +68,13 @@ async function ensureUser(email: string, password: string) {
  * Stored to e2e/.auth/user.json and loaded via the chromium project config.
  */
 setup("authenticate", async ({ page }) => {
-    const email = process.env.E2E_EMAIL;
-    const password = process.env.E2E_PASSWORD;
-
-    if (!email || !password) {
-        throw new Error(
-            "E2E_EMAIL and E2E_PASSWORD environment variables are required",
-        );
-    }
+    // Default to the credentials the spec files use (the specs log in with
+    // e2e@mike.local / E2eTestPass1!), so the suite runs out-of-the-box against
+    // a local stack with no env juggling. The bootstrapped user MUST match the
+    // password the specs type, or the valid-login tests fail; keeping the
+    // default here is the single source of truth. Override via env in CI.
+    const email = process.env.E2E_EMAIL ?? "e2e@mike.local";
+    const password = process.env.E2E_PASSWORD ?? "E2eTestPass1!";
 
     /* Bootstrap the shared user plus a dedicated user for destructive auth
        tests (logout / account deletion). The logout test calls Supabase
