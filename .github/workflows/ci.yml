@@ -41,7 +41,9 @@ jobs:
         working-directory: apps/api
 
       - run: npm run lint
-      - run: npm test
+      # Run with coverage so the no-regression thresholds in vitest.config.mts
+      # are enforced in CI (fails the build if lib coverage drops).
+      - run: npm run test:coverage
       - run: npm run build
       - name: Smoke import built API app
         run: node -e "require('./dist/apps/api/src/app.js'); console.log('api app import ok')"

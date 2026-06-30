@@ -17,6 +17,20 @@ export default defineConfig({
             provider: "v8",
             reporter: ["text", "lcov"],
             include: ["src/lib/**"],
+            // No-regression RATCHET floor, not a target. src/lib/** spans the
+            // well-tested security/core libs (access, credits, downloadTokens,
+            // userApiKeys, upload, privateIp, llm/baseUrl+retry) AND the large,
+            // still-untested feature libs (courtlistener, mcp, the tool
+            // implementations), so the global number is low. These floors sit
+            // just below current coverage so CI fails on a *drop*; raise them as
+            // the feature-lib backlog gets covered. (Route/service behavior is
+            // covered separately by the integration tests in src/__tests__.)
+            thresholds: {
+                statements: 8,
+                branches: 6,
+                functions: 11,
+                lines: 8,
+            },
         },
     },
 });
