@@ -24,15 +24,11 @@ import {
   attachLatestVersionNumbers,
   loadActiveVersion,
 } from "../../lib/documentVersions";
-import { ensureDocAccess } from "../../lib/access";
+import { ensureDocAccess, listAccessibleProjectIds } from "../../lib/access";
 import { singleFileUpload, hasMagicBytes } from "../../lib/upload";
 
 export const documentsRouter = Router();
 const ALLOWED_TYPES = new Set(["pdf", "docx", "doc"]);
-const isDev = process.env.NODE_ENV !== "production";
-const devLog = (...args: Parameters<typeof console.log>) => {
-  if (isDev) console.log(...args);
-};
 
 async function deleteDocumentAndVersionFiles(
   db: ReturnType<typeof createServerSupabase>,
@@ -194,21 +190,24 @@ documentsRouter.post("/download-zip", requireAuth, async (req, res) => {
     .in("id", document_ids);
 
   if (error) return void res.status(500).json({ detail: error.message });
-  // Filter to docs the user actually has access to (own + shared-project).
-  const accessChecks = await Promise.all(
-    (rawDocs ?? []).map(async (d: any) => ({
-      doc: d,
-      access: await ensureDocAccess(
-        d as { user_id: string; project_id: string | null },
-        userId,
-        userEmail,
-        db,
-      ),
-    })),
+  // Filter to docs the user can access (own + shared-project). Fetch the
+  // accessible project set ONCE and test membership in-memory rather than
+  // calling ensureDocAccess per document (which issued a project query each) —
+  // that was an N+1 of up to MAX_ZIP_DOCUMENTS queries.
+  const accessibleProjectIds = new Set(
+    await listAccessibleProjectIds(userId, userEmail, db),
   );
-  const docs = accessChecks
-    .filter((x) => x.access.ok)
-    .map((x) => x.doc as { id: string });
+  const docs = ((rawDocs ?? []) as {
+    id: string;
+    user_id: string;
+    project_id: string | null;
+  }[])
+    .filter(
+      (d) =>
+        d.user_id === userId ||
+        (d.project_id != null && accessibleProjectIds.has(d.project_id)),
+    )
+    .map((d) => ({ id: d.id }));
   if (!docs || docs.length === 0)
     return void res.status(404).json({ detail: "No documents found" });
 
@@ -473,7 +472,7 @@ documentsRouter.post(
     try {
       await uploadFile(key, bytes, contentType);
     } catch (e) {
-      console.error("[versions/copy] storage write failed", e);
+      req.log.error({ err: e }, "[versions/copy] storage write failed");
       return void res
         .status(500)
         .json({ detail: "Failed to create new version." });
@@ -507,9 +506,9 @@ documentsRouter.post(
         );
         pdfStoragePath = pdfKey;
       } catch (err) {
-        console.error(
+        req.log.error(
+          { err },
           `[versions/copy] DOCX→PDF conversion failed for ${filename}:`,
-          err,
         );
       }
     }
@@ -541,7 +540,7 @@ documentsRouter.post(
       .select("id, version_number, source, created_at, filename")
       .single();
     if (verErr || !versionRow) {
-      console.error("[versions/copy] insert failed", verErr);
+      req.log.error({ err: verErr }, "[versions/copy] insert failed");
       return void res
         .status(500)
         .json({ detail: "Failed to record new version." });
@@ -554,7 +553,10 @@ documentsRouter.post(
       })
       .eq("id", documentId);
     if (updateDocErr) {
-      console.error("[versions/copy] current version update failed", updateDocErr);
+      req.log.error(
+        { err: updateDocErr },
+        "[versions/copy] current version update failed",
+      );
       return void res
         .status(500)
         .json({ detail: "Failed to update document current version." });
@@ -566,7 +568,10 @@ documentsRouter.post(
         sourceDocumentId,
       );
       if (deleteErr) {
-        console.error("[versions/copy] source document delete failed", deleteErr);
+        req.log.error(
+          { err: deleteErr },
+          "[versions/copy] source document delete failed",
+        );
         return void res
           .status(500)
           .json({ detail: "Failed to delete source document." });
@@ -730,9 +735,9 @@ documentsRouter.post(
       })
       .eq("id", documentId);
     if (updateDocErr) {
-      console.error(
+      req.log.error(
+        { err: updateDocErr },
         "[versions/upload] current version update failed",
-        updateDocErr,
       );
       return void res
         .status(500)
@@ -861,7 +866,7 @@ documentsRouter.put(
         contentType,
       );
     } catch (e) {
-      console.error("[versions/replace] storage write failed", e);
+      req.log.error({ err: e }, "[versions/replace] storage write failed");
       return void res
         .status(500)
         .json({ detail: "Failed to upload replacement version." });
@@ -882,9 +887,9 @@ documentsRouter.put(
         );
         pdfStoragePath = pdfKey;
       } catch (err) {
-        console.error(
+        req.log.error(
+          { err },
           `[versions/replace] DOCX→PDF conversion failed for ${file.originalname}:`,
-          err,
         );
       }
     } else if (suffix === "pdf") {
@@ -1313,13 +1318,16 @@ async function handleDocumentUpload(
     .single();
 
   if (insertErr || !doc)
-    console.error("[single-documents/upload] failed to create document row", {
-      userId,
-      projectId,
-      filename,
-      suffix,
-      error: insertErr,
-    });
+    req.log.error(
+      {
+        userId,
+        projectId,
+        filename,
+        suffix,
+        error: insertErr,
+      },
+      "[single-documents/upload] failed to create document row",
+    );
   if (insertErr || !doc)
     return void res
       .status(500)

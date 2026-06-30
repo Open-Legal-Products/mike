@@ -1,6 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { OpenAIToolSchema } from "../llm";
+import { logger } from "../logger";
 import { createServerSupabase } from "../supabase";
 import {
     authConfigPatch,
@@ -457,10 +458,13 @@ export async function buildUserMcpTools(
         .eq("user_mcp_connectors.user_id", userId)
         .eq("user_mcp_connectors.enabled", true);
     if (error) {
-        console.error("[mcp-connectors] failed to load tools", {
-            userId,
-            error: error.message,
-        });
+        logger.error(
+            {
+                userId,
+                error: error.message,
+            },
+            "[mcp-connectors] failed to load tools",
+        );
         return [];
     }
 
@@ -641,8 +645,11 @@ async function insertMcpAuditLog(
 ) {
     const { error } = await db.from("user_mcp_tool_audit_logs").insert(row);
     if (error) {
-        console.error("[mcp-connectors] failed to write audit log", {
-            error: error.message,
-        });
+        logger.error(
+            {
+                error: error.message,
+            },
+            "[mcp-connectors] failed to write audit log",
+        );
     }
 }

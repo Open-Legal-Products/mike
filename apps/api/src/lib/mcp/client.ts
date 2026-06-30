@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import dns from "dns/promises";
 import net from "net";
+import { logger } from "../logger";
 import { isBlockedIp } from "../privateIp";
 import {
     BLOCKED_METADATA_HOSTS,
@@ -96,9 +97,12 @@ export function decryptString(
         ]);
         return decrypted.toString("utf8");
     } catch (err) {
-        console.error("[mcp-connectors] failed to decrypt string secret", {
-            error: err instanceof Error ? err.message : String(err),
-        });
+        logger.error(
+            {
+                error: err instanceof Error ? err.message : String(err),
+            },
+            "[mcp-connectors] failed to decrypt string secret",
+        );
         return null;
     }
 }
@@ -127,10 +131,13 @@ export function decryptAuthConfig(row: ConnectorRow): McpConnectorAuthConfig {
             ? (parsed as McpConnectorAuthConfig)
             : {};
     } catch (err) {
-        console.error("[mcp-connectors] failed to decrypt auth config", {
-            connectorId: row.id,
-            error: err instanceof Error ? err.message : String(err),
-        });
+        logger.error(
+            {
+                connectorId: row.id,
+                error: err instanceof Error ? err.message : String(err),
+            },
+            "[mcp-connectors] failed to decrypt auth config",
+        );
         return {};
     }
 }

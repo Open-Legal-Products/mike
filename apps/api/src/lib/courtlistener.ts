@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import { logger } from "./logger";
 import { downloadFile, listFiles } from "./storage";
 import { createServerSupabase } from "./supabase";
 
@@ -11,8 +12,8 @@ const COURTLISTENER_R2_OPINIONS_PREFIX = "courtlistener/opinions/by-cluster";
 type JsonRecord = Record<string, unknown>;
 type ServerSupabase = ReturnType<typeof createServerSupabase>;
 const isDev = process.env.NODE_ENV !== "production";
-const devLog = (...args: Parameters<typeof console.log>) => {
-    if (isDev) console.log(...args);
+const devLog = (message: string, context?: Record<string, unknown>) => {
+    if (isDev) logger.debug(context ?? {}, message);
 };
 
 function courtlistenerBulkDataEnabled() {

@@ -76,7 +76,10 @@ async function attachDocumentOwnerLabels(
     .select("user_id, display_name")
     .in("user_id", ownerIds);
   if (profilesError) {
-    console.warn("[projects] failed to load document owner profiles", profilesError);
+    logger.warn(
+      { err: profilesError },
+      "[projects] failed to load document owner profiles",
+    );
   }
   for (const profile of profiles ?? []) {
     const displayName =
@@ -115,7 +118,10 @@ async function attachChatCreatorLabels(
     .select("user_id, display_name")
     .in("user_id", creatorIds);
   if (profilesError) {
-    console.warn("[projects] failed to load chat creator profiles", profilesError);
+    logger.warn(
+      { err: profilesError },
+      "[projects] failed to load chat creator profiles",
+    );
   }
   for (const profile of profiles ?? []) {
     const displayName =
@@ -592,7 +598,7 @@ projectsRouter.post(
         );
         return void res.status(201).json(updatedCopy);
       } catch (err) {
-        console.error("[projects/documents/copy] failed", err);
+        req.log.error({ err }, "[projects/documents/copy] failed");
         await Promise.all([
           deleteFile(newKey).catch(() => {}),
           newPdfPath && newPdfPath !== newKey

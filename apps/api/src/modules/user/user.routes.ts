@@ -625,10 +625,13 @@ userRouter.put(
             res.json(status);
         } catch (err) {
             const detail = errorMessage(err);
-            console.error("[user/api-keys] save failed", {
-                provider,
-                error: detail,
-            });
+            req.log.error(
+                {
+                    provider,
+                    error: detail,
+                },
+                "[user/api-keys] save failed",
+            );
             res.status(500).json({ detail });
         }
     },
@@ -644,10 +647,13 @@ userRouter.get("/mcp-connectors", requireAuth, async (_req, res) => {
         );
     } catch (err) {
         const detail = errorMessage(err);
-        console.error("[user/mcp-connectors] list failed", {
-            userId,
-            error: detail,
-        });
+        logger.error(
+            {
+                userId,
+                error: detail,
+            },
+            "[user/mcp-connectors] list failed",
+        );
         res.status(500).json({ detail });
     }
 });
@@ -665,11 +671,14 @@ userRouter.get(
             );
         } catch (err) {
             const detail = errorMessage(err);
-            console.error("[user/mcp-connectors] get failed", {
-                userId,
-                connectorId: req.params.connectorId,
-                error: detail,
-            });
+            req.log.error(
+                {
+                    userId,
+                    connectorId: req.params.connectorId,
+                    error: detail,
+                },
+                "[user/mcp-connectors] get failed",
+            );
             res.status(404).json({ detail });
         }
     },
@@ -705,10 +714,13 @@ userRouter.post(
             res.status(201).json(connector);
         } catch (err) {
             const detail = errorMessage(err);
-            console.error("[user/mcp-connectors] create failed", {
-                userId,
-                error: detail,
-            });
+            req.log.error(
+                {
+                    userId,
+                    error: detail,
+                },
+                "[user/mcp-connectors] create failed",
+            );
             res.status(400).json({ detail });
         }
     },
@@ -764,11 +776,14 @@ userRouter.patch(
             res.json(connector);
         } catch (err) {
             const detail = errorMessage(err);
-            console.error("[user/mcp-connectors] update failed", {
-                userId,
-                connectorId: req.params.connectorId,
-                error: detail,
-            });
+            req.log.error(
+                {
+                    userId,
+                    connectorId: req.params.connectorId,
+                    error: detail,
+                },
+                "[user/mcp-connectors] update failed",
+            );
             res.status(400).json({ detail });
         }
     },
@@ -787,11 +802,14 @@ userRouter.delete(
             res.status(204).send();
         } catch (err) {
             const detail = errorMessage(err);
-            console.error("[user/mcp-connectors] delete failed", {
-                userId,
-                connectorId: req.params.connectorId,
-                error: detail,
-            });
+            req.log.error(
+                {
+                    userId,
+                    connectorId: req.params.connectorId,
+                    error: detail,
+                },
+                "[user/mcp-connectors] delete failed",
+            );
             res.status(500).json({ detail });
         }
     },
@@ -816,11 +834,14 @@ userRouter.post(
             res.json(result);
         } catch (err) {
             const detail = errorMessage(err);
-            console.error("[user/mcp-connectors] oauth start failed", {
-                userId,
-                connectorId: req.params.connectorId,
-                error: detail,
-            });
+            req.log.error(
+                {
+                    userId,
+                    connectorId: req.params.connectorId,
+                    error: detail,
+                },
+                "[user/mcp-connectors] oauth start failed",
+            );
             res.status(400).json({ detail });
         }
     },
@@ -852,18 +873,23 @@ userRouter.get("/mcp-connectors/oauth/callback", async (req, res) => {
             );
     } catch (err) {
         const detail = errorMessage(err);
-        console.error("[user/mcp-connectors] oauth callback failed", {
-            error: detail,
-            stateHash: shortHash(state),
-            hasCode: !!code,
-            hasError: !!error,
-            issuer:
-                typeof req.query.iss === "string" ? req.query.iss : undefined,
-            scope:
-                typeof req.query.scope === "string"
-                    ? req.query.scope
-                    : undefined,
-        });
+        req.log.error(
+            {
+                error: detail,
+                stateHash: shortHash(state),
+                hasCode: !!code,
+                hasError: !!error,
+                issuer:
+                    typeof req.query.iss === "string"
+                        ? req.query.iss
+                        : undefined,
+                scope:
+                    typeof req.query.scope === "string"
+                        ? req.query.scope
+                        : undefined,
+            },
+            "[user/mcp-connectors] oauth callback failed",
+        );
         res.status(400)
             .set("Content-Security-Policy", mcpOAuthPopupCsp(nonce))
             .type("html")
@@ -888,11 +914,14 @@ userRouter.post(
             res.json(connector);
         } catch (err) {
             const detail = errorMessage(err);
-            console.error("[user/mcp-connectors] refresh failed", {
-                userId,
-                connectorId: req.params.connectorId,
-                error: detail,
-            });
+            req.log.error(
+                {
+                    userId,
+                    connectorId: req.params.connectorId,
+                    error: detail,
+                },
+                "[user/mcp-connectors] refresh failed",
+            );
             if (err instanceof McpOAuthRequiredError) {
                 return void res.status(401).json({
                     code: err.code,
@@ -927,12 +956,15 @@ userRouter.patch(
             res.json(connector);
         } catch (err) {
             const detail = errorMessage(err);
-            console.error("[user/mcp-connectors] tool toggle failed", {
-                userId,
-                connectorId: req.params.connectorId,
-                toolId: req.params.toolId,
-                error: detail,
-            });
+            req.log.error(
+                {
+                    userId,
+                    connectorId: req.params.connectorId,
+                    toolId: req.params.toolId,
+                    error: detail,
+                },
+                "[user/mcp-connectors] tool toggle failed",
+            );
             res.status(400).json({ detail });
         }
     },
@@ -955,10 +987,13 @@ userRouter.delete(
             res.status(204).send();
         } catch (err) {
             const detail = errorMessage(err);
-            console.error("[user/account] delete failed", {
-                userId,
-                error: detail,
-            });
+            logger.error(
+                {
+                    userId,
+                    error: detail,
+                },
+                "[user/account] delete failed",
+            );
             res.status(500).json({ detail });
         }
     },
@@ -977,10 +1012,13 @@ userRouter.delete(
             res.status(204).send();
         } catch (err) {
             const detail = errorMessage(err);
-            console.error("[user/chats] delete failed", {
-                userId,
-                error: detail,
-            });
+            logger.error(
+                {
+                    userId,
+                    error: detail,
+                },
+                "[user/chats] delete failed",
+            );
             res.status(500).json({ detail });
         }
     },
@@ -999,10 +1037,13 @@ userRouter.delete(
             res.status(204).send();
         } catch (err) {
             const detail = errorMessage(err);
-            console.error("[user/projects] delete failed", {
-                userId,
-                error: detail,
-            });
+            logger.error(
+                {
+                    userId,
+                    error: detail,
+                },
+                "[user/projects] delete failed",
+            );
             res.status(500).json({ detail });
         }
     },
@@ -1021,10 +1062,13 @@ userRouter.delete(
             res.status(204).send();
         } catch (err) {
             const detail = errorMessage(err);
-            console.error("[user/tabular-reviews] delete failed", {
-                userId,
-                error: detail,
-            });
+            logger.error(
+                {
+                    userId,
+                    error: detail,
+                },
+                "[user/tabular-reviews] delete failed",
+            );
             res.status(500).json({ detail });
         }
     },
@@ -1049,7 +1093,7 @@ userRouter.get(
             res.json(data);
         } catch (err) {
             const detail = errorMessage(err);
-            console.error("[user/export] failed", { userId, error: detail });
+            logger.error({ userId, error: detail }, "[user/export] failed");
             res.status(500).json({ detail });
         }
     },
@@ -1074,10 +1118,13 @@ userRouter.get(
             res.json(data);
         } catch (err) {
             const detail = errorMessage(err);
-            console.error("[user/chats/export] failed", {
-                userId,
-                error: detail,
-            });
+            logger.error(
+                {
+                    userId,
+                    error: detail,
+                },
+                "[user/chats/export] failed",
+            );
             res.status(500).json({ detail });
         }
     },
@@ -1106,10 +1153,13 @@ userRouter.get(
             res.json(data);
         } catch (err) {
             const detail = errorMessage(err);
-            console.error("[user/tabular-reviews/export] failed", {
-                userId,
-                error: detail,
-            });
+            logger.error(
+                {
+                    userId,
+                    error: detail,
+                },
+                "[user/tabular-reviews/export] failed",
+            );
             res.status(500).json({ detail });
         }
     },

@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { mkdir, open } from "fs/promises";
 import type { FileHandle } from "fs/promises";
 import path from "path";
+import { logger } from "../logger";
 
 type RawStreamEntry = {
   timestamp: string;
@@ -46,10 +47,10 @@ export function logRawLlmStream(args: {
 }) {
   if (process.env.LOG_RAW_LLM_STREAM !== "true") return;
 
-  console.log(
+  logger.debug(
+    { payload: args.payload },
     `[raw-llm-stream:${args.provider}:${args.model}:iter-${args.iteration}] ${args.label}`,
   );
-  console.dir(args.payload, { depth: null, maxArrayLength: null });
 }
 
 export function createRawLlmStreamRecorder(args: {
@@ -94,10 +95,13 @@ export function createRawLlmStreamRecorder(args: {
       .then(action)
       .catch((error) => {
         writeError = error;
-        console.error("[raw-llm-stream] failed to write log file", {
-          filePath,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        logger.error(
+          {
+            filePath,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "[raw-llm-stream] failed to write log file",
+        );
       });
   }
 
@@ -147,22 +151,26 @@ export function createRawLlmStreamRecorder(args: {
         const handle = await ensureOpen();
         await handle.write(`],${stringifyJson(footer)?.slice(1)}\n`);
       } catch (writeError) {
-        console.error("[raw-llm-stream] failed to write log file", {
-          filePath,
-          error:
-            writeError instanceof Error
-              ? writeError.message
-              : String(writeError),
-        });
+        logger.error(
+          {
+            filePath,
+            error:
+              writeError instanceof Error
+                ? writeError.message
+                : String(writeError),
+          },
+          "[raw-llm-stream] failed to write log file",
+        );
       } finally {
         if (fileHandle) {
           await fileHandle.close().catch(() => {});
           fileHandle = null;
         }
         if (writeError) {
-          console.error("[raw-llm-stream] log file may be incomplete", {
-            filePath,
-          });
+          logger.error(
+            { filePath },
+            "[raw-llm-stream] log file may be incomplete",
+          );
         }
       }
     },
