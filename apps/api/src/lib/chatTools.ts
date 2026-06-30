@@ -70,6 +70,7 @@ export {
 
 export {
     generateSpotlightNonce,
+    spotlight,
     buildMessages,
     enrichWithPriorEvents,
     buildDocContext,

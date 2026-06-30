@@ -38,4 +38,28 @@ describe("resolveOpenAIBaseUrl", () => {
             /http or https/,
         );
     });
+
+    it("rejects private/reserved IP literals in production (SSRF)", () => {
+        for (const host of [
+            "https://10.0.1.50/v1",
+            "https://172.16.5.4/v1",
+            "https://192.168.1.10/v1",
+            "https://169.254.169.254/v1", // cloud metadata
+            "https://127.0.0.1/v1",
+            "https://[::1]/v1",
+        ]) {
+            expect(() => resolveOpenAIBaseUrl(host, "production")).toThrow(
+                /private or reserved IP|localhost/,
+            );
+        }
+    });
+
+    it("allows a public IP / hostname in production", () => {
+        expect(resolveOpenAIBaseUrl("https://8.8.8.8/v1", "production")).toBe(
+            "https://8.8.8.8/v1",
+        );
+        expect(
+            resolveOpenAIBaseUrl("https://gateway.example.com/v1", "production"),
+        ).toBe("https://gateway.example.com/v1");
+    });
 });

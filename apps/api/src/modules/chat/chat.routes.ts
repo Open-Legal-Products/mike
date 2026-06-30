@@ -13,6 +13,7 @@ import {
     isAbortError,
     runLLMStream,
     generateSpotlightNonce,
+    spotlight,
     stripTransientAssistantEvents,
     type ChatMessage,
 } from "../../lib/chatTools";
@@ -20,7 +21,7 @@ import { completeText } from "../../lib/llm";
 import { COURTLISTENER_SYSTEM_PROMPT } from "../../lib/legalSourcesTools/courtlistenerTools";
 import { getUserApiKeys, getUserModelSettings } from "../../lib/userSettings";
 import { checkProjectAccess } from "../../lib/access";
-import { checkMessageCredits, incrementMessageCredits } from "../../lib/credits";
+import { consumeMessageCredit, refundMessageCredit } from "../../lib/credits";
 import { safeErrorLog, safeErrorMessage } from "../../lib/safeError";
 
 export const chatRouter = Router();
@@ -596,8 +597,11 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     // legal research is enabled — the CourtListener guidance, paired with
     // includeResearchTools below so the model has both the case-law tools and
     // the instructions for using them.
+    // The document body is user-controlled and a prompt-injection vector, so it
+    // MUST be nonce-fenced via spotlight() (not plain tags) before entering the
+    // system prompt — same treatment as filenames/workflow titles.
     const wordDocumentContext = documentContext
-        ? `The user is working in Microsoft Word. The text below is the body of their active document:\n<word-document>\n${documentContext}\n</word-document>`
+        ? `The user is working in Microsoft Word. The text below is the body of their active document:\n${spotlight(documentContext, nonce)}`
         : undefined;
     const systemPromptExtra =
         [
@@ -621,12 +625,13 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         docCount: Object.keys(docIndex).length,
     }, "[chat/stream] starting LLM stream");
 
-    // Credit check and API key fetch must happen BEFORE flushHeaders().
-    // Once SSE headers are flushed the response is committed — we can no
-    // longer send a 429 JSON body. Check credits first, fail fast.
+    // Credit reservation and API key fetch must happen BEFORE flushHeaders().
+    // Once SSE headers are flushed the response is committed — we can no longer
+    // send a 429 JSON body. consumeMessageCredit atomically reserves the credit
+    // (no check-then-increment race); we refund it below if the stream fails.
     const [apiKeys, creditCheck] = await Promise.all([
         getUserApiKeys(userId, db),
-        checkMessageCredits(userId, db),
+        consumeMessageCredit(userId, db),
     ]);
 
     if (!creditCheck.allowed) {
@@ -668,8 +673,8 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             nonce,
         });
 
-        await incrementMessageCredits(userId, db);
-
+        // Credit already reserved before the stream (consumeMessageCredit) — the
+        // completed response keeps it; no post-stream increment needed.
         req.log.debug({ eventCount: events?.length ?? 0 }, "[chat/stream] LLM stream finished");
 
         const persistedEvents = stripTransientAssistantEvents(events);
@@ -687,6 +692,10 @@ chatRouter.post("/", requireAuth, async (req, res) => {
                 .eq("id", chatId);
         }
     } catch (err) {
+        // The stream failed or was aborted before completing — return the credit
+        // reserved before the stream (preserves the prior "no charge on
+        // failure/abort" semantic now that reservation happens up front).
+        await refundMessageCredit(userId, db);
         if (isAbortError(err)) {
             req.log.debug({ chatId }, "[chat/stream] client aborted stream");
             if (err instanceof AssistantStreamError) {

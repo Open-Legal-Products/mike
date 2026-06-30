@@ -13,6 +13,7 @@ import {
     isAbortError,
     runLLMStream,
     generateSpotlightNonce,
+    spotlight,
     stripTransientAssistantEvents,
     PROJECT_EXTRA_TOOLS,
     type ChatMessage,
@@ -20,7 +21,7 @@ import {
 import { COURTLISTENER_SYSTEM_PROMPT } from "../../lib/legalSourcesTools/courtlistenerTools";
 import { getUserApiKeys, getUserModelSettings } from "../../lib/userSettings";
 import { checkProjectAccess } from "../../lib/access";
-import { checkMessageCredits, incrementMessageCredits } from "../../lib/credits";
+import { consumeMessageCredit, refundMessageCredit } from "../../lib/credits";
 import { parseBody, sendError } from "../../lib/http";
 import { safeErrorLog, safeErrorMessage } from "../../lib/safeError";
 
@@ -195,18 +196,20 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         systemPromptExtra += `\n\nUSER-ATTACHED DOCUMENTS FOR THIS TURN:\nThe user has attached the following document(s) directly to their latest message. Treat these as the primary focus of the request unless their message clearly says otherwise.\n${lines.join("\n")}`;
     }
 
+    const nonce = generateSpotlightNonce();
+
     // Plain-text Word document body from the Office.js add-in, appended to the
     // project system context so the model can reason over the user's open file.
-    // Fenced as data, runtime-checked (a non-string would throw on .trim()) and
-    // capped so an oversized body can't blow past the context window / token budget.
+    // User-controlled, so it MUST be nonce-fenced via spotlight() (a
+    // prompt-injection vector). Runtime-checked (a non-string would throw on
+    // .trim()) and capped so an oversized body can't blow past the context
+    // window / token budget.
     const MAX_DOCUMENT_CONTEXT_CHARS = 200_000;
     const docContext =
         typeof documentContext === "string" ? documentContext.trim() : "";
     if (docContext) {
-        systemPromptExtra += `\n\nThe user is working in Microsoft Word. The text below is the body of their active document:\n<word-document>\n${docContext.slice(0, MAX_DOCUMENT_CONTEXT_CHARS)}\n</word-document>`;
+        systemPromptExtra += `\n\nThe user is working in Microsoft Word. The text below is the body of their active document:\n${spotlight(docContext.slice(0, MAX_DOCUMENT_CONTEXT_CHARS), nonce)}`;
     }
-
-    const nonce = generateSpotlightNonce();
     // apiKeys is fetched below via getUserApiKeys alongside the credit check;
     // here we only need upstream's legal_research_us flag for the LLM stream.
     const { legal_research_us: legalResearchUs } = await getUserModelSettings(
@@ -228,12 +231,13 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
 
-    // Credit check and API key fetch must happen BEFORE flushHeaders().
-    // Once SSE headers are flushed the response is committed — we can no
-    // longer send a 429 JSON body. Check credits first, fail fast.
+    // Credit reservation and API key fetch must happen BEFORE flushHeaders().
+    // Once SSE headers are flushed the response is committed — we can no longer
+    // send a 429 JSON body. consumeMessageCredit atomically reserves the credit
+    // (no check-then-increment race); we refund it below if the stream fails.
     const [apiKeys, creditCheck] = await Promise.all([
         getUserApiKeys(userId, db),
-        checkMessageCredits(userId, db),
+        consumeMessageCredit(userId, db),
     ]);
 
     if (!creditCheck.allowed) {
@@ -278,8 +282,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             nonce,
         });
 
-        await incrementMessageCredits(userId, db);
-
+        // Credit already reserved before the stream — completed response keeps it.
         const persistedEvents = stripTransientAssistantEvents(events);
         await db.from("chat_messages").insert({
             chat_id: chatId,
@@ -295,6 +298,8 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
                 .eq("id", chatId);
         }
     } catch (err) {
+        // Stream failed/aborted before completing — return the reserved credit.
+        await refundMessageCredit(userId, db);
         if (isAbortError(err)) {
             req.log.debug({ chatId }, "[project-chat/stream] client aborted stream");
             if (err instanceof AssistantStreamError) {

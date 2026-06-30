@@ -46,7 +46,7 @@ export function generateSpotlightNonce(): string {
  * The LLM is instructed (in SYSTEM_PROMPT) to treat everything inside these
  * tags as data, not as instructions — a technique called "spotlighting".
  */
-function spotlight(text: string, nonce: string): string {
+export function spotlight(text: string, nonce: string): string {
     return `<untrusted-content nonce="${nonce}">\n${text}\n</untrusted-content>`;
 }
 

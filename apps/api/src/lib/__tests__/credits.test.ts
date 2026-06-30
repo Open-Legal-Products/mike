@@ -1,5 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { checkMessageCredits, MONTHLY_CREDIT_LIMIT } from "../credits";
+import {
+    checkMessageCredits,
+    consumeMessageCredit,
+    refundMessageCredit,
+    MONTHLY_CREDIT_LIMIT,
+} from "../credits";
+
+function makeRpcDb(rpcResult: { data?: unknown; error?: unknown }) {
+    const rpc = vi.fn().mockResolvedValue({
+        data: rpcResult.data ?? null,
+        error: rpcResult.error ?? null,
+    });
+    return {
+        db: { rpc } as unknown as Parameters<typeof consumeMessageCredit>[1],
+        rpc,
+    };
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -161,6 +177,51 @@ describe("checkMessageCredits", () => {
             });
             const result = await checkMessageCredits("user-1", db);
             expect(result).toEqual({ allowed: true });
+        });
+    });
+});
+
+describe("consumeMessageCredit (atomic reserve)", () => {
+    it("calls the consume_message_credit RPC with the user id and limit", async () => {
+        const { db, rpc } = makeRpcDb({ data: [{ allowed: true, used: 1 }] });
+        await consumeMessageCredit("user-1", db);
+        expect(rpc).toHaveBeenCalledWith("consume_message_credit", {
+            p_user_id: "user-1",
+            p_limit: MONTHLY_CREDIT_LIMIT,
+        });
+    });
+
+    it("allows when the RPC reports allowed", async () => {
+        const { db } = makeRpcDb({ data: [{ allowed: true, used: 2 }] });
+        expect(await consumeMessageCredit("user-1", db)).toEqual({ allowed: true });
+    });
+
+    it("denies with used/limit/resetDate when the RPC reports over-limit", async () => {
+        const { db } = makeRpcDb({
+            data: [{ allowed: false, used: 999_999, reset_date: FUTURE_RESET }],
+        });
+        const result = await consumeMessageCredit("user-1", db);
+        expect(result).toMatchObject({
+            allowed: false,
+            used: 999_999,
+            limit: MONTHLY_CREDIT_LIMIT,
+            resetDate: FUTURE_RESET,
+        });
+    });
+
+    it("fails OPEN on an RPC error (never blocks chat on accounting)", async () => {
+        const { db } = makeRpcDb({ error: { message: "function missing" } });
+        expect(await consumeMessageCredit("user-1", db)).toEqual({ allowed: true });
+    });
+});
+
+describe("refundMessageCredit", () => {
+    it("calls the refund_message_credit RPC and swallows failures", async () => {
+        const rpc = vi.fn().mockRejectedValue(new Error("boom"));
+        const db = { rpc } as unknown as Parameters<typeof refundMessageCredit>[1];
+        await expect(refundMessageCredit("user-1", db)).resolves.toBeUndefined();
+        expect(rpc).toHaveBeenCalledWith("refund_message_credit", {
+            p_user_id: "user-1",
         });
     });
 });

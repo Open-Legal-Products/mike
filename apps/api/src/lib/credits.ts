@@ -80,3 +80,46 @@ export async function incrementMessageCredits(
         // If it doesn't exist yet, degrade gracefully.
     });
 }
+
+/**
+ * Atomically reserve one message credit BEFORE streaming. The consume_message_credit
+ * RPC takes a row lock, applies the monthly reset if due, and increments only if
+ * the user is under the limit — eliminating the check-then-increment race where
+ * concurrent requests could all pass a read-only check and overspend.
+ *
+ * Returns `{ allowed: true }` when a credit was consumed, or a structured
+ * rejection when over the limit. Fails OPEN on a DB error (matches the historical
+ * checkMessageCredits behavior). Refund with refundMessageCredit if the stream
+ * then fails.
+ */
+export async function consumeMessageCredit(
+    userId: string,
+    db: Db = createServerSupabase(),
+): Promise<CreditCheckResult> {
+    const { data, error } = await db.rpc("consume_message_credit", {
+        p_user_id: userId,
+        p_limit: MONTHLY_CREDIT_LIMIT,
+    });
+    if (error) return { allowed: true };
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row || row.allowed) return { allowed: true };
+    return {
+        allowed: false,
+        used: row.used ?? MONTHLY_CREDIT_LIMIT,
+        limit: MONTHLY_CREDIT_LIMIT,
+        resetDate: row.reset_date,
+    };
+}
+
+/**
+ * Return a previously-consumed credit (floored at 0) when the stream it was
+ * reserved for fails or is aborted before delivering a response. Best-effort.
+ */
+export async function refundMessageCredit(
+    userId: string,
+    db: Db = createServerSupabase(),
+): Promise<void> {
+    await db.rpc("refund_message_credit", { p_user_id: userId }).catch(() => {
+        /* best-effort: never let a refund failure surface to the user */
+    });
+}

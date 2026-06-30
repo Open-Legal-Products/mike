@@ -64,6 +64,73 @@ begin
 end;
 $$;
 
+-- Atomically reserve one message credit. Row-locks the profile (for update),
+-- applies the monthly reset if the window elapsed, and increments only when the
+-- user is under p_limit. This eliminates the check-then-increment race where
+-- concurrent requests could each pass a read-only check and overspend.
+create or replace function public.consume_message_credit(p_user_id uuid, p_limit integer)
+returns table(allowed boolean, used integer, reset_date timestamptz)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_used integer;
+  v_reset timestamptz;
+begin
+  select coalesce(message_credits_used, 0), credits_reset_date
+    into v_used, v_reset
+    from public.user_profiles
+   where user_id = p_user_id
+   for update;
+
+  if not found then
+    -- No profile row: fail open (don't block) without counting.
+    return query select true, 0, null::timestamptz;
+    return;
+  end if;
+
+  -- Monthly reset: if the window elapsed, zero the counter and advance the
+  -- reset date into the future (loop covers multi-month inactivity gaps).
+  if v_reset is null or v_reset <= now() then
+    v_used := 0;
+    v_reset := coalesce(v_reset, now());
+    while v_reset <= now() loop
+      v_reset := v_reset + interval '1 month';
+    end loop;
+  end if;
+
+  if v_used >= p_limit then
+    update public.user_profiles
+       set message_credits_used = v_used, credits_reset_date = v_reset
+     where user_id = p_user_id;
+    return query select false, v_used, v_reset;
+    return;
+  end if;
+
+  v_used := v_used + 1;
+  update public.user_profiles
+     set message_credits_used = v_used, credits_reset_date = v_reset
+   where user_id = p_user_id;
+  return query select true, v_used, v_reset;
+end;
+$$;
+
+-- Return a consumed credit (floored at 0) when a reserved stream fails/aborts
+-- before delivering a response.
+create or replace function public.refund_message_credit(p_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.user_profiles
+     set message_credits_used = greatest(0, coalesce(message_credits_used, 0) - 1)
+   where user_id = p_user_id;
+end;
+$$;
+
 create table if not exists public.user_api_keys (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
