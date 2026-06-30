@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* The shared design-system primitives (@mike/shared) live in packages/shared,
+   outside this app's directory. Tailwind v4 auto source-detection is rooted at
+   apps/web and skips node_modules, so without this @source the primitive-only
+   utilities (focus-visible:ring-ring, aria-invalid:ring-destructive,
+   border-input, …) used by ui/button & ui/input are silently PURGED — the
+   build still succeeds, the components just lose those state styles. */
+@source "../../../../packages/shared";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
