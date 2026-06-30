@@ -54,5 +54,8 @@ export default defineConfig({
         // Unit tests only. Keep the Playwright e2e specs (*.spec.ts) out.
         include: ["src/**/*.test.{ts,tsx}"],
         exclude: ["node_modules/**", "e2e/**", "**/*.spec.ts"],
+        // Generous timeouts to absorb cold-start jsdom + transform latency on CI.
+        testTimeout: 20000,
+        hookTimeout: 20000,
     },
 });
