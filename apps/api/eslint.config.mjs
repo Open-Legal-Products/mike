@@ -51,8 +51,10 @@ export default [
             "security/detect-possible-timing-attacks": "warn",
             "security/detect-pseudoRandomBytes": "error",
 
-            // General quality
-            "no-console": "warn",
+            // General quality. apps/api logs exclusively through pino; console
+            // is an error so a stray console.* can't regress the structured-log
+            // pipeline (it would bypass requestId correlation + redaction).
+            "no-console": "error",
         },
     },
     {
