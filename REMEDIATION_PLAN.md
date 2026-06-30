@@ -70,4 +70,16 @@ queue/worker changes: real-Redis smoke. No commit lands red.
   DRY-refactored out of `mcp/client.ts`), M4 credits race (atomic row-locked
   `consume_message_credit` RPC reserved before the stream + `refund_message_credit` on
   failure, in both routes). Verified: `apps/api` tsc clean; 161 tests pass (+7).
-- _Phase 1 — next._
+- **Phase 1 — DONE (safe subset).** Dead `routes/` stubs removed (app.ts imports
+  modules/ directly); FK indexes on `user_mcp_oauth_states` + `deleted_by` FK
+  (migration 20260630000001); web ESLint `no-explicit-any`→warn; `.nvmrc` (22) +
+  ci.yml bumped 20→22; zip-download N+1 fixed; all 40 `console.*` in apps/api
+  migrated to pino (apps/api is console-free). Verified: tsc clean, 161 tests.
+  - Deferred with rationale: RPC pagination for get_tabular_reviews/workflows_overview
+    (needs a product call — hard cap hides data; do cursor pagination in Phase 2/3);
+    the orphaned `..._phase1.sql` migration left in place (deleting an applied
+    migration desyncs history); the 9 silent `/* ignore */` catches in
+    chatTools/tabular still want a dedicated audit (Phase 3, during the split).
+- **Phases 2–5 — NOT STARTED.** Route-level test suite, backend service/repository
+  layer + chatTools split, frontend god-component decomposition + caching, and
+  observability/types/RLS-doc. These are the multi-week bulk; tracked as tasks #6–#9.
