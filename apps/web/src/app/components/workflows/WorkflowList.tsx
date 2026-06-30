@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
     Library,
     Table2,
@@ -10,12 +11,15 @@ import {
     ChevronDown,
 } from "lucide-react";
 import {
-    listWorkflows,
     deleteWorkflow,
-    listHiddenWorkflows,
     hideWorkflow,
     unhideWorkflow,
 } from "@/app/lib/mikeApi";
+import {
+    useWorkflowsQuery,
+    workflowsQueryKey,
+    type WorkflowsData,
+} from "@/app/hooks/useWorkflowsQuery";
 import type { Workflow } from "../shared/types";
 import { BUILT_IN_WORKFLOWS, BUILT_IN_IDS } from "./builtinWorkflows";
 import { DisplayWorkflowModal } from "./DisplayWorkflowModal";
@@ -60,12 +64,10 @@ const WORKFLOW_SCOPES: { id: WorkflowScope; label: string }[] = [
 export function WorkflowList() {
     const router = useRouter();
     const { user } = useAuth();
-    const [custom, setCustom] = useState<Workflow[]>([]);
-    const [loading, setLoading] = useState(true);
+    const queryClient = useQueryClient();
     const [selected, setSelected] = useState<Workflow | null>(null);
     const [activeScope, setActiveScope] = useState<WorkflowScope>("all");
     const [newModalOpen, setNewModalOpen] = useState(false);
-    const [hiddenBuiltinIds, setHiddenBuiltinIds] = useState<string[]>([]);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [actionsOpen, setActionsOpen] = useState(false);
     const [practiceFilter, setPracticeFilter] = useState<string | null>(null);
@@ -75,19 +77,40 @@ export function WorkflowList() {
     const [search, setSearch] = useState("");
     const actionsRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        Promise.all([
-            listWorkflows("assistant"),
-            listWorkflows("tabular"),
-            listHiddenWorkflows(),
-        ])
-            .then(([assistant, tabular, hidden]) => {
-                setCustom([...assistant, ...tabular]);
-                setHiddenBuiltinIds(hidden);
-            })
-            .catch(() => setCustom([]))
-            .finally(() => setLoading(false));
-    }, []);
+    // Cached read of the workflows list (React Query). Mirrors the previous
+    // load-on-mount: `loading` while the first fetch is in flight, and an error
+    // falls back to empty lists (same as the old `.catch(() => setCustom([]))`).
+    const workflowsQuery = useWorkflowsQuery();
+    const custom = workflowsQuery.data?.custom ?? [];
+    const hiddenBuiltinIds = workflowsQuery.data?.hiddenBuiltinIds ?? [];
+    const loading = workflowsQuery.isLoading;
+
+    // Mutations update the cached value in place (preserving the old optimistic
+    // UX) instead of holding a second copy in component state.
+    const setCustom = useCallback(
+        (updater: (prev: Workflow[]) => Workflow[]) => {
+            queryClient.setQueryData<WorkflowsData>(
+                workflowsQueryKey,
+                (prev) => ({
+                    custom: updater(prev?.custom ?? []),
+                    hiddenBuiltinIds: prev?.hiddenBuiltinIds ?? [],
+                }),
+            );
+        },
+        [queryClient],
+    );
+    const setHiddenBuiltinIds = useCallback(
+        (updater: (prev: string[]) => string[]) => {
+            queryClient.setQueryData<WorkflowsData>(
+                workflowsQueryKey,
+                (prev) => ({
+                    custom: prev?.custom ?? [],
+                    hiddenBuiltinIds: updater(prev?.hiddenBuiltinIds ?? []),
+                }),
+            );
+        },
+        [queryClient],
+    );
 
     useEffect(() => {
         setSelectedIds([]);

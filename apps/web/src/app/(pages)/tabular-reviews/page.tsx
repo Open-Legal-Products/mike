@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Table2 } from "lucide-react";
 import {
     RowActionMenuItems,
@@ -9,12 +10,15 @@ import {
 } from "@/app/components/shared/RowActions";
 import {
     deleteTabularReview,
-    listTabularReviews,
     createTabularReview,
-    listProjects,
     updateTabularReview,
 } from "@/app/lib/mikeApi";
-import type { TabularReview, Project } from "@/app/components/shared/types";
+import {
+    useTabularReviewsQuery,
+    tabularReviewsQueryKey,
+} from "@/app/hooks/useTabularReviewsQuery";
+import { useProjectsQuery } from "@/app/hooks/useProjectsQuery";
+import type { TabularReview } from "@/app/components/shared/types";
 import { TableToolbar } from "@/app/components/shared/TableToolbar";
 import { AddNewTRModal } from "@/app/components/tabular/AddNewTRModal";
 import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
@@ -58,9 +62,6 @@ function formatDate(iso: string) {
 }
 
 export default function TabularReviewsPage() {
-    const [reviews, setReviews] = useState<TabularReview[]>([]);
-    const [projects, setProjects] = useState<Project[]>([]);
-    const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [newTROpen, setNewTROpen] = useState(false);
     const [activeScope, setActiveScope] = useState<ReviewScope>("all");
@@ -74,18 +75,29 @@ export default function TabularReviewsPage() {
     const actionsRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
     const { user } = useAuth();
+    const queryClient = useQueryClient();
 
-    useEffect(() => {
-        Promise.all([
-            listTabularReviews().catch(() => []),
-            listProjects().catch(() => []),
-        ])
-            .then(([r, p]) => {
-                setReviews(r);
-                setProjects(p);
-            })
-            .finally(() => setLoading(false));
-    }, []);
+    // Cached reads (React Query). Projects share the ["projects"] cache with the
+    // projects page. `loading` stays true until both first fetches settle, and
+    // a fetch error falls back to empty lists — matching the old
+    // `Promise.all([...catch(() => [])])` behaviour.
+    const reviewsQuery = useTabularReviewsQuery();
+    const projectsQuery = useProjectsQuery(true);
+    const reviews = reviewsQuery.data ?? [];
+    const projects = projectsQuery.data ?? [];
+    const loading = reviewsQuery.isLoading || projectsQuery.isLoading;
+
+    // Mutations update the cached reviews list in place (preserving the old
+    // optimistic UX) instead of holding a second copy in component state.
+    const setReviews = useCallback(
+        (updater: (prev: TabularReview[]) => TabularReview[]) => {
+            queryClient.setQueryData<TabularReview[]>(
+                tabularReviewsQueryKey,
+                (prev) => updater(prev ?? []),
+            );
+        },
+        [queryClient],
+    );
 
     useEffect(() => {
         setSelectedIds([]);
