@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import { requireAuth } from "../../middleware/auth";
 import { createServerSupabase } from "../../lib/supabase";
 import {
@@ -12,6 +13,7 @@ import {
 } from "../../lib/chatTools";
 import { getUserApiKeys } from "../../lib/userSettings";
 import { consumeMessageCredit, refundMessageCredit } from "../../lib/credits";
+import { parseBody } from "../../lib/http";
 import { safeErrorLog, safeErrorMessage } from "../../lib/safeError";
 import {
     createChat,
@@ -25,66 +27,65 @@ import {
 
 export const chatRouter = Router();
 
-function parseOptionalProjectId(value: unknown):
-    | { ok: true; provided: boolean; projectId: string | null }
-    | { ok: false; detail: string } {
-    if (value === undefined)
-        return { ok: true, provided: false, projectId: null };
-    if (value === null) return { ok: true, provided: true, projectId: null };
-    if (typeof value !== "string" || !value.trim()) {
-        return {
-            ok: false,
-            detail: "project_id must be a non-empty string or null",
-        };
-    }
-    return { ok: true, provided: true, projectId: value.trim() };
-}
+// Zod schemas mirror the project-chat module's convention (parseBody + zod)
+// so request validation is uniform across the chat surface. project_id is
+// trimmed and may be a non-empty string or null; the streaming route below
+// preserves the provided-vs-absent distinction (undefined => not provided,
+// null => explicitly cleared) because prepareChatStream branches on it.
+const chatMessageSchema = z.object({
+    role: z.string(),
+    content: z.string().nullable(),
+    files: z
+        .array(
+            z.object({
+                filename: z.string(),
+                document_id: z.string().optional(),
+            }),
+        )
+        .optional(),
+    workflow: z
+        .object({
+            id: z.string(),
+            title: z.string(),
+        })
+        .optional(),
+});
 
-function parseOptionalChatId(value: unknown):
-    | { ok: true; chatId: string | null }
-    | { ok: false; detail: string } {
-    if (value === undefined || value === null) return { ok: true, chatId: null };
-    if (typeof value !== "string" || !value.trim()) {
-        return { ok: false, detail: "chat_id must be a non-empty string" };
-    }
-    return { ok: true, chatId: value.trim() };
-}
+const optionalProjectId = z
+    .string()
+    .trim()
+    .min(1, "project_id must be a non-empty string or null")
+    .nullable()
+    .optional();
 
-function parseChatMessages(value: unknown):
-    | { ok: true; messages: ChatMessage[] }
-    | { ok: false; detail: string } {
-    if (!Array.isArray(value) || value.length === 0) {
-        return { ok: false, detail: "messages must be a non-empty array" };
-    }
+const chatStreamBodySchema = z.object({
+    messages: z
+        .array(chatMessageSchema)
+        .min(1, "messages must be a non-empty array"),
+    chat_id: z
+        .string()
+        .trim()
+        .min(1, "chat_id must be a non-empty string")
+        .nullable()
+        .optional(),
+    project_id: optionalProjectId,
+    model: z
+        .string()
+        .trim()
+        .min(1, "model must be a non-empty string")
+        .optional(),
+    // Optional plain-text document context supplied by the Word Office.js
+    // add-in. Must be declared here or zod strips it from the parsed body.
+    documentContext: z.string().optional(),
+});
 
-    for (const message of value) {
-        if (!message || typeof message !== "object" || Array.isArray(message)) {
-            return { ok: false, detail: "messages must contain objects" };
-        }
-        const row = message as Record<string, unknown>;
-        if (typeof row.role !== "string") {
-            return { ok: false, detail: "message.role must be a string" };
-        }
-        if (row.content !== null && typeof row.content !== "string") {
-            return {
-                ok: false,
-                detail: "message.content must be a string or null",
-            };
-        }
-    }
+const createChatBodySchema = z.object({
+    project_id: optionalProjectId,
+});
 
-    return { ok: true, messages: value as ChatMessage[] };
-}
-
-function parseOptionalModel(value: unknown):
-    | { ok: true; model: string | undefined }
-    | { ok: false; detail: string } {
-    if (value === undefined) return { ok: true, model: undefined };
-    if (typeof value !== "string" || !value.trim()) {
-        return { ok: false, detail: "model must be a non-empty string" };
-    }
-    return { ok: true, model: value.trim() };
-}
+const generateTitleBodySchema = z.object({
+    message: z.string().trim().min(1, "message is required"),
+});
 
 // GET /chat
 // Visible chats = the user's own chats + every chat under a project the
@@ -127,16 +128,14 @@ chatRouter.get("/", requireAuth, async (req, res) => {
 chatRouter.post("/create", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
     const userEmail = res.locals.userEmail as string | undefined;
-    const parsedProjectId = parseOptionalProjectId(req.body?.project_id);
-    if (!parsedProjectId.ok) {
-        return void res.status(400).json({ detail: parsedProjectId.detail });
-    }
+    const body = parseBody(createChatBodySchema, req, res);
+    if (!body) return;
     const db = createServerSupabase();
 
     const result = await createChat(db, {
         userId,
         userEmail,
-        projectId: parsedProjectId.projectId,
+        projectId: body.project_id ?? null,
     });
     if (!result.ok)
         return void res.status(result.status).json({ detail: result.detail });
@@ -188,10 +187,9 @@ chatRouter.post("/:chatId/generate-title", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
     const userEmail = res.locals.userEmail as string | undefined;
     const { chatId } = req.params;
-    const message =
-        typeof req.body?.message === "string" ? req.body.message.trim() : "";
-    if (!message)
-        return void res.status(400).json({ detail: "message is required" });
+    const body = parseBody(generateTitleBodySchema, req, res);
+    if (!body) return;
+    const { message } = body;
 
     const db = createServerSupabase();
     const result = await generateChatTitle(
@@ -210,29 +208,18 @@ chatRouter.post("/:chatId/generate-title", requireAuth, async (req, res) => {
 // POST /chat — streaming
 chatRouter.post("/", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
-    const body =
-        req.body && typeof req.body === "object" && !Array.isArray(req.body)
-            ? (req.body as Record<string, unknown>)
-            : {};
-    const parsedMessages = parseChatMessages(body.messages);
-    if (!parsedMessages.ok) {
-        return void res.status(400).json({ detail: parsedMessages.detail });
-    }
-    const parsedChatId = parseOptionalChatId(body.chat_id);
-    if (!parsedChatId.ok) {
-        return void res.status(400).json({ detail: parsedChatId.detail });
-    }
-    const parsedProjectId = parseOptionalProjectId(body.project_id);
-    if (!parsedProjectId.ok) {
-        return void res.status(400).json({ detail: parsedProjectId.detail });
-    }
-    const parsedModel = parseOptionalModel(body.model);
-    if (!parsedModel.ok) {
-        return void res.status(400).json({ detail: parsedModel.detail });
-    }
+    const parsed = parseBody(chatStreamBodySchema, req, res);
+    if (!parsed) return;
 
-    const messages = parsedMessages.messages;
-    const model = parsedModel.model;
+    const messages = parsed.messages as ChatMessage[];
+    const model = parsed.model;
+
+    // project_id distinguishes "not provided" (key absent => undefined) from
+    // "explicitly cleared" (null): prepareChatStream only enforces the
+    // project_id-matches-chat check when the field was actually provided.
+    const projectIdProvided = parsed.project_id !== undefined;
+    const projectId = parsed.project_id ?? null;
+    const requestChatId = parsed.chat_id ?? null;
 
     // Optional plain-text document context supplied by the Word Office.js add-in.
     // The add-in reads the active document body via Word.run() and posts it here
@@ -241,11 +228,9 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     // system prompt via buildMessages's systemPromptExtra parameter. Cap it so an
     // oversized body can't blow past the model's context window or token budget.
     const MAX_DOCUMENT_CONTEXT_CHARS = 200_000;
-    const rawDocumentContext = body.documentContext;
-    const documentContext =
-        typeof rawDocumentContext === "string" && rawDocumentContext.trim()
-            ? rawDocumentContext.trim().slice(0, MAX_DOCUMENT_CONTEXT_CHARS)
-            : undefined;
+    const documentContext = parsed.documentContext?.trim()
+        ? parsed.documentContext.trim().slice(0, MAX_DOCUMENT_CONTEXT_CHARS)
+        : undefined;
 
     req.log.debug({ model, messageCount: messages?.length }, "[chat/stream] incoming request");
 
@@ -263,9 +248,9 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             userId,
             userEmail,
             messages,
-            chatId: parsedChatId.chatId,
-            projectIdProvided: parsedProjectId.provided,
-            projectId: parsedProjectId.projectId,
+            chatId: requestChatId,
+            projectIdProvided,
+            projectId,
             documentContext,
         },
         req.log,
