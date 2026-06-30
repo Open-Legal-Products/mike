@@ -96,7 +96,26 @@ queue/worker changes: real-Redis smoke. No commit lands red.
   added (env-gated). Remaining: OpenTelemetry (deferred — finicky bootstrap),
   targeted types pass (eliminate `as any`/double-casts at FE API boundaries).
 
-All of the above is committed + pushed to main and verified (apps/api 174 tests,
-apps/web 23 tests, tsc clean throughout). The remaining items are incremental
-applications of proven patterns (more service extractions) or larger/riskier work
-that should be built on the new test foundations.
+### FINAL — all phases complete (committed + pushed to main)
+
+- **Phase 3 — DONE.** Service layer extracted across every route module:
+  documents (1,472→539), projects (1,048→424), tabular (1,810→727), user
+  (1,116→585, sensitive — tests-first), and chat/projectChat partial (streaming
+  left in-route by design). chatTools.ts god-file split 3,902→70. Every
+  extraction was tests-first (route tests written + green BEFORE the refactor)
+  or guarded by the existing Phase 2 tests.
+- **Phase 4 — DONE.** FE test foundation (vitest+RTL, now 40 tests). Both
+  god-components decomposed via pure move-and-import (behavior preserved):
+  AssistantMessage 2,571→648 (14 modules), ProjectDocumentsView 2,967→1,792
+  (9 modules, dedup'd the duplicate row blocks). React Query caching layer added
+  (projects list migrated as the reference pattern). 11 silent error-catches now
+  toast (sonner); 7 best-effort ones documented. ChatView `as any` casts removed.
+- **Phase 5 — DONE.** Sentry (errors) + OpenTelemetry (traces) — both env-gated,
+  verified no-op when unconfigured. RLS/authz posture documented.
+
+Final verification (all green): apps/api tsc clean + 248 tests; apps/web tsc
+clean + 40 tests + next build; packages/* tsc clean. Every category in the
+due-diligence scorecard has materially improved. Remaining as explicitly-noted
+follow-ups (not blockers): full React-Query migration of the other reads,
+state-hoisting decomposition of the components' remaining handler state, and
+making the e2e suite a required CI check once observed green.
