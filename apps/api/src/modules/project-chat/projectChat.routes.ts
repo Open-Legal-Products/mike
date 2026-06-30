@@ -17,6 +17,7 @@ import {
     PROJECT_EXTRA_TOOLS,
     type ChatMessage,
 } from "../../lib/chatTools";
+import { COURTLISTENER_SYSTEM_PROMPT } from "../../lib/legalSourcesTools/courtlistenerTools";
 import { getUserApiKeys, getUserModelSettings } from "../../lib/userSettings";
 import { checkProjectAccess } from "../../lib/access";
 import { checkMessageCredits, incrementMessageCredits } from "../../lib/credits";
@@ -190,6 +191,11 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         userId,
         db,
     );
+    // Pair the CourtListener guidance with includeResearchTools below so the
+    // model gets both the case-law tools and the instructions for using them.
+    if (legalResearchUs) {
+        systemPromptExtra += `\n\n${COURTLISTENER_SYSTEM_PROMPT}`;
+    }
     const apiMessages = buildMessages(
         messagesForLLM,
         docAvailability,

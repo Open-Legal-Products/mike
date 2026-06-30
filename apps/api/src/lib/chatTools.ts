@@ -24,7 +24,6 @@ import {
   verifyCourtlistenerCitations,
 } from "./courtlistener";
 import {
-  COURTLISTENER_SYSTEM_PROMPT,
   COURTLISTENER_TOOL_NAMES,
   COURTLISTENER_TOOLS,
   type CaseCitationEvent,

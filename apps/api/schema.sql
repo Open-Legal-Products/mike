@@ -382,13 +382,13 @@ create index if not exists workflow_shares_email_idx
   on public.workflow_shares(shared_with_email);
 
 create or replace function public.get_workflows_overview(
-  p_user_id text,
+  p_user_id uuid,
   p_user_email text default null,
   p_type text default null
 )
 returns table (
   id uuid,
-  user_id text,
+  user_id uuid,
   title text,
   type text,
   prompt_md text,
@@ -426,7 +426,7 @@ as $$
     join public.workflows w
       on w.id = ws.workflow_id
     left join public.user_profiles up
-      on up.user_id::text = ws.shared_by_user_id
+      on up.user_id = ws.shared_by_user_id
     where lower(ws.shared_with_email) = lower(coalesce(p_user_email, ''))
       and (p_type is null or w.type = p_type)
   ),
@@ -471,13 +471,13 @@ create index if not exists idx_chats_project
   on public.chats(project_id);
 
 create or replace function public.get_chats_overview(
-  p_user_id text,
+  p_user_id uuid,
   p_limit integer default null
 )
 returns table (
   id uuid,
   project_id uuid,
-  user_id text,
+  user_id uuid,
   title text,
   created_at timestamptz
 )
@@ -563,12 +563,12 @@ create index if not exists tabular_reviews_shared_with_idx
   on public.tabular_reviews using gin (shared_with);
 
 create or replace function public.get_projects_overview(
-  p_user_id text,
+  p_user_id uuid,
   p_user_email text default null
 )
 returns table (
   id uuid,
-  user_id text,
+  user_id uuid,
   name text,
   cm_number text,
   shared_with jsonb,
@@ -628,7 +628,7 @@ as $$
     coalesce(rc.review_count, 0) as review_count
   from visible_projects vp
   left join public.user_profiles up
-    on up.user_id::text = vp.user_id
+    on up.user_id = vp.user_id
   left join document_counts dc
     on dc.project_id = vp.id
   left join chat_counts cc
@@ -653,14 +653,14 @@ create index if not exists idx_tabular_cells_review
   on public.tabular_cells(review_id, document_id, column_index);
 
 create or replace function public.get_tabular_reviews_overview(
-  p_user_id text,
+  p_user_id uuid,
   p_user_email text default null,
   p_project_id text default null
 )
 returns table (
   id uuid,
   project_id uuid,
-  user_id text,
+  user_id uuid,
   title text,
   columns_config jsonb,
   document_ids jsonb,

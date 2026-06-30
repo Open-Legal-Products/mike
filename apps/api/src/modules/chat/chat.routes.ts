@@ -17,6 +17,7 @@ import {
     type ChatMessage,
 } from "../../lib/chatTools";
 import { completeText } from "../../lib/llm";
+import { COURTLISTENER_SYSTEM_PROMPT } from "../../lib/legalSourcesTools/courtlistenerTools";
 import { getUserApiKeys, getUserModelSettings } from "../../lib/userSettings";
 import { checkProjectAccess } from "../../lib/access";
 import { checkMessageCredits, incrementMessageCredits } from "../../lib/credits";
@@ -176,15 +177,36 @@ chatRouter.get("/", requireAuth, async (req, res) => {
         });
     }
 
-    // MERGE-REVIEW: upstream's get_chats_overview RPC does not accept the `before`
-    // cursor, so the fork's keyset pagination (the validated `before` param above)
-    // is no longer applied — only `p_limit` is honored. Verify the frontend does
-    // not depend on cursor-based pagination, or extend the RPC to accept `before`.
-    const { data, error } = await db.rpc("get_chats_overview", {
-        p_user_id: userId,
-        p_limit: limit,
-    });
+    // Keyset pagination over the same read model as get_chats_overview (own
+    // chats plus chats under owned projects). Implemented in-app rather than via
+    // the RPC because the RPC does not accept the `before` cursor; the column
+    // shape and access scope are equivalent.
+    const { data: ownProjects, error: projErr } = await db
+        .from("projects")
+        .select("id")
+        .eq("user_id", userId);
+    if (projErr) return void res.status(500).json({ detail: projErr.message });
+    const ownProjectIds = ((ownProjects ?? []) as { id: string }[]).map(
+        (p) => p.id,
+    );
 
+    const filter =
+        ownProjectIds.length > 0
+            ? `user_id.eq.${userId},project_id.in.(${ownProjectIds.join(",")})`
+            : `user_id.eq.${userId}`;
+
+    let query = db
+        .from("chats")
+        .select("*")
+        .or(filter)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+
+    if (before !== null) {
+        query = query.lt("created_at", before.toISOString());
+    }
+
+    const { data, error } = await query;
     if (error) return void res.status(500).json({ detail: error.message });
     res.json(data ?? []);
 });
@@ -556,10 +578,13 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         userId,
         db,
     );
+    // When US legal research is enabled, inject the CourtListener guidance into
+    // the system prompt — paired with includeResearchTools below so the model
+    // has both the case-law tools and the instructions for using them.
     const apiMessages = buildMessages(
         enrichedMessages,
         docAvailability,
-        undefined,
+        legalResearchUs ? COURTLISTENER_SYSTEM_PROMPT : undefined,
         docIndex,
         nonce,
     );
