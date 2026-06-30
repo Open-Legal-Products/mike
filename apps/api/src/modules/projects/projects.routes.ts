@@ -148,7 +148,9 @@ projectsRouter.get("/", requireAuth, async (req, res) => {
   });
   if (error) return void res.status(500).json({ detail: error.message });
 
-  // MERGE-REVIEW: verify get_projects_overview RPC matches shared_with case-insensitively (fork previously normalised email)
+  // get_projects_overview normalises p_user_email with lower() for the
+  // shared_with containment check (chapter-16), matching the lowercased emails
+  // stored on write.
   res.json(data ?? []);
 });
 

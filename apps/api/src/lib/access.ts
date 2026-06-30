@@ -177,7 +177,13 @@ export async function listAccessibleProjectIds(
             ? db
                   .from("projects")
                   .select("id")
-                  .filter("shared_with", "cs", JSON.stringify([userEmail]))
+                  // shared_with is stored lowercased, so normalise the caller's
+                  // email before the containment check (chapter-16).
+                  .filter(
+                      "shared_with",
+                      "cs",
+                      JSON.stringify([userEmail.toLowerCase()]),
+                  )
                   .neq("user_id", userId)
             : Promise.resolve({ data: [] as { id: string }[] }),
     ]);

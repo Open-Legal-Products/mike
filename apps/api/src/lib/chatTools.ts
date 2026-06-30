@@ -99,10 +99,6 @@ const STANDARD_FONT_DATA_URL = (() => {
     return undefined;
   }
 })();
-const isDev = process.env.NODE_ENV !== "production";
-const devLog = (...args: Parameters<typeof console.log>) => {
-  if (isDev) console.log(...args);
-};
 
 type ParsedDocumentCitation = {
   kind: "document";
@@ -3056,8 +3052,9 @@ export async function runToolCalls(
     } else if (tc.function.name === "generate_docx") {
       const title = args.title as string;
       const landscape = !!args.landscape;
-      devLog(
-        `[generate_docx] title="${title}" landscape=${landscape} args.landscape=${args.landscape}`,
+      logger.debug(
+        { title, landscape, argsLandscape: args.landscape },
+        "[generate_docx]",
       );
       const previewFilename = `${
         title
@@ -3851,14 +3848,14 @@ export async function runLLMStream(params: {
           courtlistenerTurnState.casesByClusterId,
         ),
       );
-  devLog("[chat/stream] final citation annotations", {
+  logger.debug({
     hasCitationsBlock: citationDiagnostics.hasBlock,
     citationsBlockLength: citationDiagnostics.rawLength,
     parseError: citationDiagnostics.error,
     parsedCitationCount: parsedCitations.length,
     emittedAnnotationCount: citations.length,
     usedCustomCitationBuilder: !!buildCitations,
-  });
+  }, "[chat/stream] final citation annotations");
   write(
     `data: ${JSON.stringify({ type: "citations", status: "final", citations })}\n\n`,
   );
