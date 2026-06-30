@@ -1,4 +1,12 @@
 import "dotenv/config";
+// Initialize OpenTelemetry FIRST — before ./lib/env and any instrumented
+// module (http/express/./app) is imported — because the Node
+// auto-instrumentations patch modules at load time. otel.ts reads its
+// enable/disable gate straight from process.env (not the zod env module) to
+// stay import-order-safe. Complete no-op when OTEL_EXPORTER_OTLP_ENDPOINT is
+// unset.
+import { initOtel, shutdownOtel } from "./lib/observability/otel";
+initOtel();
 import "./lib/env";
 // Initialize Sentry BEFORE importing ./app (or any instrumented module): the
 // Node SDK patches modules at load time, so init must run first. No-op when
@@ -61,6 +69,8 @@ async function shutdown(signal: string) {
       server.close((err) => (err ? reject(err) : resolve())),
     );
     await stopWorkers();
+    // Flush any pending spans before exit (no-op when tracing is disabled).
+    await shutdownOtel();
     logger.info("Shutdown complete");
     process.exit(0);
   } catch (err) {

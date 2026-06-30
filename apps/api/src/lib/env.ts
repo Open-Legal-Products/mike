@@ -71,6 +71,17 @@ const envSchema = z.object({
     SENTRY_DSN: z.string().optional(),
     SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0),
     SENTRY_ENVIRONMENT: z.string().optional(),
+
+    // Distributed tracing via OpenTelemetry (optional). When
+    // OTEL_EXPORTER_OTLP_ENDPOINT is unset, tracing is fully disabled — no SDK
+    // init, no module patching, no network traffic. Setting it to an OTLP/HTTP
+    // collector endpoint turns tracing on. OTEL_ENVIRONMENT labels the
+    // deployment.environment resource attribute; defaults to NODE_ENV when
+    // unset. NOTE: the actual enable gate is read from process.env directly in
+    // lib/observability/otel.ts (init must run before this module loads); these
+    // entries exist for validation + documentation.
+    OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
+    OTEL_ENVIRONMENT: z.string().optional(),
 });
 
 const result = envSchema.safeParse(process.env);
