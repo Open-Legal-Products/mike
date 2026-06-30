@@ -12,7 +12,13 @@
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "dev:api": "npm run dev --workspace apps/api",
-    "dev:web": "npm run dev --workspace apps/web"
+    "dev:web": "npm run dev --workspace apps/web",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
   },
   "engines": {
     "node": ">=20"

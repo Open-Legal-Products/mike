@@ -83,7 +83,10 @@ const DEFAULT_API_BASE =
 let clientConfig: ResolvedMikeApiClientConfig = {
     baseUrl: DEFAULT_API_BASE,
     getAuthHeaders: async () => ({}),
-    fetchImpl: fetch,
+    // Arrow wrapper so fetch is always invoked as a plain function, never as a
+    // method of clientConfig — calling a detached native `fetch` as a method
+    // throws "Illegal invocation" in Chromium (caught by the Playwright suite).
+    fetchImpl: (...args: Parameters<typeof fetch>) => fetch(...args),
 };
 
 function resolveMikeApiClientConfig(
@@ -876,7 +879,8 @@ export function createMikeApiClient(config: MikeApiClientConfig = {}) {
     const scopedConfig = resolveMikeApiClientConfig(config, {
         baseUrl: DEFAULT_API_BASE,
         getAuthHeaders: async () => ({}),
-        fetchImpl: fetch,
+        // See note above: arrow wrapper avoids "Illegal invocation" in Chromium.
+        fetchImpl: (...args: Parameters<typeof fetch>) => fetch(...args),
     });
 
     return {
