@@ -212,6 +212,12 @@ create table if not exists public.user_mcp_oauth_states (
 
 create index if not exists idx_user_mcp_oauth_states_expires
   on public.user_mcp_oauth_states(expires_at);
+-- FK indexes: account cleanup filters by user_id, and connector cascade deletes
+-- match by connector_id — both would otherwise full-scan this table.
+create index if not exists idx_user_mcp_oauth_states_user_id
+  on public.user_mcp_oauth_states(user_id);
+create index if not exists idx_user_mcp_oauth_states_connector
+  on public.user_mcp_oauth_states(connector_id);
 
 alter table public.user_mcp_oauth_states enable row level security;
 
@@ -328,7 +334,7 @@ create table if not exists public.document_versions (
   size_bytes integer,
   page_count integer,
   deleted_at timestamptz,
-  deleted_by uuid,
+  deleted_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
   constraint document_versions_source_check
     check (source = any (array[

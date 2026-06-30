@@ -15,7 +15,9 @@ const eslintConfig = defineConfig([
   ]),
   {
     rules: {
-      "@typescript-eslint/no-explicit-any": "off",
+      // Surface new `any` as a warning (matches apps/api). Not "error" yet —
+      // there is a known backlog of casts (ChatView, AssistantMessage) to clear.
+      "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-require-imports": "off",
       "react-hooks/set-state-in-effect": "off",
       "react-hooks/immutability": "off",
