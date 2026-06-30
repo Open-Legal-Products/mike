@@ -522,7 +522,11 @@ as $$
     vw.is_owner,
     vw.shared_by_name
   from visible_workflows vw
-  order by vw.sort_bucket asc, vw.created_at desc;
+  order by vw.sort_bucket asc, vw.created_at desc
+  -- Safety bound on an otherwise unbounded result. 1000 is far above any real
+  -- user's workflow count; true cursor pagination (a p_limit/p_before param,
+  -- like get_chats_overview) is the future enhancement if lists grow.
+  limit 1000;
 $$;
 
 -- ---------------------------------------------------------------------------
@@ -814,7 +818,11 @@ as $$
   from visible_reviews vr
   left join cell_document_counts cdc
     on cdc.review_id = vr.id
-  order by vr.created_at desc;
+  order by vr.created_at desc
+  -- Safety bound: also caps the per-row jsonb_array_elements_text document-count
+  -- subquery to the top-N sorted rows. 1000 is far above any real review count;
+  -- cursor pagination is the future enhancement.
+  limit 1000;
 $$;
 
 create table if not exists public.tabular_review_chats (
