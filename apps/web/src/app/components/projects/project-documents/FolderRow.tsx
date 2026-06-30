@@ -71,7 +71,11 @@ export function FolderRow({
     children,
 }: FolderRowProps) {
     return (
-        <div>
+        <div
+            role="treeitem"
+            aria-expanded={isExpanded}
+            aria-level={depth + 1}
+        >
             <div
                 draggable={!isRenaming}
                 onDragStart={(e) => {
@@ -182,7 +186,7 @@ export function FolderRow({
                     />
                 </div>
             </div>
-            {children}
+            {children && <div role="group">{children}</div>}
         </div>
     );
 }

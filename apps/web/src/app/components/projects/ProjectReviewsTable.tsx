@@ -66,7 +66,7 @@ export function ProjectReviewsTable({
     loading?: boolean;
 }) {
     return (
-        <TableScrollArea>
+        <TableScrollArea ariaLabel="Tabular reviews">
             <TableHeaderRow className="pr-8 md:pr-8">
                 <TableStickyCell header>
                     {loading ? (
@@ -185,6 +185,7 @@ export function ProjectReviewsTable({
                                 )}
                             </TableCell>
                             <div
+                                role="cell"
                                 className="w-8 shrink-0 flex justify-end"
                                 onClick={(e) => e.stopPropagation()}
                             >

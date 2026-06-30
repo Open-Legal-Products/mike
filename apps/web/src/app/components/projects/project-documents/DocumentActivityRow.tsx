@@ -19,7 +19,12 @@ export function DocumentActivityRow({
     statusLabel: string;
 }) {
     return (
-        <div className="group flex items-center h-10 pr-8 border-b border-gray-50">
+        <div
+            role="treeitem"
+            aria-level={depth + 1}
+            aria-busy
+            className="group flex items-center h-10 pr-8 border-b border-gray-50"
+        >
             <div
                 className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${stickyCellBg} py-2 pl-4 pr-2`}
                 style={treeNameCellStyle(depth)}

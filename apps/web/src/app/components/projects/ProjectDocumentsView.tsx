@@ -1604,6 +1604,8 @@ export function ProjectDocumentsView({ projectId }: Props) {
                                     </div>
                                 ) : (
                                     <div
+                                        role="tree"
+                                        aria-label="Project documents"
                                         className="flex-1 flex flex-col"
                                         onContextMenu={(e) => {
                                             e.preventDefault();

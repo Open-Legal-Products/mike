@@ -133,7 +133,11 @@ export function DocumentRow({
     const isUploadingVersion = uploadingVersionDocIds.has(doc.id);
 
     return (
-        <div>
+        <div
+            role="treeitem"
+            aria-level={depth + 1}
+            aria-expanded={hasVersions ? isVersionsOpen : undefined}
+        >
             <div
                 draggable={renamingDocumentId !== doc.id}
                 onDragStart={(e) => {
@@ -302,6 +306,7 @@ export function DocumentRow({
                 </div>
             </div>
             {isVersionsOpen && (
+                <div role="group">
                 <DocVersionHistory
                     docId={doc.id}
                     filename={docName}
@@ -324,6 +329,7 @@ export function DocumentRow({
                         setDocumentRenameWarning(extensionChangeWarning(filename))
                     }
                 />
+                </div>
             )}
         </div>
     );

@@ -67,7 +67,7 @@ export function ProjectAssistantTable({
     loading?: boolean;
 }) {
     return (
-        <TableScrollArea>
+        <TableScrollArea ariaLabel="Chats">
             <TableHeaderRow className="pr-8 md:pr-8">
                 <TableStickyCell header>
                     {loading ? (
@@ -174,6 +174,7 @@ export function ProjectAssistantTable({
                                 {formatDate(chat.created_at)}
                             </TableCell>
                             <div
+                                role="cell"
                                 className="w-8 shrink-0 flex justify-end"
                                 onClick={(e) => e.stopPropagation()}
                             >

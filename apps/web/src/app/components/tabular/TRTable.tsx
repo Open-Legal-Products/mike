@@ -235,15 +235,19 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
 
     return (
         <div
+            role="table"
+            aria-label="Tabular review"
             className="flex flex-1 flex-col overflow-auto"
             ref={scrollContainerRef}
         >
             {/* Header */}
             <div
+                role="row"
                 className={`sticky top-0 z-20 flex h-8 ${stickyCellBg}`}
                 style={{ minWidth: totalContentWidth }}
             >
                 <div
+                    role="columnheader"
                     className={`sticky left-0 z-30 ${DOC_COL_W} ${stickyCellBg} border-b border-r border-gray-200 flex items-center gap-4 py-2 pl-4 pr-2 text-left text-xs font-medium text-gray-500 select-none`}
                 >
                     <input
@@ -260,6 +264,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                 {columns.map((col) => (
                     <div
                         key={col.index}
+                        role="columnheader"
                         className={`${COL_W} border-b border-r border-gray-200 p-2 text-left text-xs font-medium text-gray-500 select-none`}
                     >
                         <div className="flex items-center justify-between gap-3">
@@ -273,7 +278,10 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                         </div>
                     </div>
                 ))}
-                <div className="flex-1 border-b border-gray-200 flex items-center justify-start p-2 min-w-8">
+                <div
+                    role="columnheader"
+                    className="flex-1 border-b border-gray-200 flex items-center justify-start p-2 min-w-8"
+                >
                     <button
                         onClick={onAddColumn}
                         disabled={savingColumn || savingColumnsConfig}
@@ -285,17 +293,19 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
             </div>
 
             {/* Rows */}
-            <div className="relative min-h-0 flex-1">
+            <div role="rowgroup" className="relative min-h-0 flex-1">
                 {dragOverFiles && (
                     <div className="absolute inset-0 z-[90] border-2 border-blue-400 bg-blue-50/40 pointer-events-none" />
                 )}
                 {uploadingFilenames.map((filename) => (
                     <div
                         key={`uploading-${filename}`}
+                        role="row"
                         className="flex h-10"
                         style={{ minWidth: totalContentWidth }}
                     >
                         <div
+                            role="rowheader"
                             className={`sticky left-0 z-[60] ${DOC_COL_W} ${stickyCellBg} border-b border-r border-gray-200 py-2 pl-4 pr-2 text-xs text-gray-400 flex items-center gap-4`}
                         >
                             <input
@@ -311,12 +321,16 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                         {sortedColumns.map((col) => (
                             <div
                                 key={col.index}
+                                role="cell"
                                 className={`${COL_W} border-b border-r border-gray-200 p-2`}
                             >
                                 <SkeletonLine className="h-4 w-20" />
                             </div>
                         ))}
-                        <div className="flex-1 border-b border-gray-200 min-h-8 min-w-8" />
+                        <div
+                            role="cell"
+                            className="flex-1 border-b border-gray-200 min-h-8 min-w-8"
+                        />
                     </div>
                 ))}
                 {documents.map((doc, docIdx) => {
@@ -328,10 +342,12 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                     return (
                         <div
                             key={doc.id}
+                            role="row"
                             className={`flex ${rowBg}`}
                             style={{ minWidth: totalContentWidth }}
                         >
                             <div
+                                role="rowheader"
                                 className={`sticky left-0 z-[60] ${DOC_COL_W} border-b border-r border-gray-200 py-2 pl-4 pr-2 text-xs text-gray-800 flex items-center gap-4 ${rowBg}`}
                             >
                                 <input
@@ -358,6 +374,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                                 return (
                                     <div
                                         key={col.index}
+                                        role="cell"
                                         className={`${COL_W} border-b border-r border-gray-200 transition-colors ${isHighlighted ? "bg-blue-200" : ""}`}
                                     >
                                         {cell && (
@@ -380,7 +397,10 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                                     </div>
                                 );
                             })}
-                            <div className="flex-1 border-b border-gray-200 min-h-8 min-w-8" />
+                            <div
+                                role="cell"
+                                className="flex-1 border-b border-gray-200 min-h-8 min-w-8"
+                            />
                         </div>
                     );
                 })}

@@ -352,7 +352,7 @@ export function WorkflowList() {
             />
 
             {/* Table */}
-            <TableScrollArea>
+            <TableScrollArea ariaLabel="Workflows">
                 {/* Column headers */}
                 <TableHeaderRow>
                         <TableStickyCell header>
@@ -566,6 +566,7 @@ export function WorkflowList() {
                                     )}
                                 </TableCell>
                                 <div
+                                    role="cell"
                                     className="w-8 shrink-0 flex justify-end"
                                     onClick={(e) => e.stopPropagation()}
                                 >

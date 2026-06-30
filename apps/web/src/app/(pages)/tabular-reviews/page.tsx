@@ -288,7 +288,7 @@ export default function TabularReviewsPage() {
             />
 
             {/* Table */}
-            <TableScrollArea>
+            <TableScrollArea ariaLabel="Tabular reviews">
                 <TableHeaderRow>
                     <TableStickyCell header>
                         {loading ? (
@@ -482,6 +482,7 @@ export default function TabularReviewsPage() {
                                         )}
                                     </TableCell>
                                     <div
+                                        role="cell"
                                         className="w-8 shrink-0 flex justify-end"
                                         onClick={(e) => e.stopPropagation()}
                                     >

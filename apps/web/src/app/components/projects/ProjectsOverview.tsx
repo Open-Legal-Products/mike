@@ -270,7 +270,7 @@ export function ProjectsOverview() {
             />
 
             {/* Table */}
-            <TableScrollArea>
+            <TableScrollArea ariaLabel="Projects">
                 {/* Column headers */}
                 <TableHeaderRow>
                     <TableStickyCell header>
@@ -488,6 +488,7 @@ export function ProjectsOverview() {
                                 </TableCell>
 
                                 <div
+                                    role="cell"
                                     className="w-8 shrink-0 flex justify-end"
                                     onClick={(e) => e.stopPropagation()}
                                 >

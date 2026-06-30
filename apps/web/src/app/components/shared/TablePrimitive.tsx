@@ -45,10 +45,13 @@ export function TableScrollArea({
     children,
     className,
     innerClassName,
-}: DivProps & { innerClassName?: string }) {
+    ariaLabel,
+}: DivProps & { innerClassName?: string; ariaLabel?: string }) {
     return (
         <div className={cn("w-full min-h-0 flex-1 overflow-auto", className)}>
             <div
+                role="table"
+                aria-label={ariaLabel}
                 className={cn("flex min-h-full min-w-max flex-col", innerClassName)}
             >
                 {children}
@@ -60,6 +63,7 @@ export function TableScrollArea({
 export function TableHeaderRow({ children, className, ...props }: DivProps) {
     return (
         <div
+            role="row"
             className={cn(
                 "flex h-8 items-center border-b border-gray-200 pr-3 text-xs font-medium text-gray-500 select-none md:pr-10",
                 className,
@@ -126,6 +130,7 @@ export function TableRow({
     return (
         <>
             <div
+                role="row"
                 className={cn(
                     "group flex h-10 items-center border-b border-gray-50 pr-3 transition-colors md:pr-10",
                     interactive && "cursor-pointer hover:bg-gray-100",
@@ -171,6 +176,7 @@ export function TableStickyCell({
 }) {
     return (
         <div
+            role={header ? "columnheader" : "cell"}
             className={cn(
                 "sticky left-0 z-[60] flex gap-4 pl-4 pr-2 text-left",
                 widthClassName,
@@ -261,7 +267,11 @@ export function TablePrimaryCell({
 
 export function TableHeaderCell({ children, className, ...props }: DivProps) {
     return (
-        <div className={cn("shrink-0 text-left", className)} {...props}>
+        <div
+            role="columnheader"
+            className={cn("shrink-0 text-left", className)}
+            {...props}
+        >
             {children}
         </div>
     );
@@ -270,6 +280,7 @@ export function TableHeaderCell({ children, className, ...props }: DivProps) {
 export function TableCell({ children, className, ...props }: DivProps) {
     return (
         <div
+            role="cell"
             className={cn("shrink-0 truncate text-sm text-gray-500", className)}
             {...props}
         >
@@ -280,7 +291,7 @@ export function TableCell({ children, className, ...props }: DivProps) {
 
 export function TableBody({ children, className, ...props }: DivProps) {
     return (
-        <div className={cn("flex-1", className)} {...props}>
+        <div role="rowgroup" className={cn("flex-1", className)} {...props}>
             {children}
         </div>
     );
