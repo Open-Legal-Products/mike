@@ -1,9 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { FolderOpen, ChevronDown } from "lucide-react";
-import { listProjects, updateProject, deleteProject } from "@/app/lib/mikeApi";
+import { updateProject, deleteProject } from "@/app/lib/mikeApi";
+import {
+    projectsQueryKey,
+    useProjectsQuery,
+} from "@/app/hooks/useProjectsQuery";
 import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Project } from "@/app/components/shared/types";
@@ -51,9 +56,6 @@ function getProjectOwnerLabel(project: Project, currentUserId?: string | null) {
 type ProjectFilter = "all" | "mine" | "shared-with-me";
 
 export function ProjectsOverview() {
-    const [projects, setProjects] = useState<Project[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [loadError, setLoadError] = useState<string | null>(null);
     const [modalOpen, setModalOpen] = useState(false);
     const [activeFilter, setActiveFilter] = useState<ProjectFilter>("all");
     const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -67,41 +69,37 @@ export function ProjectsOverview() {
     const actionsRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
     const { user, isAuthenticated, authLoading } = useAuth();
+    const queryClient = useQueryClient();
+
+    // Cached read of the projects list (React Query). Gated on auth readiness so
+    // the query stays idle until we know the user is signed in — matching the
+    // previous behaviour where the load only ran once auth resolved.
+    const projectsQuery = useProjectsQuery(!authLoading && isAuthenticated);
+    const projects = projectsQuery.data ?? [];
+    // Show the skeleton while auth is resolving or the (enabled) query is
+    // fetching its first page — equivalent to the old `loading` flag.
+    const loading = authLoading || projectsQuery.isLoading;
+    const loadError = projectsQuery.isError ? "Could not load projects." : null;
 
     useEffect(() => {
-        if (authLoading) {
-            setLoading(true);
-            return;
+        if (projectsQuery.error) {
+            console.error(
+                "[projects] failed to load projects",
+                projectsQuery.error,
+            );
         }
-        if (!isAuthenticated) {
-            setProjects([]);
-            setLoadError(null);
-            setLoading(false);
-            return;
-        }
+    }, [projectsQuery.error]);
 
-        let cancelled = false;
-        setLoading(true);
-        setLoadError(null);
-        listProjects()
-            .then((loaded) => {
-                if (!cancelled) setProjects(loaded);
-            })
-            .catch((err) => {
-                console.error("[projects] failed to load projects", err);
-                if (!cancelled) {
-                    setProjects([]);
-                    setLoadError("Could not load projects.");
-                }
-            })
-            .finally(() => {
-                if (!cancelled) setLoading(false);
-            });
-
-        return () => {
-            cancelled = true;
-        };
-    }, [authLoading, isAuthenticated, user?.id]);
+    // Mutations update the cached list in place (preserving the old optimistic
+    // UX) instead of holding a second copy in component state.
+    const setProjects = useCallback(
+        (updater: (prev: Project[]) => Project[]) => {
+            queryClient.setQueryData<Project[]>(projectsQueryKey, (prev) =>
+                updater(prev ?? []),
+            );
+        },
+        [queryClient],
+    );
 
     useEffect(() => {
         setSelectedIds([]);

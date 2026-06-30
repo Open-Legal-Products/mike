@@ -5,17 +5,20 @@ import { Toaster } from "sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { UserProfileProvider } from "@/contexts/UserProfileContext";
 import { MfaLoginGate } from "@/app/components/shared/MfaLoginGate";
+import { QueryClientProvider } from "@/components/query-client-provider";
 
 export function Providers({ children }: { children: React.ReactNode }) {
     return (
-        <AuthProvider>
-            <UserProfileProvider>
-                <Suspense fallback={<ProviderLoader />}>
-                    <MfaLoginGate>{children}</MfaLoginGate>
-                </Suspense>
-                <Toaster richColors position="top-right" />
-            </UserProfileProvider>
-        </AuthProvider>
+        <QueryClientProvider>
+            <AuthProvider>
+                <UserProfileProvider>
+                    <Suspense fallback={<ProviderLoader />}>
+                        <MfaLoginGate>{children}</MfaLoginGate>
+                    </Suspense>
+                    <Toaster richColors position="top-right" />
+                </UserProfileProvider>
+            </AuthProvider>
+        </QueryClientProvider>
     );
 }
 
