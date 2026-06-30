@@ -37,7 +37,7 @@ async function selectAll(
     for (let from = 0; ; from += PAGE_SIZE) {
         const to = from + PAGE_SIZE - 1;
         const query = configure(
-            (db as any)
+            db
                 .from(table)
                 .select(columns)
                 .range(from, to),

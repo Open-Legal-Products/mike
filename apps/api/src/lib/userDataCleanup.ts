@@ -26,7 +26,7 @@ async function throwIfError<T extends { message?: string } | null>(
 
 async function deleteByIds(db: Db, table: string, ids: string[]) {
     for (const batch of chunks(ids)) {
-        const { error } = await (db as any).from(table).delete().in("id", batch);
+        const { error } = await db.from(table).delete().in("id", batch);
         await throwIfError(error, `Failed to delete ${table}`);
     }
 }
@@ -38,7 +38,7 @@ async function deleteWhereIn(
     values: string[],
 ) {
     for (const batch of chunks(values)) {
-        const { error } = await (db as any)
+        const { error } = await db
             .from(table)
             .delete()
             .in(column, batch);

@@ -69,6 +69,10 @@ function patchRouteMethods(proto: Record<string, unknown>): void {
     }
 }
 
+// cast: Express exposes neither the Router prototype nor the application
+// object as an indexable record, so we reach into the library internals to
+// monkey-patch the route-registration methods. There is no public typing for
+// this, hence the casts.
 patchRouteMethods(
     (
         express.Router() as unknown as {

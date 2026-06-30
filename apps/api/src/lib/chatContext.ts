@@ -277,14 +277,14 @@ export async function buildDocContext(
             .eq("user_id", userId)
             .eq("status", "ready");
 
-        const docList = (docs ?? []) as unknown as {
+        const docList: {
             id: string;
             filename: string;
             file_type: string;
             current_version_id?: string | null;
             active_version_number?: number | null;
             storage_path?: string | null;
-        }[];
+        }[] = docs ?? [];
         await attachActiveVersionPaths(db, docList);
         for (let i = 0; i < docList.length; i++) {
             const doc = docList[i];
@@ -348,7 +348,7 @@ export async function buildProjectDocContext(
             .select("id, name, parent_folder_id")
             .eq("project_id", projectId),
     ]);
-    const docList = (docs ?? []) as unknown as {
+    const docList: {
         id: string;
         filename: string;
         file_type: string;
@@ -356,7 +356,7 @@ export async function buildProjectDocContext(
         active_version_number?: number | null;
         folder_id?: string | null;
         storage_path?: string | null;
-    }[];
+    }[] = docs ?? [];
     await attachActiveVersionPaths(db, docList);
 
     // Build folder id → full path map

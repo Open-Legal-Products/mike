@@ -30,6 +30,7 @@ import {
   loadActiveVersion,
 } from "../../lib/documentVersions";
 import { ensureDocAccess, listAccessibleProjectIds } from "../../lib/access";
+import { loadPdfjs } from "../../lib/pdfjs";
 
 type Db = ReturnType<typeof createServerSupabase>;
 
@@ -99,14 +100,9 @@ export async function countPdfPages(
   buf: ArrayBuffer,
 ): Promise<number | null> {
   try {
-    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs" as string);
-    const pdf = await (
-      pdfjsLib as unknown as {
-        getDocument: (opts: unknown) => {
-          promise: Promise<{ numPages: number }>;
-        };
-      }
-    ).getDocument({ data: new Uint8Array(buf) }).promise;
+    const pdfjsLib = await loadPdfjs();
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) })
+      .promise;
     return pdf.numPages;
   } catch {
     return null;
@@ -132,7 +128,7 @@ async function ensureDocumentAccess(
     .eq("id", documentId)
     .single();
   if (!doc) return { ok: false };
-  const d = doc as unknown as DocRow;
+  const d: DocRow = doc;
   const access = await ensureDocAccess(d, userId, userEmail, db);
   if (!access.ok) return { ok: false };
   if (opts.ownerOnly && !access.isOwner) return { ok: false };
@@ -180,10 +176,10 @@ export async function listSingleDocuments(
     .is("project_id", null)
     .order("created_at", { ascending: false });
   if (error) return { ok: false, detail: error.message };
-  const docs = (data ?? []) as unknown as {
+  const docs: {
     id: string;
     current_version_id?: string | null;
-  }[];
+  }[] = data ?? [];
   await attachLatestVersionNumbers(db, docs);
   await attachActiveVersionPaths(db, docs);
   return { ok: true, docs };

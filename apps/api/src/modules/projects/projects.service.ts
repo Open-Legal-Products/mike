@@ -21,6 +21,7 @@ import {
 import { docxToPdf, convertedPdfKey } from "../../lib/convert";
 import { checkProjectAccess } from "../../lib/access";
 import { deleteUserProjects } from "../../lib/userDataCleanup";
+import { loadPdfjs } from "../../lib/pdfjs";
 
 type Db = ReturnType<typeof createServerSupabase>;
 
@@ -200,14 +201,9 @@ async function loadProjectFolder(
 
 async function countPdfPages(buf: ArrayBuffer): Promise<number | null> {
   try {
-    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs" as string);
-    const pdf = await (
-      pdfjsLib as unknown as {
-        getDocument: (opts: unknown) => {
-          promise: Promise<{ numPages: number }>;
-        };
-      }
-    ).getDocument({ data: new Uint8Array(buf) }).promise;
+    const pdfjsLib = await loadPdfjs();
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) })
+      .promise;
     return pdf.numPages;
   } catch {
     return null;
@@ -310,11 +306,11 @@ export async function getProjectDetail(
       .eq("project_id", projectId)
       .order("created_at", { ascending: true }),
   ]);
-  const docsTyped = (docs ?? []) as unknown as {
+  const docsTyped: {
     id: string;
     user_id?: string | null;
     current_version_id?: string | null;
-  }[];
+  }[] = docs ?? [];
   await attachLatestVersionNumbers(db, docsTyped);
   await attachActiveVersionPaths(db, docsTyped);
   await attachDocumentOwnerLabels(db, docsTyped);
@@ -474,11 +470,11 @@ export async function updateProject(
       .eq("project_id", projectId)
       .order("created_at", { ascending: true }),
   ]);
-  const docsTyped = (docs ?? []) as unknown as {
+  const docsTyped: {
     id: string;
     user_id?: string | null;
     current_version_id?: string | null;
-  }[];
+  }[] = docs ?? [];
   await attachActiveVersionPaths(db, docsTyped);
   await attachDocumentOwnerLabels(db, docsTyped);
   return {
@@ -525,10 +521,10 @@ export async function listProjectDocuments(
     .select("*")
     .eq("project_id", projectId)
     .order("created_at", { ascending: true });
-  const docsTyped = (docs ?? []) as unknown as {
+  const docsTyped: {
     id: string;
     current_version_id?: string | null;
-  }[];
+  }[] = docs ?? [];
   await attachActiveVersionPaths(db, docsTyped);
   return { ok: true, docs: docsTyped };
 }

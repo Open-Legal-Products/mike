@@ -457,7 +457,9 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
                 `data: ${JSON.stringify({ type: "error", message: safeErrorMessage(err, "Stream error") })}\n\ndata: [DONE]\n\n`,
             );
         } catch {
-            /* ignore */
+            // Best-effort error notification: if the client has already
+            // disconnected the SSE write throws. We are in the error path with
+            // nothing left to do, so swallow and let `finally` end the stream.
         }
     } finally {
         res.end();
@@ -718,7 +720,9 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
             );
             write("data: [DONE]\n\n");
         } catch {
-            /* ignore */
+            // Best-effort error notification: if the client has already
+            // disconnected the SSE write throws. We are in the error path with
+            // nothing left to do, so swallow and let `finally` end the stream.
         }
     } finally {
         streamFinished = true;

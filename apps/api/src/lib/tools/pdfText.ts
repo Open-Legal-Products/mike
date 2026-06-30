@@ -1,4 +1,5 @@
 import path from "path";
+import { loadPdfjs } from "../pdfjs";
 
 const STANDARD_FONT_DATA_URL = (() => {
   try {
@@ -11,21 +12,8 @@ const STANDARD_FONT_DATA_URL = (() => {
 
 export async function extractPdfText(buf: ArrayBuffer): Promise<string> {
   try {
-    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs" as string);
-    const pdf = await (
-      pdfjsLib as unknown as {
-        getDocument: (opts: unknown) => {
-          promise: Promise<{
-            numPages: number;
-            getPage: (n: number) => Promise<{
-              getTextContent: () => Promise<{
-                items: { str?: string }[];
-              }>;
-            }>;
-          }>;
-        };
-      }
-    ).getDocument({
+    const pdfjsLib = await loadPdfjs();
+    const pdf = await pdfjsLib.getDocument({
       data: new Uint8Array(buf),
       standardFontDataUrl: STANDARD_FONT_DATA_URL,
     }).promise;

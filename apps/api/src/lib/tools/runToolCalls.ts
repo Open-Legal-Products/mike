@@ -127,8 +127,11 @@ export async function runToolCalls(
       let rawArgs: Record<string, unknown> = {};
       try {
         rawArgs = JSON.parse(tc.function.arguments || "{}");
-      } catch {
-        /* ignore */
+      } catch (err) {
+        logger.debug(
+          { err, tool: tc.function.name },
+          "[runToolCalls] malformed find_in_case tool arguments; using empty args",
+        );
       }
       const parsed = parseFindInCaseArgs(rawArgs);
       return {
@@ -149,8 +152,11 @@ export async function runToolCalls(
     let args: Record<string, unknown> = {};
     try {
       args = JSON.parse(tc.function.arguments || "{}");
-    } catch {
-      /* ignore */
+    } catch (err) {
+      logger.debug(
+        { err, tool: tc.function.name },
+        "[runToolCalls] malformed tool arguments; using empty args",
+      );
     }
 
     if (tc.function.name.startsWith("mcp_")) {

@@ -38,6 +38,7 @@ import {
     filterAccessibleDocumentIds,
 } from "../../lib/access";
 import { safeErrorLog } from "../../lib/safeError";
+import { loadPdfjs } from "../../lib/pdfjs";
 
 type Db = ReturnType<typeof createServerSupabase>;
 
@@ -363,7 +364,7 @@ function buildTabularContext(
             const cell = cells.find(
                 (c: any) =>
                     c.document_id === doc.id && c.column_index === col.index,
-            ) as any;
+            );
             if (
                 !cell ||
                 cell.status === "pending" ||
@@ -498,23 +499,9 @@ Rules:
 
 export async function extractPdfMarkdown(buf: ArrayBuffer): Promise<string> {
     try {
-        const pdfjsLib = await import(
-            "pdfjs-dist/legacy/build/pdf.mjs" as string
-        );
-        const pdf = await (
-            pdfjsLib as unknown as {
-                getDocument: (opts: unknown) => {
-                    promise: Promise<{
-                        numPages: number;
-                        getPage: (n: number) => Promise<{
-                            getTextContent: () => Promise<{
-                                items: { str?: string; hasEOL?: boolean }[];
-                            }>;
-                        }>;
-                    }>;
-                };
-            }
-        ).getDocument({ data: new Uint8Array(buf) }).promise;
+        const pdfjsLib = await loadPdfjs();
+        const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) })
+            .promise;
         const pages: string[] = [];
         for (let i = 1; i <= pdf.numPages; i++) {
             const page = await pdf.getPage(i);
@@ -753,10 +740,10 @@ export async function getTabularReviewDetail(
         docIds.length > 0
             ? await db.from("documents").select("*").in("id", docIds)
             : { data: [] as Record<string, unknown>[] };
-    const docs = (docsResult.data ?? []) as unknown as {
+    const docs: {
         id: string;
         current_version_id?: string | null;
-    }[];
+    }[] = docsResult.data ?? [];
     await attachActiveVersionPaths(db, docs);
 
     return {

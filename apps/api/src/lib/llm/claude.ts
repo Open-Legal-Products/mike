@@ -133,6 +133,9 @@ export async function streamClaude(
         model,
         system: systemPrompt,
         messages: messages as Anthropic.MessageParam[],
+        // cast: our ClaudeTool.input_schema is a loose Record<string, unknown>;
+        // the SDK's Tool wants the stricter InputSchema shape. Same runtime
+        // data — normalizeSchema already emits a valid JSON-Schema object.
         tools: claudeTools.length
           ? (claudeTools as unknown as Tool[])
           : undefined,
@@ -140,6 +143,8 @@ export async function streamClaude(
         // Claude 4.x models require `thinking.type: "adaptive"` and
         // drive effort via `output_config.effort` rather than a fixed
         // token budget. We only opt in when the caller requested it.
+        // cast: `thinking.type: "adaptive"` and `output_config.effort` are
+        // newer params not yet present in the SDK's stream-params typings.
         ...(enableThinking
           ? ({
               thinking: { type: "adaptive" },
