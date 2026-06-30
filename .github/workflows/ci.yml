@@ -83,6 +83,7 @@ jobs:
       - run: npm ci
         working-directory: .
       - run: npm run lint
+      - run: npm test
       - run: npm run build
 
   # -----------------------------------------------------------------------
