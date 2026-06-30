@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
     PanelLeft,
     MessageSquare,
@@ -19,7 +19,8 @@ import Link from "next/link";
 import { MikeIcon } from "@/components/chat/mike-icon";
 import { SidebarChatItem } from "@/app/components/shared/SidebarChatItem";
 import { listProjects } from "@/app/lib/mikeApi";
-import type { MikeProject } from "@/app/components/shared/types";
+import type { Project } from "@/app/components/shared/types";
+import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
     { href: "/assistant", label: "Assistant", icon: MessageSquare },
@@ -36,15 +37,20 @@ interface AppSidebarProps {
 export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
     const { user } = useAuth();
     const { profile } = useUserProfile();
-    const {
-        chats,
-        currentChatId,
-        hasMoreChats,
-        loadMoreChats,
-        setCurrentChatId,
-    } = useChatHistoryContext();
+    const { chats, hasMoreChats, loadMoreChats, setCurrentChatId } =
+        useChatHistoryContext();
     const router = useRouter();
     const pathname = usePathname();
+    const routeChatId = useMemo(() => {
+        if (pathname.startsWith("/assistant/chat/")) {
+            return pathname.split("/").pop() ?? null;
+        }
+
+        const projectChatMatch = pathname.match(
+            /^\/projects\/[^/]+\/assistant\/chat\/([^/]+)/,
+        );
+        return projectChatMatch?.[1] ?? null;
+    }, [pathname]);
     const [shouldAnimate, setShouldAnimate] = useState(false);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [projectsCollapsed, setProjectsCollapsed] = useState(false);
@@ -52,7 +58,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
     const [projectNames, setProjectNames] = useState<Record<string, string>>(
         {},
     );
-    const [recentProjects, setRecentProjects] = useState<MikeProject[] | null>(
+    const [recentProjects, setRecentProjects] = useState<Project[] | null>(
         null,
     );
 
@@ -93,24 +99,8 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
     }, [isDropdownOpen]);
 
     useEffect(() => {
-        if (pathname.startsWith("/assistant/chat/")) {
-            const chatId = pathname.split("/").pop() ?? null;
-            setCurrentChatId(chatId);
-            return;
-        }
-
-        const projectChatMatch = pathname.match(
-            /^\/projects\/[^/]+\/assistant\/chat\/([^/]+)/,
-        );
-        if (projectChatMatch) {
-            setCurrentChatId(projectChatMatch[1]);
-            return;
-        }
-
-        if (pathname === "/assistant") {
-            setCurrentChatId(null);
-        }
-    }, [pathname, setCurrentChatId]);
+        setCurrentChatId(routeChatId);
+    }, [routeChatId, setCurrentChatId]);
 
     const getUserInitials = (email: string) => {
         if (profile?.displayName)
@@ -132,11 +122,13 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
 
     return (
         <div
-            className={`${
+            className={cn(
                 isOpen
-                    ? "w-64 h-dvh bg-gray-50 border-r"
-                    : "w-14 md:h-dvh md:bg-gray-50 md:border-r h-auto bg-transparent pointer-events-none md:pointer-events-auto"
-            } border-gray-200 flex flex-col transition-all duration-300 absolute md:relative z-[99] overflow-visible`}
+                    ? "w-64 h-[calc(100dvh-1rem)] md:h-[calc(100dvh-1.5rem)] bg-white/65"
+                    : "max-md:hidden w-14 md:h-[calc(100dvh-1.5rem)] md:bg-white/65 h-auto bg-transparent pointer-events-none md:pointer-events-auto",
+                "my-2 ml-2 mr-0 md:my-3 md:ml-3 md:mr-0 rounded-2xl border border-white/70 shadow-[0_-2px_7px_rgba(15,23,42,0.044),0_5px_12px_rgba(15,23,42,0.095),inset_0_1px_0_rgba(255,255,255,0.85)] backdrop-blur-2xl overflow-visible",
+                "flex flex-col transition-all duration-300 absolute md:relative z-[99]",
+            )}
         >
             {/* Toggle + Logo */}
             <div
@@ -145,7 +137,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                 }`}
             >
                 {isOpen && (
-                    <div className="px-2.5">
+                    <div className="px-2">
                         <Link
                             href="/assistant"
                             className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
@@ -163,7 +155,10 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                 )}
                 <button
                     onClick={onToggle}
-                    className="h-9 w-9 p-2.5 items-center flex hover:bg-gray-100 rounded-md transition-colors"
+                    className={cn(
+                        "h-9 w-9 p-2.5 items-center flex transition-colors",
+                        "rounded-md hover:bg-gray-100",
+                    )}
                     title={isOpen ? "Close sidebar" : "Open sidebar"}
                 >
                     <PanelLeft className="h-4 w-4" />
@@ -173,17 +168,24 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
             {/* Nav items */}
             {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
                 const isActive =
-                    pathname === href || pathname.startsWith(href + "/");
+                    href === "/assistant"
+                        ? pathname === href
+                        : href === "/projects"
+                          ? pathname === href
+                          : pathname === href ||
+                            pathname.startsWith(href + "/");
                 return (
                     <div key={href} className="py-0.5 px-2.5">
                         <button
                             onClick={() => router.push(href)}
                             title={!isOpen ? label : ""}
-                            className={`w-full h-9 flex items-center gap-3 px-2.5 py-2 rounded-md transition-colors text-left ${
+                            className={cn(
+                                "w-full h-9 flex items-center gap-3 px-2.5 py-2 rounded-md transition-colors text-left",
                                 isActive
-                                    ? "bg-gray-100 text-gray-900"
-                                    : "hover:bg-gray-100 text-gray-700"
-                            } ${!isOpen ? "hidden md:flex" : "flex"}`}
+                                    ? "bg-gray-200/60 text-gray-900"
+                                    : "text-gray-700 hover:bg-gray-100",
+                                !isOpen ? "hidden md:flex" : "flex",
+                            )}
                         >
                             <Icon
                                 className={`h-4 w-4 flex-shrink-0 ${
@@ -271,13 +273,14 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                                         )
                                                     }
                                                     title={project.name}
-                                                    className={`flex h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs transition-colors ${
+                                                    className={cn(
+                                                        "flex h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs transition-colors",
                                                         isActive
-                                                            ? "bg-gray-100 text-gray-900"
-                                                            : "text-gray-700 hover:bg-gray-100"
-                                                    }`}
+                                                            ? "bg-gray-200/60 text-gray-900"
+                                                            : "text-gray-700 hover:bg-gray-100",
+                                                    )}
                                                 >
-                                                    <FolderOpen className="h-3.5 w-3.5 shrink-0 text-gray-500" />
+                                                    <FolderOpen className="h-3.5 w-3.5 shrink-0 text-gray-600" />
                                                     <span className="min-w-0 flex-1 truncate">
                                                         {project.name}
                                                     </span>
@@ -346,7 +349,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                                 key={chat.id}
                                                 chat={chat}
                                                 isActive={
-                                                    currentChatId === chat.id
+                                                    routeChatId === chat.id
                                                 }
                                                 projectName={
                                                     chat.project_id
@@ -370,7 +373,10 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                         <div className="px-2.5 pt-1">
                                             <button
                                                 onClick={loadMoreChats}
-                                                className="flex h-8 w-full items-center justify-start rounded-md px-3 text-left text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                                                className={cn(
+                                                    "flex h-8 w-full items-center justify-start rounded-md px-3 text-left text-xs font-medium text-gray-500 transition-colors hover:text-gray-700",
+                                                    "hover:bg-gray-100",
+                                                )}
                                             >
                                                 Load more
                                             </button>
@@ -384,21 +390,22 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
             )}
 
             {/* User Profile */}
-            <div className="mt-auto">
+            <div className="mt-auto p-1">
                 {user && (
                     <div className="relative">
                         <button
                             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                            className={`flex items-center transition-colors w-full px-3.5 py-4 border-t border-gray-200 ${
-                                !isOpen ? "hidden md:flex" : ""
-                            } ${
+                            className={cn(
+                                "flex items-center transition-colors w-full px-2.5 py-3 border-t",
+                                "rounded-xl border-white/60",
+                                !isOpen ? "hidden md:flex" : "",
                                 pathname === "/account" || isDropdownOpen
-                                    ? "bg-gray-100"
-                                    : "hover:bg-gray-100"
-                            }`}
+                                    ? "bg-gray-200/60"
+                                    : "hover:bg-gray-100",
+                            )}
                             title={!isOpen ? user.email : undefined}
                         >
-                            <div className="h-7 w-7 flex-shrink-0 rounded-full bg-gray-700 flex items-center justify-center text-white text-sm font-medium font-serif">
+                            <div className="h-6.5 w-6.5 flex-shrink-0 rounded-full bg-gray-700 flex items-center justify-center text-white text-sm font-medium font-serif">
                                 {getUserInitials(user.email)}
                             </div>
                             {isOpen && (
@@ -421,13 +428,22 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                         </button>
 
                         {isDropdownOpen && (
-                            <div className="absolute bottom-full left-0 m-1 bg-white rounded-lg shadow-lg border border-gray-200 p-1 z-50 w-62 whitespace-nowrap">
+                            <div
+                                className={cn(
+                                    "absolute bottom-full left-0 z-50 mb-1 p-1 whitespace-nowrap",
+                                    isOpen ? "right-0" : "w-56",
+                                    "bg-white/80 rounded-xl shadow-[0_6px_17px_rgba(15,23,42,0.1)] border border-white/70 backdrop-blur-xl",
+                                )}
+                            >
                                 <button
                                     onClick={() => {
                                         router.push("/account");
                                         setIsDropdownOpen(false);
                                     }}
-                                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 rounded-md"
+                                    className={cn(
+                                        "w-full px-4 py-2 text-left text-sm text-gray-700 flex items-center gap-2 rounded-md",
+                                        "hover:bg-white/70",
+                                    )}
                                 >
                                     <User className="h-4 w-4" />
                                     Account Settings

@@ -50,6 +50,8 @@ export type UserApiKeys = {
     claude?: string | null;
     gemini?: string | null;
     openai?: string | null;
+    openrouter?: string | null;
+    courtlistener?: string | null;
     [provider: string]: string | null | undefined;
 };
 
@@ -79,6 +81,7 @@ export type StreamChatParams = {
      * one-shot completions should leave this off to save tokens and latency.
      */
     enableThinking?: boolean;
+    abortSignal?: AbortSignal;
 };
 
 export type StreamChatResult = {

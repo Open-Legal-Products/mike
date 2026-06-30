@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState, useRef, useEffect } from "react";
+import { flushSync } from "react-dom";
 import { ArrowDown } from "lucide-react";
 import { UserMessage } from "./UserMessage";
 import { AssistantMessage } from "./AssistantMessage";
@@ -11,21 +12,35 @@ import {
 } from "./AssistantSidePanel";
 import { AssistantWorkflowModal } from "./AssistantWorkflowModal";
 import type {
-    MikeCitationAnnotation,
-    MikeEditAnnotation,
-    MikeMessage,
+    AssistantEvent,
+    CitationAnnotation,
+    EditAnnotation,
+    Message,
 } from "../shared/types";
 import { useSidebar } from "@/app/contexts/SidebarContext";
 import { invalidateDocxBytes } from "@/app/hooks/useFetchDocxBytes";
+import { cn } from "@/lib/utils";
 
 interface Props {
-    messages: MikeMessage[];
+    chatId?: string | null;
+    messages: Message[];
     isResponseLoading: boolean;
-    handleChat: (message: MikeMessage) => Promise<string | null>;
+    handleChat: (message: Message) => Promise<string | null>;
     cancel: () => void;
 }
 
+const ASSISTANT_PANEL_TRANSITION_MS = 500;
+const MOBILE_BREAKPOINT_PX = 768;
+
+function isSmallScreen() {
+    return (
+        typeof window !== "undefined" &&
+        window.innerWidth < MOBILE_BREAKPOINT_PX
+    );
+}
+
 export function ChatView({
+    chatId,
     messages,
     isResponseLoading,
     handleChat,
@@ -49,38 +64,86 @@ export function ChatView({
         () => new Set(),
     );
     const { setSidebarOpen } = useSidebar();
-
+    const panelCloseTimerRef = useRef<number | null>(null);
 
     const showPanel = useCallback(() => {
+        if (panelCloseTimerRef.current !== null) {
+            window.clearTimeout(panelCloseTimerRef.current);
+            panelCloseTimerRef.current = null;
+        }
+        flushSync(() => {
+            setSidebarOpen(false);
+        });
+
+        if (panelMounted) {
+            setPanelVisible(true);
+            return;
+        }
+
+        setPanelVisible(false);
         setPanelMounted(true);
-        setSidebarOpen(false);
         requestAnimationFrame(() =>
             requestAnimationFrame(() => setPanelVisible(true)),
         );
+    }, [panelMounted, setSidebarOpen]);
+
+    const restoreSidebarAfterPanelClose = useCallback(() => {
+        if (!isSmallScreen()) setSidebarOpen(true);
     }, [setSidebarOpen]);
 
-    const closeAllTabs = useCallback(() => {
-        setPanelVisible(false);
-        setTimeout(() => {
-            setTabs([]);
-            setActiveTabId(null);
+    useEffect(
+        () => () => {
+            if (panelCloseTimerRef.current !== null) {
+                window.clearTimeout(panelCloseTimerRef.current);
+            }
+        },
+        [],
+    );
+
+    const hidePanel = useCallback(
+        (afterHidden: () => void) => {
+            if (panelCloseTimerRef.current !== null) {
+                window.clearTimeout(panelCloseTimerRef.current);
+            }
+            setPanelVisible(false);
+            panelCloseTimerRef.current = window.setTimeout(() => {
+                panelCloseTimerRef.current = null;
+                afterHidden();
+            }, ASSISTANT_PANEL_TRANSITION_MS);
+        },
+        [],
+    );
+
+    const unmountPanel = useCallback(
+        (afterUnmount?: () => void) => {
             setPanelMounted(false);
-            setSidebarOpen(true);
-        }, 300);
-    }, [setSidebarOpen]);
+            restoreSidebarAfterPanelClose();
+            afterUnmount?.();
+        },
+        [restoreSidebarAfterPanelClose],
+    );
+
+    const closeAllTabs = useCallback(() => {
+        hidePanel(() =>
+            unmountPanel(() => {
+                setTabs([]);
+                setActiveTabId(null);
+            }),
+        );
+    }, [hidePanel, unmountPanel]);
 
     const closeTab = useCallback(
         (id: string) => {
             setTabs((prev) => {
                 const next = prev.filter((t) => t.id !== id);
                 if (next.length === 0) {
-                    setPanelVisible(false);
-                    setTimeout(() => {
-                        setActiveTabId(null);
-                        setPanelMounted(false);
-                        setSidebarOpen(true);
-                    }, 300);
-                    return next;
+                    hidePanel(() =>
+                        unmountPanel(() => {
+                            setActiveTabId(null);
+                            setTabs([]);
+                        }),
+                    );
+                    return prev;
                 }
                 if (activeTabId === id) {
                     const idx = prev.findIndex((t) => t.id === id);
@@ -90,7 +153,7 @@ export function ChatView({
                 return next;
             });
         },
-        [activeTabId, setSidebarOpen],
+        [activeTabId, hidePanel, unmountPanel],
     );
 
     /**
@@ -104,18 +167,23 @@ export function ChatView({
     const upsertTab = useCallback(
         (tab: AssistantSidePanelTab) => {
             setTabs((prev) => {
-                const idx = prev.findIndex(
-                    (t) => t.documentId === tab.documentId,
+                const idx = prev.findIndex((t) =>
+                    tab.kind === "case"
+                        ? t.kind === "case" && t.id === tab.id
+                        : t.kind !== "case" && t.documentId === tab.documentId,
                 );
                 if (idx >= 0) {
                     const existing = prev[idx];
                     const copy = prev.slice();
-                    copy[idx] = {
-                        ...tab,
-                        id: existing.id,
-                        warning: existing.warning,
-                        initialScrollTop: existing.initialScrollTop,
-                    };
+                    copy[idx] =
+                        tab.kind === "case" || existing.kind === "case"
+                            ? tab
+                            : {
+                                  ...tab,
+                                  id: existing.id,
+                                  warning: existing.warning,
+                                  initialScrollTop: existing.initialScrollTop,
+                              };
                     return copy;
                 }
                 return [...prev, tab];
@@ -131,7 +199,37 @@ export function ChatView({
      * AssistantMessage when the user clicks a numbered citation pill.
      */
     const openCitation = useCallback(
-        (citation: MikeCitationAnnotation) => {
+        (citation: CitationAnnotation, options?: { showQuotes?: boolean }) => {
+            const showQuotes = options?.showQuotes ?? true;
+            if (citation.kind === "case") {
+                if (!chatId) return;
+                upsertTab({
+                    kind: "case",
+                    id: `case:${citation.cluster_id}`,
+                    chatId,
+                    clusterId: citation.cluster_id,
+                    citationRef: citation.ref,
+                    caseName: citation.case_name ?? null,
+                    citation: citation.citation ?? null,
+                    url: citation.url ?? null,
+                    dateFiled: citation.dateFiled ?? null,
+                    pdfUrl: citation.pdfUrl ?? null,
+                    quotes: showQuotes ? citation.quotes : undefined,
+                    opinions: undefined,
+                });
+                return;
+            }
+            if (!showQuotes) {
+                upsertTab({
+                    kind: "document",
+                    id: citation.document_id,
+                    documentId: citation.document_id,
+                    filename: citation.filename,
+                    versionId: citation.version_id ?? null,
+                    versionNumber: citation.version_number ?? null,
+                });
+                return;
+            }
             upsertTab({
                 kind: "citation",
                 id: citation.document_id,
@@ -142,7 +240,29 @@ export function ChatView({
                 citation,
             });
         },
-        [upsertTab],
+        [chatId, upsertTab],
+    );
+
+    const openCase = useCallback(
+        (citation: Extract<AssistantEvent, { type: "case_citation" }>) => {
+            if (!citation.cluster_id) return;
+            if (!chatId) return;
+            upsertTab({
+                kind: "case",
+                id: `case:${citation.cluster_id}`,
+                chatId,
+                clusterId: citation.cluster_id,
+                citationRef: undefined,
+                caseName: citation.case_name,
+                citation: citation.citation,
+                url: citation.url,
+                dateFiled: citation.dateFiled ?? null,
+                pdfUrl: citation.pdfUrl ?? null,
+                quotes: undefined,
+                opinions: citation.case?.opinions,
+            });
+        },
+        [chatId, upsertTab],
     );
 
     /**
@@ -150,7 +270,7 @@ export function ChatView({
      * AssistantMessage when the user clicks an EditCard's View button.
      */
     const openEditor = useCallback(
-        (ann: MikeEditAnnotation, filename: string) => {
+        (ann: EditAnnotation, filename: string) => {
             upsertTab({
                 kind: "edit",
                 id: ann.document_id,
@@ -260,15 +380,18 @@ export function ChatView({
         [],
     );
 
-
     const patchTab = useCallback(
         (
             tabId: string,
-            patch: Partial<Pick<AssistantSidePanelTab, "warning" | "initialScrollTop">>,
+            patch: {
+                warning?: string | null;
+                initialScrollTop?: number | null;
+            },
         ) => {
             setTabs((prev) => {
                 const idx = prev.findIndex((t) => t.id === tabId);
                 if (idx < 0) return prev;
+                if (prev[idx].kind === "case") return prev;
                 const copy = prev.slice();
                 copy[idx] = { ...copy[idx], ...patch };
                 return copy;
@@ -287,7 +410,7 @@ export function ChatView({
             // Surface the warning on every tab tied to this document.
             setTabs((prev) =>
                 prev.map((t) =>
-                    t.documentId === args.documentId
+                    t.kind !== "case" && t.documentId === args.documentId
                         ? { ...t, warning: args.message }
                         : t,
                 ),
@@ -328,8 +451,15 @@ export function ChatView({
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const latestUserMessageRef = useRef<HTMLDivElement>(null);
     const chatInputRef = useRef<HTMLDivElement>(null);
-    const hasScrolledRef = useRef(false);
-    const [messagesVisible, setMessagesVisible] = useState(false);
+    // Seed "already in place" when messages exist at mount (a freshly created
+    // chat arrives with its first message in hand). Otherwise the skeleton +
+    // opacity-0 gate would flash the message out and fade it back in on every
+    // remount. Existing chats mount with messages === [] and fetch async, so
+    // they still start hidden and reveal once loaded.
+    const hasScrolledRef = useRef(messages.length > 0);
+    const [messagesVisible, setMessagesVisible] = useState(
+        () => messages.length > 0,
+    );
     const [showScrollButton, setShowScrollButton] = useState(false);
     const [inputHeight, setInputHeight] = useState(0);
     const [minHeight, setMinHeight] = useState("0px");
@@ -446,7 +576,7 @@ export function ChatView({
     return (
         <div className="h-full w-full flex relative">
             {/* Chat column */}
-            <div className="flex flex-col h-full flex-1 relative">
+            <div className="flex min-w-0 flex-col h-full flex-1 relative">
                 {/* Scrollable messages */}
                 <div
                     ref={messagesContainerRef}
@@ -507,13 +637,28 @@ export function ChatView({
                                                 }
                                                 isError={!!(msg as any).error}
                                                 errorMessage={
-                                                    typeof (msg as any).error ===
-                                                    "string"
+                                                    typeof (msg as any)
+                                                        .error === "string"
                                                         ? (msg as any).error
                                                         : undefined
                                                 }
                                                 annotations={msg.annotations}
-                                                onCitationClick={openCitation}
+                                                citationStatus={
+                                                    msg.citationStatus
+                                                }
+                                                onCitationClick={(citation) =>
+                                                    openCitation(citation)
+                                                }
+                                                onOpenCitationSource={(
+                                                    citation,
+                                                ) =>
+                                                    openCitation(citation, {
+                                                        showQuotes: false,
+                                                    })
+                                                }
+                                                onCaseClick={(citation) =>
+                                                    openCase(citation)
+                                                }
                                                 minHeight={
                                                     i === lastAssistantIndex
                                                         ? minHeight
@@ -561,7 +706,10 @@ export function ChatView({
                     >
                         <button
                             onClick={scrollToBottom}
-                            className="p-2 rounded-full bg-white/70 backdrop-blur-xs shadow-lg cursor-pointer border border-gray-300"
+                            className={cn(
+                                "rounded-full p-2 cursor-pointer transition-all",
+                                "bg-white/30 shadow-[0_5px_16px_rgba(15,23,42,0.13),inset_0_1px_0_rgba(255,255,255,0.75),inset_0_-8px_18px_rgba(255,255,255,0.26)] backdrop-blur-xl hover:bg-white/45 hover:shadow-[0_7px_20px_rgba(15,23,42,0.16),inset_0_1px_0_rgba(255,255,255,0.85),inset_0_-8px_18px_rgba(255,255,255,0.32)]",
+                            )}
                         >
                             <ArrowDown className="h-6 w-6 text-gray-500" />
                         </button>
@@ -573,8 +721,19 @@ export function ChatView({
                     ref={chatInputRef}
                     className="absolute bottom-0 left-0 right-0 w-full z-30"
                 >
-                    <div className="w-full max-w-4xl mx-auto px-4 md:px-6">
-                        <div className="w-full rounded-t-[20px] bg-white">
+                    <div
+                        className={cn(
+                            "pointer-events-none absolute bottom-0 left-0 z-0",
+                            "right-4 h-28 bg-gradient-to-t from-white/50 via-white/25 to-transparent backdrop-blur-[1px]",
+                        )}
+                    />
+                    <div className="relative z-20 w-full max-w-4xl mx-auto px-4 md:px-6">
+                        <div
+                            className={cn(
+                                "w-full rounded-t-[20px]",
+                                "bg-transparent",
+                            )}
+                        >
                             <ChatInput
                                 onSubmit={handleChat}
                                 onCancel={cancel}
@@ -600,7 +759,7 @@ export function ChatView({
 
             {panelMounted && (
                 <div
-                    className={`fixed md:relative inset-0 md:inset-auto md:h-full md:flex-shrink-0 z-40 md:z-auto transition-transform duration-300 ease-in-out ${panelVisible ? "translate-x-0" : "translate-x-full"}`}
+                    className={`fixed inset-0 z-40 flex justify-center p-3 transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] md:relative md:inset-auto md:z-auto md:block md:h-full md:min-w-0 md:flex-shrink-0 md:p-0 ${panelVisible ? "translate-x-0" : "translate-x-full"}`}
                 >
                     <AssistantSidePanel
                         tabs={tabs}

@@ -20,12 +20,26 @@ export interface ModelOption {
 }
 
 export const MODELS: ModelOption[] = [
+    { id: "claude-fable-5", label: "Claude Fable 5", group: "Anthropic" },
+    { id: "claude-opus-4-8", label: "Claude Opus 4.8", group: "Anthropic" },
     { id: "claude-opus-4-7", label: "Claude Opus 4.7", group: "Anthropic" },
     { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", group: "Anthropic" },
+    { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash", group: "Google" },
     { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro", group: "Google" },
     { id: "gemini-3-flash-preview", label: "Gemini 3 Flash", group: "Google" },
     { id: "gpt-5.5", label: "GPT-5.5", group: "OpenAI" },
-    { id: "gpt-5.4-mini", label: "GPT-5.4 Mini", group: "OpenAI" },
+    { id: "gpt-5.4", label: "GPT-5.4", group: "OpenAI" },
+];
+
+export const SETTINGS_MODELS: ModelOption[] = [
+    ...MODELS,
+    { id: "claude-haiku-4-5", label: "Claude Haiku 4.5", group: "Anthropic" },
+    {
+        id: "gemini-3.1-flash-lite-preview",
+        label: "Gemini 3.1 Flash Lite",
+        group: "Google",
+    },
+    { id: "gpt-5.4-lite", label: "GPT-5.4 Lite", group: "OpenAI" },
 ];
 
 export const DEFAULT_MODEL_ID = "gemini-3-flash-preview";
@@ -69,7 +83,7 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                     />
                 </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56 z-50" side="top" align="start">
+            <DropdownMenuContent className="w-56 z-50" side="top" align="end">
                 {GROUP_ORDER.map((group, gi) => {
                     const items = MODELS.filter((m) => m.group === group);
                     if (items.length === 0) return null;

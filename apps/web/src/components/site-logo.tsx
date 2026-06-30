@@ -4,6 +4,7 @@ import { MikeIcon } from "@/components/chat/mike-icon";
 interface SiteLogoProps {
     size?: "sm" | "md" | "lg" | "xl";
     className?: string;
+    iconClassName?: string;
     animate?: boolean;
     asLink?: boolean;
 }
@@ -11,6 +12,7 @@ interface SiteLogoProps {
 export function SiteLogo({
     size = "md",
     className = "",
+    iconClassName = "",
     animate = false,
     asLink = false,
 }: SiteLogoProps) {
@@ -28,7 +30,7 @@ export function SiteLogo({
     const iconSizes = {
         sm: 20,
         md: 22,
-        lg: 32,
+        lg: 30,
         xl: 48,
     };
 
@@ -38,7 +40,11 @@ export function SiteLogo({
                 animate ? "sidebar-fade-in" : ""
             } ${className}`}
         >
-            <MikeIcon size={iconSizes[size]} />
+            <span
+                className={`inline-flex shrink-0 items-center leading-none ${iconClassName}`}
+            >
+                <MikeIcon size={iconSizes[size]} />
+            </span>
             <span>Mike</span>
         </h1>
     );

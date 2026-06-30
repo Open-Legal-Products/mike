@@ -7,19 +7,32 @@ import {
     buildMessages,
     enrichWithPriorEvents,
     buildWorkflowStore,
+    AssistantStreamError,
+    buildCancelledAssistantMessage,
     extractAnnotations,
+    isAbortError,
     runLLMStream,
     generateSpotlightNonce,
+    stripTransientAssistantEvents,
     type ChatMessage,
 } from "../../lib/chatTools";
 import { completeText } from "../../lib/llm";
 import { getUserApiKeys, getUserModelSettings } from "../../lib/userSettings";
 import { checkProjectAccess } from "../../lib/access";
 import { checkMessageCredits, incrementMessageCredits } from "../../lib/credits";
+import { safeErrorLog, safeErrorMessage } from "../../lib/safeError";
 
 export const chatRouter = Router();
 
 type Db = ReturnType<typeof createServerSupabase>;
+
+const TITLE_FALLBACK = "Misc. Query";
+
+function normalizeGeneratedTitle(raw: string): string {
+    const title = raw.trim().replace(/^["'`]+|["'`.,:;!?]+$/g, "").trim();
+    if (!title) return TITLE_FALLBACK;
+    return title.slice(0, 80);
+}
 
 type AccessibleChat = {
     id: string;
@@ -163,32 +176,15 @@ chatRouter.get("/", requireAuth, async (req, res) => {
         });
     }
 
-    const { data: ownProjects, error: projErr } = await db
-        .from("projects")
-        .select("id")
-        .eq("user_id", userId);
-    if (projErr) return void res.status(500).json({ detail: projErr.message });
-    const ownProjectIds = ((ownProjects ?? []) as { id: string }[]).map(
-        (p) => p.id,
-    );
+    // MERGE-REVIEW: upstream's get_chats_overview RPC does not accept the `before`
+    // cursor, so the fork's keyset pagination (the validated `before` param above)
+    // is no longer applied — only `p_limit` is honored. Verify the frontend does
+    // not depend on cursor-based pagination, or extend the RPC to accept `before`.
+    const { data, error } = await db.rpc("get_chats_overview", {
+        p_user_id: userId,
+        p_limit: limit,
+    });
 
-    const filter =
-        ownProjectIds.length > 0
-            ? `user_id.eq.${userId},project_id.in.(${ownProjectIds.join(",")})`
-            : `user_id.eq.${userId}`;
-
-    let query = db
-        .from("chats")
-        .select("*")
-        .or(filter)
-        .order("created_at", { ascending: false })
-        .limit(limit);
-
-    if (before !== null) {
-        query = query.lt("created_at", before.toISOString());
-    }
-
-    const { data, error } = await query;
     if (error) return void res.status(500).json({ detail: error.message });
     res.json(data ?? []);
 });
@@ -245,11 +241,12 @@ chatRouter.get("/:chatId", requireAuth, async (req, res) => {
     res.json({ chat, messages: hydrated });
 });
 
-// Stored message annotations/events capture the `status` at the time the
-// assistant produced the edit (always "pending"). If the user later accepts
-// or rejects, `document_edits.status` is updated but the stored message
-// annotation is not. On chat load we merge the current DB status in so
-// EditCards render with the real state.
+// Stored doc_edited events capture the `status` at the time the assistant
+// produced the edit (always "pending"). If the user later accepts or rejects,
+// `document_edits.status` is updated but the stored event is not. On chat load
+// we merge the current DB status in so EditCards render with the real state.
+// Legacy rows may also have duplicate edit_data in top-level annotations, so
+// keep patching that path until old data no longer matters.
 async function hydrateEditStatuses(
     messages: Record<string, unknown>[],
     db: ReturnType<typeof createServerSupabase>,
@@ -421,11 +418,11 @@ chatRouter.post("/:chatId/generate-title", requireAuth, async (req, res) => {
         );
         const titleText = await completeText({
             model: title_model,
-            user: `Generate a concise title (3–6 words) for a chat in an AI Legal Platform that starts with this message. The title should describe the topic or document — do NOT include words like "Legal Assistant", "AI", "Chat", or any similar prefix. Return only the title, no quotes or punctuation.\n\nMessage: ${message.slice(0, 500)}`,
+            user: `Generate a concise title (3–6 words) for a chat in an AI Legal Platform that starts with this message. The title should describe the topic or document — do NOT include words like "Legal Assistant", "AI", "Chat", or any similar prefix. If there is not enough information to generate a title, return exactly "${TITLE_FALLBACK}". Return only the title, no quotes or punctuation.\n\nMessage: ${message.slice(0, 500)}`,
             maxTokens: 64,
             apiKeys: api_keys,
         });
-        const title = titleText.trim() || message.slice(0, 60);
+        const title = normalizeGeneratedTitle(titleText);
 
         await db
             .from("chats")
@@ -434,7 +431,7 @@ chatRouter.post("/:chatId/generate-title", requireAuth, async (req, res) => {
 
         res.json({ title });
     } catch (err) {
-        req.log.error({ err }, "[generate-title] failed");
+        req.log.error({ err: safeErrorLog(err) }, "[generate-title] failed");
         res.status(500).json({ detail: "Failed to generate title" });
     }
 });
@@ -553,7 +550,19 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         docIndex,
     );
     const nonce = generateSpotlightNonce();
-    const apiMessages = buildMessages(enrichedMessages, docAvailability, undefined, docIndex, nonce);
+    // apiKeys is fetched below via getUserApiKeys alongside the credit check;
+    // here we only need upstream's legal_research_us flag for the LLM stream.
+    const { legal_research_us: legalResearchUs } = await getUserModelSettings(
+        userId,
+        db,
+    );
+    const apiMessages = buildMessages(
+        enrichedMessages,
+        docAvailability,
+        undefined,
+        docIndex,
+        nonce,
+    );
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
 
@@ -584,11 +593,16 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     res.flushHeaders();
 
     const write = (line: string) => res.write(line);
+    const streamAbort = new AbortController();
+    let streamFinished = false;
+    res.on("close", () => {
+        if (!streamFinished) streamAbort.abort();
+    });
 
     try {
         write(`data: ${JSON.stringify({ type: "chat_id", chatId })}\n\n`);
 
-        const { fullText, events } = await runLLMStream({
+        const { fullText, events, annotations } = await runLLMStream({
             apiMessages,
             docStore,
             docIndex,
@@ -596,8 +610,10 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             db,
             write,
             workflowStore,
+            includeResearchTools: legalResearchUs,
             model,
             apiKeys,
+            signal: streamAbort.signal,
             projectId: resolvedProjectId,
             nonce,
         });
@@ -606,11 +622,11 @@ chatRouter.post("/", requireAuth, async (req, res) => {
 
         req.log.debug({ eventCount: events?.length ?? 0 }, "[chat/stream] LLM stream finished");
 
-        const annotations = extractAnnotations(fullText, docIndex, events);
+        const persistedEvents = stripTransientAssistantEvents(events);
         await db.from("chat_messages").insert({
             chat_id: chatId,
             role: "assistant",
-            content: events.length ? events : null,
+            content: persistedEvents.length ? persistedEvents : null,
             annotations: annotations.length ? annotations : null,
         });
 
@@ -621,16 +637,66 @@ chatRouter.post("/", requireAuth, async (req, res) => {
                 .eq("id", chatId);
         }
     } catch (err) {
-        req.log.error({ err }, "[chat/stream] error");
+        if (isAbortError(err)) {
+            req.log.debug({ chatId }, "[chat/stream] client aborted stream");
+            if (err instanceof AssistantStreamError) {
+                const partial = buildCancelledAssistantMessage({
+                    fullText: err.fullText,
+                    events: err.events,
+                    buildAnnotations: (fullText, events) =>
+                        extractAnnotations(fullText, docIndex, events),
+                });
+                const { error: saveError } = await db.from("chat_messages").insert({
+                    chat_id: chatId,
+                    role: "assistant",
+                    content: partial.events.length ? partial.events : null,
+                    annotations: partial.annotations.length
+                        ? partial.annotations
+                        : null,
+                });
+                if (saveError) {
+                    req.log.error(
+                        { err: saveError },
+                        "[chat/stream] failed to save aborted stream",
+                    );
+                }
+            }
+            return;
+        }
+        req.log.error({ err: safeErrorLog(err) }, "[chat/stream] error");
+        const message = safeErrorMessage(err, "Stream error");
+        const errorEvents = err instanceof AssistantStreamError
+            ? stripTransientAssistantEvents(err.events)
+            : [{ type: "error" as const, message }];
+        const errorFullText =
+            err instanceof AssistantStreamError ? err.fullText : "";
+        try {
+            const annotations = extractAnnotations(
+                errorFullText,
+                docIndex,
+                errorEvents,
+            );
+            const { error: saveError } = await db.from("chat_messages").insert({
+                chat_id: chatId,
+                role: "assistant",
+                content: errorEvents.length ? errorEvents : null,
+                annotations: annotations.length ? annotations : null,
+            });
+            if (saveError)
+                req.log.error({ err: saveError }, "[chat/stream] failed to save error");
+        } catch (saveErr) {
+            req.log.error({ err: saveErr }, "[chat/stream] failed to save error");
+        }
         try {
             write(
-                `data: ${JSON.stringify({ type: "error", message: "Stream error" })}\n\n`,
+                `data: ${JSON.stringify({ type: "error", message })}\n\n`,
             );
             write("data: [DONE]\n\n");
         } catch {
             /* ignore */
         }
     } finally {
+        streamFinished = true;
         res.end();
     }
 });

@@ -7,16 +7,21 @@ import {
     buildMessages,
     buildWorkflowStore,
     enrichWithPriorEvents,
+    AssistantStreamError,
+    buildCancelledAssistantMessage,
     extractAnnotations,
+    isAbortError,
     runLLMStream,
     generateSpotlightNonce,
+    stripTransientAssistantEvents,
     PROJECT_EXTRA_TOOLS,
     type ChatMessage,
 } from "../../lib/chatTools";
-import { getUserApiKeys } from "../../lib/userSettings";
+import { getUserApiKeys, getUserModelSettings } from "../../lib/userSettings";
 import { checkProjectAccess } from "../../lib/access";
 import { checkMessageCredits, incrementMessageCredits } from "../../lib/credits";
 import { parseBody, sendError } from "../../lib/http";
+import { safeErrorLog, safeErrorMessage } from "../../lib/safeError";
 
 const chatMessageSchema = z.object({
     role: z.string(),
@@ -179,6 +184,12 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
     }
 
     const nonce = generateSpotlightNonce();
+    // apiKeys is fetched below via getUserApiKeys alongside the credit check;
+    // here we only need upstream's legal_research_us flag for the LLM stream.
+    const { legal_research_us: legalResearchUs } = await getUserModelSettings(
+        userId,
+        db,
+    );
     const apiMessages = buildMessages(
         messagesForLLM,
         docAvailability,
@@ -213,11 +224,16 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
     res.flushHeaders();
 
     const write = (line: string) => res.write(line);
+    const streamAbort = new AbortController();
+    let streamFinished = false;
+    res.on("close", () => {
+        if (!streamFinished) streamAbort.abort();
+    });
 
     try {
         write(`data: ${JSON.stringify({ type: "chat_id", chatId })}\n\n`);
 
-        const { fullText, events } = await runLLMStream({
+        const { events, annotations } = await runLLMStream({
             apiMessages,
             docStore,
             docIndex,
@@ -226,19 +242,21 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             write,
             extraTools: PROJECT_EXTRA_TOOLS,
             workflowStore,
+            includeResearchTools: legalResearchUs,
             model,
             apiKeys,
+            signal: streamAbort.signal,
             projectId,
             nonce,
         });
 
         await incrementMessageCredits(userId, db);
 
-        const annotations = extractAnnotations(fullText, docIndex, events);
+        const persistedEvents = stripTransientAssistantEvents(events);
         await db.from("chat_messages").insert({
             chat_id: chatId,
             role: "assistant",
-            content: events.length ? events : null,
+            content: persistedEvents.length ? persistedEvents : null,
             annotations: annotations.length ? annotations : null,
         });
 
@@ -249,16 +267,72 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
                 .eq("id", chatId);
         }
     } catch (err) {
-        req.log.error({ err }, "[project-chat/stream] error");
+        if (isAbortError(err)) {
+            req.log.debug({ chatId }, "[project-chat/stream] client aborted stream");
+            if (err instanceof AssistantStreamError) {
+                const partial = buildCancelledAssistantMessage({
+                    fullText: err.fullText,
+                    events: err.events,
+                    buildAnnotations: (fullText, events) =>
+                        extractAnnotations(fullText, docIndex, events),
+                });
+                const { error: saveError } = await db.from("chat_messages").insert({
+                    chat_id: chatId,
+                    role: "assistant",
+                    content: partial.events.length ? partial.events : null,
+                    annotations: partial.annotations.length
+                        ? partial.annotations
+                        : null,
+                });
+                if (saveError) {
+                    req.log.error(
+                        { err: saveError },
+                        "[project-chat/stream] failed to save aborted stream",
+                    );
+                }
+            }
+            return;
+        }
+        req.log.error({ err: safeErrorLog(err) }, "[project-chat/stream] error");
+        const message = safeErrorMessage(err, "Stream error");
+        const errorEvents = err instanceof AssistantStreamError
+            ? stripTransientAssistantEvents(err.events)
+            : [{ type: "error" as const, message }];
+        const errorFullText =
+            err instanceof AssistantStreamError ? err.fullText : "";
+        try {
+            const annotations = extractAnnotations(
+                errorFullText,
+                docIndex,
+                errorEvents,
+            );
+            const { error: saveError } = await db.from("chat_messages").insert({
+                chat_id: chatId,
+                role: "assistant",
+                content: errorEvents.length ? errorEvents : null,
+                annotations: annotations.length ? annotations : null,
+            });
+            if (saveError)
+                req.log.error(
+                    { err: saveError },
+                    "[project-chat/stream] failed to save error",
+                );
+        } catch (saveErr) {
+            req.log.error(
+                { err: saveErr },
+                "[project-chat/stream] failed to save error",
+            );
+        }
         try {
             write(
-                `data: ${JSON.stringify({ type: "error", message: "Stream error" })}\n\n`,
+                `data: ${JSON.stringify({ type: "error", message })}\n\n`,
             );
             write("data: [DONE]\n\n");
         } catch {
             /* ignore */
         }
     } finally {
+        streamFinished = true;
         res.end();
     }
 });

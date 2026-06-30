@@ -1,0 +1,1472 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import {
+    ChevronDown,
+    Check,
+    Eye,
+    EyeOff,
+    Loader2,
+    Plus,
+    RefreshCw,
+    Trash2,
+} from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Modal } from "@/app/components/shared/Modal";
+import {
+    MfaVerificationPopup,
+    needsMfaVerification,
+} from "@/app/components/shared/MfaVerificationPopup";
+import {
+    type McpConnectorSummary,
+    MikeApiError,
+    createMcpConnector,
+    deleteMcpConnector,
+    getMcpConnector,
+    isMfaRequiredError,
+    listMcpConnectors,
+    refreshMcpConnectorTools,
+    setMcpToolEnabled,
+    startMcpConnectorOAuth,
+    updateMcpConnector,
+} from "@/app/lib/mikeApi";
+import {
+    accountGlassDangerButtonClassName,
+    accountGlassIconButtonClassName,
+    accountGlassInputClassName,
+    accountGlassPrimaryButtonClassName,
+} from "../accountStyles";
+import { AccountSection } from "../AccountSection";
+import { AccountToggle } from "../AccountToggle";
+
+type PendingMfaAction =
+    | { type: "create" }
+    | { type: "save"; connectorId: string }
+    | { type: "clear-token"; connectorId: string }
+    | { type: "delete"; connectorId: string }
+    | { type: "refresh"; connectorId: string }
+    | { type: "connector-enabled"; connectorId: string; enabled: boolean }
+    | {
+          type: "tool-enabled";
+          connectorId: string;
+          toolId: string;
+          enabled: boolean;
+      };
+
+type AddDraft = {
+    name: string;
+    serverUrl: string;
+    bearerToken: string;
+    customHeaders: string;
+};
+
+type DetailDraft = AddDraft & {
+    clearBearerToken: boolean;
+};
+
+type AddStep = "form" | "working" | "auth" | "success";
+
+const emptyAddDraft: AddDraft = {
+    name: "",
+    serverUrl: "",
+    bearerToken: "",
+    customHeaders: "",
+};
+
+type McpOAuthPopupMessage = {
+    type?: string;
+    success?: boolean;
+    connectorId?: string;
+    detail?: string;
+};
+
+const mcpOAuthMessageOrigin = new URL(
+    process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001",
+).origin;
+
+function parseCustomHeaders(raw: string): Record<string, string> | undefined {
+    const text = raw.trim();
+    if (!text) return undefined;
+    const parsed = JSON.parse(text) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("Custom headers must be a JSON object.");
+    }
+    const headers: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+        if (typeof value !== "string") {
+            throw new Error("Custom header values must be strings.");
+        }
+        headers[key] = value;
+    }
+    return headers;
+}
+
+function isGoogleMcpConnector(connector: McpConnectorSummary) {
+    try {
+        return new URL(connector.serverUrl).hostname
+            .toLowerCase()
+            .endsWith("googleapis.com");
+    } catch {
+        return false;
+    }
+}
+
+export default function ConnectorsPage() {
+    const [connectors, setConnectors] = useState<McpConnectorSummary[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [busyKey, setBusyKey] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [pendingMfaAction, setPendingMfaAction] =
+        useState<PendingMfaAction | null>(null);
+    const [addOpen, setAddOpen] = useState(false);
+    const [addDraft, setAddDraft] = useState<AddDraft>(emptyAddDraft);
+    const [addStep, setAddStep] = useState<AddStep>("form");
+    const [addResult, setAddResult] = useState<McpConnectorSummary | null>(
+        null,
+    );
+    const [addError, setAddError] = useState<string | null>(null);
+    const [addAuthMessage, setAddAuthMessage] = useState<string | null>(null);
+    const [showAddToken, setShowAddToken] = useState(false);
+    const [showAddAdvanced, setShowAddAdvanced] = useState(false);
+    const [selectedConnectorId, setSelectedConnectorId] = useState<
+        string | null
+    >(null);
+    const [selectedConnectorDetails, setSelectedConnectorDetails] =
+        useState<McpConnectorSummary | null>(null);
+    const [detailDraft, setDetailDraft] = useState<DetailDraft>({
+        ...emptyAddDraft,
+        clearBearerToken: false,
+    });
+    const [detailError, setDetailError] = useState<string | null>(null);
+    const [loadingConnectorId, setLoadingConnectorId] = useState<string | null>(
+        null,
+    );
+    const [clearedBearerTokenConnectorId, setClearedBearerTokenConnectorId] =
+        useState<string | null>(null);
+    const [showDetailToken, setShowDetailToken] = useState(false);
+    const [showDetailAdvanced, setShowDetailAdvanced] = useState(false);
+
+    const selectedConnector = selectedConnectorDetails;
+
+    const loadConnectors = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            setConnectors(await listMcpConnectors());
+        } catch (err) {
+            setError(
+                err instanceof Error ? err.message : "Failed to load connectors.",
+            );
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        void loadConnectors();
+    }, [loadConnectors]);
+
+    useEffect(() => {
+        if (!selectedConnector) return;
+        setDetailDraft({
+            name: selectedConnector.name,
+            serverUrl: selectedConnector.serverUrl,
+            bearerToken: "",
+            customHeaders: "",
+            clearBearerToken: false,
+        });
+        setDetailError(null);
+        setClearedBearerTokenConnectorId(null);
+        setShowDetailToken(false);
+        setShowDetailAdvanced(false);
+    }, [
+        selectedConnector?.id,
+        selectedConnector?.name,
+        selectedConnector?.serverUrl,
+    ]);
+
+    const replaceConnector = (
+        connector: McpConnectorSummary,
+        options: { preserveToolsOnEmpty?: boolean } = {},
+    ) => {
+        const mergeConnector = (current: McpConnectorSummary) => {
+            if (
+                options.preserveToolsOnEmpty &&
+                connector.tools.length === 0 &&
+                current.tools.length > 0
+            ) {
+                return { ...connector, tools: current.tools };
+            }
+            return connector;
+        };
+        setConnectors((prev) => {
+            const exists = prev.some((item) => item.id === connector.id);
+            if (!exists) return [connector, ...prev];
+            return prev.map((item) =>
+                item.id === connector.id ? mergeConnector(item) : item,
+            );
+        });
+        setSelectedConnectorDetails((current) =>
+            current?.id === connector.id ? mergeConnector(current) : current,
+        );
+    };
+
+    const openConnectorDetails = async (connectorId: string) => {
+        setSelectedConnectorId(connectorId);
+        setSelectedConnectorDetails((current) =>
+            current?.id === connectorId
+                ? current
+                : connectors.find((connector) => connector.id === connectorId) ??
+                  null,
+        );
+        setDetailError(null);
+        setLoadingConnectorId(connectorId);
+        try {
+            replaceConnector(await getMcpConnector(connectorId));
+        } catch (err) {
+            setDetailError(
+                err instanceof Error
+                    ? err.message
+                    : "Failed to load connector details.",
+            );
+        } finally {
+            setLoadingConnectorId((current) =>
+                current === connectorId ? null : current,
+            );
+        }
+    };
+
+    const runSensitiveAction = async (
+        action: PendingMfaAction,
+        fn: () => Promise<void>,
+    ) => {
+        setError(null);
+        setDetailError(null);
+        try {
+            if (await needsMfaVerification()) {
+                setPendingMfaAction(action);
+                return;
+            }
+            await fn();
+        } catch (err) {
+            if (isMfaRequiredError(err)) {
+                setPendingMfaAction(action);
+                return;
+            }
+            const message =
+                err instanceof Error ? err.message : "Action failed.";
+            if (action.type === "create") setAddError(message);
+            else if (action.type === "save") setDetailError(message);
+            else setError(message);
+        }
+    };
+
+    const closeAddModal = () => {
+        if (addStep === "working" || addStep === "auth") return;
+        setAddOpen(false);
+        setAddDraft(emptyAddDraft);
+        setAddStep("form");
+        setAddResult(null);
+        setAddError(null);
+        setAddAuthMessage(null);
+        setShowAddToken(false);
+        setShowAddAdvanced(false);
+    };
+
+    const connectConnectorOAuth = async (
+        connectorId: string,
+    ): Promise<McpConnectorSummary | null> => {
+        const popup = window.open(
+            "about:blank",
+            "mike_mcp_oauth",
+            "popup,width=560,height=720,menubar=no,toolbar=no,location=no,status=no",
+        );
+        const { authorizationUrl, alreadyAuthorized } =
+            await startMcpConnectorOAuth(connectorId);
+        if (alreadyAuthorized) {
+            popup?.close();
+            const refreshed = await refreshMcpConnectorTools(connectorId);
+            replaceConnector(refreshed);
+            return refreshed;
+        }
+        if (!authorizationUrl) {
+            popup?.close();
+            throw new Error("OAuth authorization URL was not returned.");
+        }
+        if (!popup) {
+            window.location.assign(authorizationUrl);
+            return null;
+        }
+        popup.location.href = authorizationUrl;
+
+        await new Promise<void>((resolve, reject) => {
+            const timeout = window.setTimeout(() => {
+                cleanup();
+                reject(new Error("OAuth authorization timed out."));
+            }, 5 * 60 * 1000);
+            const poll = window.setInterval(() => {
+                if (popup.closed) {
+                    cleanup();
+                    reject(new Error("OAuth authorization window was closed."));
+                }
+            }, 700);
+            const cleanup = () => {
+                window.clearTimeout(timeout);
+                window.clearInterval(poll);
+                window.removeEventListener("message", onMessage);
+            };
+            const onMessage = (event: MessageEvent<McpOAuthPopupMessage>) => {
+                if (event.origin !== mcpOAuthMessageOrigin) return;
+                if (event.data?.type !== "mcp_oauth_result") return;
+                if (
+                    event.data.connectorId &&
+                    event.data.connectorId !== connectorId
+                ) {
+                    return;
+                }
+                const sourceWindow = event.source as Window | null;
+                sourceWindow?.postMessage(
+                    { type: "mcp_oauth_result_ack" },
+                    event.origin,
+                );
+                cleanup();
+                if (event.data.success) {
+                    resolve();
+                    return;
+                }
+                reject(
+                    new Error(
+                        event.data.detail || "OAuth authorization failed.",
+                    ),
+                );
+            };
+            window.addEventListener("message", onMessage);
+        });
+
+        const refreshed = await refreshMcpConnectorTools(connectorId);
+        replaceConnector(refreshed);
+        return refreshed;
+    };
+
+    const handleCreate = async () => {
+        await runSensitiveAction({ type: "create" }, async () => {
+            setBusyKey("create");
+            setAddStep("working");
+            setAddError(null);
+            setAddAuthMessage(null);
+            try {
+                const headers = parseCustomHeaders(addDraft.customHeaders);
+                const connector = await createMcpConnector({
+                    name: addDraft.name,
+                    serverUrl: addDraft.serverUrl,
+                    bearerToken: addDraft.bearerToken.trim() || null,
+                    ...(headers ? { headers } : {}),
+                });
+                let refreshed: McpConnectorSummary;
+                try {
+                    refreshed = await refreshMcpConnectorTools(connector.id);
+                } catch (err) {
+                    if (
+                        err instanceof MikeApiError &&
+                        err.code === "oauth_required"
+                    ) {
+                        replaceConnector(connector);
+                        setAddAuthMessage(
+                            "Complete authorization in the popup to finish connecting this MCP server.",
+                        );
+                        setAddStep("auth");
+                        const authorized = await connectConnectorOAuth(
+                            connector.id,
+                        );
+                        if (authorized) {
+                            setAddAuthMessage(null);
+                            setAddResult(authorized);
+                            setAddStep("success");
+                        }
+                        return;
+                    }
+                    throw err;
+                }
+                replaceConnector(refreshed);
+                if (isGoogleMcpConnector(refreshed) && !refreshed.oauthConnected) {
+                    setAddAuthMessage(
+                        "Authorize Google in the popup to finish connecting this MCP server.",
+                    );
+                    setAddStep("auth");
+                    const authorized = await connectConnectorOAuth(refreshed.id);
+                    if (authorized) {
+                        setAddAuthMessage(null);
+                        setAddResult(authorized);
+                        setAddStep("success");
+                    }
+                    return;
+                }
+                setAddResult(refreshed);
+                setAddStep("success");
+            } catch (err) {
+                setAddStep("form");
+                setAddAuthMessage(null);
+                setAddError(
+                    err instanceof Error
+                        ? err.message
+                        : "Failed to add connector.",
+                );
+            } finally {
+                setBusyKey(null);
+            }
+        });
+    };
+
+    const handleSaveSelectedConnector = async () => {
+        if (!selectedConnector) return;
+        await runSensitiveAction(
+            { type: "save", connectorId: selectedConnector.id },
+            async () => {
+                setBusyKey(`save:${selectedConnector.id}`);
+                setDetailError(null);
+                try {
+                    const headers = parseCustomHeaders(
+                        detailDraft.customHeaders,
+                    );
+                    const saved = await updateMcpConnector(selectedConnector.id, {
+                        name: detailDraft.name,
+                        serverUrl: detailDraft.serverUrl,
+                        ...(detailDraft.bearerToken.trim()
+                            ? { bearerToken: detailDraft.bearerToken.trim() }
+                            : {}),
+                        ...(headers ? { headers } : {}),
+                    });
+                    const shouldRefreshTools =
+                        saved.serverUrl !== selectedConnector.serverUrl ||
+                        !!detailDraft.bearerToken.trim() ||
+                        !!headers;
+                    const refreshed = shouldRefreshTools
+                            ? await refreshMcpConnectorTools(saved.id)
+                            : saved;
+                    replaceConnector(refreshed, {
+                        preserveToolsOnEmpty: !shouldRefreshTools,
+                    });
+                    setDetailDraft({
+                        name: refreshed.name,
+                        serverUrl: refreshed.serverUrl,
+                        bearerToken: "",
+                        customHeaders: "",
+                        clearBearerToken: false,
+                    });
+                } finally {
+                    setBusyKey(null);
+                }
+            },
+        );
+    };
+
+    const handleClearBearerToken = async (connectorId: string) => {
+        await runSensitiveAction(
+            { type: "clear-token", connectorId },
+            async () => {
+                setBusyKey(`clear-token:${connectorId}`);
+                setDetailError(null);
+                setClearedBearerTokenConnectorId(null);
+                try {
+                    const saved = await updateMcpConnector(connectorId, {
+                        bearerToken: null,
+                    });
+                    replaceConnector(saved, { preserveToolsOnEmpty: true });
+                    setDetailDraft((prev) => ({
+                        ...prev,
+                        bearerToken: "",
+                        clearBearerToken: false,
+                    }));
+                    setClearedBearerTokenConnectorId(connectorId);
+                } finally {
+                    setBusyKey(null);
+                }
+            },
+        );
+    };
+
+    const handleRefresh = async (connectorId: string) => {
+        await runSensitiveAction({ type: "refresh", connectorId }, async () => {
+            setBusyKey(`refresh:${connectorId}`);
+            try {
+                try {
+                    replaceConnector(await refreshMcpConnectorTools(connectorId));
+                } catch (err) {
+                    if (
+                        err instanceof MikeApiError &&
+                            err.code === "oauth_required"
+                    ) {
+                        await connectConnectorOAuth(connectorId);
+                        return;
+                    }
+                    throw err;
+                }
+            } finally {
+                setBusyKey(null);
+            }
+        });
+    };
+
+    const handleConnectorEnabled = async (
+        connectorId: string,
+        enabled: boolean,
+    ) => {
+        await runSensitiveAction(
+            { type: "connector-enabled", connectorId, enabled },
+            async () => {
+                setBusyKey(`connector:${connectorId}`);
+                try {
+                    replaceConnector(
+                        await updateMcpConnector(connectorId, { enabled }),
+                        { preserveToolsOnEmpty: true },
+                    );
+                } finally {
+                    setBusyKey(null);
+                }
+            },
+        );
+    };
+
+    const handleToolEnabled = async (
+        connectorId: string,
+        toolId: string,
+        enabled: boolean,
+    ) => {
+        await runSensitiveAction(
+            { type: "tool-enabled", connectorId, toolId, enabled },
+            async () => {
+                setBusyKey(`tool:${toolId}`);
+                try {
+                    replaceConnector(
+                        await setMcpToolEnabled(connectorId, toolId, enabled),
+                    );
+                } finally {
+                    setBusyKey(null);
+                }
+            },
+        );
+    };
+
+    const handleDelete = async (connectorId: string) => {
+        await runSensitiveAction({ type: "delete", connectorId }, async () => {
+            setBusyKey(`delete:${connectorId}`);
+            try {
+                await deleteMcpConnector(connectorId);
+                setConnectors((prev) =>
+                    prev.filter((item) => item.id !== connectorId),
+                );
+                if (selectedConnectorId === connectorId) {
+                    setSelectedConnectorId(null);
+                    setSelectedConnectorDetails(null);
+                }
+            } finally {
+                setBusyKey(null);
+            }
+        });
+    };
+
+    const handleMfaVerified = async () => {
+        const action = pendingMfaAction;
+        setPendingMfaAction(null);
+        if (!action) return;
+        if (action.type === "create") await handleCreate();
+        if (action.type === "save") await handleSaveSelectedConnector();
+        if (action.type === "clear-token") {
+            await handleClearBearerToken(action.connectorId);
+        }
+        if (action.type === "refresh") await handleRefresh(action.connectorId);
+        if (action.type === "delete") await handleDelete(action.connectorId);
+        if (action.type === "connector-enabled") {
+            await handleConnectorEnabled(action.connectorId, action.enabled);
+        }
+        if (action.type === "tool-enabled") {
+            await handleToolEnabled(
+                action.connectorId,
+                action.toolId,
+                action.enabled,
+            );
+        }
+    };
+
+    return (
+        <div>
+            <div className="mb-4">
+                <div className="flex items-center justify-between gap-3">
+                    <h2 className="font-serif text-2xl font-medium text-gray-900">
+                        Connectors
+                    </h2>
+                    <button
+                        type="button"
+                        onClick={() => setAddOpen(true)}
+                        className={`inline-flex h-9 items-center gap-1.5 text-sm ${accountGlassPrimaryButtonClassName}`}
+                    >
+                        <Plus className="h-4 w-4" />
+                        Add
+                    </button>
+                </div>
+            </div>
+
+            {error && (
+                <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {error}
+                </div>
+            )}
+
+            <div className="space-y-3">
+                {loading ? (
+                    <ConnectorsSkeleton />
+                ) : connectors.length === 0 ? (
+                    <AccountSection className="p-4">
+                        <p className="text-sm text-gray-500">
+                            No connectors yet.
+                        </p>
+                    </AccountSection>
+                ) : (
+                    connectors.map((connector) => (
+                        <ConnectorRow
+                            key={connector.id}
+                            connector={connector}
+                            busyKey={busyKey}
+                            onOpen={() => void openConnectorDetails(connector.id)}
+                            onConnectorEnabled={handleConnectorEnabled}
+                        />
+                    ))
+                )}
+            </div>
+
+            <AddMcpConnectorModal
+                open={addOpen}
+                draft={addDraft}
+                step={addStep}
+                result={addResult}
+                error={addError}
+                authMessage={addAuthMessage}
+                showToken={showAddToken}
+                showAdvanced={showAddAdvanced}
+                onDraftChange={setAddDraft}
+                onShowTokenChange={setShowAddToken}
+                onShowAdvancedChange={setShowAddAdvanced}
+                onClose={closeAddModal}
+                onSubmit={handleCreate}
+                onOpenConnector={(connectorId) => {
+                    void openConnectorDetails(connectorId);
+                    closeAddModal();
+                }}
+            />
+
+            <McpConnectorDetailsModal
+                connector={selectedConnector}
+                draft={detailDraft}
+                error={detailError}
+                busyKey={busyKey}
+                toolsLoading={loadingConnectorId === selectedConnectorId}
+                clearTokenStatus={
+                    selectedConnectorId &&
+                    busyKey === `clear-token:${selectedConnectorId}`
+                        ? "clearing"
+                        : selectedConnectorId === clearedBearerTokenConnectorId
+                          ? "cleared"
+                          : "idle"
+                }
+                showToken={showDetailToken}
+                showAdvanced={showDetailAdvanced}
+                onDraftChange={setDetailDraft}
+                onShowTokenChange={setShowDetailToken}
+                onShowAdvancedChange={setShowDetailAdvanced}
+                onClose={() => {
+                    setSelectedConnectorId(null);
+                    setSelectedConnectorDetails(null);
+                }}
+                onSave={handleSaveSelectedConnector}
+                onClearBearerToken={handleClearBearerToken}
+                onRefresh={handleRefresh}
+                onDelete={handleDelete}
+                onConnectorEnabled={handleConnectorEnabled}
+                onToolEnabled={handleToolEnabled}
+            />
+
+            <MfaVerificationPopup
+                open={!!pendingMfaAction}
+                onCancel={() => setPendingMfaAction(null)}
+                onVerified={() => void handleMfaVerified()}
+            />
+        </div>
+    );
+}
+
+function ConnectorsSkeleton() {
+    return (
+        <>
+            {Array.from({ length: 3 }).map((_, index) => (
+                <AccountSection key={index} className="px-4 py-3">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-3">
+                        <div className="flex min-h-5 min-w-0 items-center gap-2">
+                            <div className="h-3.5 w-28 animate-pulse rounded bg-gray-100" />
+                            <div className="h-1 w-1 rounded-full bg-gray-100" />
+                            <div className="h-3 w-12 animate-pulse rounded bg-gray-100" />
+                        </div>
+                        <div className="flex min-h-5 shrink-0 items-center justify-self-end gap-1.5">
+                            <div className="h-3 w-12 animate-pulse rounded bg-gray-100" />
+                            <div className="h-4 w-7 animate-pulse rounded-full bg-gray-100" />
+                        </div>
+                        <div className="flex min-h-4 min-w-0 items-center">
+                            <div className="h-3 w-full max-w-sm animate-pulse rounded bg-gray-100" />
+                        </div>
+                        <div className="flex min-h-4 items-center justify-self-end">
+                            <div className="h-3 w-12 animate-pulse rounded bg-gray-100" />
+                        </div>
+                    </div>
+                </AccountSection>
+            ))}
+        </>
+    );
+}
+
+function ConnectorRow({
+    connector,
+    busyKey,
+    onOpen,
+    onConnectorEnabled,
+}: {
+    connector: McpConnectorSummary;
+    busyKey: string | null;
+    onOpen: () => void;
+    onConnectorEnabled: (
+        connectorId: string,
+        enabled: boolean,
+    ) => Promise<void>;
+}) {
+    const toolCount = connector.toolCount ?? connector.tools.length;
+
+    return (
+        <AccountSection
+            className="cursor-pointer px-4 py-3 transition-colors hover:bg-white/70"
+            role="button"
+            tabIndex={0}
+            onClick={onOpen}
+            onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onOpen();
+                }
+            }}
+        >
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-3">
+                <div className="min-w-0 text-left">
+                    <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-gray-900">
+                        <span className="truncate">{connector.name}</span>
+                        <span className="h-1 w-1 rounded-full bg-gray-300" />
+                        <span className="shrink-0 text-xs font-medium text-gray-500">
+                            {toolCount} {toolCount === 1 ? "tool" : "tools"}
+                        </span>
+                    </h3>
+                </div>
+                <div
+                    className="shrink-0 justify-self-end"
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <AccountToggle
+                        checked={connector.enabled}
+                        disabled={busyKey === `connector:${connector.id}`}
+                        loading={busyKey === `connector:${connector.id}`}
+                        label={connector.enabled ? "Enabled" : "Disabled"}
+                        onChange={(enabled) =>
+                            void onConnectorEnabled(connector.id, enabled)
+                        }
+                    />
+                </div>
+                <p className="min-w-0 truncate text-xs text-gray-500">
+                    {connector.serverUrl}
+                </p>
+                <button
+                    type="button"
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        onOpen();
+                    }}
+                    className="shrink-0 justify-self-end text-xs font-medium text-gray-500 transition-colors hover:text-gray-950"
+                >
+                    Details
+                </button>
+            </div>
+        </AccountSection>
+    );
+}
+
+function AddMcpConnectorModal({
+    open,
+    draft,
+    step,
+    result,
+    error,
+    authMessage,
+    showToken,
+    showAdvanced,
+    onDraftChange,
+    onShowTokenChange,
+    onShowAdvancedChange,
+    onClose,
+    onSubmit,
+    onOpenConnector,
+}: {
+    open: boolean;
+    draft: AddDraft;
+    step: AddStep;
+    result: McpConnectorSummary | null;
+    error: string | null;
+    authMessage: string | null;
+    showToken: boolean;
+    showAdvanced: boolean;
+    onDraftChange: (draft: AddDraft) => void;
+    onShowTokenChange: (show: boolean) => void;
+    onShowAdvancedChange: (show: boolean) => void;
+    onClose: () => void;
+    onSubmit: () => Promise<void>;
+    onOpenConnector: (connectorId: string) => void;
+}) {
+    const canSubmit =
+        draft.name.trim().length > 0 &&
+        draft.serverUrl.trim().length > 0 &&
+        step !== "working" &&
+        step !== "auth";
+
+    return (
+        <Modal
+            open={open}
+            onClose={onClose}
+            breadcrumbs={[
+                "Connectors",
+                step === "success"
+                    ? "Connector added"
+                    : step === "auth"
+                      ? "Authenticate connector"
+                      : "Add MCP connector",
+            ]}
+            size="lg"
+            primaryAction={
+                step === "success" && result
+                    ? {
+                          label: "View connector",
+                          onClick: () => onOpenConnector(result.id),
+                      }
+                    : {
+                          label:
+                              step === "working"
+                                  ? "Connecting..."
+                                  : step === "auth"
+                                    ? "Authorizing..."
+                                  : "Connect",
+                          icon:
+                              step === "working" || step === "auth" ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : undefined,
+                          onClick: () => void onSubmit(),
+                          disabled: !canSubmit,
+                      }
+            }
+            cancelAction={
+                step === "working" || step === "auth"
+                    ? false
+                    : { label: step === "success" ? "Done" : "Cancel", onClick: onClose }
+            }
+            footerStatus={
+                error ? (
+                    <div className="rounded-xl border border-white/70 bg-white/75 px-3 py-2 text-sm text-red-600 shadow-[0_12px_32px_rgba(15,23,42,0.10),inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl">
+                        {error}
+                    </div>
+                ) : null
+            }
+        >
+            {step === "success" && result ? (
+                <SuccessToolsList connector={result} />
+            ) : step === "auth" ? (
+                <ConnectorAuthScreen
+                    message={
+                        authMessage ??
+                        "Complete authorization in the popup to finish connecting this MCP server."
+                    }
+                />
+            ) : (
+                <div className="space-y-4 pb-4">
+                    <p className="text-sm text-gray-500">
+                        The assistant will have access to this MCP server and
+                        its enabled tools.
+                    </p>
+                    <ConnectorForm
+                        draft={draft}
+                        showToken={showToken}
+                        showAdvanced={showAdvanced}
+                        showTokenNote
+                        tokenPlaceholder="Bearer token"
+                        disabled={step === "working"}
+                        onDraftChange={(next) =>
+                            onDraftChange({
+                                name: next.name,
+                                serverUrl: next.serverUrl,
+                                bearerToken: next.bearerToken,
+                                customHeaders: next.customHeaders,
+                            })
+                        }
+                        onShowTokenChange={onShowTokenChange}
+                        onShowAdvancedChange={onShowAdvancedChange}
+                    />
+                </div>
+            )}
+        </Modal>
+    );
+}
+
+function McpConnectorDetailsModal({
+    connector,
+    draft,
+    error,
+    busyKey,
+    toolsLoading,
+    clearTokenStatus,
+    showToken,
+    showAdvanced,
+    onDraftChange,
+    onShowTokenChange,
+    onShowAdvancedChange,
+    onClose,
+    onSave,
+    onClearBearerToken,
+    onRefresh,
+    onDelete,
+    onConnectorEnabled,
+    onToolEnabled,
+}: {
+    connector: McpConnectorSummary | null;
+    draft: DetailDraft;
+    error: string | null;
+    busyKey: string | null;
+    toolsLoading: boolean;
+    clearTokenStatus: "idle" | "clearing" | "cleared";
+    showToken: boolean;
+    showAdvanced: boolean;
+    onDraftChange: (draft: DetailDraft) => void;
+    onShowTokenChange: (show: boolean) => void;
+    onShowAdvancedChange: (show: boolean) => void;
+    onClose: () => void;
+    onSave: () => Promise<void>;
+    onClearBearerToken: (connectorId: string) => Promise<void>;
+    onRefresh: (connectorId: string) => Promise<void>;
+    onDelete: (connectorId: string) => Promise<void>;
+    onConnectorEnabled: (
+        connectorId: string,
+        enabled: boolean,
+    ) => Promise<void>;
+    onToolEnabled: (
+        connectorId: string,
+        toolId: string,
+        enabled: boolean,
+    ) => Promise<void>;
+}) {
+    const hasChanges =
+        !!connector &&
+        (draft.name.trim() !== connector.name ||
+            draft.serverUrl.trim() !== connector.serverUrl ||
+            draft.bearerToken.trim().length > 0 ||
+            draft.customHeaders.trim().length > 0);
+    const isSaving = !!connector && busyKey === `save:${connector.id}`;
+
+    return (
+        <Modal
+            open={!!connector}
+            onClose={onClose}
+            breadcrumbs={["Connectors", connector?.name ?? "MCP connector"]}
+            headerAction={
+                connector ? (
+                    <AccountToggle
+                        checked={connector.enabled}
+                        disabled={busyKey === `connector:${connector.id}`}
+                        loading={busyKey === `connector:${connector.id}`}
+                        label={connector.enabled ? "Enabled" : "Disabled"}
+                        onChange={(enabled) =>
+                            void onConnectorEnabled(connector.id, enabled)
+                        }
+                    />
+                ) : null
+            }
+            size="md"
+            secondaryAction={
+                connector
+                    ? {
+                          label: "Delete connector",
+                          variant: "danger",
+                          onClick: () => void onDelete(connector.id),
+                          disabled: busyKey === `delete:${connector.id}`,
+                      }
+                    : undefined
+            }
+            primaryAction={{
+                label: isSaving ? "Saving..." : "Save",
+                icon: isSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                ) : undefined,
+                onClick: () => void onSave(),
+                disabled:
+                    !connector ||
+                    !hasChanges ||
+                    isSaving ||
+                    !draft.name.trim() ||
+                    !draft.serverUrl.trim(),
+            }}
+            cancelAction={{ label: "Close", onClick: onClose }}
+            footerStatus={
+                error ? (
+                    <span className="text-sm text-red-600">{error}</span>
+                ) : null
+            }
+        >
+            {connector && (
+                <div className="flex min-h-0 flex-1 flex-col gap-5 pb-4">
+                    <ConnectorForm
+                        draft={draft}
+                        showToken={showToken}
+                        showAdvanced={showAdvanced}
+                        tokenPlaceholder={
+                            connector.hasAuthConfig
+                                ? "Saved token encrypted"
+                                : "Bearer token"
+                        }
+                        tokenAction={
+                            connector.hasAuthConfig ||
+                            clearTokenStatus === "cleared"
+                                ? {
+                                      label:
+                                          clearTokenStatus === "cleared"
+                                              ? "Cleared"
+                                              : "Clear",
+                                      loading:
+                                          clearTokenStatus === "clearing",
+                                      cleared:
+                                          clearTokenStatus === "cleared",
+                                      onClick: () =>
+                                          void onClearBearerToken(connector.id),
+                                  }
+                                : undefined
+                        }
+                        onDraftChange={(next) =>
+                            onDraftChange({
+                                ...draft,
+                                name: next.name,
+                                serverUrl: next.serverUrl,
+                                bearerToken: next.bearerToken,
+                                customHeaders: next.customHeaders,
+                            })
+                        }
+                        onShowTokenChange={onShowTokenChange}
+                        onShowAdvancedChange={onShowAdvancedChange}
+                    />
+                    <div className="flex min-h-0 flex-1 flex-col">
+                        <div className="mb-2 flex items-center justify-between">
+                            <h3 className="text-xs font-medium text-gray-500">
+                                {toolsLoading
+                                    ? connector.toolCount
+                                    : connector.tools.length}{" "}
+                                {(toolsLoading
+                                    ? connector.toolCount
+                                    : connector.tools.length) === 1
+                                    ? "Tool"
+                                    : "Tools"}
+                            </h3>
+                            <div className="flex items-center">
+                                <button
+                                    type="button"
+                                    onClick={() => void onRefresh(connector.id)}
+                                    disabled={
+                                        busyKey === `refresh:${connector.id}`
+                                    }
+                                    className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 transition-colors hover:text-gray-900 disabled:cursor-not-allowed disabled:text-gray-300"
+                                >
+                                    {busyKey === `refresh:${connector.id}` ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                        <RefreshCw className="h-3.5 w-3.5" />
+                                    )}
+                                    Refresh
+                                </button>
+                            </div>
+                        </div>
+                        {toolsLoading ? (
+                            <ToolListSkeleton count={connector.toolCount} fill />
+                        ) : (
+                            <ScrollableToolList
+                                connector={connector}
+                                busyKey={busyKey}
+                                onToolEnabled={onToolEnabled}
+                                fill
+                            />
+                        )}
+                    </div>
+                </div>
+            )}
+        </Modal>
+    );
+}
+
+function ConnectorForm({
+    draft,
+    showToken,
+    showAdvanced,
+    showTokenNote = false,
+    tokenPlaceholder,
+    tokenAction,
+    disabled = false,
+    onDraftChange,
+    onShowTokenChange,
+    onShowAdvancedChange,
+}: {
+    draft: AddDraft;
+    showToken: boolean;
+    showAdvanced: boolean;
+    showTokenNote?: boolean;
+    tokenPlaceholder: string;
+    tokenAction?: {
+        label: string;
+        active?: boolean;
+        loading?: boolean;
+        cleared?: boolean;
+        onClick: () => void;
+    };
+    disabled?: boolean;
+    onDraftChange: (draft: AddDraft) => void;
+    onShowTokenChange: (show: boolean) => void;
+    onShowAdvancedChange: (show: boolean) => void;
+}) {
+    return (
+        <div className="grid gap-3 pt-1">
+            <label className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-center">
+                <span className="text-xs font-medium text-gray-500">
+                    Label
+                </span>
+                <Input
+                    value={draft.name}
+                    onChange={(event) =>
+                        onDraftChange({ ...draft, name: event.target.value })
+                    }
+                    placeholder="Connector label"
+                    className={`h-8 text-sm ${accountGlassInputClassName}`}
+                    disabled={disabled}
+                />
+            </label>
+            <label className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-center">
+                <span className="text-xs font-medium text-gray-500">
+                    URL endpoint
+                </span>
+                <Input
+                    value={draft.serverUrl}
+                    onChange={(event) =>
+                        onDraftChange({
+                            ...draft,
+                            serverUrl: event.target.value,
+                        })
+                    }
+                    placeholder="https://mcp.example.com/mcp"
+                    className={`h-8 text-sm ${accountGlassInputClassName}`}
+                    disabled={disabled}
+                />
+            </label>
+            <div className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-start">
+                <span className="pt-2 text-xs font-medium text-gray-500">
+                    Bearer token
+                </span>
+                <div className="min-w-0">
+                    <div className="relative">
+                        <Input
+                            value={draft.bearerToken}
+                            onChange={(event) =>
+                                onDraftChange({
+                                    ...draft,
+                                    bearerToken: event.target.value,
+                                })
+                            }
+                            type={showToken ? "text" : "password"}
+                            placeholder={tokenPlaceholder}
+                            className={`h-8 ${
+                                tokenAction
+                                    ? draft.bearerToken
+                                        ? "pr-[6.5rem]"
+                                        : "pr-16"
+                                    : "pr-10"
+                            } text-sm ${accountGlassInputClassName}`}
+                            autoComplete="off"
+                            spellCheck={false}
+                            disabled={disabled}
+                        />
+                        {draft.bearerToken && (
+                            <button
+                                type="button"
+                                className={`absolute inset-y-1 ${
+                                    tokenAction ? "right-[3.75rem]" : "right-1.5"
+                                } flex items-center ${accountGlassIconButtonClassName}`}
+                                onClick={() => onShowTokenChange(!showToken)}
+                                aria-label={
+                                    showToken ? "Hide token" : "Show token"
+                                }
+                                disabled={disabled}
+                            >
+                                {showToken ? (
+                                    <EyeOff className="h-4 w-4" />
+                                ) : (
+                                    <Eye className="h-4 w-4" />
+                                )}
+                            </button>
+                        )}
+                        {tokenAction && (
+                            <button
+                                type="button"
+                                onClick={tokenAction.onClick}
+                                disabled={
+                                    disabled ||
+                                    tokenAction.loading ||
+                                    tokenAction.cleared
+                                }
+                                className={`absolute inset-y-1 right-1.5 px-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:text-gray-300 ${
+                                    tokenAction.active || tokenAction.cleared
+                                        ? "text-red-600 hover:text-red-700"
+                                        : "text-gray-500 hover:text-gray-900"
+                                }`}
+                            >
+                                <span className="inline-flex items-center gap-1">
+                                    {tokenAction.label}
+                                    {tokenAction.loading && (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                    )}
+                                </span>
+                            </button>
+                        )}
+                    </div>
+                    {showTokenNote && (
+                        <p className="mt-1 text-right text-xs text-gray-500">
+                            Tokens are stored encrypted.
+                        </p>
+                    )}
+                </div>
+            </div>
+            <div className="grid gap-2">
+                <button
+                    type="button"
+                    onClick={() => onShowAdvancedChange(!showAdvanced)}
+                    className="inline-flex items-center gap-1 justify-self-start text-xs font-medium text-gray-500 transition-colors hover:text-gray-900"
+                    disabled={disabled}
+                >
+                    Advanced
+                    <ChevronDown
+                        className={`h-3.5 w-3.5 transition-transform ${
+                            showAdvanced ? "" : "-rotate-90"
+                        }`}
+                    />
+                </button>
+                {showAdvanced && (
+                    <label className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-start">
+                        <span className="text-xs font-medium text-gray-500">
+                            Custom headers
+                        </span>
+                        <div className="min-w-0">
+                            <textarea
+                                value={draft.customHeaders}
+                                onChange={(event) =>
+                                    onDraftChange({
+                                        ...draft,
+                                        customHeaders: event.target.value,
+                                    })
+                                }
+                                placeholder='{"X-API-Key":"secret"}'
+                                className={`min-h-20 w-full resize-y rounded-lg px-3 py-2 text-sm outline-none ${accountGlassInputClassName}`}
+                                autoComplete="off"
+                                spellCheck={false}
+                                disabled={disabled}
+                            />
+                            <p className="mt-1 text-right text-xs text-gray-500">
+                                Secrets are stored encrypted.
+                            </p>
+                        </div>
+                    </label>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function SuccessToolsList({ connector }: { connector: McpConnectorSummary }) {
+    return (
+        <div className="flex h-full min-h-0 flex-1 flex-col gap-4 pb-4">
+            <div className="flex items-start gap-3 rounded-xl border border-green-100/80 bg-green-50/80 px-3 py-3 text-green-800 shadow-[0_3px_9px_rgba(15,23,42,0.03),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-4px_9px_rgba(255,255,255,0.05)] backdrop-blur-xl">
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+                <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                        {connector.name} is connected.{" "}
+                        <span className="font-normal text-green-700">
+                        {connector.tools.length} tools discovered.
+                        </span>
+                    </p>
+                </div>
+            </div>
+            <ScrollableToolList connector={connector} fill />
+        </div>
+    );
+}
+
+function ConnectorAuthScreen({ message }: { message: string }) {
+    return (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 pb-4 text-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/70 bg-white/75 text-gray-700 shadow-[0_3px_9px_rgba(15,23,42,0.03),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-4px_9px_rgba(255,255,255,0.05)] backdrop-blur-xl">
+                <Loader2 className="h-4 w-4 animate-spin" />
+            </div>
+            <div className="max-w-sm space-y-1">
+                <h3 className="text-sm font-medium text-gray-900">
+                    Authentication required
+                </h3>
+                <p className="text-sm text-gray-500">{message}</p>
+            </div>
+        </div>
+    );
+}
+
+function ToolListSkeleton({
+    count,
+    fill = false,
+}: {
+    count: number;
+    fill?: boolean;
+}) {
+    const rowCount = Math.min(Math.max(count || 3, 3), 8);
+    return (
+        <div
+            className={`overflow-hidden rounded-lg border border-gray-100 bg-white/60 ${
+                fill ? "min-h-0 flex-1" : "max-h-72"
+            }`}
+        >
+            <div className="divide-y divide-gray-100">
+                {Array.from({ length: rowCount }).map((_, index) => (
+                    <div key={index} className="px-3 py-2">
+                        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
+                            <div className="h-5 w-5" />
+                            <div className="h-3.5 w-full max-w-[220px] animate-pulse rounded bg-gray-100" />
+                            <div className="h-4 w-7 animate-pulse rounded-full bg-gray-100" />
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function ScrollableToolList({
+    connector,
+    busyKey,
+    onToolEnabled,
+    fill = false,
+}: {
+    connector: McpConnectorSummary;
+    busyKey?: string | null;
+    onToolEnabled?: (
+        connectorId: string,
+        toolId: string,
+        enabled: boolean,
+    ) => Promise<void>;
+    fill?: boolean;
+}) {
+    const [expandedToolId, setExpandedToolId] = useState<string | null>(null);
+
+    if (connector.tools.length === 0) {
+        return (
+            <div
+                className={`rounded-lg bg-gray-50 px-3 py-3 text-sm text-gray-500 ${
+                    fill ? "min-h-0 flex-1" : ""
+                }`}
+            >
+                No tools discovered yet.
+            </div>
+        );
+    }
+
+    return (
+        <div
+            className={`overflow-y-auto rounded-lg border border-gray-100 bg-white/60 ${
+                fill ? "min-h-0 flex-1" : "max-h-72"
+            }`}
+        >
+            <div className="divide-y divide-gray-100">
+                {connector.tools.map((tool) => {
+                    const disabled =
+                        !onToolEnabled ||
+                        busyKey === `tool:${tool.id}` ||
+                        tool.requiresConfirmation;
+                    const isExpanded = expandedToolId === tool.id;
+                    const toolLabel = tool.title || tool.toolName;
+                    return (
+                        <div key={tool.id} className="px-3 py-2">
+                            <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setExpandedToolId(
+                                            isExpanded ? null : tool.id,
+                                        )
+                                    }
+                                    className="inline-flex h-5 w-5 items-center justify-center text-gray-400 transition-colors hover:text-gray-800"
+                                    aria-label={`${
+                                        isExpanded ? "Collapse" : "Expand"
+                                    } ${toolLabel}`}
+                                >
+                                    <ChevronDown
+                                        className={`h-3.5 w-3.5 transition-transform ${
+                                            isExpanded ? "" : "-rotate-90"
+                                        }`}
+                                    />
+                                </button>
+                                <p className="min-w-0 truncate text-sm font-medium text-gray-800">
+                                    {toolLabel}
+                                </p>
+                                {onToolEnabled ? (
+                                    <AccountToggle
+                                        checked={tool.enabled}
+                                        disabled={disabled}
+                                        loading={busyKey === `tool:${tool.id}`}
+                                        onChange={(enabled) =>
+                                            void onToolEnabled(
+                                                connector.id,
+                                                tool.id,
+                                                enabled,
+                                            )
+                                        }
+                                    />
+                                ) : (
+                                    <span
+                                        className={`text-xs font-medium ${
+                                            tool.enabled
+                                                ? "text-green-600"
+                                                : "text-gray-500"
+                                        }`}
+                                    >
+                                        {tool.enabled ? "Enabled" : "Disabled"}
+                                    </span>
+                                )}
+                            </div>
+                            {isExpanded && (
+                                <div className="ml-7 mt-2 min-w-0">
+                                    {tool.requiresConfirmation && (
+                                        <p className="text-xs font-medium text-amber-700">
+                                            Confirmation required
+                                        </p>
+                                    )}
+                                    {tool.description && (
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            {tool.description}
+                                        </p>
+                                    )}
+                                    <p className="mt-1 break-all font-mono text-[11px] text-gray-400">
+                                        {tool.openaiToolName}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}

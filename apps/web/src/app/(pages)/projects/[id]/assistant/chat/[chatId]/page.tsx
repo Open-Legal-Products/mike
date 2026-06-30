@@ -15,7 +15,7 @@ import {
     ChevronRight,
     FileText,
     Loader2,
-    Plus,
+    Pencil,
     Trash2,
     Upload,
     X,
@@ -46,13 +46,15 @@ import { MikeIcon } from "@/components/chat/mike-icon";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import { useSidebar } from "@/app/contexts/SidebarContext";
+import { PageHeader } from "@/app/components/shared/PageHeader";
+import { HeaderActionsMenu } from "@/app/components/shared/HeaderActionsMenu";
 import type {
     CitationQuote,
-    MikeCitationAnnotation,
-    MikeDocument,
-    MikeEditAnnotation,
-    MikeMessage,
-    MikeProject,
+    CitationAnnotation,
+    Document,
+    EditAnnotation,
+    Message,
+    Project,
 } from "@/app/components/shared/types";
 import { expandCitationToEntries } from "@/app/components/shared/types";
 
@@ -206,7 +208,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
     const username =
         profile?.displayName?.trim() || user?.email?.split("@")[0] || "there";
 
-    const [project, setProject] = useState<MikeProject | null>(null);
+    const [project, setProject] = useState<Project | null>(null);
     const [chatTitle, setChatTitle] = useState<string | null>(null);
     const [chatOwnerId, setChatOwnerId] = useState<string | null>(null);
     const [ownerOnlyAction, setOwnerOnlyAction] = useState<string | null>(null);
@@ -253,8 +255,9 @@ export default function ProjectAssistantChatPage({ params }: Props) {
         setNewChatMessages,
         chats,
         saveChat,
+        renameChat: renameChatInHistory,
     } = useChatHistoryContext();
-    const [initialMessages] = useState<MikeMessage[]>(newChatMessages ?? []);
+    const [initialMessages] = useState<Message[]>(newChatMessages ?? []);
     const { messages, isResponseLoading, handleChat, setMessages, cancel } =
         useAssistantChat({ initialMessages, chatId, projectId });
 
@@ -336,7 +339,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                 setChatOwnerId(chat.user_id ?? null);
                 if (loaded.length > 0) setMessages(loaded);
             })
-            .catch(() => router.replace(`/projects/${projectId}?tab=assistant`))
+            .catch(() => router.replace(`/projects/${projectId}/assistant`))
             .finally(() => setChatLoaded(true));
     }, [chatId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -470,7 +473,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
 
     // ── Handlers ──────────────────────────────────────────────────────────────
     const handleSubmit = useCallback(
-        (message: MikeMessage) => {
+        (message: Message) => {
             if (!activeTab) return handleChat(message);
             return handleChat(message, {
                 displayedDoc: {
@@ -482,11 +485,12 @@ export default function ProjectAssistantChatPage({ params }: Props) {
         [activeTab, handleChat],
     );
 
-    const handleDocClick = (doc: MikeDocument) => {
+    const handleDocClick = (doc: Document) => {
         openTab(doc.id, doc.filename);
     };
 
-    const handleCitationClick = (citation: MikeCitationAnnotation) => {
+    const handleCitationClick = (citation: CitationAnnotation) => {
+        if (citation.kind === "case") return;
         openTab(
             citation.document_id,
             citation.filename,
@@ -503,7 +507,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
         openTab(args.documentId, args.filename, undefined, args.versionId);
     };
 
-    const handleEditViewClick = (ann: MikeEditAnnotation, filename: string) => {
+    const handleEditViewClick = (ann: EditAnnotation, filename: string) => {
         openTab(ann.document_id, filename, undefined, ann.version_id ?? null);
         setEditScrollTarget({
             key: `${ann.edit_id}-${Date.now()}`,
@@ -585,10 +589,25 @@ export default function ProjectAssistantChatPage({ params }: Props) {
         setDeletingChat(true);
         try {
             await deleteChat(chatId);
-            router.push(`/projects/${projectId}?tab=assistant`);
+            router.push(`/projects/${projectId}/assistant`);
         } finally {
             setDeletingChat(false);
         }
+    }
+
+    async function handleRenameChat() {
+        if (chatOwnerId && user?.id && chatOwnerId !== user.id) {
+            setOwnerOnlyAction("rename this chat");
+            return;
+        }
+        const nextTitle = window.prompt(
+            "Rename chat",
+            chatTitle ?? "Untitled New Chat",
+        );
+        const trimmed = nextTitle?.trim();
+        if (!trimmed || trimmed === chatTitle) return;
+        setChatTitle(trimmed);
+        await renameChatInHistory(chatId, trimmed);
     }
 
     // ── Upload ────────────────────────────────────────────────────────────────
@@ -753,77 +772,70 @@ export default function ProjectAssistantChatPage({ params }: Props) {
     return (
         <div className="flex flex-col h-full">
             {/* Page header */}
-            <div className="flex items-center justify-between px-8 py-4 shrink-0">
-                <div className="flex items-center gap-1.5 text-2xl font-medium font-serif">
-                    <button
-                        onClick={() => router.push("/projects")}
-                        className="text-gray-500 hover:text-gray-700 transition-colors"
-                    >
-                        Projects
-                    </button>
-                    <span className="text-gray-300">›</span>
-                    {project ? (
-                        <button
-                            onClick={() =>
-                                router.push(`/projects/${projectId}`)
-                            }
-                            className="text-gray-500 hover:text-gray-700 transition-colors"
-                        >
-                            {project.name}
-                            {project.cm_number && (
-                                <span className="ml-1 text-gray-400">
-                                    (#{project.cm_number})
-                                </span>
-                            )}
-                        </button>
-                    ) : (
-                        <div className="h-6 w-32 rounded bg-gray-100 animate-pulse" />
-                    )}
-                    <span className="text-gray-300">›</span>
-                    <button
-                        onClick={() =>
-                            router.push(`/projects/${projectId}?tab=assistant`)
-                        }
-                        className="text-gray-500 hover:text-gray-700 transition-colors"
-                    >
-                        Assistant
-                    </button>
-                    <span className="text-gray-300">›</span>
-                    {chatLoaded ? (
-                        <span className="text-gray-900 truncate max-w-xs">
-                            {chatTitle ?? "Untitled New Chat"}
-                        </span>
-                    ) : (
-                        <div className="h-6 w-40 rounded bg-gray-100 animate-pulse" />
-                    )}
-                </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={handleNewChat}
-                        disabled={creatingChat}
-                        title="New chat"
-                        className="flex items-center justify-center p-1.5 text-gray-500 hover:text-gray-900 transition-colors disabled:opacity-40"
-                    >
-                        {creatingChat ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <Plus className="h-4 w-4" />
-                        )}
-                    </button>
-                    <button
-                        onClick={handleDeleteChat}
-                        disabled={deletingChat}
-                        title="Delete chat"
-                        className="flex items-center justify-center p-1.5 text-gray-500 hover:text-red-600 transition-colors disabled:opacity-40"
-                    >
-                        {deletingChat ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <Trash2 className="h-4 w-4" />
-                        )}
-                    </button>
-                </div>
-            </div>
+            <PageHeader
+                shrink
+                breadcrumbs={[
+                    {
+                        label: "Projects",
+                        onClick: () => router.push("/projects"),
+                    },
+                    project
+                        ? {
+                              label: project.name,
+                              onClick: () =>
+                                  router.push(`/projects/${projectId}/assistant`),
+                              title: "Back to project",
+                          }
+                        : {
+                              loading: true,
+                              skeletonClassName: "w-32",
+                              onClick: () =>
+                                  router.push(`/projects/${projectId}/assistant`),
+                              title: "Back to project",
+                          },
+                    chatLoaded
+                        ? {
+                              label: chatTitle ?? "Untitled New Chat",
+                          }
+                        : {
+                              loading: true,
+                              skeletonClassName: "w-40",
+                          },
+                ]}
+                actions={[
+                    {
+                        type: "new",
+                        onClick: handleNewChat,
+                        loading: creatingChat,
+                        title: "New chat",
+                    },
+                    {
+                        type: "custom",
+                        render: (
+                            <HeaderActionsMenu
+                                items={[
+                                    {
+                                        label: "Rename",
+                                        icon: Pencil,
+                                        onSelect: () =>
+                                            void handleRenameChat(),
+                                    },
+                                    {
+                                        label: deletingChat
+                                            ? "Deleting..."
+                                            : "Delete",
+                                        icon: Trash2,
+                                        onSelect: () =>
+                                            void handleDeleteChat(),
+                                        disabled: deletingChat,
+                                        variant: "danger",
+                                    },
+                                ]}
+                            />
+                        ),
+                    },
+                ]}
+            />
 
             {/* Three-panel body */}
             <div className="flex flex-1 min-h-0 border-t border-gray-200 overflow-hidden">
@@ -1124,8 +1136,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={handleChatDrop}
                 >
-                    <div className="h-10 flex items-center gap-2 px-4 border-b border-gray-200 shrink-0">
-                        <MikeIcon size={16} />
+                    <div className="h-10 flex items-center px-4 border-b border-gray-200 shrink-0">
                         <span className="text-xs text-gray-700">
                             Project Assistant
                         </span>
@@ -1191,6 +1202,9 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                                             }
                                             isError={!!(msg as any).error}
                                             annotations={msg.annotations}
+                                            citationStatus={
+                                                msg.citationStatus
+                                            }
                                             onCitationClick={
                                                 handleCitationClick
                                             }

@@ -7,6 +7,7 @@ import { AlertCircle, Expand } from "lucide-react";
 import type { ColumnConfig, TabularCell as TCell } from "../shared/types";
 import { preprocessCitations, type ParsedCitation } from "./citation-utils";
 import { getPillClass } from "./pillUtils";
+import { SkeletonLine } from "../shared/TablePrimitive";
 
 interface Props {
     cell: TCell;
@@ -21,6 +22,14 @@ const FLAG_STYLES = {
     yellow: "bg-amber-400",
     red: "bg-red-500",
 } as const;
+
+function TabularCellSkeleton() {
+    return (
+        <div className="flex h-10 items-center px-2">
+            <SkeletonLine className="h-3.5 w-full" />
+        </div>
+    );
+}
 
 // Replace citations and pills with inline-code tokens so ReactMarkdown passes
 // them through its `code` component, where we render the final UI.
@@ -171,11 +180,7 @@ export function TabularCell({
     }, [inlineExpanded]);
 
     if (cell.status === "generating") {
-        return (
-            <div className="h-10 px-2 flex items-center">
-                <div className="h-4 w-full rounded bg-gray-100 animate-pulse" />
-            </div>
-        );
+        return <TabularCellSkeleton />;
     }
 
     if (cell.status === "error") {

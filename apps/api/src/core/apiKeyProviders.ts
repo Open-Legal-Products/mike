@@ -11,6 +11,8 @@ const _providerRegistry = new Map<string, ProviderRecord>([
     ["claude", { envVars: ["ANTHROPIC_API_KEY", "CLAUDE_API_KEY"] }],
     ["gemini", { envVars: ["GEMINI_API_KEY"] }],
     ["openai", { envVars: ["OPENAI_API_KEY"] }],
+    ["openrouter", { envVars: ["OPENROUTER_API_KEY"] }],
+    ["courtlistener", { envVars: ["COURTLISTENER_API_TOKEN"] }],
 ]);
 
 /**
@@ -39,7 +41,13 @@ export function getRegisteredProviders(): readonly string[] {
  * Kept for backward compatibility — does NOT include providers registered
  * after module load via registerApiKeyProvider().
  */
-export const API_KEY_PROVIDERS = ["claude", "gemini", "openai"] as const satisfies readonly string[];
+export const API_KEY_PROVIDERS = [
+    "claude",
+    "gemini",
+    "openai",
+    "openrouter",
+    "courtlistener",
+] as const satisfies readonly string[];
 
 export function isApiKeyProvider(value: string): boolean {
     return _providerRegistry.has(value);

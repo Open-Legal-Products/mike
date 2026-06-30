@@ -1,10 +1,10 @@
-import { MODELS, type ModelOption } from "../components/assistant/ModelToggle";
+import { SETTINGS_MODELS, type ModelOption } from "../components/assistant/ModelToggle";
 import type { ApiKeyState } from "@/app/lib/mikeApi";
 
 export type ModelProvider = "claude" | "gemini" | "openai";
 
 export function getModelProvider(modelId: string): ModelProvider | null {
-    const model = MODELS.find((m) => m.id === modelId);
+    const model = SETTINGS_MODELS.find((m) => m.id === modelId);
     if (!model) return null;
     return modelGroupToProvider(model.group);
 }

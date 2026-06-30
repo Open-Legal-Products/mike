@@ -64,6 +64,7 @@ Mike is a self-hosted AI assistant for legal documents. Upload contracts, briefs
 - A [Supabase](https://supabase.com) project (free tier is fine for local dev)
 - A storage bucket: [Cloudflare R2](https://developers.cloudflare.com/r2/), [Google Cloud Storage](#google-cloud-storage), or [MinIO](https://min.io) running locally
 - At least one LLM API key: [Anthropic](https://console.anthropic.com), [Google Gemini](https://aistudio.google.com), or [OpenAI](https://platform.openai.com)
+- Optional: a [CourtListener](https://www.courtlistener.com) API token for US case law lookup and citation verification
 - LibreOffice (only needed for DOC/DOCX → PDF conversion)
 
 ### 1. Clone and install
@@ -177,6 +178,17 @@ Auth uses Application Default Credentials — set `GOOGLE_APPLICATION_CREDENTIAL
 | Variable | Description |
 |---|---|
 | `RESEND_API_KEY` | [Resend](https://resend.com) API key for transactional email |
+
+#### Legal research — CourtListener (optional)
+
+Enables US case law citation verification, case fetching, opinion search, and case-law panels in assistant responses. Configure the token here for the whole instance, or let each user add their own under **Account > Models & API Keys**.
+
+| Variable | Default | Description |
+|---|---|---|
+| `COURTLISTENER_API_TOKEN` | — | [CourtListener](https://www.courtlistener.com) API token for live case law and citation tools |
+| `COURTLISTENER_BULK_DATA_ENABLED` | `false` | When `true`, read locally imported CourtListener bulk data (Supabase tables + R2-cached opinion JSON) before falling back to the live API |
+
+Fresh databases created from `apps/api/schema.sql` already include the CourtListener support tables; existing deployments should apply the matching migration in `supabase/migrations/` before enabling the feature.
 
 ### Frontend (`apps/web/.env.local`)
 
@@ -351,6 +363,12 @@ Add a key for that provider in **Account > Models & API Keys**, or set the provi
 
 **DOC or DOCX conversion fails.**
 Install LibreOffice and restart the backend so the conversion commands are on the process PATH.
+
+**CourtListener tools say the API token is missing.**
+Set `COURTLISTENER_API_TOKEN` in `apps/api/.env`, or add a CourtListener token in **Account > Models & API Keys** for the signed-in user. Restart the backend after changing `.env`.
+
+**CourtListener bulk lookup is not returning local results.**
+Confirm `COURTLISTENER_BULK_DATA_ENABLED=true`, the two CourtListener tables have been populated, and opinion JSON exists in R2 under `courtlistener/opinions/by-cluster/`. If bulk data is unavailable, Mike falls back to the live API when a token is configured.
 
 **Storage upload fails with a credentials error.**
 Check that `R2_ENDPOINT_URL`, `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY` are set correctly (or the GCS equivalents). The API logs will include the error at startup.

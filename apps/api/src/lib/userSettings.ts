@@ -11,12 +11,13 @@ import { getUserApiKeys as getStoredUserApiKeys } from "./userApiKeys";
 export type UserModelSettings = {
     title_model: string;
     tabular_model: string;
+    legal_research_us: boolean;
     api_keys: UserApiKeys;
 };
 
 // Title generation is a lightweight task — always routed to the cheapest model
 // of whichever provider the user has keys for: Gemini Flash Lite if Gemini is
-// available, otherwise OpenAI nano, otherwise Claude Haiku. With no user keys
+// available, otherwise OpenAI lite, otherwise Claude Haiku. With no user keys
 // set, defaults to Gemini (the dev-mode env fallback).
 function resolveTitleModel(apiKeys: UserApiKeys): string {
     if (apiKeys.gemini?.trim()) return DEFAULT_TITLE_MODEL;
@@ -32,14 +33,17 @@ export async function getUserModelSettings(
     const client = db ?? createServerSupabase();
     const { data } = await client
         .from("user_profiles")
-        .select("tabular_model")
+        .select("title_model, tabular_model, legal_research_us")
         .eq("user_id", userId)
         .single();
     const api_keys = await getStoredUserApiKeys(userId, client);
 
     return {
-        title_model: resolveTitleModel(api_keys),
+        title_model: resolveModel(data?.title_model, resolveTitleModel(api_keys)),
         tabular_model: resolveModel(data?.tabular_model, DEFAULT_TABULAR_MODEL),
+        legal_research_us:
+            (data as { legal_research_us?: boolean | null } | null)
+                ?.legal_research_us !== false,
         api_keys,
     };
 }

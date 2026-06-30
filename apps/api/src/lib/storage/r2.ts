@@ -3,6 +3,7 @@ import {
     PutObjectCommand,
     GetObjectCommand,
     DeleteObjectCommand,
+    ListObjectsV2Command,
     HeadBucketCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl as awsGetSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -90,6 +91,26 @@ export class R2StorageAdapter implements StorageAdapter {
         await this.client().send(
             new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
         );
+    }
+
+    async list(prefix: string): Promise<string[]> {
+        if (!this.enabled) return [];
+        const keys: string[] = [];
+        let continuationToken: string | undefined;
+        do {
+            const response = await this.client().send(
+                new ListObjectsV2Command({
+                    Bucket: this.bucket,
+                    Prefix: prefix,
+                    ContinuationToken: continuationToken,
+                }),
+            );
+            for (const item of response.Contents ?? []) {
+                if (item.Key) keys.push(item.Key);
+            }
+            continuationToken = response.NextContinuationToken;
+        } while (continuationToken);
+        return keys;
     }
 
     async getSignedUrl(

@@ -54,7 +54,7 @@
 :root {
     --radius: 0.625rem;
     --color-azure: 0, 136, 255;
-    --background: oklch(1 0 0);
+    --background: oklch(0.985 0 0);
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
     --card-foreground: oklch(0.145 0 0);
@@ -439,6 +439,14 @@
 .docx-view-container span.docx-text-highlight,
 .docx-view-container .docx-text-highlight {
     background-color: rgba(37, 99, 235, 0.35) !important;
+    border-radius: 2px;
+    padding: 0 1px;
+    color: inherit !important;
+}
+
+.case-opinion-content span.docx-text-highlight,
+.case-opinion-content .docx-text-highlight {
+    background-color: rgba(96, 165, 250, 0.55) !important;
     border-radius: 2px;
     padding: 0 1px;
     color: inherit !important;

@@ -9,15 +9,21 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { uploadStandaloneDocument } from "@/app/lib/mikeApi";
-import type { MikeDocument } from "../shared/types";
+import type { Document } from "../shared/types";
 
 interface Props {
-    onSelectDoc: (doc: MikeDocument) => void;
+    onSelectDoc: (doc: Document) => void;
     onBrowseAll: () => void;
     selectedDocIds?: string[];
+    hideLabel?: boolean;
 }
 
-export function AddDocButton({ onSelectDoc, onBrowseAll, selectedDocIds = [] }: Props) {
+export function AddDocButton({
+    onSelectDoc,
+    onBrowseAll,
+    selectedDocIds = [],
+    hideLabel = false,
+}: Props) {
     const [isOpen, setIsOpen] = useState(false);
     const [uploading, setUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -67,7 +73,7 @@ export function AddDocButton({ onSelectDoc, onBrowseAll, selectedDocIds = [] }: 
                                 className={`h-4 w-4 shrink-0 transition-transform duration-300 ${isOpen ? "rotate-[135deg]" : ""}`}
                             />
                         )}
-                        <span className="hidden sm:inline">
+                        <span className={hideLabel ? "hidden" : "hidden sm:inline"}>
                             {selectedDocIds.length === 1
                                 ? "Document"
                                 : "Documents"}

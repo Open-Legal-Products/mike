@@ -1,12 +1,12 @@
 "use client";
 
 import { FileText, File, X, AlertCircle, Loader2 } from "lucide-react";
-import type { MikeDocument } from "./types";
+import type { Document } from "./types";
 
 interface Props {
-  document: MikeDocument;
+  document: Document;
   onRemove?: (id: string) => void;
-  onClick?: (doc: MikeDocument) => void;
+  onClick?: (doc: Document) => void;
   selected?: boolean;
 }
 
@@ -29,6 +29,7 @@ function formatBytes(bytes: number): string {
 export function DocumentCard({ document, onRemove, onClick, selected }: Props) {
   const isError = document.status === "error";
   const isProcessing = document.status === "pending" || document.status === "processing";
+  const filename = document.filename;
 
   return (
     <div
@@ -52,8 +53,8 @@ export function DocumentCard({ document, onRemove, onClick, selected }: Props) {
       )}
 
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium text-gray-800" title={document.filename}>
-          {document.filename}
+        <p className="truncate font-medium text-gray-800" title={filename}>
+          {filename}
         </p>
         <p className="text-xs text-gray-400">
           {isProcessing

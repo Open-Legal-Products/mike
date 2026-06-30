@@ -1,4 +1,5 @@
 const HIGHLIGHT_CLASS = "docx-text-highlight";
+const IGNORED_TEXT_SELECTOR = ".star-pagination,.case-page-number";
 
 function onlyLetters(s: string): string {
     return s.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
@@ -22,6 +23,8 @@ function collectTextNodes(root: HTMLElement): Text[] {
             if (!p) return NodeFilter.FILTER_REJECT;
             const tag = p.tagName;
             if (tag === "STYLE" || tag === "SCRIPT")
+                return NodeFilter.FILTER_REJECT;
+            if (p.closest(IGNORED_TEXT_SELECTOR))
                 return NodeFilter.FILTER_REJECT;
             return NodeFilter.FILTER_ACCEPT;
         },

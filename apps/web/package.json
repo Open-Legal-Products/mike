@@ -35,6 +35,7 @@
         "clsx": "^2.1.1",
         "docx": "^9.6.1",
         "docx-preview": "^0.3.7",
+        "dompurify": "^3.4.8",
         "exceljs": "^4.4.0",
         "katex": "^0.16.27",
         "lucide-react": "^0.553.0",

@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { AlertCircle, Check, ChevronDown, Eye, EyeOff } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useEffect, useRef, useState } from "react";
+import { AlertCircle, Check, ChevronDown, Loader2 } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -14,123 +12,138 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 import type { ApiKeyState } from "@/app/lib/mikeApi";
-import { MODELS } from "@/app/components/assistant/ModelToggle";
+import {
+    MODELS,
+    SETTINGS_MODELS,
+    type ModelOption,
+} from "@/app/components/assistant/ModelToggle";
 import {
     isModelAvailable,
     modelGroupToProvider,
     providerLabel,
 } from "@/app/lib/modelAvailability";
+import {
+    accountGlassInputClassName,
+} from "../accountStyles";
+import { AccountSection } from "../AccountSection";
 
-const API_KEY_FIELDS = [
-    {
-        provider: "claude",
-        label: "Anthropic (Claude) API Key",
-        placeholder: "sk-ant-…",
-    },
-    {
-        provider: "gemini",
-        label: "Google (Gemini) API Key",
-        placeholder: "AI…",
-    },
-    {
-        provider: "openai",
-        label: "OpenAI API Key",
-        placeholder: "sk-…",
-    },
-] as const;
+type ModelPreferenceField = "titleModel" | "tabularModel";
 
-export default function ModelsAndApiKeysPage() {
-    const { profile, updateModelPreference, updateApiKey } = useUserProfile();
+export default function ModelPreferencesPage() {
+    const { profile, updateModelPreference } = useUserProfile();
+    const [savingField, setSavingField] = useState<ModelPreferenceField | null>(
+        null,
+    );
+    const [savedField, setSavedField] = useState<ModelPreferenceField | null>(
+        null,
+    );
+    const [optimisticValues, setOptimisticValues] = useState<
+        Partial<Record<ModelPreferenceField, string>>
+    >({});
+    const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+        };
+    }, []);
+
+    const handleModelChange = async (
+        field: ModelPreferenceField,
+        id: string,
+    ) => {
+        setOptimisticValues((current) => ({ ...current, [field]: id }));
+        setSavedField(null);
+        setSavingField(field);
+        const ok = await updateModelPreference(field, id);
+        setSavingField((current) => (current === field ? null : current));
+        if (ok) {
+            setSavedField(field);
+            if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+            savedTimerRef.current = setTimeout(() => {
+                setSavedField((current) => (current === field ? null : current));
+            }, 1600);
+        } else {
+            setOptimisticValues((current) => {
+                const next = { ...current };
+                delete next[field];
+                return next;
+            });
+        }
+    };
 
     return (
-        <div className="space-y-4">
-            {/* Model Preferences */}
-            <div className="pb-6">
-                <div className="flex items-center gap-2 mb-4">
-                    <h2 className="text-2xl font-medium font-serif">
-                        Model Preferences
-                    </h2>
-                </div>
-                <div className="space-y-4 max-w-md">
-                    <div>
-                        <label className="text-sm text-gray-600 block mb-2">
-                            Tabular review model
-                        </label>
-                        <p className="text-xs text-gray-400 mb-2">
-                            We recommend using a smaller model for tabular
-                            reviews to reduce token costs.
-                        </p>
-                        <TabularModelDropdown
-                            value={
-                                profile?.tabularModel ??
-                                "gemini-3-flash-preview"
-                            }
-                            apiKeys={profile?.apiKeys}
-                            onChange={(id) =>
-                                updateModelPreference("tabularModel", id)
-                            }
-                        />
-                    </div>
-                </div>
+        <div>
+            <div className="flex items-center gap-2 mb-4">
+                <h2 className="text-2xl font-medium font-serif">
+                    Model Preferences
+                </h2>
             </div>
-
-            {/* API Keys */}
-            <div className="py-6">
-                <div className="flex items-center gap-2 mb-2">
-                    <h2 className="text-2xl font-medium font-serif">
-                        API Keys
-                    </h2>
+            <AccountSection>
+                <div className="px-4 py-5">
+                    <label className="text-sm font-medium text-gray-700 block mb-2">
+                        Title generation model
+                    </label>
+                    <p className="text-xs text-gray-400 mb-2">
+                        Used for naming chats and other lightweight titles.
+                    </p>
+                    <ModelPreferenceDropdown
+                        value={
+                            optimisticValues.titleModel ??
+                            profile?.titleModel ??
+                            "gemini-3.1-flash-lite-preview"
+                        }
+                        options={SETTINGS_MODELS}
+                        apiKeys={profile?.apiKeys}
+                        isSaving={savingField === "titleModel"}
+                        isSaved={savedField === "titleModel"}
+                        onChange={(id) => handleModelChange("titleModel", id)}
+                    />
                 </div>
-                <p className="text-sm text-gray-500 mb-4 max-w-xl">
-                    You must provide your own API keys for the app to work or
-                    add your API keys into the .env file if you are running your
-                    own instance of Mike.
-                </p>
-                <p className="text-xs text-gray-400 mb-4 max-w-xl">
-                    Title generation automatically routes to the cheapest
-                    configured provider model.
-                </p>
-                <div className="space-y-4 max-w-xl">
-                    {API_KEY_FIELDS.map((field) => (
-                        <ApiKeyField
-                            key={field.provider}
-                            label={field.label}
-                            placeholder={field.placeholder}
-                            hasSavedKey={
-                                !!profile?.apiKeys[field.provider].configured
-                            }
-                            isServerConfigured={
-                                profile?.apiKeys[field.provider].source ===
-                                "env"
-                            }
-                            onSave={(value) =>
-                                updateApiKey(
-                                    field.provider,
-                                    value.trim() || null,
-                                )
-                            }
-                            onRemove={() =>
-                                updateApiKey(field.provider, null)
-                            }
-                        />
-                    ))}
+                <div className="mx-4 h-px bg-gray-200" />
+                <div className="px-4 py-5">
+                    <label className="text-sm font-medium text-gray-700 block mb-2">
+                        Tabular review model
+                    </label>
+                    <p className="text-xs text-gray-400 mb-2">
+                        We recommend using a smaller model for tabular reviews
+                        to reduce token costs.
+                    </p>
+                    <ModelPreferenceDropdown
+                        value={
+                            optimisticValues.tabularModel ??
+                            profile?.tabularModel ??
+                            "gemini-3-flash-preview"
+                        }
+                        options={MODELS}
+                        apiKeys={profile?.apiKeys}
+                        isSaving={savingField === "tabularModel"}
+                        isSaved={savedField === "tabularModel"}
+                        onChange={(id) => handleModelChange("tabularModel", id)}
+                    />
                 </div>
-            </div>
+            </AccountSection>
         </div>
     );
 }
 
-function TabularModelDropdown({
+function ModelPreferenceDropdown({
     value,
     onChange,
     apiKeys,
+    options,
+    isSaving,
+    isSaved,
 }: {
     value: string;
     onChange: (id: string) => void;
     apiKeys?: ApiKeyState;
+    options: ModelOption[];
+    isSaving?: boolean;
+    isSaved?: boolean;
 }) {
     const [isOpen, setIsOpen] = useState(false);
-    const selected = MODELS.find((m) => m.id === value);
+    const selected = options.find((m) => m.id === value);
     const selectedAvailable = apiKeys ? isModelAvailable(value, apiKeys) : true;
     const groups: ("Anthropic" | "Google" | "OpenAI")[] = [
         "Anthropic",
@@ -143,7 +156,8 @@ function TabularModelDropdown({
             <DropdownMenuTrigger asChild>
                 <button
                     type="button"
-                    className="w-full h-9 rounded-md border border-gray-300 bg-white px-3 text-sm shadow-sm flex items-center justify-between gap-2 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-black/10"
+                    disabled={isSaving}
+                    className={`flex h-9 w-full items-center justify-between gap-2 px-3 text-sm hover:bg-white/78 ${accountGlassInputClassName}`}
                 >
                     <span className="flex items-center gap-2 min-w-0">
                         {!selectedAvailable && (
@@ -153,9 +167,15 @@ function TabularModelDropdown({
                             {selected?.label ?? "Select a model"}
                         </span>
                     </span>
-                    <ChevronDown
-                        className={`h-3.5 w-3.5 shrink-0 text-gray-500 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
-                    />
+                    {isSaving ? (
+                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-gray-500" />
+                    ) : isSaved ? (
+                        <Check className="h-3.5 w-3.5 shrink-0 text-green-600" />
+                    ) : (
+                        <ChevronDown
+                            className={`h-3.5 w-3.5 shrink-0 text-gray-500 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+                        />
+                    )}
                 </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -164,7 +184,7 @@ function TabularModelDropdown({
                 align="start"
             >
                 {groups.map((group, gi) => {
-                    const items = MODELS.filter((m) => m.group === group);
+                    const items = options.filter((m) => m.group === group);
                     if (items.length === 0) return null;
                     return (
                         <div key={group}>
@@ -207,135 +227,5 @@ function TabularModelDropdown({
                 })}
             </DropdownMenuContent>
         </DropdownMenu>
-    );
-}
-
-function ApiKeyField({
-    label,
-    placeholder,
-    hasSavedKey,
-    isServerConfigured,
-    onSave,
-    onRemove,
-}: {
-    label: string;
-    placeholder: string;
-    hasSavedKey: boolean;
-    isServerConfigured: boolean;
-    onSave: (value: string) => Promise<boolean>;
-    onRemove: () => Promise<boolean>;
-}) {
-    const [value, setValue] = useState("");
-    const [reveal, setReveal] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
-    const [saved, setSaved] = useState(false);
-
-    useEffect(() => {
-        setValue("");
-    }, [hasSavedKey]);
-
-    const dirty = value.trim().length > 0;
-
-    const handleSave = async () => {
-        setIsSaving(true);
-        const ok = await onSave(value);
-        setIsSaving(false);
-        if (ok) {
-            setValue("");
-            setSaved(true);
-            setTimeout(() => setSaved(false), 2000);
-        } else {
-            alert(`Failed to save ${label}.`);
-        }
-    };
-
-    const handleRemove = async () => {
-        setIsSaving(true);
-        const ok = await onRemove();
-        setIsSaving(false);
-        if (!ok) alert(`Failed to remove ${label}.`);
-    };
-
-    return (
-        <div>
-            <label className="text-sm text-gray-600 block mb-2">{label}</label>
-            {isServerConfigured && (
-                <div className="mb-2 rounded-md border border-blue-100 bg-blue-50 px-3 py-2">
-                    <p className="text-xs text-blue-800">
-                        A server .env key is configured for this provider.
-                        Browser API-key edits are disabled.
-                    </p>
-                    {hasSavedKey && (
-                        <p className="mt-1 text-xs text-blue-800">
-                            The server key will be used for this provider.
-                        </p>
-                    )}
-                </div>
-            )}
-            {hasSavedKey && !isServerConfigured && (
-                <p className="text-xs text-gray-500 mb-2">
-                    A key is saved. Paste a new key to replace it.
-                </p>
-            )}
-            <div className="flex gap-2">
-                <div className="relative flex-1">
-                    <Input
-                        type={reveal ? "text" : "password"}
-                        value={value}
-                        onChange={(e) => setValue(e.target.value)}
-                        placeholder={
-                            isServerConfigured
-                                ? "Server .env key configured"
-                                : hasSavedKey
-                                  ? "Saved key hidden"
-                                  : placeholder
-                        }
-                        className="pr-10"
-                        autoComplete="off"
-                        spellCheck={false}
-                        disabled={isServerConfigured}
-                    />
-                    <button
-                        type="button"
-                        onClick={() => setReveal((r) => !r)}
-                        disabled={isServerConfigured}
-                        className="absolute inset-y-0 right-2 flex items-center text-gray-400 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
-                        aria-label={reveal ? "Hide key" : "Show key"}
-                    >
-                        {reveal ? (
-                            <EyeOff className="h-4 w-4" />
-                        ) : (
-                            <Eye className="h-4 w-4" />
-                        )}
-                    </button>
-                </div>
-                <Button
-                    onClick={handleSave}
-                    disabled={isServerConfigured || isSaving || !dirty || saved}
-                    className="min-w-[80px] transition-all bg-black hover:bg-gray-900 text-white"
-                >
-                    {isSaving ? (
-                        "Saving..."
-                    ) : saved ? (
-                        <>
-                            <Check className="h-4 w-3" />
-                            Saved
-                        </>
-                    ) : (
-                        "Save"
-                    )}
-                </Button>
-                {hasSavedKey && !isServerConfigured && (
-                    <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleRemove}
-                        disabled={isSaving}
-                    >
-                        Remove
-                    </Button>
-                )}
-            </div>
-        </div>
     );
 }

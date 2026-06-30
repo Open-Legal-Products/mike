@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { Folder, Search, X } from "lucide-react";
-import type { MikeProject } from "./types";
+import type { Project } from "./types";
 
 interface Props {
-    projects: MikeProject[];
+    projects: Project[];
     loading: boolean;
     selectedId: string | null;
     onSelect: (id: string | null) => void;
@@ -18,7 +18,7 @@ export function ProjectPicker({ projects, loading, selectedId, onSelect }: Props
 
     return (
         <>
-            <div className="px-4 pt-1 pb-2">
+            <div className="pt-1 pb-2">
                 <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                     <Search className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                     <input
@@ -36,7 +36,7 @@ export function ProjectPicker({ projects, loading, selectedId, onSelect }: Props
                     )}
                 </div>
             </div>
-            <div className="flex-1 overflow-y-auto px-4 pb-2">
+            <div className="flex-1 overflow-y-auto pb-2">
                 {loading ? (
                     <div className="rounded-sm border border-gray-100 overflow-hidden">
                         <div className="flex items-center px-2 py-2">

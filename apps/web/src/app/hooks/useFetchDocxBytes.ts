@@ -47,14 +47,6 @@ export function useFetchDocxBytes(
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    console.log("[useFetchDocxBytes] init", {
-        documentId,
-        versionId,
-        refetchKey,
-        initialKey,
-        cacheHit: initialKey ? bytesCache.has(initialKey) : null,
-    });
-
     useEffect(() => {
         if (!documentId) {
             setBytes(null);

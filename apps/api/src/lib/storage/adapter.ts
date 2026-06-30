@@ -25,6 +25,13 @@ export interface StorageAdapter {
     delete(key: string): Promise<void>;
 
     /**
+     * List all object keys under a prefix.  Returns an empty array when storage
+     * is disabled.  Implementations must paginate internally so every matching
+     * key is returned.
+     */
+    list(prefix: string): Promise<string[]>;
+
+    /**
      * Generate a pre-signed URL for temporary direct access to key.
      * Returns null if storage is disabled or the operation fails.
      *

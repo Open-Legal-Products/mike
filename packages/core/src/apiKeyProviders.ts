@@ -1,4 +1,9 @@
-export type ApiKeyProvider = "claude" | "gemini" | "openai";
+export type ApiKeyProvider =
+  | "claude"
+  | "gemini"
+  | "openai"
+  | "openrouter"
+  | "courtlistener";
 export type ApiKeySource = "user" | "env" | null;
 
 declare const process:
@@ -13,6 +18,8 @@ export const API_KEY_PROVIDERS = [
   "claude",
   "gemini",
   "openai",
+  "openrouter",
+  "courtlistener",
 ] as const satisfies readonly ApiKeyProvider[];
 
 export function isApiKeyProvider(value: string): value is ApiKeyProvider {
@@ -32,6 +39,12 @@ export function envApiKey(
   }
   if (provider === "openai") {
     return env.OPENAI_API_KEY?.trim() || null;
+  }
+  if (provider === "openrouter") {
+    return env.OPENROUTER_API_KEY?.trim() || null;
+  }
+  if (provider === "courtlistener") {
+    return env.COURTLISTENER_API_TOKEN?.trim() || null;
   }
   return env.GEMINI_API_KEY?.trim() || null;
 }

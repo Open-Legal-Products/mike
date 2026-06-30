@@ -7,14 +7,19 @@ import { applyOptimisticResolution } from "../assistant/EditCard";
 import { DocView } from "./DocView";
 import { DocxView } from "./DocxView";
 import {
-    displayCitationQuote,
+    RelevantQuotes,
+    type RelevantQuoteItem,
+} from "./RelevantQuotes";
+import {
     expandCitationToEntries,
     formatCitationPage,
+    getDocumentCitationQuotes,
 } from "./types";
 import type {
     CitationQuote,
-    MikeCitationAnnotation,
-    MikeEditAnnotation,
+    CitationAnnotation,
+    DocumentCitationAnnotation,
+    EditAnnotation,
 } from "./types";
 
 function isDocxFilename(name: string): boolean {
@@ -24,16 +29,16 @@ function isDocxFilename(name: string): boolean {
 
 /**
  * Discriminated-union describing what the panel is showing above the viewer.
- *   - "document":  no header card, no label — just the viewer.
- *   - "citation":  "Citation Quote" card with the quoted text and page ref.
- *   - "edit":      "Tracked Change" card with the diff + Accept/Reject.
+ *   - "document":  title row + viewer.
+ *   - "citation":  title row + relevant quote + viewer.
+ *   - "edit":      title row + tracked change + viewer.
  */
 export type DocPanelMode =
     | { kind: "document" }
-    | { kind: "citation"; citation: MikeCitationAnnotation }
+    | { kind: "citation"; citation: CitationAnnotation }
     | {
           kind: "edit";
-          edit: MikeEditAnnotation;
+          edit: EditAnnotation;
           /**
            * True while an accept/reject request for this exact edit is in
            * flight. Scoped per-edit (not per-document) so sibling edits on
@@ -98,11 +103,42 @@ export function DocPanel({
     // re-fetch every time they toggle. Tracked-change rendering still
     // only lives in DocxView, which is fine because edits are DOCX-only.
     const useDocxView = isDocxFilename(filename);
+    const citationQuoteId =
+        mode.kind === "citation" ? `document:${mode.citation.ref}:0` : null;
+    const [activeCitationQuoteId, setActiveCitationQuoteId] = useState<
+        string | null
+    >(citationQuoteId);
+    const [quoteFocusKey, setQuoteFocusKey] = useState(0);
 
     const quotes: CitationQuote[] | undefined = useMemo(() => {
         if (mode.kind !== "citation") return undefined;
-        return expandCitationToEntries(mode.citation);
-    }, [mode]);
+        if (!activeCitationQuoteId) return [];
+        const selectedIndex = Number(activeCitationQuoteId.split(":").at(-1));
+        if (!Number.isFinite(selectedIndex)) return [];
+        const selectedQuote =
+            getDocumentCitationQuotes(mode.citation)[selectedIndex];
+        if (!selectedQuote) return [];
+        const documentCitation = mode.citation as DocumentCitationAnnotation;
+        return expandCitationToEntries({
+            ...documentCitation,
+            page: selectedQuote.page,
+            quote: selectedQuote.quote,
+            quotes: [selectedQuote],
+        });
+    }, [activeCitationQuoteId, citationQuoteId, mode]);
+
+    useEffect(() => {
+        setActiveCitationQuoteId(citationQuoteId);
+    }, [citationQuoteId]);
+
+    const handleCitationQuoteSelect = useCallback(
+        (quoteId: string) => {
+            const shouldSelect = activeCitationQuoteId !== quoteId;
+            setActiveCitationQuoteId(shouldSelect ? quoteId : null);
+            if (shouldSelect) setQuoteFocusKey((current) => current + 1);
+        },
+        [activeCitationQuoteId],
+    );
 
     const highlightEdit = useMemo(() => {
         if (mode.kind !== "edit") return null;
@@ -116,64 +152,50 @@ export function DocPanel({
     }, [mode]);
 
     return (
-        <div className="flex h-full flex-col px-3 pb-3">
-            {mode.kind === "citation" ? (
-                <CitationHeader
+        <div className="flex h-full flex-col">
+            <DocumentTitleRow
+                documentId={documentId}
+                filename={filename}
+                versionId={versionId}
+                versionNumber={versionNumber}
+                isReloading={isReloading}
+            />
+
+            {mode.kind === "citation" && (
+                <RelevantQuoteSection
                     citation={mode.citation}
-                    documentId={documentId}
-                    versionId={versionId}
                     filename={filename}
-                    isReloading={isReloading}
+                    activeQuoteId={activeCitationQuoteId}
+                    onQuoteSelect={handleCitationQuoteSelect}
                 />
-            ) : mode.kind === "edit" ? (
-                <TrackedChangeHeader
-                    mode={mode}
-                    documentId={documentId}
-                    versionId={versionId}
-                    filename={filename}
-                    isReloading={isReloading}
-                />
-            ) : (
-                <div className="flex items-center justify-end gap-2 py-2">
-                    <div className="mr-auto flex min-w-0 items-center gap-2">
-                        <span className="truncate text-sm text-gray-700">
-                            {filename}
-                        </span>
-                        {versionNumber && versionNumber > 0 && (
-                            <span className="shrink-0 inline-flex items-center rounded-md border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-gray-600">
-                                V{versionNumber}
-                            </span>
-                        )}
-                    </div>
-                    <DownloadButton
-                        documentId={documentId}
-                        versionId={versionId}
-                        filename={filename}
-                        isReloading={isReloading}
-                    />
-                </div>
             )}
 
-            {useDocxView ? (
-                <DocxView
-                    documentId={documentId}
-                    versionId={versionId ?? undefined}
-                    quotes={quotes}
-                    highlightEdit={highlightEdit}
-                    warning={warning ?? null}
-                    onWarningDismiss={onWarningDismiss}
-                    initialScrollTop={initialScrollTop ?? null}
-                    onScrollChange={onScrollChange}
-                />
-            ) : (
-                <DocView
-                    doc={{
-                        document_id: documentId,
-                        version_id: versionId,
-                    }}
-                    quotes={quotes}
-                />
-            )}
+            {mode.kind === "edit" && <TrackedChangeHeader mode={mode} />}
+
+            <div className="flex flex-1 min-h-0 flex-col px-3 py-3">
+                {useDocxView ? (
+                    <DocxView
+                        documentId={documentId}
+                        versionId={versionId ?? undefined}
+                        quotes={quotes}
+                        quoteFocusKey={quoteFocusKey}
+                        highlightEdit={highlightEdit}
+                        warning={warning ?? null}
+                        onWarningDismiss={onWarningDismiss}
+                        initialScrollTop={initialScrollTop ?? null}
+                        onScrollChange={onScrollChange}
+                    />
+                ) : (
+                    <DocView
+                        doc={{
+                            document_id: documentId,
+                            version_id: versionId,
+                        }}
+                        quotes={quotes}
+                        quoteFocusKey={quoteFocusKey}
+                    />
+                )}
+            </div>
         </div>
     );
 }
@@ -182,68 +204,106 @@ export function DocPanel({
 // Header variants
 // ---------------------------------------------------------------------------
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-    return <p className="text-xs font-medium text-gray-700">{children}</p>;
-}
-
-function CitationHeader({
-    citation,
+function DocumentTitleRow({
     documentId,
-    versionId,
     filename,
+    versionId,
+    versionNumber,
     isReloading,
 }: {
-    citation: MikeCitationAnnotation;
     documentId: string;
-    versionId: string | null;
     filename: string;
+    versionId: string | null;
+    versionNumber: number | null;
     isReloading: boolean;
 }) {
-    const displayQuote = displayCitationQuote(citation);
-    const pagesLabel = formatCitationPage(citation);
     return (
-        <div className="pt-2 pb-3">
-            <div className="flex items-center gap-2 mb-2">
-                <SectionLabel>Citation</SectionLabel>
-                <div className="ml-auto shrink-0">
-                    <DownloadButton
-                        documentId={documentId}
-                        versionId={versionId}
-                        filename={filename}
-                        isReloading={isReloading}
-                    />
-                </div>
-            </div>
-            <div className="w-full rounded-md bg-gray-50 border border-gray-200 px-2 py-2">
-                <p className="text-sm font-serif text-gray-600">
-                    &ldquo;{displayQuote}&rdquo;
-                    {pagesLabel && (
-                        <span className="ml-1 text-gray-400">
-                            ({pagesLabel})
+        <div className="flex items-start gap-3 px-3 pt-4 pb-3">
+            <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <h2
+                        className="min-w-0 break-words font-serif text-xl text-gray-900"
+                        title={filename}
+                    >
+                        {filename}
+                    </h2>
+                    {versionNumber && versionNumber > 0 && (
+                        <span className="shrink-0 inline-flex items-center rounded-md border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-gray-600">
+                            V{versionNumber}
                         </span>
                     )}
-                </p>
+                </div>
+            </div>
+            <div className="shrink-0">
+                <DownloadButton
+                    documentId={documentId}
+                    versionId={versionId}
+                    filename={filename}
+                    isReloading={isReloading}
+                />
             </div>
         </div>
     );
 }
 
+function SectionLabel({ children }: { children: React.ReactNode }) {
+    return <p className="text-xs font-medium text-gray-700">{children}</p>;
+}
+
+function RelevantQuoteSection({
+    citation,
+    filename,
+    activeQuoteId,
+    onQuoteSelect,
+}: {
+    citation: CitationAnnotation;
+    filename: string;
+    activeQuoteId: string | null;
+    onQuoteSelect: (quoteId: string) => void;
+}) {
+    const citationQuotes = getDocumentCitationQuotes(citation);
+    const pagesLabel = formatCitationPage(citation);
+    const citationText = [filename, pagesLabel].filter(Boolean).join(", ");
+    const relevantQuotes: RelevantQuoteItem[] = citationQuotes.map(
+        (quote, index) => {
+            const pageLabel = `Page ${quote.page}`;
+            return {
+                id: `document:${citation.ref}:${index}`,
+                quote: quote.quote.replaceAll("[[PAGE_BREAK]]", "..."),
+                inlineDetail: pageLabel,
+                citationText: [filename, pageLabel].filter(Boolean).join(", "),
+            };
+        },
+    );
+    const currentIndex = Math.max(
+        0,
+        relevantQuotes.findIndex((quote) => quote.id === activeQuoteId),
+    );
+
+    return (
+        <RelevantQuotes
+            quotes={relevantQuotes}
+            activeQuoteId={activeQuoteId}
+            currentIndex={currentIndex}
+            citationRef={citation.ref}
+            citationText={citationText}
+            onSelect={(quote) => onQuoteSelect(quote.id)}
+            onIndexChange={(index) => {
+                const quote = relevantQuotes[index];
+                if (quote) onQuoteSelect(quote.id);
+            }}
+        />
+    );
+}
+
 function TrackedChangeHeader({
     mode,
-    documentId,
-    versionId,
-    filename,
-    isReloading,
 }: {
     mode: Extract<DocPanelMode, { kind: "edit" }>;
-    documentId: string;
-    versionId: string | null;
-    filename: string;
-    isReloading: boolean;
 }) {
     const { edit, isEditReloading, onResolveStart, onResolved, onError } = mode;
     return (
-        <div className="pt-2 pb-3">
+        <div className="px-3 pb-3">
             <div className="flex items-center gap-2 mb-2">
                 <SectionLabel>Tracked Change</SectionLabel>
                 <div className="ml-auto flex items-center gap-2 shrink-0">
@@ -253,12 +313,6 @@ function TrackedChangeHeader({
                         onResolveStart={onResolveStart}
                         onResolved={onResolved}
                         onError={onError}
-                    />
-                    <DownloadButton
-                        documentId={documentId}
-                        versionId={versionId}
-                        filename={filename}
-                        isReloading={isReloading}
                     />
                 </div>
             </div>
@@ -294,7 +348,7 @@ function EditResolveButtons({
     onResolved,
     onError,
 }: {
-    edit: MikeEditAnnotation;
+    edit: EditAnnotation;
     /**
      * True while an accept/reject for any edit on this document is in
      * flight (triggered from here, the inline EditCard, the bulk bar, or

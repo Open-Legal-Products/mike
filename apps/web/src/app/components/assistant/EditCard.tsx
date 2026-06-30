@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
-import type { MikeEditAnnotation } from "../shared/types";
+import type { EditAnnotation } from "../shared/types";
 
 function normalizeText(s: string) {
     return s.replace(/\s+/g, " ").trim();
@@ -19,13 +19,6 @@ function findMatch(
         const byId = container.querySelector(
             `${tag}[data-w-id="${opts.w_id}"]`,
         ) as HTMLElement | null;
-        console.log("[EditCard] findMatch by w_id", {
-            tag,
-            w_id: opts.w_id,
-            found: !!byId,
-            totalTagged: container.querySelectorAll(`${tag}[data-w-id]`).length,
-            totalAny: container.querySelectorAll(tag).length,
-        });
         if (byId) return byId;
     }
     const text = opts.text ?? "";
@@ -42,12 +35,6 @@ function findMatch(
             normalizeText(el.textContent ?? "").includes(target),
         ) ??
         null;
-    console.log("[EditCard] findMatch by text", {
-        tag,
-        target,
-        found: !!byText,
-        candidateCount: candidates.length,
-    });
     return byText;
 }
 
@@ -63,7 +50,7 @@ function findMatch(
  * so if the backend call later fails we can restore the original look.
  */
 export function applyOptimisticResolution(
-    annotation: MikeEditAnnotation,
+    annotation: EditAnnotation,
     verb: "accept" | "reject",
 ): () => void {
     const reverts: (() => void)[] = [];
@@ -117,13 +104,6 @@ export function applyOptimisticResolution(
     const scrolls = document.querySelectorAll(
         `[data-document-id="${CSS.escape(annotation.document_id)}"]`,
     );
-    console.log("[EditCard] optimistic scrolls found:", scrolls.length, {
-        document_id: annotation.document_id,
-        ins_w_id: annotation.ins_w_id,
-        del_w_id: annotation.del_w_id,
-        inserted_text: annotation.inserted_text?.slice(0, 40),
-        deleted_text: annotation.deleted_text?.slice(0, 40),
-    });
     scrolls.forEach((scroll) => {
         const container = scroll.querySelector(".docx-view-container");
         if (!container) return;
@@ -150,7 +130,7 @@ export function applyOptimisticResolution(
 }
 
 interface Props {
-    annotation: MikeEditAnnotation;
+    annotation: EditAnnotation;
     /**
      * External override for this edit's status. When set, takes
      * precedence over the annotation's DB status and the card's own
@@ -164,7 +144,7 @@ interface Props {
      * Accept/Reject buttons disable so the user can't race resolutions.
      */
     isReloading?: boolean;
-    onViewClick?: (ann: MikeEditAnnotation) => void;
+    onViewClick?: (ann: EditAnnotation) => void;
     /**
      * Fires immediately when the user clicks Accept or Reject, before the
      * backend round-trip. Parents use this to show an in-progress spinner

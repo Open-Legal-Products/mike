@@ -11,7 +11,7 @@ import {
     Trash2,
     Loader2,
 } from "lucide-react";
-import type { MikeDocument, MikeProject } from "./types";
+import type { Document, Project } from "./types";
 import { VersionChip } from "./VersionChip";
 
 function formatDate(iso: string | null) {
@@ -30,8 +30,8 @@ export function DocFileIcon({ fileType }: { fileType: string | null }) {
 }
 
 interface FileDirectoryProps {
-    standaloneDocs: MikeDocument[];
-    directoryProjects: MikeProject[];
+    standaloneDocs: Document[];
+    directoryProjects: Project[];
     loading: boolean;
     selectedIds: Set<string>;
     onChange: (ids: Set<string>) => void;
@@ -238,7 +238,12 @@ export function FileDirectory({
                             >
                                 {doc.filename}
                             </span>
-                            <VersionChip n={doc.latest_version_number} />
+                            <VersionChip
+                                n={
+                                    doc.active_version_number ??
+                                    doc.latest_version_number
+                                }
+                            />
                             {doc.created_at && (
                                 <span className="shrink-0 text-gray-300">
                                     {formatDate(doc.created_at)}
@@ -333,7 +338,10 @@ export function FileDirectory({
                                                         {doc.filename}
                                                     </span>
                                                     <VersionChip
-                                                        n={doc.latest_version_number}
+                                                        n={
+                                                            doc.active_version_number ??
+                                                            doc.latest_version_number
+                                                        }
                                                     />
                                                     {doc.created_at && (
                                                         <span className="shrink-0 text-gray-300">

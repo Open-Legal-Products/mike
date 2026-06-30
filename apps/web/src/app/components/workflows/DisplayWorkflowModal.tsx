@@ -1,29 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import {
-    ChevronDown,
-    Folder,
-    MessageSquare,
-    Search,
-    Table2,
-    X,
-} from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import type { MikeDocument, MikeWorkflow } from "../shared/types";
+import { useEffect, useState } from "react";
+import { Folder, Search, X } from "lucide-react";
+import type { Document, Workflow } from "../shared/types";
 import { createTabularReview } from "@/app/lib/mikeApi";
 import { useRouter } from "next/navigation";
-import { formatIcon, formatLabel } from "../tabular/columnFormat";
 import { useDirectoryData } from "../shared/useDirectoryData";
 import { FileDirectory } from "../shared/FileDirectory";
-import type { MikeProject } from "../shared/types";
+import type { Project } from "../shared/types";
 import { useChatHistoryContext } from "@/app/contexts/ChatHistoryContext";
+import { Modal } from "../shared/Modal";
+import { WorkflowPickerContent } from "./WorkflowPickerContent";
+import { workflowDetailPath } from "./workflowRoutes";
 
 interface Props {
-    workflows: MikeWorkflow[];
-    workflow: MikeWorkflow | null;
+    workflows: Workflow[];
+    workflow: Workflow | null;
     onClose: () => void;
 }
 
@@ -52,7 +44,7 @@ function SimpleProjectPicker({
     selectedId,
     onSelect,
 }: {
-    projects: MikeProject[];
+    projects: Project[];
     selectedId: string | null;
     onSelect: (id: string | null) => void;
 }) {
@@ -120,172 +112,12 @@ function SimpleProjectPicker({
 }
 
 // ---------------------------------------------------------------------------
-// Shared markdown renderer
-// ---------------------------------------------------------------------------
-function MarkdownBody({ content }: { content: string }) {
-    return (
-        <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-                h1: ({ children }) => (
-                    <h1 className="text-base font-semibold text-gray-900 mt-4 mb-1 first:mt-0">
-                        {children}
-                    </h1>
-                ),
-                h2: ({ children }) => (
-                    <h2 className="text-sm font-semibold text-gray-900 mt-3 mb-1 first:mt-0">
-                        {children}
-                    </h2>
-                ),
-                h3: ({ children }) => (
-                    <h3 className="text-xs font-semibold text-gray-900 mt-2 mb-0.5 first:mt-0">
-                        {children}
-                    </h3>
-                ),
-                p: ({ children }) => (
-                    <p className="mb-2 last:mb-0">{children}</p>
-                ),
-                ul: ({ children }) => (
-                    <ul className="list-disc pl-4 mb-2 space-y-0.5">
-                        {children}
-                    </ul>
-                ),
-                ol: ({ children }) => (
-                    <ol className="list-decimal pl-4 mb-2 space-y-0.5">
-                        {children}
-                    </ol>
-                ),
-                li: ({ children }) => <li>{children}</li>,
-                strong: ({ children }) => (
-                    <strong className="font-semibold text-gray-800">
-                        {children}
-                    </strong>
-                ),
-                em: ({ children }) => <em className="italic">{children}</em>,
-            }}
-        >
-            {content}
-        </ReactMarkdown>
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Right panel for assistant workflows (select screen)
-// ---------------------------------------------------------------------------
-function AssistantPanel({ workflow }: { workflow: MikeWorkflow }) {
-    return (
-        <div className="flex-1 border-l border-t border-gray-200 flex flex-col overflow-hidden px-3 pb-3">
-            <div className="py-3 shrink-0">
-                <p className="text-xs font-medium text-gray-700">
-                    Workflow Prompt
-                </p>
-            </div>
-            <div className="flex-1 overflow-y-auto px-4 py-3 text-sm border border-gray-200 rounded-md text-gray-600 leading-relaxed font-serif bg-gray-50">
-                <MarkdownBody
-                    content={workflow.prompt_md ?? "_No prompt defined._"}
-                />
-            </div>
-        </div>
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Right panel for tabular workflows — accordion column list (select screen)
-// ---------------------------------------------------------------------------
-function TabularPanel({ workflow }: { workflow: MikeWorkflow }) {
-    const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
-    const columns = (workflow.columns_config ?? []).sort(
-        (a, b) => a.index - b.index,
-    );
-
-    return (
-        <div className="flex-1 border-l border-t border-gray-200 flex flex-col overflow-hidden px-3 pb-3">
-            <div className="py-3 shrink-0">
-                <p className="text-xs font-medium text-gray-700">Columns</p>
-            </div>
-            <div className="flex-1 overflow-y-auto border border-gray-200 rounded-md bg-gray-50">
-                {columns.length === 0 ? (
-                    <p className="px-4 py-6 text-xs text-center text-gray-400">
-                        No columns defined
-                    </p>
-                ) : (
-                    columns.map((col) => {
-                        const isExpanded = expandedIndex === col.index;
-                        const FormatIcon = formatIcon(col.format ?? "text");
-                        return (
-                            <div
-                                key={col.index}
-                                className="border-b border-gray-200"
-                            >
-                                <button
-                                    type="button"
-                                    onClick={() =>
-                                        setExpandedIndex(
-                                            isExpanded ? null : col.index,
-                                        )
-                                    }
-                                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-left hover:bg-white transition-colors"
-                                >
-                                    <FormatIcon className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                                    <span className="flex-1 truncate text-gray-800">
-                                        {col.name}
-                                    </span>
-                                    <span className="shrink-0 text-gray-400">
-                                        {formatLabel(col.format ?? "text")}
-                                    </span>
-                                    <ChevronDown
-                                        className={`h-3 w-3 shrink-0 text-gray-300 transition-transform duration-150 ${isExpanded ? "rotate-180" : ""}`}
-                                    />
-                                </button>
-                                {isExpanded && (
-                                    <div className="px-4 py-3 bg-white border-t border-gray-200 text-sm text-gray-600 leading-relaxed font-serif space-y-3">
-                                        {col.tags && col.tags.length > 0 && (
-                                            <div>
-                                                <p className="text-xs font-medium text-gray-400 mb-1.5 font-sans">
-                                                    Tags
-                                                </p>
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    {col.tags.map((tag) => (
-                                                        <span
-                                                            key={tag}
-                                                            className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 font-sans"
-                                                        >
-                                                            {tag}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                        <div>
-                                            <p className="text-xs font-medium text-gray-400 mb-1 font-sans">
-                                                Prompt
-                                            </p>
-                                            <MarkdownBody
-                                                content={
-                                                    col.prompt ||
-                                                    "_No prompt defined._"
-                                                }
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })
-                )}
-            </div>
-        </div>
-    );
-}
-
-// ---------------------------------------------------------------------------
 // DisplayWorkflowModal
 // ---------------------------------------------------------------------------
 export function DisplayWorkflowModal({ workflows, workflow, onClose }: Props) {
     const [screen, setScreen] = useState<"select" | "configure">("select");
-    const [selected, setSelected] = useState<MikeWorkflow | null>(workflow);
+    const [selected, setSelected] = useState<Workflow | null>(workflow);
     const [listSearch, setListSearch] = useState("");
-    const selectedRowRef = useRef<HTMLButtonElement>(null);
 
     // Configure screen state
     const [inProject, setInProject] = useState(false);
@@ -317,12 +149,6 @@ export function DisplayWorkflowModal({ workflows, workflow, onClose }: Props) {
         }
     }, [workflow?.id]);
 
-    useEffect(() => {
-        if (selected && selectedRowRef.current) {
-            selectedRowRef.current.scrollIntoView({ block: "nearest" });
-        }
-    }, [selected?.id]);
-
     // Reset configure state on back
     useEffect(() => {
         if (screen === "select") {
@@ -352,13 +178,16 @@ export function DisplayWorkflowModal({ workflows, workflow, onClose }: Props) {
             const projectId = inProject ? selectedProjectId! : undefined;
             const chatId = await saveChat(projectId);
             if (!chatId) return;
-            const allDocs: MikeDocument[] = [
+            const allDocs: Document[] = [
                 ...standaloneDocuments,
                 ...projects.flatMap((p) => p.documents || []),
             ];
             const files = allDocs
                 .filter((d) => selectedDocIds.has(d.id))
-                .map((d) => ({ filename: d.filename, document_id: d.id }));
+                .map((d) => ({
+                    filename: d.filename,
+                    document_id: d.id,
+                }));
             const content = assistantPrompt.trim()
                 ? `implement workflow\n\n${assistantPrompt.trim()}`
                 : "implement workflow";
@@ -381,7 +210,7 @@ export function DisplayWorkflowModal({ workflows, workflow, onClose }: Props) {
     }
 
     async function handleCreateReview() {
-        const allDocs: MikeDocument[] = [
+        const allDocs: Document[] = [
             ...standaloneDocuments,
             ...projects.flatMap((p) => p.documents || []),
         ];
@@ -418,7 +247,9 @@ export function DisplayWorkflowModal({ workflows, workflow, onClose }: Props) {
     const projectDocs = selectedProject?.documents ?? [];
 
     const filteredProjectDocs = q
-        ? projectDocs.filter((d) => d.filename.toLowerCase().includes(q))
+        ? projectDocs.filter((d) =>
+              d.filename.toLowerCase().includes(q),
+          )
         : projectDocs;
 
     const filteredStandalone = q
@@ -431,7 +262,8 @@ export function DisplayWorkflowModal({ workflows, workflow, onClose }: Props) {
         .map((p) => ({
             ...p,
             documents: (p.documents || []).filter(
-                (d) => !q || d.filename.toLowerCase().includes(q),
+                (d) =>
+                    !q || d.filename.toLowerCase().includes(q),
             ),
         }))
         .filter(
@@ -441,147 +273,101 @@ export function DisplayWorkflowModal({ workflows, workflow, onClose }: Props) {
                 p.documents.length > 0,
         );
 
+    const breadcrumbs =
+        screen === "select"
+            ? ["Workflows", "Select workflow"]
+            : [
+                  <button
+                      key="workflows"
+                      type="button"
+                      onClick={() => setScreen("select")}
+                      className="transition-colors hover:text-gray-700"
+                  >
+                      Workflows
+                  </button>,
+                  wf.title,
+                  wf.type === "assistant" ? "New Chat" : "New Review",
+              ];
+
+    const selectPageAction = () => {
+        router.push(workflowDetailPath(wf));
+        handleClose();
+    };
+
     // ---------------------------------------------------------------------------
     // Render
     // ---------------------------------------------------------------------------
-    return createPortal(
-        <div className="fixed inset-0 z-[101] flex items-center justify-center bg-black/20 backdrop-blur-xs">
-            <div
-                className={`w-full rounded-2xl bg-white shadow-2xl flex flex-col h-[600px] transition-all duration-200 ${screen === "select" ? "max-w-4xl" : "max-w-2xl"}`}
-            >
-                {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 shrink-0">
-                    <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                        {screen === "select" ? (
-                            <>
-                                <span>Workflows</span>
-                                <span>›</span>
-                                <span>Select workflow</span>
-                            </>
-                        ) : (
-                            <>
-                                <button
-                                    onClick={() => setScreen("select")}
-                                    className="hover:text-gray-700 transition-colors"
-                                >
-                                    Workflows
-                                </button>
-                                <span>›</span>
-                                <span className="truncate max-w-[160px]">
-                                    {wf.title}
-                                </span>
-                                <span>›</span>
-                                <span>
-                                    {wf.type === "assistant"
-                                        ? "New Chat"
-                                        : "New Review"}
-                                </span>
-                            </>
-                        )}
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                    >
-                        <X className="h-4 w-4" />
-                    </button>
-                </div>
+    return (
+        <Modal
+            open={!!workflow}
+            onClose={handleClose}
+            size={screen === "select" ? "xl" : "lg"}
+            breadcrumbs={breadcrumbs}
+            secondaryAction={
+                screen === "select"
+                    ? {
+                          label: wf.is_system ? "View Page" : "Edit",
+                          onClick: selectPageAction,
+                      }
+                    : undefined
+            }
+            footerStatus={
+                screen === "configure" &&
+                (wf.type === "assistant"
+                    ? !inProject && selectedDocIds.size > 0
+                    : selectedDocIds.size > 0) ? (
+                    <span className="text-xs text-gray-400">
+                        {selectedDocIds.size} selected
+                    </span>
+                ) : null
+            }
+            primaryAction={
+                screen === "select"
+                    ? {
+                          label: "Use",
+                          onClick: () => setScreen("configure"),
+                      }
+                    : wf.type === "assistant"
+                      ? {
+                            label: saving ? "Starting…" : "Start Chat",
+                            onClick: handleStartChat,
+                            disabled:
+                                saving || (inProject && !selectedProjectId),
+                        }
+                      : {
+                            label: saving ? "Creating…" : "Create Review",
+                            onClick: handleCreateReview,
+                            disabled:
+                                saving ||
+                                selectedDocIds.size === 0 ||
+                                (inProject && !selectedProjectId),
+                        }
+            }
+            cancelAction={false}
+        >
 
                 {/* ── SELECT SCREEN ── */}
                 {screen === "select" && (
-                    <>
-                        <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
-                            {/* Left: workflow list */}
-                            <div className="w-80 shrink-0 flex flex-col border-t border-gray-200">
-                                {/* Search */}
-                                <div className="px-3 py-2 shrink-0 border-b border-gray-100">
-                                    <div className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1">
-                                        <Search className="h-3 w-3 text-gray-400 shrink-0" />
-                                        <input
-                                            type="text"
-                                            placeholder="Search…"
-                                            value={listSearch}
-                                            onChange={(e) => setListSearch(e.target.value)}
-                                            className="flex-1 bg-transparent text-xs text-gray-700 placeholder:text-gray-400 outline-none"
-                                        />
-                                        {listSearch && (
-                                            <button onClick={() => setListSearch("")} className="text-gray-400 hover:text-gray-600">
-                                                <X className="h-3 w-3" />
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                                {/* List */}
-                                <div className="overflow-y-auto flex-1">
-                                    {workflows
-                                        .filter((wfItem) => !listSearch || wfItem.title.toLowerCase().includes(listSearch.toLowerCase()))
-                                        .map((wfItem) => {
-                                            const isSelected = selected?.id === wfItem.id;
-                                            const Icon = wfItem.type === "tabular" ? Table2 : MessageSquare;
-                                            return (
-                                                <button
-                                                    key={wfItem.id}
-                                                    ref={isSelected ? selectedRowRef : null}
-                                                    type="button"
-                                                    onClick={() => setSelected(wfItem)}
-                                                    className={`w-full flex items-center gap-3 px-4 py-3 text-xs text-left border-b border-gray-200 transition-colors ${isSelected ? "bg-gray-100" : "hover:bg-gray-50"}`}
-                                                >
-                                                    <span className={`flex-1 truncate ${isSelected ? "text-gray-900 font-medium" : "text-gray-700"}`}>
-                                                        {wfItem.title}
-                                                    </span>
-                                                    <Icon className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                                                </button>
-                                            );
-                                        })}
-                                </div>
-                            </div>
-
-                            {/* Right: workflow detail */}
-                            {wf.type === "assistant" ? (
-                                <AssistantPanel key={wf.id} workflow={wf} />
-                            ) : (
-                                <TabularPanel key={wf.id} workflow={wf} />
-                            )}
-                        </div>
-
-                        <div className="border-t border-gray-200 px-5 py-3 flex items-center justify-between shrink-0">
-                            {wf.is_system ? (
-                                <button
-                                    onClick={() => {
-                                        router.push(`/workflows/${wf.id}`);
-                                        handleClose();
-                                    }}
-                                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 transition-colors"
-                                >
-                                    View Page
-                                </button>
-                            ) : (
-                                <button
-                                    onClick={() => {
-                                        router.push(`/workflows/${wf.id}`);
-                                        handleClose();
-                                    }}
-                                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 transition-colors"
-                                >
-                                    Edit
-                                </button>
-                            )}
-                            <button
-                                onClick={() => setScreen("configure")}
-                                className="rounded-lg bg-gray-900 px-5 py-2 text-sm font-medium text-white hover:bg-gray-700"
-                            >
-                                Use
-                            </button>
-                        </div>
-                    </>
+                    <WorkflowPickerContent
+                        workflows={workflows}
+                        selected={wf}
+                        onSelect={(next) => {
+                            if (next) setSelected(next);
+                        }}
+                        search={listSearch}
+                        onSearchChange={setListSearch}
+                        workflowType="all"
+                        previewMode="auto"
+                        showTypeIcon
+                        allowClearPreview={false}
+                    />
                 )}
 
                 {/* ── ASSISTANT CONFIGURE SCREEN ── */}
                 {screen === "configure" && wf.type === "assistant" && (
-                    <>
-                        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                             {/* Add-on prompt */}
-                            <div className="px-5 pb-3 shrink-0">
+                            <div className="pb-3 shrink-0">
                                 <p className="text-xs font-medium text-gray-700 mb-2">
                                     Message (optional)
                                 </p>
@@ -597,7 +383,7 @@ export function DisplayWorkflowModal({ workflows, workflow, onClose }: Props) {
                             </div>
 
                             {/* Toggle row */}
-                            <div className="px-5 py-3 flex flex-col gap-2 shrink-0">
+                            <div className="py-3 flex flex-col gap-2 shrink-0">
                                 <span className="text-xs font-medium text-gray-700">
                                     Create in a project
                                 </span>
@@ -614,12 +400,12 @@ export function DisplayWorkflowModal({ workflows, workflow, onClose }: Props) {
 
                             {inProject ? (
                                 <>
-                                    <div className="px-5 pt-1 pb-1 shrink-0">
+                                    <div className="pt-1 pb-1 shrink-0">
                                         <p className="text-xs font-medium text-gray-700">
                                             Select project
                                         </p>
                                     </div>
-                                    <div className="px-5 pb-2 shrink-0">
+                                    <div className="pb-2 shrink-0">
                                         <SimpleProjectPicker
                                             projects={projects}
                                             selectedId={selectedProjectId}
@@ -629,14 +415,14 @@ export function DisplayWorkflowModal({ workflows, workflow, onClose }: Props) {
                                 </>
                             ) : (
                                 <>
-                                    <div className="px-5 pt-1 pb-1 shrink-0">
+                                    <div className="pt-1 pb-1 shrink-0">
                                         <p className="text-xs font-medium text-gray-700">
                                             Select documents
                                         </p>
                                     </div>
 
                                     {/* Search */}
-                                    <div className="px-4 pt-1.5 pb-1 shrink-0">
+                                    <div className="pt-1.5 pb-1 shrink-0">
                                         <div className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1">
                                             <Search className="h-3 w-3 text-gray-400 shrink-0" />
                                             <input
@@ -662,7 +448,7 @@ export function DisplayWorkflowModal({ workflows, workflow, onClose }: Props) {
                                     </div>
 
                                     {/* File browser */}
-                                    <div className="flex-1 overflow-y-auto px-4 pb-2">
+                                    <div className="flex-1 overflow-y-auto pb-2">
                                         <FileDirectory
                                             standaloneDocs={filteredStandalone}
                                             directoryProjects={
@@ -682,33 +468,14 @@ export function DisplayWorkflowModal({ workflows, workflow, onClose }: Props) {
                                     </div>
                                 </>
                             )}
-                        </div>
-
-                        <div className="border-t border-gray-200 px-5 py-3 flex items-center justify-between shrink-0">
-                            <span className="text-xs text-gray-400">
-                                {!inProject && selectedDocIds.size > 0
-                                    ? `${selectedDocIds.size} selected`
-                                    : ""}
-                            </span>
-                            <button
-                                onClick={handleStartChat}
-                                disabled={
-                                    saving || (inProject && !selectedProjectId)
-                                }
-                                className="rounded-lg bg-gray-900 px-5 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-                            >
-                                {saving ? "Starting…" : "Start Chat"}
-                            </button>
-                        </div>
-                    </>
+                    </div>
                 )}
 
                 {/* ── TABULAR CONFIGURE SCREEN ── */}
                 {screen === "configure" && wf.type === "tabular" && (
-                    <>
-                        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                             {/* Toggle stacked */}
-                            <div className="px-5 pb-3 flex flex-col gap-2 shrink-0">
+                            <div className="pb-3 flex flex-col gap-2 shrink-0">
                                 <span className="text-xs font-medium text-gray-700">
                                     Create in a project
                                 </span>
@@ -726,12 +493,12 @@ export function DisplayWorkflowModal({ workflows, workflow, onClose }: Props) {
                             {/* Project section */}
                             {inProject && (
                                 <>
-                                    <div className="px-5 pt-1 pb-1 shrink-0">
+                                    <div className="pt-1 pb-1 shrink-0">
                                         <p className="text-xs font-medium text-gray-700">
                                             Select Project
                                         </p>
                                     </div>
-                                    <div className="px-5 pb-2 shrink-0">
+                                    <div className="pb-2 shrink-0">
                                         <SimpleProjectPicker
                                             projects={projects}
                                             selectedId={selectedProjectId}
@@ -748,14 +515,14 @@ export function DisplayWorkflowModal({ workflows, workflow, onClose }: Props) {
                             )}
 
                             {/* Documents section */}
-                            <div className="px-5 pt-3 pb-1 shrink-0">
+                            <div className="pt-3 pb-1 shrink-0">
                                 <p className="text-xs font-medium text-gray-700">
                                     Select Documents
                                 </p>
                             </div>
 
                             {/* Search */}
-                            <div className="px-4 pt-1.5 pb-1 shrink-0">
+                            <div className="pt-1.5 pb-1 shrink-0">
                                 <div className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1">
                                     <Search className="h-3 w-3 text-gray-400 shrink-0" />
                                     <input
@@ -779,7 +546,7 @@ export function DisplayWorkflowModal({ workflows, workflow, onClose }: Props) {
                             </div>
 
                             {/* File browser */}
-                            <div className="flex-1 overflow-y-auto px-4 pb-2">
+                            <div className="flex-1 overflow-y-auto pb-2">
                                 <FileDirectory
                                     standaloneDocs={
                                         inProject
@@ -803,30 +570,8 @@ export function DisplayWorkflowModal({ workflows, workflow, onClose }: Props) {
                                     }
                                 />
                             </div>
-                        </div>
-
-                        <div className="border-t border-gray-200 px-5 py-3 flex items-center justify-between shrink-0">
-                            <span className="text-xs text-gray-400">
-                                {selectedDocIds.size > 0
-                                    ? `${selectedDocIds.size} selected`
-                                    : ""}
-                            </span>
-                            <button
-                                onClick={handleCreateReview}
-                                disabled={
-                                    saving ||
-                                    selectedDocIds.size === 0 ||
-                                    (inProject && !selectedProjectId)
-                                }
-                                className="rounded-lg bg-gray-900 px-5 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-                            >
-                                {saving ? "Creating…" : "Create Review"}
-                            </button>
-                        </div>
-                    </>
+                    </div>
                 )}
-            </div>
-        </div>,
-        document.body,
+        </Modal>
     );
 }

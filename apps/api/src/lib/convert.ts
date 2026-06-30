@@ -1,25 +1,81 @@
 import JSZip from "jszip";
+import fs from "node:fs";
+import path from "node:path";
 
 let _convert:
   | ((buf: Buffer, ext: string, filter: undefined) => Promise<Buffer>)
   | null = null;
+let _sofficeBinaryPaths: string[] | null = null;
+
+function executablePath(filePath: string) {
+  try {
+    fs.accessSync(filePath, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveSofficeBinaryPaths(): string[] {
+  if (_sofficeBinaryPaths) return _sofficeBinaryPaths;
+
+  const candidates = new Set<string>();
+  for (const envName of [
+    "SOFFICE_BINARY_PATH",
+    "LIBREOFFICE_BINARY_PATH",
+    "LIBRE_OFFICE_EXE",
+  ]) {
+    const value = process.env[envName]?.trim();
+    if (value) candidates.add(value);
+  }
+
+  const pathDirs = (process.env.PATH ?? "")
+    .split(path.delimiter)
+    .filter(Boolean);
+  for (const dir of pathDirs) {
+    candidates.add(path.join(dir, "soffice"));
+    candidates.add(path.join(dir, "libreoffice"));
+  }
+
+  for (const filePath of [
+    "/usr/bin/libreoffice",
+    "/usr/bin/soffice",
+    "/snap/bin/libreoffice",
+    "/opt/libreoffice/program/soffice",
+    "/opt/libreoffice7.6/program/soffice",
+  ]) {
+    candidates.add(filePath);
+  }
+
+  _sofficeBinaryPaths = [...candidates].filter(executablePath);
+  return _sofficeBinaryPaths;
+}
 
 async function getConvert() {
   if (!_convert) {
     const libre = await import("libreoffice-convert");
-    const convert = libre.default.convert.bind(libre.default) as (
+    const convertWithOptions = libre.default.convertWithOptions.bind(
+      libre.default,
+    ) as (
       buf: Buffer,
       ext: string,
       filter: undefined,
+      options: { sofficeBinaryPaths?: string[] },
       callback?: (err: Error | null, result: Buffer) => void,
     ) => Promise<Buffer> | void;
     _convert = (buf, ext, filter) =>
       new Promise<Buffer>((resolve, reject) => {
         try {
-          const maybePromise = convert(buf, ext, filter, (err, result) => {
-            if (err) reject(err);
-            else resolve(result);
-          });
+          const maybePromise = convertWithOptions(
+            buf,
+            ext,
+            filter,
+            { sofficeBinaryPaths: resolveSofficeBinaryPaths() },
+            (err, result) => {
+              if (err) reject(err);
+              else resolve(result);
+            },
+          );
           if (maybePromise && typeof maybePromise.then === "function") {
             maybePromise.then(resolve, reject);
           }
@@ -67,6 +123,11 @@ export async function normalizeDocxZipPaths(buffer: Buffer): Promise<Buffer> {
  * Throws if LibreOffice is not installed or conversion fails.
  */
 export async function docxToPdf(buffer: Buffer): Promise<Buffer> {
+  if (resolveSofficeBinaryPaths().length === 0) {
+    throw new Error(
+      "LibreOffice/soffice binary was not found. Ensure Railway uses backend/nixpacks.toml or set SOFFICE_BINARY_PATH/LIBREOFFICE_BINARY_PATH.",
+    );
+  }
   const convert = await getConvert();
   const normalized = await normalizeDocxZipPaths(buffer);
   return convert(normalized, ".pdf", undefined);

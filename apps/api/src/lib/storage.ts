@@ -104,6 +104,10 @@ export async function getSignedUrl(
   return getAdapter().getSignedUrl(key, expiresIn, downloadFilename);
 }
 
+export async function listFiles(prefix: string): Promise<string[]> {
+  return getAdapter().list(prefix);
+}
+
 export async function checkStorageReady(): Promise<{
   ok: boolean;
   latencyMs?: number;

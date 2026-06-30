@@ -1,0 +1,688 @@
+import crypto from "crypto";
+import {
+    auth as runMcpOAuth,
+    type OAuthClientProvider,
+} from "@modelcontextprotocol/sdk/client/auth.js";
+import type {
+    OAuthClientInformationMixed,
+    OAuthClientMetadata,
+    OAuthTokens,
+} from "@modelcontextprotocol/sdk/shared/auth.js";
+import { createServerSupabase } from "../supabase";
+import {
+    authConfigPatch,
+    base64Url,
+    decryptAuthConfig,
+    decryptString,
+    encryptString,
+    guardedFetch,
+    loadConnector,
+    stateHash,
+    validateRemoteMcpUrl,
+} from "./client";
+import {
+    CLIENT_INFO,
+    OAUTH_STATE_TTL_MS,
+    type ConnectorRow,
+    type Db,
+    type OAuthMetadata,
+    type OAuthStateConfig,
+    type OAuthTokenRow,
+} from "./types";
+
+export class McpOAuthRequiredError extends Error {
+    code = "oauth_required";
+    constructor(message = "OAuth authorization is required for this MCP server.") {
+        super(message);
+        this.name = "McpOAuthRequiredError";
+    }
+}
+
+function parseWwwAuthenticate(value: string | null): string | null {
+    if (!value) return null;
+    const match = value.match(/resource_metadata=(?:"([^"]+)"|([^,\s]+))/i);
+    return match?.[1] ?? match?.[2] ?? null;
+}
+
+async function fetchJson(url: string, init?: RequestInit) {
+    await validateRemoteMcpUrl(url);
+    const response = await fetch(url, { ...init, redirect: "manual" });
+    if (!response.ok) {
+        throw new Error(`Failed to fetch OAuth metadata (${response.status}).`);
+    }
+    const parsed = await response.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("OAuth metadata response was not an object.");
+    }
+    return parsed as Record<string, unknown>;
+}
+
+async function discoverProtectedResourceMetadataUrl(serverUrl: string) {
+    const attempts: Array<() => Promise<Response>> = [
+        () => fetch(serverUrl, { method: "GET", redirect: "manual" }),
+        () =>
+            fetch(serverUrl, {
+                method: "POST",
+                redirect: "manual",
+                headers: {
+                    Accept: "application/json, text/event-stream",
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    id: "oauth-discovery",
+                    method: "initialize",
+                    params: {
+                        protocolVersion: "2025-06-18",
+                        capabilities: {},
+                        clientInfo: CLIENT_INFO,
+                    },
+                }),
+            }),
+    ];
+    for (const attempt of attempts) {
+        const response = await attempt();
+        if (response.status === 401) {
+            const metadataUrl = parseWwwAuthenticate(
+                response.headers.get("www-authenticate"),
+            );
+            if (metadataUrl) return new URL(metadataUrl, serverUrl).toString();
+        }
+    }
+
+    const url = new URL(serverUrl);
+    const candidates = [
+        `${url.origin}/.well-known/oauth-protected-resource${url.pathname}`,
+        `${url.origin}/.well-known/oauth-protected-resource`,
+    ];
+    for (const candidate of candidates) {
+        try {
+            await fetchJson(candidate);
+            return candidate;
+        } catch {
+            // Try the next well-known form.
+        }
+    }
+    throw new McpOAuthRequiredError();
+}
+
+async function fetchAuthorizationServerMetadata(
+    authorizationServer: string,
+): Promise<Record<string, unknown>> {
+    const trimmed = authorizationServer.replace(/\/+$/, "");
+    const candidates = authorizationServer.includes("/.well-known/")
+        ? [authorizationServer]
+        : [
+              `${trimmed}/.well-known/oauth-authorization-server`,
+              `${trimmed}/.well-known/openid-configuration`,
+              authorizationServer,
+          ];
+    let lastError: unknown = null;
+    for (const candidate of candidates) {
+        try {
+            return await fetchJson(candidate);
+        } catch (err) {
+            lastError = err;
+        }
+    }
+    throw lastError instanceof Error
+        ? lastError
+        : new Error("Failed to discover OAuth authorization server metadata.");
+}
+
+export async function discoverOAuthMetadata(serverUrl: string): Promise<OAuthMetadata> {
+    const metadataUrl = await discoverProtectedResourceMetadataUrl(serverUrl);
+    const resourceMetadata = await fetchJson(metadataUrl);
+    const authServers = resourceMetadata.authorization_servers;
+    const authorizationServer =
+        Array.isArray(authServers) && typeof authServers[0] === "string"
+            ? authServers[0]
+            : null;
+    if (!authorizationServer) {
+        throw new Error("MCP server did not advertise an OAuth authorization server.");
+    }
+    const authMetadata = await fetchAuthorizationServerMetadata(authorizationServer);
+    const authorizationEndpoint = authMetadata.authorization_endpoint;
+    const tokenEndpoint = authMetadata.token_endpoint;
+    if (
+        typeof authorizationEndpoint !== "string" ||
+        typeof tokenEndpoint !== "string"
+    ) {
+        throw new Error("OAuth authorization server metadata is missing endpoints.");
+    }
+    return {
+        authorizationServer,
+        authorizationEndpoint,
+        tokenEndpoint,
+        registrationEndpoint:
+            typeof authMetadata.registration_endpoint === "string"
+                ? authMetadata.registration_endpoint
+                : undefined,
+        scopesSupported: Array.isArray(authMetadata.scopes_supported)
+            ? authMetadata.scopes_supported.filter(
+                  (scope): scope is string => typeof scope === "string",
+              )
+            : undefined,
+    };
+}
+
+function oauthClientEnvFor(serverUrl: string) {
+    const hostname = new URL(serverUrl).hostname.toLowerCase();
+    const prefix = hostname.endsWith("googleapis.com")
+        ? "GOOGLE_MCP_OAUTH"
+        : "MCP_OAUTH";
+    return {
+        clientId:
+            process.env[`${prefix}_CLIENT_ID`] ||
+            process.env.MCP_OAUTH_CLIENT_ID,
+        clientSecret:
+            process.env[`${prefix}_CLIENT_SECRET`] ||
+            process.env.MCP_OAUTH_CLIENT_SECRET,
+        scope:
+            process.env[`${prefix}_SCOPE`] ||
+            process.env.MCP_OAUTH_DEFAULT_SCOPE,
+    };
+}
+
+async function registerOAuthClient(
+    metadata: OAuthMetadata,
+    redirectUri: string,
+) {
+    if (!metadata.registrationEndpoint) return null;
+    await validateRemoteMcpUrl(metadata.registrationEndpoint);
+    const response = await fetch(metadata.registrationEndpoint, {
+        method: "POST",
+        redirect: "manual",
+        headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            client_name: "Mike",
+            redirect_uris: [redirectUri],
+            grant_types: ["authorization_code", "refresh_token"],
+            response_types: ["code"],
+            token_endpoint_auth_method: "client_secret_post",
+        }),
+    });
+    if (!response.ok) return null;
+    const parsed = (await response.json()) as Record<string, unknown>;
+    return typeof parsed.client_id === "string"
+        ? {
+              clientId: parsed.client_id,
+              clientSecret:
+                  typeof parsed.client_secret === "string"
+                      ? parsed.client_secret
+                      : undefined,
+          }
+        : null;
+}
+
+function scopeForOAuth(serverUrl: string, metadata: OAuthMetadata) {
+    const configured = oauthClientEnvFor(serverUrl).scope;
+    if (configured) return configured;
+    return metadata.scopesSupported?.length
+        ? metadata.scopesSupported.join(" ")
+        : undefined;
+}
+
+export async function loadOAuthToken(connectorId: string, db: Db) {
+    const { data, error } = await db
+        .from("user_mcp_oauth_tokens")
+        .select("*")
+        .eq("connector_id", connectorId)
+        .maybeSingle();
+    if (error) throw error;
+    return (data as OAuthTokenRow | null) ?? null;
+}
+
+function tokenSecretPatch(prefix: string, value?: string | null) {
+    if (!value) {
+        return {
+            [`encrypted_${prefix}`]: null,
+            [`${prefix}_iv`]: null,
+            [`${prefix}_tag`]: null,
+        };
+    }
+    const encrypted = encryptString(value);
+    return {
+        [`encrypted_${prefix}`]: encrypted.encrypted,
+        [`${prefix}_iv`]: encrypted.iv,
+        [`${prefix}_tag`]: encrypted.tag,
+    };
+}
+
+async function storeOAuthToken(
+    connectorId: string,
+    config: Omit<OAuthStateConfig, "codeVerifier" | "redirectUri">,
+    token: Record<string, unknown>,
+    db: Db,
+) {
+    const expiresIn =
+        typeof token.expires_in === "number" ? token.expires_in : null;
+    const accessToken =
+        typeof token.access_token === "string" ? token.access_token : null;
+    if (!accessToken) throw new Error("OAuth token response did not include an access token.");
+    const refreshToken =
+        typeof token.refresh_token === "string" ? token.refresh_token : undefined;
+    const existing = await loadOAuthToken(connectorId, db);
+    const existingRefresh = existing
+        ? decryptString(
+              existing.encrypted_refresh_token,
+              existing.refresh_token_iv,
+              existing.refresh_token_tag,
+          )
+        : null;
+    const clientSecret = config.clientSecret;
+    const row = {
+        connector_id: connectorId,
+        ...tokenSecretPatch("access_token", accessToken),
+        ...tokenSecretPatch("refresh_token", refreshToken ?? existingRefresh),
+        token_type:
+            typeof token.token_type === "string" ? token.token_type : "Bearer",
+        scope: typeof token.scope === "string" ? token.scope : config.scope ?? null,
+        expires_at: expiresIn
+            ? new Date(Date.now() + expiresIn * 1000).toISOString()
+            : null,
+        authorization_server: config.authorizationServer,
+        token_endpoint: config.tokenEndpoint,
+        client_id: config.clientId,
+        ...tokenSecretPatch("client_secret", clientSecret),
+        resource: config.resource,
+        updated_at: new Date().toISOString(),
+    };
+    const { error } = await db
+        .from("user_mcp_oauth_tokens")
+        .upsert(row, { onConflict: "connector_id" });
+    if (error) throw error;
+    const { error: connectorError } = await db
+        .from("user_mcp_connectors")
+        .update({
+            auth_type: "oauth",
+            encrypted_auth_config: null,
+            auth_config_iv: null,
+            auth_config_tag: null,
+            updated_at: new Date().toISOString(),
+        })
+        .eq("id", connectorId);
+    if (connectorError) throw connectorError;
+}
+
+async function refreshOAuthAccessToken(row: OAuthTokenRow, db: Db) {
+    const refreshToken = decryptString(
+        row.encrypted_refresh_token,
+        row.refresh_token_iv,
+        row.refresh_token_tag,
+    );
+    if (!refreshToken || !row.token_endpoint || !row.client_id) {
+        throw new McpOAuthRequiredError("OAuth reconnect is required for this MCP server.");
+    }
+    const clientSecret = decryptString(
+        row.encrypted_client_secret,
+        row.client_secret_iv,
+        row.client_secret_tag,
+    );
+    const body = new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+        client_id: row.client_id,
+    });
+    if (clientSecret) body.set("client_secret", clientSecret);
+    if (row.resource) body.set("resource", row.resource);
+    await validateRemoteMcpUrl(row.token_endpoint);
+    const response = await fetch(row.token_endpoint, {
+        method: "POST",
+        headers: {
+            Accept: "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body,
+    });
+    if (!response.ok) {
+        throw new McpOAuthRequiredError("OAuth token refresh failed. Please reconnect.");
+    }
+    const token = (await response.json()) as Record<string, unknown>;
+    await storeOAuthToken(
+        row.connector_id,
+        {
+            authorizationServer: row.authorization_server ?? "",
+            tokenEndpoint: row.token_endpoint,
+            clientId: row.client_id,
+            clientSecret: clientSecret ?? undefined,
+            resource: row.resource ?? "",
+            scope: row.scope ?? undefined,
+        },
+        token,
+        db,
+    );
+    const updated = await loadOAuthToken(row.connector_id, db);
+    if (!updated) throw new McpOAuthRequiredError();
+    return updated;
+}
+
+async function oauthBearerToken(connector: ConnectorRow, db: Db) {
+    let token = await loadOAuthToken(connector.id, db);
+    if (!token?.encrypted_access_token) {
+        throw new McpOAuthRequiredError();
+    }
+    const expiresAt = token.expires_at ? Date.parse(token.expires_at) : null;
+    if (expiresAt && expiresAt < Date.now() + 60_000) {
+        token = await refreshOAuthAccessToken(token, db);
+    }
+    const accessToken = decryptString(
+        token.encrypted_access_token,
+        token.access_token_iv,
+        token.access_token_tag,
+    );
+    if (!accessToken) throw new McpOAuthRequiredError();
+    return accessToken;
+}
+
+export class DbMcpOAuthProvider implements OAuthClientProvider {
+    public lastAuthorizeUrl: URL | null = null;
+
+    constructor(
+        private readonly db: Db,
+        private readonly connector: ConnectorRow,
+        private readonly userId: string,
+        private readonly mode: "initiate" | "use",
+        private readonly redirectUri: string,
+        private readonly stateToken = base64Url(crypto.randomBytes(32)),
+    ) {}
+
+    get redirectUrl() {
+        return this.redirectUri;
+    }
+
+    get clientMetadata(): OAuthClientMetadata {
+        const env = oauthClientEnvFor(this.connector.server_url);
+        return {
+            client_name: "Mike",
+            redirect_uris: [this.redirectUri],
+            grant_types: ["authorization_code", "refresh_token"],
+            response_types: ["code"],
+            token_endpoint_auth_method: env.clientSecret
+                ? "client_secret_post"
+                : "none",
+            ...(env.scope ? { scope: env.scope } : {}),
+        };
+    }
+
+    state() {
+        return this.stateToken;
+    }
+
+    async clientInformation(): Promise<OAuthClientInformationMixed | undefined> {
+        const token = await loadOAuthToken(this.connector.id, this.db);
+        if (token?.client_id) {
+            const clientSecret = decryptString(
+                token.encrypted_client_secret,
+                token.client_secret_iv,
+                token.client_secret_tag,
+            );
+            return {
+                client_id: token.client_id,
+                ...(clientSecret ? { client_secret: clientSecret } : {}),
+            };
+        }
+        const env = oauthClientEnvFor(this.connector.server_url);
+        if (!env.clientId) return undefined;
+        return {
+            client_id: env.clientId,
+            ...(env.clientSecret ? { client_secret: env.clientSecret } : {}),
+        };
+    }
+
+    async saveClientInformation(info: OAuthClientInformationMixed) {
+        const clientSecret =
+            "client_secret" in info && typeof info.client_secret === "string"
+                ? info.client_secret
+                : undefined;
+        const row = {
+            connector_id: this.connector.id,
+            client_id: info.client_id,
+            ...tokenSecretPatch("client_secret", clientSecret),
+            updated_at: new Date().toISOString(),
+        };
+        const { error } = await this.db
+            .from("user_mcp_oauth_tokens")
+            .upsert(row, { onConflict: "connector_id" });
+        if (error) throw error;
+    }
+
+    async tokens(): Promise<OAuthTokens | undefined> {
+        const row = await loadOAuthToken(this.connector.id, this.db);
+        if (!row?.encrypted_access_token) return undefined;
+        const accessToken = decryptString(
+            row.encrypted_access_token,
+            row.access_token_iv,
+            row.access_token_tag,
+        );
+        if (!accessToken) return undefined;
+        const refreshToken = decryptString(
+            row.encrypted_refresh_token,
+            row.refresh_token_iv,
+            row.refresh_token_tag,
+        );
+        const expiresAt = row.expires_at ? Date.parse(row.expires_at) : null;
+        const expiresIn = expiresAt
+            ? Math.max(0, Math.floor((expiresAt - Date.now()) / 1000))
+            : undefined;
+        return {
+            access_token: accessToken,
+            token_type: row.token_type ?? "Bearer",
+            ...(refreshToken ? { refresh_token: refreshToken } : {}),
+            ...(row.scope ? { scope: row.scope } : {}),
+            ...(expiresIn !== undefined ? { expires_in: expiresIn } : {}),
+        };
+    }
+
+    async saveTokens(tokens: OAuthTokens) {
+        const existing = await loadOAuthToken(this.connector.id, this.db);
+        const existingRefresh = existing
+            ? decryptString(
+                  existing.encrypted_refresh_token,
+                  existing.refresh_token_iv,
+                  existing.refresh_token_tag,
+              )
+            : null;
+        const env = oauthClientEnvFor(this.connector.server_url);
+        const clientInfo = await this.clientInformation();
+        const expiresIn =
+            typeof tokens.expires_in === "number" ? tokens.expires_in : null;
+        const row = {
+            connector_id: this.connector.id,
+            ...tokenSecretPatch("access_token", tokens.access_token),
+            ...tokenSecretPatch(
+                "refresh_token",
+                tokens.refresh_token ?? existingRefresh,
+            ),
+            token_type: tokens.token_type ?? "Bearer",
+            scope: tokens.scope ?? env.scope ?? null,
+            expires_at: expiresIn
+                ? new Date(Date.now() + expiresIn * 1000).toISOString()
+                : null,
+            client_id: clientInfo?.client_id ?? null,
+            ...tokenSecretPatch(
+                "client_secret",
+                "client_secret" in (clientInfo ?? {}) &&
+                    typeof clientInfo?.client_secret === "string"
+                    ? clientInfo.client_secret
+                    : undefined,
+            ),
+            resource: new URL(this.connector.server_url).toString(),
+            updated_at: new Date().toISOString(),
+        };
+        const { error } = await this.db
+            .from("user_mcp_oauth_tokens")
+            .upsert(row, { onConflict: "connector_id" });
+        if (error) throw error;
+        const authConfig = decryptAuthConfig(this.connector);
+        const { error: connectorError } = await this.db
+            .from("user_mcp_connectors")
+            .update({
+                auth_type: "oauth",
+                ...authConfigPatch({ headers: authConfig.headers }),
+                updated_at: new Date().toISOString(),
+            })
+            .eq("id", this.connector.id)
+            .eq("user_id", this.userId);
+        if (connectorError) throw connectorError;
+    }
+
+    async redirectToAuthorization(authorizationUrl: URL) {
+        if (this.mode === "initiate") {
+            this.lastAuthorizeUrl = authorizationUrl;
+            return;
+        }
+        throw new McpOAuthRequiredError();
+    }
+
+    async saveCodeVerifier(codeVerifier: string) {
+        const encrypted = encryptString(
+            JSON.stringify({
+                codeVerifier,
+                redirectUri: this.redirectUri,
+            } satisfies OAuthStateConfig),
+        );
+        await this.db.from("user_mcp_oauth_states").delete().eq(
+            "state_hash",
+            stateHash(this.stateToken),
+        );
+        const { error } = await this.db.from("user_mcp_oauth_states").insert({
+            user_id: this.userId,
+            connector_id: this.connector.id,
+            state_hash: stateHash(this.stateToken),
+            encrypted_state_config: encrypted.encrypted,
+            state_config_iv: encrypted.iv,
+            state_config_tag: encrypted.tag,
+            expires_at: new Date(Date.now() + OAUTH_STATE_TTL_MS).toISOString(),
+        });
+        if (error) throw error;
+    }
+
+    async codeVerifier() {
+        const { data, error } = await this.db
+            .from("user_mcp_oauth_states")
+            .select("encrypted_state_config, state_config_iv, state_config_tag")
+            .eq("state_hash", stateHash(this.stateToken))
+            .gt("expires_at", new Date().toISOString())
+            .maybeSingle();
+        if (error) throw error;
+        if (!data) throw new Error("OAuth state is invalid or expired.");
+        const decrypted = decryptString(
+            String(data.encrypted_state_config),
+            String(data.state_config_iv),
+            String(data.state_config_tag),
+        );
+        if (!decrypted) throw new Error("OAuth state could not be decrypted.");
+        const parsed = JSON.parse(decrypted) as OAuthStateConfig;
+        return parsed.codeVerifier;
+    }
+
+    async validateResourceURL(serverUrl: string | URL, resource?: string) {
+        await validateRemoteMcpUrl(String(serverUrl));
+        if (!resource) return undefined;
+        await validateRemoteMcpUrl(resource);
+        return new URL(resource);
+    }
+
+    async invalidateCredentials(
+        scope: "all" | "client" | "tokens" | "verifier" | "discovery",
+    ) {
+        if (scope === "verifier") {
+            await this.db
+                .from("user_mcp_oauth_states")
+                .delete()
+                .eq("state_hash", stateHash(this.stateToken));
+            return;
+        }
+        if (scope === "tokens" || scope === "all") {
+            await this.db
+                .from("user_mcp_oauth_tokens")
+                .delete()
+                .eq("connector_id", this.connector.id);
+        }
+    }
+}
+
+export async function startUserMcpConnectorOAuth(
+    userId: string,
+    connectorId: string,
+    redirectUri: string,
+    db: Db = createServerSupabase(),
+): Promise<{ authorizationUrl: string | null; alreadyAuthorized: boolean }> {
+    const connector = await loadConnector(userId, connectorId, db);
+    const provider = new DbMcpOAuthProvider(
+        db,
+        connector,
+        userId,
+        "initiate",
+        redirectUri,
+    );
+    const env = oauthClientEnvFor(connector.server_url);
+    const result = await runMcpOAuth(provider, {
+        serverUrl: connector.server_url,
+        ...(env.scope ? { scope: env.scope } : {}),
+        fetchFn: guardedFetch,
+    });
+    if (result === "AUTHORIZED") {
+        return { authorizationUrl: null, alreadyAuthorized: true };
+    }
+    if (!provider.lastAuthorizeUrl) {
+        throw new Error("OAuth authorization URL was not returned by the MCP SDK.");
+    }
+    return {
+        authorizationUrl: provider.lastAuthorizeUrl.toString(),
+        alreadyAuthorized: false,
+    };
+}
+
+export async function completeMcpConnectorOAuthAuthorization(
+    state: string,
+    code: string,
+    db: Db = createServerSupabase(),
+): Promise<{ userId: string; connectorId: string }> {
+    const { data, error } = await db
+        .from("user_mcp_oauth_states")
+        .select("*")
+        .eq("state_hash", stateHash(state))
+        .gt("expires_at", new Date().toISOString())
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("OAuth state is invalid or expired.");
+    const row = data as {
+        id: string;
+        user_id: string;
+        connector_id: string;
+        encrypted_state_config: string;
+        state_config_iv: string;
+        state_config_tag: string;
+    };
+    const decrypted = decryptString(
+        row.encrypted_state_config,
+        row.state_config_iv,
+        row.state_config_tag,
+    );
+    if (!decrypted) throw new Error("OAuth state could not be decrypted.");
+    const config = JSON.parse(decrypted) as OAuthStateConfig;
+    const connector = await loadConnector(row.user_id, row.connector_id, db);
+    const provider = new DbMcpOAuthProvider(
+        db,
+        connector,
+        row.user_id,
+        "initiate",
+        config.redirectUri,
+        state,
+    );
+    const result = await runMcpOAuth(provider, {
+        serverUrl: connector.server_url,
+        authorizationCode: code,
+        fetchFn: guardedFetch,
+    });
+    if (result !== "AUTHORIZED") {
+        throw new Error("OAuth authorization did not complete.");
+    }
+    await db.from("user_mcp_oauth_states").delete().eq("id", row.id);
+    return { userId: row.user_id, connectorId: row.connector_id };
+}

@@ -1,26 +1,31 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { X, Upload, Search, Loader2 } from "lucide-react";
+import { AlertCircle, Upload, Search, Loader2, X } from "lucide-react";
 import {
     uploadStandaloneDocument,
     uploadProjectDocument,
     addDocumentToProject,
     deleteDocument,
 } from "@/app/lib/mikeApi";
-import type { MikeDocument } from "./types";
+import type { Document } from "./types";
 import { FileDirectory } from "./FileDirectory";
 import { useDirectoryData, invalidateDirectoryCache } from "./useDirectoryData";
 import { OwnerOnlyModal } from "./OwnerOnlyModal";
 import { useAuth } from "@/contexts/AuthContext";
+import { Modal } from "./Modal";
+import {
+    SUPPORTED_DOCUMENT_ACCEPT,
+    formatUnsupportedDocumentWarning,
+    partitionSupportedDocumentFiles,
+} from "@/app/lib/documentUploadValidation";
 
 export { invalidateDirectoryCache };
 
 interface Props {
     open: boolean;
     onClose: () => void;
-    onSelect: (documents: MikeDocument[], projectId?: string) => void;
+    onSelect: (documents: Document[], projectId?: string) => void;
     breadcrumb: string[];
     allowMultiple?: boolean;
     projectId?: string;
@@ -39,8 +44,9 @@ export function AddDocumentsModal({
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [uploading, setUploading] = useState(false);
     const [uploadingFilenames, setUploadingFilenames] = useState<string[]>([]);
+    const [uploadWarning, setUploadWarning] = useState<string | null>(null);
     const [search, setSearch] = useState("");
-    const [extraUploadedDocs, setExtraUploadedDocs] = useState<MikeDocument[]>([]);
+    const [extraUploadedDocs, setExtraUploadedDocs] = useState<Document[]>([]);
     // IDs deleted in this session — hidden locally since `useDirectoryData`'s
     // cached state won't re-fetch until the modal reopens.
     const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
@@ -54,6 +60,7 @@ export function AddDocumentsModal({
         setExtraUploadedDocs([]);
         setDeletedIds(new Set());
         setUploadingFilenames([]);
+        setUploadWarning(null);
     }, [open]);
 
     if (!open) return null;
@@ -68,7 +75,9 @@ export function AddDocumentsModal({
     ].filter((d) => !deletedIds.has(d.id));
 
     const filteredStandalone = q
-        ? allStandalone.filter((d) => d.filename.toLowerCase().includes(q))
+        ? allStandalone.filter((d) =>
+              d.filename.toLowerCase().includes(q),
+          )
         : allStandalone;
 
     const filteredProjects = projects
@@ -78,7 +87,8 @@ export function AddDocumentsModal({
             documents: (p.documents || []).filter(
                 (d) =>
                     !deletedIds.has(d.id) &&
-                    (!q || d.filename.toLowerCase().includes(q)),
+                    (!q ||
+                        d.filename.toLowerCase().includes(q)),
             ),
         }))
         .filter(
@@ -134,7 +144,7 @@ export function AddDocumentsModal({
     async function handleDelete(ids: string[]) {
         // Server only allows the doc creator to delete. Filter to owned
         // and warn for the rest.
-        const docsById = new Map<string, MikeDocument>();
+        const docsById = new Map<string, Document>();
         for (const d of [
             ...standaloneDocuments,
             ...extraUploadedDocs,
@@ -177,11 +187,17 @@ export function AddDocumentsModal({
     async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
         const files = Array.from(e.target.files || []);
         if (!files.length) return;
-        setUploadingFilenames(files.map((file) => file.name));
+        const { supported, unsupported } = partitionSupportedDocumentFiles(files);
+        setUploadWarning(formatUnsupportedDocumentWarning(unsupported));
+        if (supported.length === 0) {
+            if (fileInputRef.current) fileInputRef.current.value = "";
+            return;
+        }
+        setUploadingFilenames(supported.map((file) => file.name));
         setUploading(true);
         try {
             const uploaded = await Promise.all(
-                files.map((f) =>
+                supported.map((f) =>
                     projectId
                         ? uploadProjectDocument(projectId, f)
                         : uploadStandaloneDocument(f),
@@ -201,29 +217,45 @@ export function AddDocumentsModal({
         }
     }
 
-    return createPortal(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/10 backdrop-blur-xs">
-            <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl flex flex-col h-[600px]">
-                {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4">
-                    <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                        {breadcrumb.map((segment, i) => (
-                            <span key={i} className="flex items-center gap-1.5">
-                                {i > 0 && <span>›</span>}
-                                {segment}
-                            </span>
-                        ))}
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                    >
-                        <X className="h-4 w-4" />
-                    </button>
-                </div>
-
+    return (
+        <>
+            <Modal
+                open={open}
+                onClose={onClose}
+                breadcrumbs={breadcrumb}
+                secondaryAction={{
+                    label: uploading ? "Uploading…" : "Upload",
+                    icon: uploading ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                        <Upload className="h-3.5 w-3.5" />
+                    ),
+                    onClick: () => fileInputRef.current?.click(),
+                    disabled: uploading,
+                }}
+                footerStatus={
+                    selectedIds.size > 0 ? (
+                        <span className="text-xs text-gray-400">
+                            {selectedIds.size} selected
+                        </span>
+                    ) : null
+                }
+                primaryAction={{
+                    label: uploading ? "Saving…" : "Confirm",
+                    onClick: handleConfirm,
+                    disabled: selectedIds.size === 0 || uploading,
+                }}
+            >
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={SUPPORTED_DOCUMENT_ACCEPT}
+                    multiple
+                    className="hidden"
+                    onChange={handleUpload}
+                />
                 {/* Search bar */}
-                <div className="px-4 pt-1 pb-2">
+                <div className="pt-1 pb-2">
                     <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                         <Search className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                         <input
@@ -245,76 +277,40 @@ export function AddDocumentsModal({
                     </div>
                 </div>
 
-                {/* File browser */}
-                <div className="flex-1 overflow-y-auto px-4 pb-2">
-                    <FileDirectory
-                        standaloneDocs={filteredStandalone}
-                        directoryProjects={filteredProjects}
-                        loading={loading}
-                        selectedIds={selectedIds}
-                        onChange={setSelectedIds}
-                        allowMultiple={allowMultiple}
-                        forceExpanded={!!q}
-                        emptyMessage={
-                            q ? "No matches found" : "No documents yet"
-                        }
-                        onDelete={handleDelete}
-                        uploadingFilenames={uploadingFilenames}
-                    />
-                </div>
+                {uploadWarning && (
+                    <div className="mb-2 flex items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-gray-900">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-600" />
+                        <span className="min-w-0 flex-1">{uploadWarning}</span>
+                        <button
+                            type="button"
+                            onClick={() => setUploadWarning(null)}
+                            className="shrink-0 rounded p-0.5 text-black hover:bg-gray-100"
+                            aria-label="Dismiss warning"
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                )}
 
-                {/* Footer */}
-                <div className="border-t border-gray-100 px-4 py-3 flex items-center justify-between gap-3">
-                    <div>
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept=".pdf,.docx,.doc"
-                            multiple
-                            className="hidden"
-                            onChange={handleUpload}
-                        />
-                        <button
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={uploading}
-                            className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                        >
-                            {uploading ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                                <Upload className="h-3.5 w-3.5" />
-                            )}
-                            {uploading ? "Uploading…" : "Upload"}
-                        </button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        {selectedIds.size > 0 && (
-                            <span className="text-xs text-gray-400">
-                                {selectedIds.size} selected
-                            </span>
-                        )}
-                        <button
-                            onClick={onClose}
-                            className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            onClick={handleConfirm}
-                            disabled={selectedIds.size === 0 || uploading}
-                            className="rounded-lg bg-gray-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-40"
-                        >
-                            {uploading ? "Saving…" : "Confirm"}
-                        </button>
-                    </div>
-                </div>
-            </div>
+                {/* File browser */}
+                <FileDirectory
+                    standaloneDocs={filteredStandalone}
+                    directoryProjects={filteredProjects}
+                    loading={loading}
+                    selectedIds={selectedIds}
+                    onChange={setSelectedIds}
+                    allowMultiple={allowMultiple}
+                    forceExpanded={!!q}
+                    emptyMessage={q ? "No matches found" : "No documents yet"}
+                    onDelete={handleDelete}
+                    uploadingFilenames={uploadingFilenames}
+                />
+            </Modal>
             <OwnerOnlyModal
                 open={!!ownerOnlyAction}
                 action={ownerOnlyAction ?? undefined}
                 onClose={() => setOwnerOnlyAction(null)}
             />
-        </div>,
-        document.body,
+        </>
     );
 }

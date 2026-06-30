@@ -12,11 +12,16 @@ import {
     RefreshCw,
     X,
 } from "lucide-react";
-import type { ColumnConfig, MikeDocument, TabularCell } from "../shared/types";
+import type {
+    ColumnConfig,
+    Document,
+    TabularCell,
+} from "../shared/types";
 import { preprocessCitations, type ParsedCitation } from "./citation-utils";
 import { getPillClass } from "./pillUtils";
 import { DocView } from "../shared/DocView";
 import { DocxView } from "../shared/DocxView";
+import { cn } from "@/lib/utils";
 
 function isDocxDocument(d: {
     file_type?: string | null;
@@ -30,7 +35,7 @@ function isDocxDocument(d: {
 
 interface Props {
     cell: TabularCell;
-    document: MikeDocument;
+    document: Document;
     column: ColumnConfig;
     columns: ColumnConfig[];
     onClose: () => void;
@@ -109,22 +114,16 @@ export function TRSidePanel({
     const { processed: reasoningText, citations: reasoningCitations } =
         preprocessCitations(cell.content?.reasoning ?? "");
 
-    useEffect(() => {
-        console.log("[TRSidePanel] summary:", cell.content?.summary ?? "");
-    }, [cell.id, cell.content?.summary]);
-
     return (
         <div
-            className="fixed right-0 top-0 bottom-0 z-100 flex flex-row shadow-md border-l border-gray-200"
-            style={{
-                background: "rgba(255,255,255,0.08)",
-                backdropFilter: "blur(10px) saturate(50%)",
-                WebkitBackdropFilter: "blur(10px) saturate(50%)",
-            }}
+            className={cn(
+                "fixed z-100 flex flex-row",
+                "right-3 top-3 bottom-3 overflow-hidden rounded-2xl border border-white/70 bg-white/20 shadow-[0_8px_24px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-10px_24px_rgba(255,255,255,0.18),inset_1px_0_0_rgba(255,255,255,0.5)] backdrop-blur-2xl",
+            )}
         >
             {/* Document panel — left, 600px */}
             {docCitation !== undefined && (
-                <div className="relative flex w-[600px] shrink-0 flex-col border-r border-white/30 px-3">
+                <div className="relative flex w-[600px] shrink-0 flex-col border-r border-white/30 px-3 pb-3">
                     {/* Doc header */}
                     <div className="flex items-center gap-2 pt-3 shrink-0 border-b border-white/30">
                         <p
@@ -255,7 +254,9 @@ export function TRSidePanel({
                             </span>
                         </div>
                         {/* Document name */}
-                        <p className="text-xs mb-4">{doc.filename}</p>
+                        <p className="text-xs mb-4">
+                            {doc.filename}
+                        </p>
 
                         {/* Flag section */}
                         {cell.content?.flag && (

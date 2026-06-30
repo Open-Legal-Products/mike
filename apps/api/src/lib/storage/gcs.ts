@@ -87,6 +87,18 @@ export class GCSStorageAdapter implements StorageAdapter {
         }
     }
 
+    async list(prefix: string): Promise<string[]> {
+        if (!this.enabled) return [];
+        try {
+            const [files] = await this.storage()
+                .bucket(this.bucket)
+                .getFiles({ prefix });
+            return files.map((file) => file.name);
+        } catch {
+            return [];
+        }
+    }
+
     async getSignedUrl(
         key: string,
         expiresIn = env.GCS_SIGNED_URL_TTL,

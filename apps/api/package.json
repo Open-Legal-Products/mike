@@ -19,6 +19,7 @@
     "@google-cloud/storage": "^7.19.0",
     "@google/genai": "^1.50.1",
     "@mike/core": "0.1.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@supabase/supabase-js": "^2.49.4",
     "cors": "^2.8.5",
     "docx": "^9.5.0",

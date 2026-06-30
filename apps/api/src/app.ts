@@ -12,6 +12,7 @@ import { tabularRouter } from "./routes/tabular";
 import { workflowsRouter } from "./routes/workflows";
 import { userRouter } from "./routes/user";
 import { downloadsRouter } from "./routes/downloads";
+import { caseLawRouter } from "./routes/caseLaw";
 import { getAdminClient } from "./lib/supabase";
 import { checkStorageReady } from "./lib/storage";
 import { env } from "./lib/env";
@@ -71,6 +72,20 @@ const uploadLimiter = makeLimiter({
     message: "Too many upload requests. Please try again later.",
 });
 
+// Data export / deletion are expensive and privacy-sensitive operations, so
+// they get their own conservative hourly caps independent of the general limit.
+const exportLimiter = makeLimiter({
+    windowMs: hours(1),
+    max: 10,
+    message: "Too many export requests. Please try again later.",
+});
+
+const dataDeleteLimiter = makeLimiter({
+    windowMs: hours(1),
+    max: 20,
+    message: "Too many data deletion requests. Please try again later.",
+});
+
 export const app = express();
 
 app.disable("x-powered-by");
@@ -83,6 +98,7 @@ app.use(
         contentSecurityPolicy: {
             directives: {
                 defaultSrc: ["'none'"],
+                baseUri: ["'none'"],
                 frameAncestors: ["'none'"],
             },
         },
@@ -115,7 +131,18 @@ app.post("/chat/create", chatCreateLimiter);
 app.post("/chat/:chatId/generate-title", chatCreateLimiter);
 app.post("/single-documents", uploadLimiter);
 app.post("/single-documents/:documentId/versions", uploadLimiter);
+app.put(
+    "/single-documents/:documentId/versions/:versionId/file",
+    uploadLimiter,
+);
 app.post("/projects/:projectId/documents", uploadLimiter);
+app.get("/user/export", exportLimiter);
+app.get("/user/chats/export", exportLimiter);
+app.get("/user/tabular-reviews/export", exportLimiter);
+app.delete("/user/account", dataDeleteLimiter);
+app.delete("/user/chats", dataDeleteLimiter);
+app.delete("/user/projects", dataDeleteLimiter);
+app.delete("/user/tabular-reviews", dataDeleteLimiter);
 
 app.use("/chat", chatRouter);
 app.use("/projects", projectsRouter);
@@ -126,6 +153,7 @@ app.use("/workflows", workflowsRouter);
 app.use("/user", userRouter);
 app.use("/users", userRouter);
 app.use("/download", downloadsRouter);
+app.use("/case-law", caseLawRouter);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 

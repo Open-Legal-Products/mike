@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Loader2, ChevronDown, Check, Table2 } from "lucide-react";
-import { HeaderSearchBtn } from "@/app/components/shared/HeaderSearchBtn";
-import { RowActions } from "@/app/components/shared/RowActions";
+import { ChevronDown, Table2 } from "lucide-react";
+import {
+    RowActionMenuItems,
+    RowActions,
+} from "@/app/components/shared/RowActions";
 import {
     deleteTabularReview,
     listTabularReviews,
@@ -12,18 +14,35 @@ import {
     listProjects,
     updateTabularReview,
 } from "@/app/lib/mikeApi";
-import type { TabularReview, MikeProject } from "@/app/components/shared/types";
-import { ToolbarTabs } from "@/app/components/shared/ToolbarTabs";
+import type { TabularReview, Project } from "@/app/components/shared/types";
+import { TableToolbar } from "@/app/components/shared/TableToolbar";
 import { AddNewTRModal } from "@/app/components/tabular/AddNewTRModal";
 import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
 import { useAuth } from "@/contexts/AuthContext";
+import { PageHeader } from "@/app/components/shared/PageHeader";
+import {
+    GLASS_DROPDOWN,
+    HeaderFilterDropdown,
+} from "@/app/components/shared/HeaderFilterDropdown";
+import {
+    TABLE_CHECKBOX_CLASS,
+    TABLE_STICKY_CELL_BG,
+    SkeletonDot,
+    SkeletonLine,
+    TableBody,
+    TableCell,
+    TableEmptyState,
+    TableHeaderCell,
+    TableHeaderRow,
+    TablePrimaryCell,
+    TableRow,
+    TableScrollArea,
+    TableStickyCell,
+} from "@/app/components/shared/TablePrimitive";
 
-type Tab = "all" | "in-project" | "standalone";
+type ReviewScope = "all" | "in-project" | "standalone";
 
-const CHECK_W = "w-8 shrink-0";
-const NAME_COL_W = "w-[300px] shrink-0";
-
-const TABS: { id: Tab; label: string }[] = [
+const REVIEW_SCOPES: { id: ReviewScope; label: string }[] = [
     { id: "all", label: "All" },
     { id: "in-project", label: "In Project" },
     { id: "standalone", label: "Standalone" },
@@ -39,20 +58,18 @@ function formatDate(iso: string) {
 
 export default function TabularReviewsPage() {
     const [reviews, setReviews] = useState<TabularReview[]>([]);
-    const [projects, setProjects] = useState<MikeProject[]>([]);
+    const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [newTROpen, setNewTROpen] = useState(false);
-    const [activeTab, setActiveTab] = useState<Tab>("all");
+    const [activeScope, setActiveScope] = useState<ReviewScope>("all");
     const [renamingId, setRenamingId] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState("");
     const [projectFilter, setProjectFilter] = useState<string | null>(null);
-    const [filterOpen, setFilterOpen] = useState(false);
     const [search, setSearch] = useState("");
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [actionsOpen, setActionsOpen] = useState(false);
     const [ownerOnlyAction, setOwnerOnlyAction] = useState<string | null>(null);
-    const filterRef = useRef<HTMLDivElement>(null);
     const actionsRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
     const { user } = useAuth();
@@ -71,15 +88,7 @@ export default function TabularReviewsPage() {
 
     useEffect(() => {
         setSelectedIds([]);
-    }, [activeTab, projectFilter]);
-
-    useEffect(() => {
-        function handleClick(e: MouseEvent) {
-            if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false);
-        }
-        document.addEventListener("mousedown", handleClick);
-        return () => document.removeEventListener("mousedown", handleClick);
-    }, []);
+    }, [activeScope, projectFilter]);
 
     useEffect(() => {
         function handleClick(e: MouseEvent) {
@@ -97,8 +106,8 @@ export default function TabularReviewsPage() {
     const q = search.toLowerCase();
     const filtered = reviews
         .filter((r) => {
-            if (activeTab === "in-project") return !!r.project_id;
-            if (activeTab === "standalone") return !r.project_id;
+            if (activeScope === "in-project") return !!r.project_id;
+            if (activeScope === "standalone") return !r.project_id;
             return true;
         })
         .filter((r) => !projectFilter || r.project_id === projectFilter)
@@ -120,8 +129,6 @@ export default function TabularReviewsPage() {
             prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
         );
     }
-
-    const selectedProject = projects.find((p) => p.id === projectFilter);
 
     const handleNewReview = async (
         title: string,
@@ -189,118 +196,80 @@ export default function TabularReviewsPage() {
     }
 
     const projectFilterButton = (
-        <div className="relative" ref={filterRef}>
-            <button
-                onClick={() => setFilterOpen((o) => !o)}
-                className={`flex items-center gap-1 text-xs font-medium transition-colors ${
-                    projectFilter
-                        ? "text-gray-700 hover:text-gray-900"
-                        : "text-gray-500 hover:text-gray-700"
-                }`}
-            >
-                {selectedProject ? selectedProject.name : "Filter by project"}
-                <ChevronDown className="h-3 w-3" />
-            </button>
-            {filterOpen && (
-                <div className="absolute right-0 top-full mt-1.5 z-20 w-52 rounded-xl border border-gray-100 bg-white shadow-lg overflow-hidden">
-                    <button
-                        onClick={() => {
-                            setProjectFilter(null);
-                            setFilterOpen(false);
-                        }}
-                        className="flex items-center justify-between w-full px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-                    >
-                        All Projects
-                        {!projectFilter && (
-                            <Check className="h-3.5 w-3.5 text-gray-400" />
-                        )}
-                    </button>
-                    {projects.length > 0 && (
-                        <div className="border-t border-gray-100" />
-                    )}
-                    {projects.map((p) => (
-                        <button
-                            key={p.id}
-                            onClick={() => {
-                                setProjectFilter(p.id);
-                                setFilterOpen(false);
-                            }}
-                            className="flex items-center justify-between w-full px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-                        >
-                            <span className="truncate pr-2">{p.name}</span>
-                            {projectFilter === p.id && (
-                                <Check className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                            )}
-                        </button>
-                    ))}
-                </div>
-            )}
-        </div>
+        <HeaderFilterDropdown
+            label="Filter by project"
+            value={projectFilter}
+            allLabel="All Projects"
+            options={projects.map((project) => ({
+                value: project.id,
+                label: project.name,
+            }))}
+            onChange={setProjectFilter}
+        />
     );
 
-    const toolbarActions = (
-        <>
-            {selectedIds.length > 0 && (
-                <div ref={actionsRef} className="relative">
-                    <button
-                        onClick={() => setActionsOpen((v) => !v)}
-                        className="flex items-center gap-1 text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
-                    >
-                        Actions
-                        <ChevronDown className="h-3.5 w-3.5" />
-                    </button>
-                    {actionsOpen && (
-                        <div className="absolute top-full right-0 mt-1 w-36 rounded-lg border border-gray-100 bg-white shadow-lg z-50 overflow-hidden">
-                            <button
-                                onClick={handleDeleteSelected}
-                                className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 transition-colors"
-                            >
-                                Delete
-                            </button>
-                        </div>
-                    )}
-                </div>
-            )}
-            {projectFilterButton}
-        </>
-    );
+    const toolbarActions =
+        selectedIds.length > 0 ? (
+            <div ref={actionsRef} className="relative">
+                <button
+                    onClick={() => setActionsOpen((v) => !v)}
+                    className="flex items-center gap-1 text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
+                >
+                    Actions
+                    <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+                {actionsOpen && (
+                    <div className={`absolute top-full right-0 mt-1 z-[100] w-36 overflow-hidden ${GLASS_DROPDOWN}`}>
+                        <button
+                            onClick={handleDeleteSelected}
+                            className="w-full px-3 py-1.5 text-left text-xs text-red-600 transition-colors hover:bg-red-500/10"
+                        >
+                            Delete
+                        </button>
+                    </div>
+                )}
+            </div>
+        ) : undefined;
 
     return (
-        <div className="flex-1 overflow-y-auto bg-white">
+        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
             {/* Page header */}
-            <div className="mb-1 flex items-center justify-between px-4 py-3 md:px-10">
+            <PageHeader
+                loading={loading}
+                actions={[
+                    {
+                        type: "search",
+                        value: search,
+                        onChange: setSearch,
+                        placeholder: "Search reviews…",
+                    },
+                    {
+                        type: "new",
+                        onClick: () => setNewTROpen(true),
+                        loading: creating,
+                        title: "New tabular review",
+                    },
+                ]}
+            >
                 <h1 className="text-2xl font-medium font-serif text-gray-900">
                     Tabular Reviews
                 </h1>
-                <div className="flex items-center gap-2">
-                    <HeaderSearchBtn value={search} onChange={setSearch} placeholder="Search reviews…" />
-                    <button
-                        onClick={() => setNewTROpen(true)}
-                        disabled={creating}
-                        className="flex items-center justify-center p-1.5 text-gray-500 hover:text-gray-900 transition-colors disabled:opacity-40"
-                    >
-                        {creating ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <Plus className="h-4 w-4" />
-                        )}
-                    </button>
-                </div>
-            </div>
+            </PageHeader>
 
-            <ToolbarTabs
-                tabs={TABS}
-                active={activeTab}
-                onChange={setActiveTab}
+            <TableToolbar
+                items={REVIEW_SCOPES}
+                active={activeScope}
+                onChange={setActiveScope}
                 actions={toolbarActions}
             />
 
             {/* Table */}
-            <div className="w-full overflow-x-auto">
-                <div className="min-w-max">
-                <div className="flex items-center h-8 pr-3 md:pr-10 border-b border-gray-200 text-xs text-gray-500 font-medium select-none">
-                    <div className={`sticky left-0 z-[60] ${CHECK_W} relative bg-white flex items-center justify-center self-stretch before:absolute before:inset-x-0 before:bottom-0 before:h-px before:bg-white`}>
-                        {!loading && (
+            <TableScrollArea>
+                <TableHeaderRow>
+                    <TableStickyCell header>
+                        {loading ? (
+                            <SkeletonDot />
+                        ) : (
                             <input
                                 type="checkbox"
                                 checked={allSelected}
@@ -308,50 +277,58 @@ export default function TabularReviewsPage() {
                                     if (el) el.indeterminate = someSelected;
                                 }}
                                 onChange={toggleAll}
-                                className="h-2.5 w-2.5 rounded border-gray-200 cursor-pointer accent-black"
+                                className={TABLE_CHECKBOX_CLASS}
                             />
                         )}
-                    </div>
-                    <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-white pl-2 text-left`}>
-                        Name
-                    </div>
-                    <div className="ml-auto w-24 shrink-0">Columns</div>
-                    <div className="w-24 shrink-0">Documents</div>
-                    <div className="w-40 shrink-0">Project</div>
-                    <div className="w-32 shrink-0">Created</div>
-                    <div className="w-8 shrink-0" />
-                </div>
+                        <span>Name</span>
+                    </TableStickyCell>
+                    <TableHeaderCell className="ml-auto w-24">
+                        Columns
+                    </TableHeaderCell>
+                    <TableHeaderCell className="w-24">Documents</TableHeaderCell>
+                    <TableHeaderCell className="w-40">
+                        <div className="flex items-center gap-1">
+                            <span>Project</span>
+                            {projectFilterButton}
+                        </div>
+                    </TableHeaderCell>
+                    <TableHeaderCell className="w-32">Created</TableHeaderCell>
+                    <TableHeaderCell className="w-8" />
+                </TableHeaderRow>
 
                 {loading ? (
-                    <div>
+                    <TableBody>
                         {[1, 2, 3].map((i) => (
-                            <div
+                            <TableRow
                                 key={i}
-                                className="flex items-center h-10 pr-3 md:pr-10 border-b border-gray-50"
+                                interactive={false}
                             >
-                                <div className="w-8 shrink-0" />
-                                <div className="flex-1 min-w-0 pl-3 pr-4">
-                                    <div className="h-3.5 w-48 rounded bg-gray-100 animate-pulse" />
-                                </div>
-                                <div className="w-24 shrink-0">
-                                    <div className="h-3 w-8 rounded bg-gray-100 animate-pulse" />
-                                </div>
-                                <div className="w-24 shrink-0">
-                                    <div className="h-3 w-8 rounded bg-gray-100 animate-pulse" />
-                                </div>
-                                <div className="w-40 shrink-0">
-                                    <div className="h-3 w-24 rounded bg-gray-100 animate-pulse" />
-                                </div>
-                                <div className="w-32 shrink-0">
-                                    <div className="h-3 w-20 rounded bg-gray-100 animate-pulse" />
-                                </div>
-                                <div className="w-8 shrink-0" />
-                            </div>
+                                <TableStickyCell
+                                    hover={false}
+                                    bgClassName="bg-transparent"
+                                >
+                                    <SkeletonDot />
+                                    <SkeletonLine className="h-3.5 w-48" />
+                                </TableStickyCell>
+                                <TableCell className="ml-auto w-24">
+                                    <SkeletonLine className="w-8" />
+                                </TableCell>
+                                <TableCell className="w-24">
+                                    <SkeletonLine className="w-8" />
+                                </TableCell>
+                                <TableCell className="w-40">
+                                    <SkeletonLine className="w-24" />
+                                </TableCell>
+                                <TableCell className="w-32">
+                                    <SkeletonLine className="w-20" />
+                                </TableCell>
+                                <TableCell className="w-8" />
+                            </TableRow>
                         ))}
-                    </div>
+                    </TableBody>
                 ) : filtered.length === 0 ? (
-                    <div className="flex flex-col items-start py-24 w-full max-w-xs mx-auto">
-                        {activeTab === "all" && !projectFilter ? (
+                    <TableEmptyState>
+                        {activeScope === "all" && !projectFilter ? (
                             <>
                                 <Table2 className="h-8 w-8 text-gray-300 mb-4" />
                                 <p className="text-2xl font-medium font-serif text-gray-900">
@@ -374,19 +351,60 @@ export default function TabularReviewsPage() {
                                 No reviews found
                             </p>
                         )}
-                    </div>
+                    </TableEmptyState>
                 ) : (
-                    <div>
+                    <TableBody>
                         {filtered.map((review) => {
                             const project = projects.find(
                                 (p) => p.id === review.project_id,
                             );
                             const rowBg = selectedIds.includes(review.id)
                                 ? "bg-gray-50"
-                                : "bg-white";
+                                : TABLE_STICKY_CELL_BG;
                             return (
-                                <div
+                                <TableRow
                                     key={review.id}
+                                    rightClickDropdown={(close) => (
+                                        <RowActionMenuItems
+                                            onClose={close}
+                                            onRename={() => {
+                                                if (
+                                                    user?.id &&
+                                                    review.user_id !== user.id
+                                                ) {
+                                                    setOwnerOnlyAction(
+                                                        "rename this tabular review",
+                                                    );
+                                                    return;
+                                                }
+                                                setRenameValue(
+                                                    review.title ??
+                                                        "Untitled Review",
+                                                );
+                                                setRenamingId(review.id);
+                                            }}
+                                            onDelete={async () => {
+                                                if (
+                                                    user?.id &&
+                                                    review.user_id !== user.id
+                                                ) {
+                                                    setOwnerOnlyAction(
+                                                        "delete this tabular review",
+                                                    );
+                                                    return;
+                                                }
+                                                await deleteTabularReview(
+                                                    review.id,
+                                                );
+                                                setReviews((prev) =>
+                                                    prev.filter(
+                                                        (r) =>
+                                                            r.id !== review.id,
+                                                    ),
+                                                );
+                                            }}
+                                        />
+                                    )}
                                     onClick={() => {
                                         if (renamingId === review.id) return;
                                         router.push(
@@ -395,65 +413,33 @@ export default function TabularReviewsPage() {
                                                 : `/tabular-reviews/${review.id}`,
                                         );
                                     }}
-                                    className="group flex items-center h-10 pr-3 md:pr-10 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
                                 >
-                                    <div
-                                        className={`sticky left-0 z-[60] ${CHECK_W} p-2 flex items-center justify-center ${rowBg} group-hover:bg-gray-50`}
-                                        onClick={(e) => e.stopPropagation()}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedIds.includes(
-                                                review.id,
-                                            )}
-                                            onChange={() =>
-                                                toggleOne(review.id)
-                                            }
-                                            className="h-2.5 w-2.5 rounded border-gray-200 cursor-pointer accent-black"
-                                        />
-                                    </div>
-                                    <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-white p-2 group-hover:bg-gray-50`}>
-                                        {renamingId === review.id ? (
-                                            <input
-                                                autoFocus
-                                                value={renameValue}
-                                                onChange={(e) =>
-                                                    setRenameValue(
-                                                        e.target.value,
-                                                    )
-                                                }
-                                                onKeyDown={(e) => {
-                                                    if (e.key === "Enter")
-                                                        handleRenameSubmit(
-                                                            review.id,
-                                                        );
-                                                    if (e.key === "Escape")
-                                                        setRenamingId(null);
-                                                }}
-                                                onBlur={() =>
-                                                    handleRenameSubmit(
-                                                        review.id,
-                                                    )
-                                                }
-                                                onClick={(e) =>
-                                                    e.stopPropagation()
-                                                }
-                                                className="w-full text-sm text-gray-800 bg-transparent outline-none"
-                                            />
-                                        ) : (
-                                            <span className="text-sm text-gray-800 truncate block">
-                                                {review.title ??
-                                                    "Untitled Review"}
-                                            </span>
+                                    <TablePrimaryCell
+                                        bgClassName={rowBg}
+                                        selected={selectedIds.includes(
+                                            review.id,
                                         )}
-                                    </div>
-                                    <div className="ml-auto w-24 shrink-0 text-sm text-gray-500 truncate">
+                                        onSelectionChange={() =>
+                                            toggleOne(review.id)
+                                        }
+                                        label={
+                                            review.title ?? "Untitled Review"
+                                        }
+                                        editing={renamingId === review.id}
+                                        editValue={renameValue}
+                                        onEditValueChange={setRenameValue}
+                                        onEditCommit={() =>
+                                            handleRenameSubmit(review.id)
+                                        }
+                                        onEditCancel={() => setRenamingId(null)}
+                                    />
+                                    <TableCell className="ml-auto w-24">
                                         {review.columns_config?.length ?? 0}
-                                    </div>
-                                    <div className="w-24 shrink-0 text-sm text-gray-500 truncate">
+                                    </TableCell>
+                                    <TableCell className="w-24">
                                         {review.document_count ?? 0}
-                                    </div>
-                                    <div className="w-40 shrink-0 text-sm text-gray-500 truncate pr-2">
+                                    </TableCell>
+                                    <TableCell className="w-40 pr-2">
                                         {project ? (
                                             project.name
                                         ) : (
@@ -461,8 +447,8 @@ export default function TabularReviewsPage() {
                                                 —
                                             </span>
                                         )}
-                                    </div>
-                                    <div className="w-32 shrink-0 text-sm text-gray-500 truncate">
+                                    </TableCell>
+                                    <TableCell className="w-32">
                                         {review.created_at ? (
                                             formatDate(review.created_at)
                                         ) : (
@@ -470,7 +456,7 @@ export default function TabularReviewsPage() {
                                                 —
                                             </span>
                                         )}
-                                    </div>
+                                    </TableCell>
                                     <div
                                         className="w-8 shrink-0 flex justify-end"
                                         onClick={(e) => e.stopPropagation()}
@@ -514,13 +500,12 @@ export default function TabularReviewsPage() {
                                             }}
                                             />
                                     </div>
-                                </div>
+                                </TableRow>
                             );
                         })}
-                    </div>
+                    </TableBody>
                 )}
-            </div>
-            </div>
+            </TableScrollArea>
 
             <AddNewTRModal
                 open={newTROpen}

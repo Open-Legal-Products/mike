@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ZoomIn, ZoomOut } from "lucide-react";
-import { MikeIcon } from "@/components/chat/mike-icon";
+import { Loader2, ZoomIn, ZoomOut } from "lucide-react";
 import { useFetchSingleDoc } from "@/app/hooks/useFetchSingleDoc";
 import { DocxView } from "./DocxView";
 import type { CitationQuote } from "./types";
@@ -17,6 +16,8 @@ interface Props {
     doc: { document_id: string; version_id?: string | null } | null;
     /** Preferred: one or more (page, quote) pairs to highlight. */
     quotes?: CitationQuote[];
+    /** Changes when the parent wants the current quote re-focused. */
+    quoteFocusKey?: string | number;
     /** Back-compat single-quote API. Ignored if `quotes` is provided. */
     quote?: string;
     fallbackPage?: number;
@@ -42,6 +43,7 @@ type RenderedPage = {
 export function DocView({
     doc,
     quotes,
+    quoteFocusKey,
     quote,
     fallbackPage,
     rounded = true,
@@ -495,9 +497,8 @@ export function DocView({
     useEffect(() => {
         if (!pdfDocRef.current) return;
         quoteListRef.current = quoteList;
-        if (quoteList.length === 0) return;
         rehighlightQuotes(quoteList);
-    }, [quoteKey, rehighlightQuotes]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [quoteKey, quoteFocusKey, rehighlightQuotes]); // eslint-disable-line react-hooks/exhaustive-deps
 
     function handleZoomIn() {
         const next = Math.min(
@@ -535,14 +536,18 @@ export function DocView({
         return (
             <DocxView
                 documentId={doc.document_id}
+                versionId={doc.version_id ?? null}
                 quotes={quotes}
+                quoteFocusKey={quoteFocusKey}
+                rounded={rounded}
+                bordered={bordered}
             />
         );
     }
 
     return (
         <div
-            className={`relative flex flex-col flex-1 overflow-hidden ${bordered ? "border border-gray-200" : ""} ${rounded ? "rounded-xl" : ""}`}
+            className={`relative flex flex-col flex-1 overflow-hidden ${bordered ? "border border-gray-200" : ""} ${rounded ? "rounded-lg" : ""}`}
         >
             <div
                 ref={scrollContainerRef}
@@ -550,7 +555,7 @@ export function DocView({
             >
                 {loading && (
                     <div className="flex h-full items-center justify-center">
-                        <MikeIcon spin mike size={28} />
+                        <Loader2 className="h-7 w-7 animate-spin text-gray-400" />
                     </div>
                 )}
                 {error && (

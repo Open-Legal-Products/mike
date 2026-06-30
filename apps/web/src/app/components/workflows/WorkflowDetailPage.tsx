@@ -1,21 +1,32 @@
 "use client";
 
-import { use, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { ChevronDown, Plus, Users, X } from "lucide-react";
-import { getWorkflow, updateWorkflow } from "@/app/lib/mikeApi";
+import {
+    Check,
+    ChevronDown,
+    Info,
+    Pencil,
+    Plus,
+    Trash2,
+    Users,
+    X,
+} from "lucide-react";
+import { deleteWorkflow, getWorkflow, updateWorkflow } from "@/app/lib/mikeApi";
 import { ShareWorkflowModal } from "@/app/components/workflows/ShareWorkflowModal";
 import { WFEditColumnModal } from "@/app/components/workflows/WFEditColumnModal";
 import { WFColumnViewModal } from "@/app/components/workflows/WFColumnViewModal";
 import { AddColumnModal } from "@/app/components/tabular/AddColumnModal";
-import type { ColumnConfig, MikeWorkflow } from "@/app/components/shared/types";
-import {
-    BUILT_IN_IDS,
-    BUILT_IN_WORKFLOWS,
-} from "@/app/components/workflows/builtinWorkflows";
+import type { ColumnConfig, Workflow } from "@/app/components/shared/types";
+import { BUILT_IN_WORKFLOWS } from "@/app/components/workflows/builtinWorkflows";
 import { formatIcon, formatLabel } from "@/app/components/tabular/columnFormat";
-import { RenameableTitle } from "@/app/components/shared/RenameableTitle";
+import { ConfirmPopup } from "@/app/components/shared/ConfirmPopup";
+import { HeaderActionsMenu } from "@/app/components/shared/HeaderActionsMenu";
+import { PageHeader } from "@/app/components/shared/PageHeader";
+import { WorkflowDetailsModal } from "@/app/components/workflows/WorkflowDetailsModal";
+import { useAuth } from "@/contexts/AuthContext";
+import { useUserProfile } from "@/contexts/UserProfileContext";
 // dynamic import keeps Tiptap (browser-only) out of the SSR bundle
 const WorkflowPromptEditor = dynamic(
     () =>
@@ -26,26 +37,32 @@ const WorkflowPromptEditor = dynamic(
 );
 
 interface Props {
-    params: Promise<{ id: string }>;
+    id: string;
+    workflowType: Workflow["type"];
 }
 
 type SaveStatus = "idle" | "saving" | "saved";
+type DeleteStatus = "idle" | "loading" | "complete";
 
-const CHECK_W = "w-8 shrink-0";
-const NAME_COL_W = "w-[300px] shrink-0";
+const NAME_COL_W = "w-[332px] shrink-0";
 
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
-export default function WorkflowDetailPage({ params }: Props) {
-    const { id } = use(params);
+export function WorkflowDetailPage({ id, workflowType }: Props) {
     const router = useRouter();
+    const { user } = useAuth();
+    const { profile } = useUserProfile();
+    const stickyCellBg = "bg-[#fafbfc]";
+    const builtinWorkflow =
+        BUILT_IN_WORKFLOWS.find((w) => w.id === id && w.type === workflowType) ??
+        null;
+    const isBuiltin = builtinWorkflow !== null;
 
-    const [workflow, setWorkflow] = useState<MikeWorkflow | null>(null);
+    const [workflow, setWorkflow] = useState<Workflow | null>(null);
     const [loading, setLoading] = useState(true);
     const [notFound, setNotFound] = useState(false);
 
-    const isBuiltin = BUILT_IN_IDS.has(id);
     const readOnly =
         isBuiltin ||
         (workflow?.is_system ?? false) ||
@@ -70,6 +87,9 @@ export default function WorkflowDetailPage({ params }: Props) {
 
     // Share popover
     const [shareOpen, setShareOpen] = useState(false);
+    const [detailsOpen, setDetailsOpen] = useState(false);
+    const [deleteOpen, setDeleteOpen] = useState(false);
+    const [deleteStatus, setDeleteStatus] = useState<DeleteStatus>("idle");
 
     // Column actions dropdown
     const [colActionsOpen, setColActionsOpen] = useState(false);
@@ -90,7 +110,7 @@ export default function WorkflowDetailPage({ params }: Props) {
     // ---------------------------------------------------------------------------
     useEffect(() => {
         if (isBuiltin) {
-            const wf = BUILT_IN_WORKFLOWS.find((w) => w.id === id) ?? null;
+            const wf = builtinWorkflow;
             if (!wf) {
                 setNotFound(true);
             } else {
@@ -104,6 +124,10 @@ export default function WorkflowDetailPage({ params }: Props) {
 
         getWorkflow(id)
             .then((wf) => {
+                if (wf.type !== workflowType) {
+                    setNotFound(true);
+                    return;
+                }
                 setWorkflow(wf);
                 setPromptMd(wf.prompt_md ?? "");
                 setColumns(
@@ -114,7 +138,7 @@ export default function WorkflowDetailPage({ params }: Props) {
             })
             .catch(() => setNotFound(true))
             .finally(() => setLoading(false));
-    }, [id, isBuiltin]);
+    }, [id, isBuiltin, builtinWorkflow, workflowType]);
 
     // ---------------------------------------------------------------------------
     // Debounced auto-save for prompt
@@ -137,10 +161,27 @@ export default function WorkflowDetailPage({ params }: Props) {
         [id, readOnly],
     );
 
-    async function handleTitleCommit(newTitle: string) {
-        if (!newTitle || newTitle === workflow?.title) return;
-        const updated = await updateWorkflow(id, { title: newTitle });
-        setWorkflow(updated);
+    async function handleWorkflowDetailsSave(values: { title: string }) {
+        if (!workflow || readOnly || !values.title) return;
+        if (values.title === workflow.title) return;
+        const updated = await updateWorkflow(id, { title: values.title });
+        setWorkflow({
+            ...updated,
+            shared_by_name:
+                updated.shared_by_name ?? workflow.shared_by_name ?? null,
+        });
+    }
+
+    async function handleDeleteWorkflow() {
+        if (!workflow || readOnly || workflow.is_owner === false) return;
+        setDeleteStatus("loading");
+        try {
+            await deleteWorkflow(id);
+            setDeleteStatus("complete");
+            setTimeout(() => router.push("/workflows"), 600);
+        } catch {
+            setDeleteStatus("idle");
+        }
     }
 
     function handlePromptChange(val: string | undefined) {
@@ -189,53 +230,24 @@ export default function WorkflowDetailPage({ params }: Props) {
     // ---------------------------------------------------------------------------
     if (loading) {
         return (
-            <div className="flex flex-col h-full">
-                {/* Header skeleton */}
-                <div className="flex items-center justify-between px-8 py-4 shrink-0">
-                    <div className="flex items-center gap-1.5">
-                        <div className="h-6 w-24 rounded bg-gray-100 animate-pulse" />
-                        <span className="text-gray-300">›</span>
-                        <div className="h-6 w-40 rounded bg-gray-100 animate-pulse" />
-                    </div>
-                </div>
-
-                {/* Toolbar skeleton */}
-                <div className="flex items-center px-8 h-10 border-b border-gray-200 shrink-0">
-                    <div className="h-3 w-20 rounded bg-gray-100 animate-pulse" />
-                </div>
-
-                {/* Table header skeleton */}
-                <div className="flex items-center h-8 pr-8 border-b border-gray-200 shrink-0">
-                    <div className="w-8 shrink-0 border-r border-gray-100 self-stretch" />
-                    <div className="flex-1 pl-3">
-                        <div className="h-2.5 w-20 rounded bg-gray-100 animate-pulse" />
-                    </div>
-                    <div className="w-36 shrink-0">
-                        <div className="h-2.5 w-14 rounded bg-gray-100 animate-pulse" />
-                    </div>
-                    <div className="flex-1">
-                        <div className="h-2.5 w-12 rounded bg-gray-100 animate-pulse" />
-                    </div>
-                    <div className="w-8 shrink-0" />
-                </div>
-
-                {/* Row skeletons */}
-                <div className="flex-1 overflow-hidden">
-                    {[1, 2, 3, 4, 5].map((i) => (
-                        <div key={i} className="flex items-center h-10 pr-8 border-b border-gray-50">
-                            <div className="w-8 shrink-0 border-r border-gray-100 self-stretch" />
-                            <div className="flex-1 pl-3 pr-4">
-                                <div className="h-3 rounded bg-gray-100 animate-pulse" style={{ width: `${40 + (i * 13) % 35}%` }} />
-                            </div>
-                            <div className="w-36 shrink-0">
-                                <div className="h-3 w-16 rounded bg-gray-100 animate-pulse" />
-                            </div>
-                            <div className="flex-1 pr-4">
-                                <div className="h-3 rounded bg-gray-100 animate-pulse" style={{ width: `${50 + (i * 17) % 35}%` }} />
-                            </div>
-                            <div className="w-8 shrink-0" />
-                        </div>
-                    ))}
+            <div className="flex h-full flex-col">
+                <PageHeader
+                    shrink
+                    breadcrumbs={[
+                        {
+                            label: "Workflows",
+                            onClick: () => router.push("/workflows"),
+                            title: "Back to Workflows",
+                        },
+                        { loading: true, skeletonClassName: "w-40" },
+                    ]}
+                />
+                <div className="flex min-h-0 flex-1 flex-col">
+                    {workflowType === "tabular" ? (
+                        <TabularWorkflowEditorSkeleton />
+                    ) : (
+                        <AssistantWorkflowEditorSkeleton />
+                    )}
                 </div>
             </div>
         );
@@ -252,65 +264,123 @@ export default function WorkflowDetailPage({ params }: Props) {
     return (
         <div className="flex flex-col h-full">
             {/* Page header */}
-            <div className="flex items-center justify-between px-8 py-4 shrink-0">
-                <div className="flex items-center gap-1.5 text-2xl font-medium font-serif">
-                    <button
-                        onClick={() => router.push("/workflows")}
-                        className="text-gray-500 hover:text-gray-700 transition-colors"
-                    >
-                        Workflows
-                    </button>
-                    <span className="text-gray-300">›</span>
-                    {readOnly ? (
-                        <span className="text-gray-900 truncate max-w-xs">{workflow.title}</span>
-                    ) : (
-                        <RenameableTitle value={workflow.title} onCommit={handleTitleCommit} />
-                    )}
-                </div>
-
-                <div className="flex items-center gap-3">
-                    {/* Save status */}
-                    <span className="text-xs text-gray-400">
-                        {saveStatus === "saving"
-                            ? "Saving…"
-                            : saveStatus === "saved"
-                              ? "Saved"
-                              : ""}
-                    </span>
-
-                    {/* Share button (custom workflows only) */}
-                    {canShare && (
-                        <button
-                            onClick={() => setShareOpen(true)}
-                            aria-label="Open workflow people"
-                            title="People"
-                            className="flex items-center text-gray-500 hover:text-gray-900 transition-colors"
-                        >
-                            <Users className="h-4 w-4" />
-                        </button>
-                    )}
-                    {shareOpen && (
-                        <ShareWorkflowModal
-                            workflowId={id}
-                            workflowName={workflow.title}
-                            onClose={() => setShareOpen(false)}
-                        />
-                    )}
-                </div>
-            </div>
-
-            {/* Read-only badge for built-in workflows */}
-            {readOnly && (
-                <div className="flex items-center h-10 px-8 border-b border-gray-200">
-                    <span className="text-xs text-gray-400">Read-only</span>
-                </div>
+            <PageHeader
+                shrink
+                breadcrumbs={[
+                    {
+                        label: "Workflows",
+                        onClick: () => router.push("/workflows"),
+                        title: "Back to Workflows",
+                    },
+                    {
+                        label: (
+                            <span className="text-gray-900 truncate max-w-xs">
+                                {workflow.title}
+                            </span>
+                        ),
+                    },
+                ]}
+                actions={[
+                    saveStatus !== "idle"
+                        ? {
+                              type: "custom",
+                              render: (
+                                  <span className="inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-sm text-gray-500">
+                                      {saveStatus === "saved" ? (
+                                          <Check className="h-3.5 w-3.5 text-green-600" />
+                                      ) : null}
+                                      {saveStatus === "saving"
+                                          ? "Saving…"
+                                          : "Saved"}
+                                  </span>
+                              ),
+                          }
+                        : null,
+                    canShare
+                        ? {
+                              onClick: () => setShareOpen(true),
+                              title: "Open workflow people",
+                              iconOnly: true,
+                              icon: <Users className="h-4 w-4" />,
+                          }
+                        : null,
+                    !readOnly
+                        ? {
+                              type: "custom",
+                              render: (
+                                  <HeaderActionsMenu
+                                      title="Workflow actions"
+                                      items={[
+                                          {
+                                              label: "Rename",
+                                              icon: Pencil,
+                                              onSelect: () =>
+                                                  setDetailsOpen(true),
+                                          },
+                                          {
+                                              label: "Workflow Details",
+                                              icon: Info,
+                                              onSelect: () =>
+                                                  setDetailsOpen(true),
+                                          },
+                                          {
+                                              label: "Delete",
+                                              icon: Trash2,
+                                              variant: "danger",
+                                              disabled:
+                                                  workflow.is_owner === false,
+                                              onSelect: () => {
+                                                  setDeleteStatus("idle");
+                                                  setDeleteOpen(true);
+                                              },
+                                          },
+                                      ]}
+                                  />
+                              ),
+                          }
+                        : null,
+                ]}
+            />
+            <WorkflowDetailsModal
+                open={detailsOpen}
+                workflow={workflow}
+                canEdit={!readOnly}
+                canShare={canShare}
+                currentUserDisplayName={profile?.displayName}
+                currentUserEmail={user?.email}
+                onClose={() => setDetailsOpen(false)}
+                onSave={handleWorkflowDetailsSave}
+                onShareWorkflow={() => {
+                    setDetailsOpen(false);
+                    setShareOpen(true);
+                }}
+            />
+            {shareOpen && (
+                <ShareWorkflowModal
+                    workflowId={id}
+                    workflowName={workflow.title}
+                    onClose={() => setShareOpen(false)}
+                />
             )}
+            <ConfirmPopup
+                open={deleteOpen}
+                title="Delete workflow?"
+                message="This workflow will be permanently deleted."
+                confirmLabel="Delete"
+                confirmStatus={deleteStatus}
+                onConfirm={() => void handleDeleteWorkflow()}
+                onCancel={() => {
+                    if (deleteStatus === "loading") return;
+                    setDeleteOpen(false);
+                    setDeleteStatus("idle");
+                }}
+            />
 
             {/* Body */}
             <div className="flex-1 min-h-0 flex flex-col">
                 {workflow.type === "assistant" ? (
                     /* ── Assistant: WYSIWYG editor ── */
-                    <div className="flex-1 min-h-0 p-6">
+                    <div className="flex-1 min-h-0 px-4 pb-2 pt-0 md:px-10 md:pb-3">
                         <WorkflowPromptEditor
                             value={promptMd}
                             onChange={readOnly ? undefined : handlePromptChange}
@@ -322,7 +392,7 @@ export default function WorkflowDetailPage({ params }: Props) {
                     <div className="flex flex-col flex-1 min-h-0">
                         {/* Toolbar */}
                         {!readOnly && (
-                            <div className="flex items-center justify-between px-8 h-10 border-b border-gray-200 shrink-0">
+                            <div className="flex items-center justify-between px-4 md:px-10 h-10 border-b border-gray-200 shrink-0">
                                 <button
                                     onClick={() => setAddColumnOpen(true)}
                                     className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
@@ -361,12 +431,19 @@ export default function WorkflowDetailPage({ params }: Props) {
                                 )}
                             </div>
                         )}
+                        {readOnly && (
+                            <div className="flex h-10 shrink-0 items-center bg-gray-50 px-4 md:px-10">
+                                <span className="text-xs font-medium text-gray-500">
+                                    Read-only
+                                </span>
+                            </div>
+                        )}
 
                         <div className="flex-1 min-h-0 overflow-auto">
                         <div className="min-w-max flex min-h-full flex-col">
                         {/* Table header */}
-                        <div className="flex items-center h-8 pr-8 border-b border-gray-200 text-xs text-gray-500 font-medium shrink-0 select-none">
-                            <div className={`sticky left-0 z-[60] ${CHECK_W} relative bg-white flex items-center justify-center self-stretch before:absolute before:inset-x-0 before:bottom-0 before:h-px before:bg-white`}>
+                        <div className={`flex items-center h-8 pr-3 md:pr-10 border-b border-gray-200 text-xs text-gray-500 font-medium shrink-0 select-none ${readOnly ? "border-t" : ""}`}>
+                            <div className={`sticky left-0 z-[60] ${NAME_COL_W} ${stickyCellBg} flex items-center gap-4 self-stretch pl-4 pr-2 text-left`}>
                                 {columns.length > 0 && (
                                     <input
                                         type="checkbox"
@@ -376,9 +453,7 @@ export default function WorkflowDetailPage({ params }: Props) {
                                         className="h-2.5 w-2.5 rounded border-gray-200 cursor-pointer accent-black"
                                     />
                                 )}
-                            </div>
-                            <div className={`sticky left-8 z-[60] ${NAME_COL_W} bg-white pl-2 text-left`}>
-                                Column Title
+                                <span>Column Title</span>
                             </div>
                             <div className="ml-auto w-36 shrink-0">Format</div>
                             <div className="flex-1 min-w-0">Prompt</div>
@@ -413,23 +488,21 @@ export default function WorkflowDetailPage({ params }: Props) {
                                         <div
                                             key={col.index}
                                             onClick={() => readOnly ? setViewingColumn(col) : setEditingColumn(col)}
-                                            className="group flex items-center h-10 pr-8 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
+                                            className="group flex items-center h-10 pr-3 md:pr-10 border-b border-gray-50 hover:bg-gray-100 cursor-pointer transition-colors"
                                         >
-                                            <div
-                                                className={`sticky left-0 z-[60] ${CHECK_W} p-2 flex items-center justify-center ${isChecked ? "bg-gray-50" : "bg-white"} group-hover:bg-gray-50`}
-                                                onClick={(e) => e.stopPropagation()}
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isChecked}
-                                                    onChange={() => setSelectedColIndices((prev) => prev.includes(col.index) ? prev.filter((i) => i !== col.index) : [...prev, col.index])}
-                                                    className="h-2.5 w-2.5 rounded border-gray-200 cursor-pointer accent-black"
-                                                />
-                                            </div>
-                                            <div className={`sticky left-8 z-[60] ${NAME_COL_W} p-2 ${isChecked ? "bg-gray-50" : "bg-white"} group-hover:bg-gray-50`}>
-                                                <span className="text-sm text-gray-800 truncate block">
-                                                    {col.name}
-                                                </span>
+                                            <div className={`sticky left-0 z-[60] ${NAME_COL_W} py-2 pl-4 pr-2 ${isChecked ? "bg-gray-50" : stickyCellBg} transition-colors group-hover:bg-gray-100`}>
+                                                <div className="flex min-w-0 items-center gap-4">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isChecked}
+                                                        onChange={() => setSelectedColIndices((prev) => prev.includes(col.index) ? prev.filter((i) => i !== col.index) : [...prev, col.index])}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-pointer accent-black"
+                                                    />
+                                                    <span className="min-w-0 flex-1 truncate text-sm text-gray-800">
+                                                        {col.name}
+                                                    </span>
+                                                </div>
                                             </div>
                                             <div className="ml-auto w-36 shrink-0">
                                                 <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
@@ -500,5 +573,86 @@ export default function WorkflowDetailPage({ params }: Props) {
                 />
             )}
         </div>
+    );
+}
+
+function AssistantWorkflowEditorSkeleton() {
+    return (
+        <div className="min-h-0 flex-1 px-4 pb-2 pt-0 md:px-10 md:pb-3">
+            <div className="h-full rounded-md border border-gray-200 bg-gray-50 px-5 py-4">
+                <div className="space-y-3">
+                    <div className="h-3 w-24 animate-pulse rounded bg-gray-100" />
+                    <div className="h-3 w-5/6 animate-pulse rounded bg-gray-100" />
+                    <div className="h-3 w-3/4 animate-pulse rounded bg-gray-100" />
+                    <div className="h-3 w-4/5 animate-pulse rounded bg-gray-100" />
+                </div>
+                <div className="mt-8 space-y-3">
+                    <div className="h-3 w-28 animate-pulse rounded bg-gray-100" />
+                    <div className="h-3 w-11/12 animate-pulse rounded bg-gray-100" />
+                    <div className="h-3 w-2/3 animate-pulse rounded bg-gray-100" />
+                    <div className="h-3 w-10/12 animate-pulse rounded bg-gray-100" />
+                </div>
+                <div className="mt-8 space-y-3">
+                    <div className="h-3 w-20 animate-pulse rounded bg-gray-100" />
+                    <div className="h-3 w-4/6 animate-pulse rounded bg-gray-100" />
+                    <div className="h-3 w-5/6 animate-pulse rounded bg-gray-100" />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function TabularWorkflowEditorSkeleton() {
+    return (
+        <>
+            <div className="flex h-10 shrink-0 items-center border-b border-gray-200 px-4 md:px-10">
+                <div className="h-3 w-20 animate-pulse rounded bg-gray-100" />
+            </div>
+
+            <div className="flex h-8 shrink-0 items-center border-b border-gray-200 pr-3 md:pr-10">
+                <div
+                    className={`${NAME_COL_W} flex shrink-0 items-center gap-4 self-stretch pl-4 pr-2`}
+                >
+                    <div className="h-2.5 w-2.5 animate-pulse rounded bg-gray-100" />
+                    <div className="h-2.5 w-20 animate-pulse rounded bg-gray-100" />
+                </div>
+                <div className="w-36 shrink-0">
+                    <div className="h-2.5 w-14 animate-pulse rounded bg-gray-100" />
+                </div>
+                <div className="flex-1">
+                    <div className="h-2.5 w-12 animate-pulse rounded bg-gray-100" />
+                </div>
+                <div className="w-8 shrink-0" />
+            </div>
+
+            <div className="flex-1 overflow-hidden">
+                {[1, 2, 3, 4, 5].map((i) => (
+                    <div
+                        key={i}
+                        className="flex h-10 items-center border-b border-gray-50 pr-3 md:pr-10"
+                    >
+                        <div
+                            className={`${NAME_COL_W} flex shrink-0 items-center gap-4 pl-4 pr-2`}
+                        >
+                            <div className="h-2.5 w-2.5 shrink-0 animate-pulse rounded bg-gray-100" />
+                            <div
+                                className="h-3 animate-pulse rounded bg-gray-100"
+                                style={{ width: `${40 + (i * 13) % 35}%` }}
+                            />
+                        </div>
+                        <div className="w-36 shrink-0">
+                            <div className="h-3 w-16 animate-pulse rounded bg-gray-100" />
+                        </div>
+                        <div className="flex-1 pr-4">
+                            <div
+                                className="h-3 animate-pulse rounded bg-gray-100"
+                                style={{ width: `${50 + (i * 17) % 35}%` }}
+                            />
+                        </div>
+                        <div className="w-8 shrink-0" />
+                    </div>
+                ))}
+            </div>
+        </>
     );
 }

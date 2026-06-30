@@ -1,9 +1,9 @@
 "use client";
 
-import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { providerLabel, type ModelProvider } from "@/app/lib/modelAvailability";
+import { WarningPopup } from "./WarningPopup";
 
 interface Props {
     open: boolean;
@@ -27,52 +27,19 @@ export function ApiKeyMissingModal({ open, onClose, provider, message }: Props) 
         router.push("/account/models");
     };
 
-    return createPortal(
-        <div
-            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/10 backdrop-blur-xs"
-            onClick={onClose}
-        >
-            <div
-                className="w-full max-w-md rounded-2xl bg-white shadow-2xl flex flex-col"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-2">
-                    <div className="flex items-center gap-2">
-                        <AlertTriangle className="h-4 w-4 text-amber-600" />
-                        <h2 className="text-base font-medium text-gray-900">
-                            API key required
-                        </h2>
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                    >
-                        <X className="h-4 w-4" />
-                    </button>
-                </div>
-
-                <div className="px-5 pb-2 pt-1">
-                    <p className="text-sm text-gray-600 leading-relaxed">
-                        {body}
-                    </p>
-                </div>
-
-                <div className="flex justify-end gap-2 px-5 pb-5 pt-3">
-                    <button
-                        onClick={onClose}
-                        className="rounded-lg px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={handleGoToAccount}
-                        className="rounded-lg bg-gray-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-700"
-                    >
-                        Go to account settings
-                    </button>
-                </div>
-            </div>
-        </div>,
-        document.body,
+    return (
+        <WarningPopup
+            open={open}
+            onClose={onClose}
+            title="API key required"
+            message={body}
+            icon={
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-600" />
+            }
+            primaryAction={{
+                label: "Go to account settings",
+                onClick: handleGoToAccount,
+            }}
+        />
     );
 }

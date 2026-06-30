@@ -6,10 +6,16 @@ import {
   attachActiveVersionPaths,
   attachLatestVersionNumbers,
 } from "../../lib/documentVersions";
-import { downloadFile, uploadFile, storageKey } from "../../lib/storage";
+import {
+  deleteFile,
+  downloadFile,
+  uploadFile,
+  storageKey,
+} from "../../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../../lib/convert";
 import { checkProjectAccess } from "../../lib/access";
 import { singleFileUpload, hasMagicBytes } from "../../lib/upload";
+import { deleteUserProjects } from "../../lib/userDataCleanup";
 
 export const projectsRouter = Router();
 const ALLOWED_TYPES = new Set(["pdf", "docx", "doc"]);
@@ -23,66 +29,127 @@ function normalizeDocumentFilename(nextName: unknown, currentName: string) {
   return `${trimmed}${ext}`;
 }
 
+async function deleteProjectDocumentsAndVersionFiles(
+  db: ReturnType<typeof createServerSupabase>,
+  projectId: string,
+  documentIds: string[],
+) {
+  if (documentIds.length === 0) return null;
+  const { data: versions, error: versionsError } = await db
+    .from("document_versions")
+    .select("storage_path, pdf_storage_path")
+    .in("document_id", documentIds);
+  if (versionsError) return versionsError;
+
+  const paths = new Set<string>();
+  for (const v of versions ?? []) {
+    if (typeof v.storage_path === "string" && v.storage_path.length > 0) {
+      paths.add(v.storage_path);
+    }
+    if (typeof v.pdf_storage_path === "string" && v.pdf_storage_path.length > 0) {
+      paths.add(v.pdf_storage_path);
+    }
+  }
+  await Promise.all([...paths].map((p) => deleteFile(p).catch(() => {})));
+
+  const { error } = await db
+    .from("documents")
+    .delete()
+    .eq("project_id", projectId)
+    .in("id", documentIds);
+  return error ?? null;
+}
+
+async function attachDocumentOwnerLabels(
+  db: ReturnType<typeof createServerSupabase>,
+  docs: { user_id?: string | null }[],
+) {
+  const ownerIds = docs
+    .map((doc) => doc.user_id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0)
+    .filter((id, index, arr) => arr.indexOf(id) === index);
+  if (ownerIds.length === 0) return;
+
+  const displayNameByUserId = new Map<string, string>();
+  const { data: profiles, error: profilesError } = await db
+    .from("user_profiles")
+    .select("user_id, display_name")
+    .in("user_id", ownerIds);
+  if (profilesError) {
+    console.warn("[projects] failed to load document owner profiles", profilesError);
+  }
+  for (const profile of profiles ?? []) {
+    const displayName =
+      typeof profile.display_name === "string"
+        ? profile.display_name.trim()
+        : "";
+    if (displayName) {
+      displayNameByUserId.set(profile.user_id as string, displayName);
+    }
+  }
+
+  for (const doc of docs as ({
+    user_id?: string | null;
+    owner_email?: string | null;
+    owner_display_name?: string | null;
+  })[]) {
+    if (!doc.user_id) continue;
+    doc.owner_email = null;
+    doc.owner_display_name = displayNameByUserId.get(doc.user_id) ?? null;
+  }
+}
+
+async function attachChatCreatorLabels(
+  db: ReturnType<typeof createServerSupabase>,
+  chats: { user_id?: string | null }[],
+) {
+  const creatorIds = chats
+    .map((chat) => chat.user_id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0)
+    .filter((id, index, arr) => arr.indexOf(id) === index);
+  if (creatorIds.length === 0) return;
+
+  const displayNameByUserId = new Map<string, string>();
+  const { data: profiles, error: profilesError } = await db
+    .from("user_profiles")
+    .select("user_id, display_name")
+    .in("user_id", creatorIds);
+  if (profilesError) {
+    console.warn("[projects] failed to load chat creator profiles", profilesError);
+  }
+  for (const profile of profiles ?? []) {
+    const displayName =
+      typeof profile.display_name === "string"
+        ? profile.display_name.trim()
+        : "";
+    if (displayName) {
+      displayNameByUserId.set(profile.user_id as string, displayName);
+    }
+  }
+
+  for (const chat of chats as ({
+    user_id?: string | null;
+    creator_display_name?: string | null;
+  })[]) {
+    if (!chat.user_id) continue;
+    chat.creator_display_name = displayNameByUserId.get(chat.user_id) ?? null;
+  }
+}
+
 // GET /projects
 projectsRouter.get("/", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
-  const userEmail = res.locals.userEmail as string;
+  const userEmail = res.locals.userEmail as string | undefined;
   const db = createServerSupabase();
 
-  const { data: ownProjects, error: ownError } = await db
-    .from("projects")
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
-  if (ownError) return void res.status(500).json({ detail: ownError.message });
+  const { data, error } = await db.rpc("get_projects_overview", {
+    p_user_id: userId,
+    p_user_email: userEmail ?? null,
+  });
+  if (error) return void res.status(500).json({ detail: error.message });
 
-  // Case-insensitive match: normalise the caller's email to lowercase before
-  // querying. shared_with stores emails as entered by the project owner, which
-  // may differ in casing. Without this, "Alice@example.com" would not see a
-  // project shared with "alice@example.com".
-  const normalizedEmail = userEmail?.toLowerCase();
-  const { data: sharedProjects, error: sharedError } = normalizedEmail
-    ? await db
-        .from("projects")
-        .select("*")
-        .filter("shared_with", "cs", JSON.stringify([normalizedEmail]))
-        .neq("user_id", userId)
-        .order("created_at", { ascending: false })
-    : { data: [], error: null };
-  if (sharedError)
-    return void res.status(500).json({ detail: sharedError.message });
-
-  const projects = [...(ownProjects ?? []), ...(sharedProjects ?? [])].sort(
-    (a, b) =>
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-  );
-
-  const result = await Promise.all(
-    projects.map(async (p) => {
-      const [docs, chats, reviews] = await Promise.all([
-        db
-          .from("documents")
-          .select("id", { count: "exact", head: true })
-          .eq("project_id", p.id),
-        db
-          .from("chats")
-          .select("id", { count: "exact", head: true })
-          .eq("project_id", p.id),
-        db
-          .from("tabular_reviews")
-          .select("id", { count: "exact", head: true })
-          .eq("project_id", p.id),
-      ]);
-      return {
-        ...p,
-        is_owner: p.user_id === userId,
-        document_count: docs.count ?? 0,
-        chat_count: chats.count ?? 0,
-        review_count: reviews.count ?? 0,
-      };
-    }),
-  );
-  res.json(result);
+  // MERGE-REVIEW: verify get_projects_overview RPC matches shared_with case-insensitively (fork previously normalised email)
+  res.json(data ?? []);
 });
 
 // POST /projects
@@ -161,10 +228,12 @@ projectsRouter.get("/:projectId", requireAuth, async (req, res) => {
   ]);
   const docsTyped = (docs ?? []) as unknown as {
     id: string;
+    user_id?: string | null;
     current_version_id?: string | null;
   }[];
   await attachLatestVersionNumbers(db, docsTyped);
   await attachActiveVersionPaths(db, docsTyped);
+  await attachDocumentOwnerLabels(db, docsTyped);
   res.json({
     ...project,
     is_owner: project.user_id === userId,
@@ -306,9 +375,11 @@ projectsRouter.patch("/:projectId", requireAuth, async (req, res) => {
   ]);
   const docsTyped = (docs ?? []) as unknown as {
     id: string;
+    user_id?: string | null;
     current_version_id?: string | null;
   }[];
   await attachActiveVersionPaths(db, docsTyped);
+  await attachDocumentOwnerLabels(db, docsTyped);
   res.json({ ...data, documents: docsTyped, folders: folderData ?? [] });
 });
 
@@ -317,13 +388,15 @@ projectsRouter.delete("/:projectId", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
   const { projectId } = req.params;
   const db = createServerSupabase();
-  const { error } = await db
-    .from("projects")
-    .delete()
-    .eq("id", projectId)
-    .eq("user_id", userId);
-  if (error) return void res.status(500).json({ detail: error.message });
-  res.status(204).send();
+  try {
+    const deletedCount = await deleteUserProjects(db, userId, [projectId]);
+    if (deletedCount === 0)
+      return void res.status(404).json({ detail: "Project not found" });
+    res.status(204).send();
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ detail });
+  }
 });
 
 // GET /projects/:projectId/documents
@@ -375,6 +448,10 @@ projectsRouter.post(
       .single();
     if (!doc)
       return void res.status(404).json({ detail: "Document not found" });
+    await attachActiveVersionPaths(
+      db,
+      [doc as { id: string; current_version_id?: string | null }],
+    );
 
     // Already in this project — idempotent
     if (doc.project_id === projectId) return void res.json(doc);
@@ -389,22 +466,49 @@ projectsRouter.post(
         .single();
       if (error || !updated)
         return void res.status(500).json({ detail: "Failed to update document" });
+      await attachActiveVersionPaths(
+        db,
+        [updated as { id: string; current_version_id?: string | null }],
+      );
       return void res.json(updated);
     } else {
       // Belongs to another project → duplicate record AND copy the
       // underlying storage objects so each project's copy is fully
       // independent (edits/version bumps on one don't leak into the
       // other).
+      if (!doc.current_version_id) {
+        return void res
+          .status(404)
+          .json({ detail: "Source document has no active version" });
+      }
+
+      const { data: srcV } = await db
+        .from("document_versions")
+        .select(
+          "storage_path, pdf_storage_path, version_number, filename, source, file_type, size_bytes, page_count",
+        )
+        .eq("id", doc.current_version_id)
+        .single();
+      if (!srcV?.storage_path) {
+        return void res
+          .status(404)
+          .json({ detail: "Source document has no active version" });
+      }
+
+      const activeVersionFilename =
+        (srcV.filename as string | null)?.trim() || "Untitled document";
+      const srcBytes = await downloadFile(srcV.storage_path);
+      if (!srcBytes) {
+        return void res
+          .status(500)
+          .json({ detail: "Failed to read source document bytes" });
+      }
+
       const { data: copy, error } = await db
         .from("documents")
         .insert({
           project_id: projectId,
           user_id: userId,
-          filename: doc.filename,
-          file_type: doc.file_type,
-          size_bytes: doc.size_bytes,
-          page_count: doc.page_count,
-          structure_tree: doc.structure_tree,
           status: doc.status,
         })
         .select("*")
@@ -412,69 +516,90 @@ projectsRouter.post(
       if (error || !copy)
         return void res.status(500).json({ detail: "Failed to copy document" });
 
-      let copyVersionRowId: string | null = null;
-      if (doc.current_version_id) {
-        const { data: srcV } = await db
-          .from("document_versions")
-          .select(
-            "storage_path, pdf_storage_path, version_number, display_name, source",
-          )
-          .eq("id", doc.current_version_id)
-          .single();
-        if (srcV?.storage_path) {
-          const srcBytes = await downloadFile(srcV.storage_path);
-          if (!srcBytes) {
-            return void res
-              .status(500)
-              .json({ detail: "Failed to read source document bytes" });
-          }
-          const newKey = storageKey(userId, copy.id as string, doc.filename);
-          const contentType =
-            doc.file_type === "pdf"
-              ? "application/pdf"
-              : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-          await uploadFile(newKey, srcBytes, contentType);
+      const newKey = storageKey(
+        userId,
+        copy.id as string,
+        activeVersionFilename,
+      );
+      let newPdfPath: string | null = null;
+      try {
+        const contentType =
+          ((srcV.file_type as string | null) ?? doc.file_type) === "pdf"
+            ? "application/pdf"
+            : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        await uploadFile(newKey, srcBytes, contentType);
 
-          // PDFs share one object for source + display rendition. DOCX
-          // store the converted PDF at a separate `converted-pdfs/` key —
-          // copy that too if it exists so the copy renders without going
-          // back through libreoffice.
-          let newPdfPath: string | null = null;
-          if (srcV.pdf_storage_path) {
-            if (srcV.pdf_storage_path === srcV.storage_path) {
-              newPdfPath = newKey;
-            } else {
-              const pdfBytes = await downloadFile(srcV.pdf_storage_path);
-              if (pdfBytes) {
-                const newPdfKey = convertedPdfKey(userId, copy.id as string);
-                await uploadFile(newPdfKey, pdfBytes, "application/pdf");
-                newPdfPath = newPdfKey;
-              }
+        // PDFs share one object for source + display rendition. DOCX
+        // store the converted PDF at a separate `converted-pdfs/` key —
+        // copy that too if it exists so the copy renders without going
+        // back through libreoffice.
+        if (srcV.pdf_storage_path) {
+          if (srcV.pdf_storage_path === srcV.storage_path) {
+            newPdfPath = newKey;
+          } else {
+            const pdfBytes = await downloadFile(srcV.pdf_storage_path);
+            if (pdfBytes) {
+              const newPdfKey = convertedPdfKey(userId, copy.id as string);
+              await uploadFile(newPdfKey, pdfBytes, "application/pdf");
+              newPdfPath = newPdfKey;
             }
           }
-
-          const { data: newV } = await db
-            .from("document_versions")
-            .insert({
-              document_id: copy.id,
-              storage_path: newKey,
-              pdf_storage_path: newPdfPath,
-              source: (srcV.source as string | null) ?? "upload",
-              version_number: srcV.version_number ?? 1,
-              display_name: srcV.display_name ?? doc.filename,
-            })
-            .select("id")
-            .single();
-          copyVersionRowId = (newV?.id as string | null) ?? null;
-          if (copyVersionRowId) {
-            await db
-              .from("documents")
-              .update({ current_version_id: copyVersionRowId })
-              .eq("id", copy.id);
-          }
         }
+
+        const { data: newV, error: newVError } = await db
+          .from("document_versions")
+          .insert({
+            document_id: copy.id,
+            storage_path: newKey,
+            pdf_storage_path: newPdfPath,
+            source: (srcV.source as string | null) ?? "upload",
+            version_number: srcV.version_number ?? 1,
+            filename: activeVersionFilename,
+            file_type: (srcV.file_type as string | null) ?? doc.file_type,
+            size_bytes:
+              (srcV.size_bytes as number | null) ?? doc.size_bytes ?? null,
+            page_count:
+              (srcV.page_count as number | null) ?? doc.page_count ?? null,
+          })
+          .select("id")
+          .single();
+        const copyVersionRowId = (newV?.id as string | null) ?? null;
+        if (newVError || !copyVersionRowId) {
+          throw new Error(
+            `Failed to create copied document version: ${newVError?.message ?? "unknown"}`,
+          );
+        }
+
+        const { data: updatedCopy, error: updateCopyError } = await db
+          .from("documents")
+          .update({
+            current_version_id: copyVersionRowId,
+          })
+          .eq("id", copy.id)
+          .select("*")
+          .single();
+        if (updateCopyError || !updatedCopy) {
+          throw new Error(
+            `Failed to activate copied document version: ${updateCopyError?.message ?? "unknown"}`,
+          );
+        }
+
+        await attachActiveVersionPaths(
+          db,
+          [updatedCopy as { id: string; current_version_id?: string | null }],
+        );
+        return void res.status(201).json(updatedCopy);
+      } catch (err) {
+        console.error("[projects/documents/copy] failed", err);
+        await Promise.all([
+          deleteFile(newKey).catch(() => {}),
+          newPdfPath && newPdfPath !== newKey
+            ? deleteFile(newPdfPath).catch(() => {})
+            : Promise.resolve(),
+          db.from("documents").delete().eq("id", copy.id),
+        ]);
+        return void res.status(500).json({ detail: "Failed to copy document" });
       }
-      return void res.status(201).json(copy);
     }
   },
 );
@@ -492,20 +617,33 @@ projectsRouter.patch("/:projectId/documents/:documentId", requireAuth, async (re
 
   const { data: doc } = await db
     .from("documents")
-    .select("id, filename, current_version_id")
+    .select("id, current_version_id")
     .eq("id", documentId)
     .eq("project_id", projectId)
     .single();
   if (!doc)
     return void res.status(404).json({ detail: "Document not found" });
 
-  const filename = normalizeDocumentFilename(req.body?.filename, doc.filename as string);
+  const active = doc.current_version_id
+    ? await db
+        .from("document_versions")
+        .select("filename")
+        .eq("id", doc.current_version_id)
+        .eq("document_id", documentId)
+        .single()
+    : null;
+  const currentName =
+    typeof active?.data?.filename === "string" &&
+    active.data.filename.trim()
+      ? active.data.filename.trim()
+      : "Untitled document";
+  const filename = normalizeDocumentFilename(req.body?.filename, currentName);
   if (!filename)
     return void res.status(400).json({ detail: "filename is required" });
 
   const { data: updated, error } = await db
     .from("documents")
-    .update({ filename, updated_at: new Date().toISOString() })
+    .update({ updated_at: new Date().toISOString() })
     .eq("id", documentId)
     .eq("project_id", projectId)
     .select("*")
@@ -516,12 +654,15 @@ projectsRouter.patch("/:projectId/documents/:documentId", requireAuth, async (re
   if (doc.current_version_id) {
     await db
       .from("document_versions")
-      .update({ display_name: filename })
+      .update({ filename })
       .eq("id", doc.current_version_id)
       .eq("document_id", documentId);
   }
 
-  res.json(updated);
+  res.json({
+    ...updated,
+    filename,
+  });
 });
 
 // POST /projects/:projectId/documents
@@ -564,7 +705,9 @@ projectsRouter.get("/:projectId/chats", requireAuth, async (req, res) => {
     .eq("project_id", projectId)
     .order("created_at", { ascending: false });
   if (error) return void res.status(500).json({ detail: error.message });
-  res.json(data ?? []);
+  const chats = data ?? [];
+  await attachChatCreatorLabels(db, chats);
+  res.json(chats);
 });
 
 // ── Folder routes ─────────────────────────────────────────────────────────────
@@ -645,11 +788,48 @@ projectsRouter.delete("/:projectId/folders/:folderId", requireAuth, async (req, 
   const access = await checkProjectAccess(projectId, userId, userEmail, db);
   if (!access.ok) return void res.status(404).json({ detail: "Project not found" });
 
-  const folder = await loadProjectFolder(db, projectId, folderId);
-  if (!folder) return void res.status(404).json({ detail: "Folder not found" });
+  const { data: allFolders, error: foldersError } = await db
+    .from("project_subfolders")
+    .select("id, parent_folder_id")
+    .eq("project_id", projectId);
+  if (foldersError)
+    return void res.status(500).json({ detail: foldersError.message });
+  if (!(allFolders ?? []).some((f: Record<string, unknown>) => f.id === folderId))
+    return void res.status(404).json({ detail: "Folder not found" });
 
-  // Move direct documents to root before cascade-deleting subfolders
-  await db.from("documents").update({ folder_id: null }).eq("folder_id", folderId).eq("project_id", projectId);
+  const childrenByParent = new Map<string, string[]>();
+  for (const f of allFolders ?? []) {
+    const parentId = f.parent_folder_id as string | null;
+    if (!parentId) continue;
+    const children = childrenByParent.get(parentId) ?? [];
+    children.push(f.id as string);
+    childrenByParent.set(parentId, children);
+  }
+
+  const folderIds = new Set<string>();
+  const stack = [folderId];
+  while (stack.length > 0) {
+    const id = stack.pop()!;
+    if (folderIds.has(id)) continue;
+    folderIds.add(id);
+    stack.push(...(childrenByParent.get(id) ?? []));
+  }
+
+  const { data: docs, error: docsError } = await db
+    .from("documents")
+    .select("id")
+    .eq("project_id", projectId)
+    .in("folder_id", [...folderIds]);
+  if (docsError) return void res.status(500).json({ detail: docsError.message });
+
+  const docIds = (docs ?? []).map((d: Record<string, unknown>) => d.id as string);
+  const deleteDocsError = await deleteProjectDocumentsAndVersionFiles(
+    db,
+    projectId,
+    docIds,
+  );
+  if (deleteDocsError)
+    return void res.status(500).json({ detail: deleteDocsError.message });
 
   const { error } = await db.from("project_subfolders")
     .delete().eq("id", folderId).eq("project_id", projectId);
@@ -731,9 +911,6 @@ export async function handleDocumentUpload(
     .insert({
       project_id: projectId,
       user_id: userId,
-      filename,
-      file_type: suffix,
-      size_bytes: content.byteLength,
       status: "processing",
     })
     .select("*")
@@ -764,7 +941,6 @@ export async function handleDocumentUpload(
       content.byteOffset,
       content.byteOffset + content.byteLength,
     ) as ArrayBuffer;
-    const tree = await extractStructureTree(rawBuf, suffix, filename);
     const pageCount = suffix === "pdf" ? await countPdfPages(rawBuf) : null;
 
     // Convert DOCX/DOC → PDF for display. PDFs are their own rendition.
@@ -799,7 +975,10 @@ export async function handleDocumentUpload(
         pdf_storage_path: pdfStoragePath,
         source: "upload",
         version_number: 1,
-        display_name: filename,
+        filename,
+        file_type: suffix,
+        size_bytes: content.byteLength,
+        page_count: pageCount,
       })
       .select("id")
       .single();
@@ -813,9 +992,6 @@ export async function handleDocumentUpload(
       .from("documents")
       .update({
         current_version_id: versionRow.id,
-        size_bytes: content.byteLength,
-        page_count: pageCount,
-        structure_tree: tree ?? null,
         status: "ready",
         updated_at: new Date().toISOString(),
       })
@@ -827,10 +1003,15 @@ export async function handleDocumentUpload(
       .eq("id", docId)
       .single();
     const responseDoc = updated
-      ? {
+        ? {
             ...updated,
+            filename,
             storage_path: key,
             pdf_storage_path: pdfStoragePath,
+            file_type: suffix,
+            size_bytes: content.byteLength,
+            page_count: pageCount,
+            active_version_number: 1,
         }
       : updated;
     return void res.status(201).json(responseDoc);
@@ -853,66 +1034,6 @@ async function countPdfPages(buf: ArrayBuffer): Promise<number | null> {
       }
     ).getDocument({ data: new Uint8Array(buf) }).promise;
     return pdf.numPages;
-  } catch {
-    return null;
-  }
-}
-
-async function extractStructureTree(
-  content: ArrayBuffer,
-  fileType: string,
-  filename: string,
-): Promise<unknown[] | null> {
-  try {
-    if (fileType === "pdf") {
-      const pdfjsLib = await import(
-        "pdfjs-dist/legacy/build/pdf.mjs" as string
-      );
-      const pdf = await (
-        pdfjsLib as unknown as {
-          getDocument: (opts: unknown) => {
-            promise: Promise<{
-              numPages: number;
-              getOutline: () => Promise<{ title?: string }[]>;
-            }>;
-          };
-        }
-      ).getDocument({ data: new Uint8Array(content) }).promise;
-      if (pdf.numPages <= 5) return null;
-      const outline = await pdf.getOutline();
-      if (outline?.length) {
-        return outline.map((item, i) => ({
-          id: `h1-${i}`,
-          title: item.title ?? `Item ${i + 1}`,
-          level: 1,
-          page_number: null,
-          children: [],
-        }));
-      }
-      return Array.from({ length: pdf.numPages }, (_, i) => ({
-        id: `page-${i + 1}`,
-        title: `Page ${i + 1}`,
-        level: 1,
-        page_number: i + 1,
-        children: [],
-      }));
-    } else {
-      const mammoth = await import("mammoth");
-      const result = await mammoth.extractRawText({
-        buffer: Buffer.from(content),
-      });
-      const lines = result.value.split("\n").filter((l) => l.trim());
-      const nodes = lines
-        .slice(0, 30)
-        .map((line, i) => ({
-          id: `h1-${i}`,
-          title: line.slice(0, 100),
-          level: 1,
-          page_number: null,
-          children: [],
-        }));
-      return nodes.length ? nodes : null;
-    }
   } catch {
     return null;
   }

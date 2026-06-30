@@ -1,12 +1,23 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import {
+    useCallback,
+    useEffect,
+    useRef,
+    useState,
+    type CSSProperties,
+} from "react";
 import { X } from "lucide-react";
 import { DocPanel, type DocPanelMode } from "../shared/DocPanel";
 import type {
-    MikeCitationAnnotation,
-    MikeEditAnnotation,
+    CitationAnnotation,
+    EditAnnotation,
 } from "../shared/types";
+import {
+    CaseLawPanel,
+    type CaseTab,
+} from "./CaseLawPanel";
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Tab data
@@ -34,15 +45,19 @@ export type DocumentTab = CommonTab & { kind: "document" };
 
 export type CitationTab = CommonTab & {
     kind: "citation";
-    citation: MikeCitationAnnotation;
+    citation: CitationAnnotation;
 };
 
 export type EditTab = CommonTab & {
     kind: "edit";
-    edit: MikeEditAnnotation;
+    edit: EditAnnotation;
 };
 
-export type AssistantSidePanelTab = DocumentTab | CitationTab | EditTab;
+export type AssistantSidePanelTab =
+    | DocumentTab
+    | CitationTab
+    | EditTab
+    | CaseTab;
 
 interface Props {
     tabs: AssistantSidePanelTab[];
@@ -86,6 +101,22 @@ interface Props {
 
 const MIN_WIDTH = 300;
 const MAX_WIDTH_OFFSET = 56; // sidebar width
+const MIN_CHAT_WIDTH = 400;
+
+function maxPanelWidth() {
+    if (typeof window === "undefined") return 600;
+    return Math.max(
+        MIN_WIDTH,
+        window.innerWidth - MAX_WIDTH_OFFSET - MIN_CHAT_WIDTH,
+    );
+}
+
+function tabTitle(tab: AssistantSidePanelTab): string {
+    if (tab.kind === "case") {
+        return tab.caseName || tab.citation || "Case";
+    }
+    return tab.filename;
+}
 
 export function AssistantSidePanel({
     tabs,
@@ -104,7 +135,10 @@ export function AssistantSidePanel({
     const panelRef = useRef<HTMLDivElement>(null);
     const [panelWidth, setPanelWidth] = useState(() =>
         typeof window !== "undefined"
-            ? Math.round((window.innerWidth - MAX_WIDTH_OFFSET) / 2)
+            ? Math.min(
+                  maxPanelWidth(),
+                  Math.round((window.innerWidth - MAX_WIDTH_OFFSET) / 2),
+              )
             : 600,
     );
 
@@ -120,10 +154,9 @@ export function AssistantSidePanel({
 
             const onMouseMove = (ev: MouseEvent) => {
                 const delta = dragStartX.current - ev.clientX;
-                const maxWidth = window.innerWidth - MAX_WIDTH_OFFSET - 200;
                 setPanelWidth(
                     Math.min(
-                        maxWidth,
+                        maxPanelWidth(),
                         Math.max(MIN_WIDTH, dragStartWidth.current + delta),
                     ),
                 );
@@ -143,46 +176,73 @@ export function AssistantSidePanel({
         [panelWidth],
     );
 
+    useEffect(() => {
+        const onResize = () => {
+            setPanelWidth((width) =>
+                Math.min(maxPanelWidth(), Math.max(MIN_WIDTH, width)),
+            );
+        };
+        window.addEventListener("resize", onResize);
+        onResize();
+        return () => window.removeEventListener("resize", onResize);
+    }, []);
+
     const active = tabs.find((t) => t.id === activeTabId) ?? tabs[0] ?? null;
     if (!active) return null;
 
     return (
         <div
             ref={panelRef}
-            className="flex h-full shrink-0 flex-col bg-white relative border-l border-gray-200 shadow-[-4px_0_12px_rgba(0,0,0,0.02)]"
-            style={{ width: panelWidth }}
+            className={cn(
+                "relative flex h-full w-full shrink-0 flex-col md:my-3 md:mr-3 md:h-[calc(100%-1.5rem)] md:w-[var(--assistant-panel-width)]",
+                "rounded-2xl border border-white/70 bg-white shadow-[0_6px_18px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-10px_24px_rgba(255,255,255,0.18),inset_1px_0_0_rgba(255,255,255,0.5)] backdrop-blur-2xl overflow-hidden",
+            )}
+            style={{
+                "--assistant-panel-width": `${panelWidth}px`,
+            } as CSSProperties}
         >
             {/* Drag handle */}
             <div
                 onMouseDown={onMouseDown}
-                className="absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors z-10"
+                className={cn(
+                    "absolute left-0 top-0 z-10 hidden h-full w-1 cursor-col-resize transition-colors md:block",
+                    "hover:bg-blue-400/70",
+                )}
                 style={{ marginLeft: -2 }}
             />
 
             {/* Tab strip (Chrome-style) */}
-            <div className="flex items-end gap-1 pr-2 pt-2 bg-gray-100">
-                <div className="flex-1 flex items-end gap-1 overflow-x-auto pl-2 pr-2">
+            <div
+                className={cn(
+                    "flex items-end gap-1 px-1 pt-2",
+                    "bg-gray-200/80",
+                )}
+            >
+                <div className="flex-1 flex items-end gap-1 overflow-hidden px-2">
                     {tabs.map((tab) => {
                         const isActive = tab.id === active.id;
                         const showVersionBadge =
+                            tab.kind !== "case" &&
                             typeof tab.versionNumber === "number" &&
                             Number.isFinite(tab.versionNumber) &&
                             tab.versionNumber > 1;
+                        const title = tabTitle(tab);
                         return (
                             <div
                                 key={tab.id}
                                 onClick={() => onActivateTab(tab.id)}
-                                className={`group relative flex items-center gap-1.5 pl-3 pr-1.5 h-8 min-w-0 max-w-[220px] rounded-t-lg cursor-pointer select-none transition-colors ${
+                                className={cn(
+                                    "group relative flex items-center gap-1.5 pl-3 pr-1.5 h-8 min-w-0 max-w-[220px] rounded-t-lg cursor-pointer select-none transition-colors",
                                     isActive
-                                        ? "bg-white text-gray-800 before:content-[''] before:absolute before:bottom-0 before:-left-2 before:w-2 before:h-2 before:bg-[radial-gradient(circle_at_top_left,transparent_8px,white_9px)] after:content-[''] after:absolute after:bottom-0 after:-right-2 after:w-2 after:h-2 after:bg-[radial-gradient(circle_at_top_right,transparent_8px,white_9px)]"
-                                        : "bg-gray-200/70 text-gray-600 hover:bg-gray-200"
-                                }`}
+                                        ? "z-20 bg-white text-gray-800 before:content-[''] before:absolute before:bottom-0 before:-left-2 before:z-20 before:h-2 before:w-2 before:rounded-br-lg before:shadow-[4px_4px_0_4px_white] before:transition-shadow after:content-[''] after:absolute after:bottom-0 after:-right-2 after:z-20 after:h-2 after:w-2 after:rounded-bl-lg after:shadow-[-4px_4px_0_4px_white] after:transition-shadow"
+                                        : "z-10 bg-gray-100 text-gray-600 hover:bg-gray-100 before:content-[''] before:absolute before:bottom-0 before:-left-2 before:h-2 before:w-2 before:rounded-br-lg before:shadow-[4px_4px_0_4px_#f3f4f6] before:transition-shadow after:content-[''] after:absolute after:bottom-0 after:-right-2 after:h-2 after:w-2 after:rounded-bl-lg after:shadow-[-4px_4px_0_4px_#f3f4f6] after:transition-shadow",
+                                )}
                             >
                                 <span
                                     className={`min-w-0 flex-1 truncate text-xs ${isActive ? "font-medium" : "font-normal"}`}
-                                    title={tab.filename}
+                                    title={title}
                                 >
-                                    {tab.filename}
+                                    {title}
                                 </span>
                                 {showVersionBadge && (
                                     <span
@@ -200,7 +260,7 @@ export function AssistantSidePanel({
                                         e.stopPropagation();
                                         onCloseTab(tab.id);
                                     }}
-                                    className="shrink-0 rounded-full p-0.5 text-gray-400 hover:bg-gray-300 hover:text-gray-700"
+                                    className="shrink-0 rounded-full p-0.5 text-gray-400 hover:text-gray-700"
                                 >
                                     <X className="h-3 w-3" />
                                 </button>
@@ -210,7 +270,7 @@ export function AssistantSidePanel({
                 </div>
                 <button
                     onClick={onCloseAll}
-                    className="shrink-0 mb-1 ml-1 rounded-lg p-1.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700"
+                    className="shrink-0 mb-1 ml-1 rounded-lg p-1.5 text-gray-400 hover:text-gray-700"
                     title="Close panel"
                 >
                     <X className="h-4 w-4" />
@@ -223,6 +283,20 @@ export function AssistantSidePanel({
             <div className="flex-1 min-h-0 relative">
                 {tabs.map((tab) => {
                     const isActive = tab.id === active.id;
+                    if (tab.kind === "case") {
+                        return (
+                            <div
+                                key={tab.id}
+                                className={`absolute inset-0 flex flex-col ${isActive ? "" : "invisible pointer-events-none"}`}
+                                aria-hidden={!isActive}
+                            >
+                                <CaseLawPanel
+                                    tab={tab}
+                                    compactActions={panelWidth < 600}
+                                />
+                            </div>
+                        );
+                    }
                     const mode: DocPanelMode =
                         tab.kind === "citation"
                             ? {

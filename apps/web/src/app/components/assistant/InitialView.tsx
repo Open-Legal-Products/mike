@@ -6,14 +6,14 @@ import { useUserProfile } from "@/contexts/UserProfileContext";
 import { MikeIcon } from "@/components/chat/mike-icon";
 import { ChatInput } from "./ChatInput";
 import { SelectAssistantProjectModal } from "./SelectAssistantProjectModal";
-import type { MikeMessage } from "../shared/types";
+import type { Message } from "../shared/types";
 
 interface InitialViewProps {
-    onSubmit: (message: MikeMessage) => void;
+    onSubmit: (message: Message) => void;
 }
 
-const ICON_SIZE = 35;
-const GAP = 16; // gap-4 = 1rem = 16px
+const ICON_SIZE = 30;
+const GAP = 12; // gap-4 = 1rem = 16px
 
 export function InitialView({ onSubmit }: InitialViewProps) {
     const { user } = useAuth();
@@ -46,7 +46,7 @@ export function InitialView({ onSubmit }: InitialViewProps) {
                 <div className="flex-col items-center w-full max-w-4xl relative px-0 xl:px-8">
                     <div className="mb-10 relative flex items-center justify-center">
                         <div
-                            className="absolute h-[35px]"
+                            className="absolute h-[30px] w-[30px] top-[-14px]"
                             style={{
                                 left: "50%",
                                 transform: loaded

@@ -93,7 +93,12 @@ async function vertexClient(): Promise<GoogleGenAIClient> {
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
-    if (signal?.aborted) throw new Error("LLM_STREAM_ABORTED");
+    if (!signal?.aborted) return;
+    // Match the abort shape isAbortError() detects across providers
+    // (name "AbortError" / message "Stream aborted.").
+    const err = new Error("Stream aborted.");
+    err.name = "AbortError";
+    throw err;
 }
 
 // ---------------------------------------------------------------------------

@@ -4,23 +4,29 @@ import { findProviderForModel, allRegisteredModels } from "./registry";
 // Canonical model IDs (built-in providers)
 // ---------------------------------------------------------------------------
 // Main-chat tier (top-end) — user picks one of these per message.
-export const CLAUDE_MAIN_MODELS = ["claude-opus-4-7", "claude-sonnet-4-6"] as const;
+export const CLAUDE_MAIN_MODELS = [
+    "claude-fable-5",
+    "claude-opus-4-8",
+    "claude-opus-4-7",
+    "claude-sonnet-4-6",
+] as const;
 export const GEMINI_MAIN_MODELS = [
+    "gemini-3.5-flash",
     "gemini-3.1-pro-preview",
     "gemini-3-flash-preview",
 ] as const;
-export const OPENAI_MAIN_MODELS = ["gpt-5.5", "gpt-5.4-mini"] as const;
+export const OPENAI_MAIN_MODELS = ["gpt-5.5", "gpt-5.4"] as const;
 
 // Mid-tier (used for tabular review) — user picks one in account settings.
 export const CLAUDE_MID_MODELS = ["claude-sonnet-4-6"] as const;
-export const GEMINI_MID_MODELS = ["gemini-3-flash-preview"] as const;
-export const OPENAI_MID_MODELS = ["gpt-5.4-mini"] as const;
+export const GEMINI_MID_MODELS = ["gemini-3.5-flash", "gemini-3-flash-preview"] as const;
+export const OPENAI_MID_MODELS = ["gpt-5.4"] as const;
 
 // Low-tier (used for title generation, lightweight extractions) — user picks
 // one in account settings.
 export const CLAUDE_LOW_MODELS = ["claude-haiku-4-5"] as const;
 export const GEMINI_LOW_MODELS = ["gemini-3.1-flash-lite-preview"] as const;
-export const OPENAI_LOW_MODELS = ["gpt-5.4-nano"] as const;
+export const OPENAI_LOW_MODELS = ["gpt-5.4-lite"] as const;
 
 export const DEFAULT_MAIN_MODEL = "gemini-3-flash-preview";
 export const DEFAULT_TITLE_MODEL = "gemini-3.1-flash-lite-preview";

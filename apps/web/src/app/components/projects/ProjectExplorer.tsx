@@ -11,15 +11,18 @@ import {
     FolderPlus,
     Trash2,
 } from "lucide-react";
-import type { MikeDocument, MikeFolder } from "@/app/components/shared/types";
+import type {
+    Document,
+    Folder as ProjectFolder,
+} from "@/app/components/shared/types";
 import { VersionChip } from "@/app/components/shared/VersionChip";
 
 interface Props {
     projectName?: string | null;
-    documents: MikeDocument[];
-    folders?: MikeFolder[];
+    documents: Document[];
+    folders?: ProjectFolder[];
     selectedDocId?: string | null;
-    onDocClick: (doc: MikeDocument) => void;
+    onDocClick: (doc: Document) => void;
     onCreateFolder?: (parentFolderId: string | null, name: string) => Promise<void>;
     onRenameFolder?: (folderId: string, name: string) => Promise<void>;
     onDeleteFolder?: (folderId: string) => Promise<void>;
@@ -131,7 +134,7 @@ export function ProjectExplorer({
     }
 
     function wouldCreateCycle(movingId: string, targetId: string): boolean {
-        let cur: MikeFolder | undefined = folders.find((f) => f.id === targetId);
+        let cur: ProjectFolder | undefined = folders.find((f) => f.id === targetId);
         while (cur) {
             if (cur.id === movingId) return true;
             if (!cur.parent_folder_id) break;
@@ -299,8 +302,15 @@ export function ProjectExplorer({
                             style={{ paddingLeft: basePadding }}
                         >
                             <DocIcon fileType={doc.file_type} />
-                            <span className="text-xs truncate">{doc.filename}</span>
-                            <VersionChip n={doc.latest_version_number} />
+                            <span className="text-xs truncate">
+                                {doc.filename}
+                            </span>
+                            <VersionChip
+                                n={
+                                    doc.active_version_number ??
+                                    doc.latest_version_number
+                                }
+                            />
                         </li>
                     );
                 })}
