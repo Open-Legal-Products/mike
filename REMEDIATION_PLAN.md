@@ -80,6 +80,23 @@ queue/worker changes: real-Redis smoke. No commit lands red.
     the orphaned `..._phase1.sql` migration left in place (deleting an applied
     migration desyncs history); the 9 silent `/* ignore */` catches in
     chatTools/tabular still want a dedicated audit (Phase 3, during the split).
-- **Phases 2–5 — NOT STARTED.** Route-level test suite, backend service/repository
-  layer + chatTools split, frontend god-component decomposition + caching, and
-  observability/types/RLS-doc. These are the multi-week bulk; tracked as tasks #6–#9.
+- **Phase 2 — DONE.** Route-level supertest suite (chat incl. credits-race
+  regression, projectChat access-denial, documents upload validation) — +13 tests.
+- **Phase 3 — PARTIAL.** chatTools.ts god-file split 3,902→70 (11 modules under
+  lib/tools/, export surface preserved). documents module service layer extracted
+  (route 1,472→539). Pattern proven. Remaining: chat/projectChat (streaming —
+  architecturally awkward to fully servicify since they write to res), and
+  tabular/projects/user (no route tests yet — need tests first to extract safely).
+- **Phase 4 — PARTIAL.** FE test foundation established (vitest+RTL, 23 tests, CI
+  wired) — the prerequisite for safe component work. error/global-error/not-found
+  boundaries already existed. Remaining: god-component decomposition (now has a
+  test harness but needs characterization tests for the specific 2.5–3k-line
+  components first), React Query caching layer, toast for the 18 silent catches.
+- **Phase 5 — PARTIAL.** RLS/authz posture documented; Sentry error monitoring
+  added (env-gated). Remaining: OpenTelemetry (deferred — finicky bootstrap),
+  targeted types pass (eliminate `as any`/double-casts at FE API boundaries).
+
+All of the above is committed + pushed to main and verified (apps/api 174 tests,
+apps/web 23 tests, tsc clean throughout). The remaining items are incremental
+applications of proven patterns (more service extractions) or larger/riskier work
+that should be built on the new test foundations.
