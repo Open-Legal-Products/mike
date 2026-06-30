@@ -17,6 +17,7 @@ import { getAdminClient } from "./lib/supabase";
 import { checkStorageReady } from "./lib/storage";
 import { env } from "./lib/env";
 import { sendError } from "./lib/http";
+import { setupSentryErrorHandler } from "./lib/observability/sentry";
 
 const isProduction = env.NODE_ENV === "production";
 
@@ -200,6 +201,11 @@ app.get("/ready", async (_req, res) => {
     const allOk = Object.values(checks).every((c) => c.ok);
     res.status(allOk ? 200 : 503).json({ ok: allOk, checks });
 });
+
+// Sentry's Express error handler must run after all routes but before the
+// app's own central error handler, so Sentry records the error first and then
+// delegates to the handler below. No-op when SENTRY_DSN is unset.
+setupSentryErrorHandler(app);
 
 app.use(
     (

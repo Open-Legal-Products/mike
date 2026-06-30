@@ -1,5 +1,10 @@
 import "dotenv/config";
 import "./lib/env";
+// Initialize Sentry BEFORE importing ./app (or any instrumented module): the
+// Node SDK patches modules at load time, so init must run first. No-op when
+// SENTRY_DSN is unset.
+import { initSentry, captureException } from "./lib/observability/sentry";
+initSentry();
 import { app } from "./app";
 import { logger } from "./lib/logger";
 import { env } from "./lib/env";
@@ -17,11 +22,13 @@ const PORT = process.env.PORT ?? 3001;
 // state is more dangerous than a fresh restart.
 process.on("unhandledRejection", (reason) => {
   logger.fatal({ reason }, "Unhandled promise rejection — exiting");
+  captureException(reason);
   process.exit(1);
 });
 
 process.on("uncaughtException", (err) => {
   logger.fatal({ err }, "Uncaught exception — exiting");
+  captureException(err);
   process.exit(1);
 });
 

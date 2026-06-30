@@ -63,6 +63,14 @@ const envSchema = z.object({
     // frontend to poll document status. When "false" conversion runs inline on
     // the request thread (the historical, synchronous behavior).
     ASYNC_DOCUMENT_CONVERSION: z.enum(["true", "false"]).default("false"),
+
+    // Error monitoring (optional). When SENTRY_DSN is unset, Sentry is fully
+    // disabled — no SDK init, no network traffic. SENTRY_TRACES_SAMPLE_RATE
+    // controls performance tracing (0 = errors only). SENTRY_ENVIRONMENT
+    // defaults to NODE_ENV when unset.
+    SENTRY_DSN: z.string().optional(),
+    SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0),
+    SENTRY_ENVIRONMENT: z.string().optional(),
 });
 
 const result = envSchema.safeParse(process.env);
