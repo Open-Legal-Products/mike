@@ -12,6 +12,8 @@ import {
   versionStorageKey,
 } from "../../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../../lib/convert";
+import { env } from "../../lib/env";
+import { enqueueConversion } from "../../lib/queue/conversionQueue";
 import {
   extractTrackedChangeIds,
   resolveTrackedChange,
@@ -1345,9 +1347,15 @@ async function handleDocumentUpload(
     ) as ArrayBuffer;
     const pageCount = suffix === "pdf" ? await countPdfPages(rawBuf) : null;
 
+    // When the job queue is enabled, defer DOCX/DOC → PDF conversion to the
+    // BullMQ worker instead of blocking the upload request on LibreOffice.
+    const deferConversion =
+      (suffix === "docx" || suffix === "doc") &&
+      env.ASYNC_DOCUMENT_CONVERSION === "true";
+
     // Convert DOCX/DOC → PDF for display. PDFs are their own rendition.
     let pdfStoragePath: string | null = null;
-    if (suffix === "docx" || suffix === "doc") {
+    if (!deferConversion && (suffix === "docx" || suffix === "doc")) {
       try {
         const pdfBuf = await docxToPdf(content);
         const pdfKey = convertedPdfKey(userId, docId);
@@ -1395,10 +1403,22 @@ async function handleDocumentUpload(
       .from("documents")
       .update({
         current_version_id: versionRow.id,
-        status: "ready",
+        // Deferred conversion leaves the doc "processing" until the worker
+        // produces the PDF and flips it to "ready".
+        status: deferConversion ? "processing" : "ready",
         updated_at: new Date().toISOString(),
       })
       .eq("id", docId);
+
+    if (deferConversion) {
+      await enqueueConversion({
+        documentId: docId,
+        versionId: versionRow.id,
+        userId,
+        storagePath: key,
+        fileType: suffix,
+      });
+    }
 
     const { data: updated } = await db
       .from("documents")

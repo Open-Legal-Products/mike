@@ -53,6 +53,16 @@ const envSchema = z.object({
     GEMINI_API_KEY: z.string().optional(),
 
     RESEND_API_KEY: z.string().optional(),
+
+    // Job queue (BullMQ). REDIS_URL points at the Redis instance from
+    // docker-compose; defaults to localhost for bare-metal dev.
+    REDIS_URL: z.string().default("redis://localhost:6379"),
+    // Off by default: when "true", document DOCX→PDF conversion is enqueued to
+    // the BullMQ `document-conversion` queue and the upload returns immediately
+    // with status "processing" (a worker flips it to "ready"). Requires the
+    // frontend to poll document status. When "false" conversion runs inline on
+    // the request thread (the historical, synchronous behavior).
+    ASYNC_DOCUMENT_CONVERSION: z.enum(["true", "false"]).default("false"),
 });
 
 const result = envSchema.safeParse(process.env);

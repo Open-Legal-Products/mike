@@ -2,6 +2,8 @@ import "dotenv/config";
 import "./lib/env";
 import { app } from "./app";
 import { logger } from "./lib/logger";
+import { env } from "./lib/env";
+import { startWorkers } from "./workers";
 
 const PORT = process.env.PORT ?? 3001;
 
@@ -25,4 +27,9 @@ process.on("uncaughtException", (err) => {
 
 app.listen(PORT, () => {
   logger.info({ port: PORT }, "Mike backend started");
+  // Start in-process job-queue workers only when async conversion is enabled,
+  // so the default (synchronous) deployment needs no Redis.
+  if (env.ASYNC_DOCUMENT_CONVERSION === "true") {
+    startWorkers();
+  }
 });
