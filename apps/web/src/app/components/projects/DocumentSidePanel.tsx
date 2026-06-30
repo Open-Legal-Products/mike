@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import {
     AlertCircle,
     Check,
-    Download,
     Loader2,
     Pencil,
     Trash2,
@@ -19,17 +18,25 @@ import type { Document } from "@/app/components/shared/types";
 import type { DocumentVersion } from "@/app/lib/mikeApi";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "./ProjectPageParts";
-
-const MIN_DOC_COLUMN_WIDTH = 420;
-const DEFAULT_DOC_COLUMN_WIDTH = 620;
-const MIN_DATA_COLUMN_WIDTH = 280;
-const DEFAULT_DATA_COLUMN_WIDTH = 340;
-const RESIZER_WIDTH = 6;
-const MAX_PANEL_WIDTH = 1180;
-const primaryGlassButtonClass =
-    "inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-blue-800/35 bg-blue-700/90 px-3 text-xs font-medium text-white shadow-[0_3px_9px_rgba(30,64,175,0.16),inset_0_1px_0_rgba(255,255,255,0.22),inset_0_-4px_9px_rgba(30,64,175,0.18)] backdrop-blur-xl transition-all hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100";
-const dangerGlassButtonClass =
-    "inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-red-700/35 bg-red-600/90 px-3 text-xs font-medium text-white shadow-[0_3px_9px_rgba(127,29,29,0.16),inset_0_1px_0_rgba(255,255,255,0.22),inset_0_-4px_9px_rgba(127,29,29,0.18)] backdrop-blur-xl transition-all hover:bg-red-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100";
+import { DataRow } from "./document-side-panel/DataRow";
+import { VersionRow } from "./document-side-panel/VersionRow";
+import { VersionUploadSkeleton } from "./document-side-panel/VersionUploadSkeleton";
+import {
+    DEFAULT_DATA_COLUMN_WIDTH,
+    DEFAULT_DOC_COLUMN_WIDTH,
+    MIN_DATA_COLUMN_WIDTH,
+    MIN_DOC_COLUMN_WIDTH,
+    RESIZER_WIDTH,
+    clampPanelWidth,
+    dangerGlassButtonClass,
+    fileTypeForVersion,
+    filenameExtension,
+    formatDateTime,
+    hasExtensionChange,
+    primaryGlassButtonClass,
+    versionSkeletonCount,
+    versionTitleFor,
+} from "./document-side-panel/helpers";
 
 interface DocumentSidePanelProps {
     doc: Document | null;
@@ -661,201 +668,38 @@ export function DocumentSidePanel({
                                         {uploading && (
                                             <VersionUploadSkeleton />
                                         )}
-                                        {orderedVersions.map((version) => {
-                                            const title =
-                                                versionTitleFor(version);
-                                            const filename =
-                                                versionFilenameFor(version);
-                                            const selected =
-                                                selectedVersionId ===
-                                                version.id;
-                                            const deleted =
-                                                version.deleted_at != null;
-                                            const versionDeleting =
-                                                deletingVersionId ===
-                                                version.id;
-                                            const versionReplacing =
-                                                replacingVersionId ===
-                                                version.id;
-                                            const fileType = fileTypeForVersion(
-                                                version,
-                                                doc.file_type,
-                                            );
-                                            const typeLabel =
-                                                fileType === "pdf"
-                                                    ? "PDF"
-                                                    : "DOCX";
-                                            return (
-                                                <div
-                                                    key={version.id}
-                                                    role="button"
-                                                    tabIndex={0}
-                                                    onClick={() => {
-                                                        if (deleted) return;
-                                                        onSelectVersion(
-                                                            version.id,
-                                                            filename,
-                                                        );
-                                                    }}
-                                                    onKeyDown={(event) => {
-                                                        if (deleted) return;
-                                                        if (
-                                                            event.key !==
-                                                                "Enter" &&
-                                                            event.key !== " "
-                                                        )
-                                                            return;
-                                                        event.preventDefault();
-                                                        onSelectVersion(
-                                                            version.id,
-                                                            filename,
-                                                        );
-                                                    }}
-                                                    aria-disabled={deleted}
-                                                    className={cn(
-                                                        "group relative flex w-full flex-col overflow-hidden rounded-lg border border-white/70 bg-white px-3 py-2 shadow-[0_1px_4px_rgba(15,23,42,0.045),inset_0_1px_0_rgba(255,255,255,0.72)] backdrop-blur-xl transition-all hover:bg-white",
-                                                        deleted
-                                                            ? "cursor-not-allowed opacity-55"
-                                                            : "cursor-pointer",
-                                                    )}
-                                                >
-                                                    {selected && (
-                                                        <span className="absolute inset-y-0 left-0 w-[3px] bg-blue-500" />
-                                                    )}
-                                                    <div className="flex min-w-0 items-center gap-2">
-                                                        <div
-                                                            className={cn(
-                                                                "min-w-0 flex-1 truncate text-xs font-medium text-gray-800",
-                                                            )}
-                                                        >
-                                                            {title}
-                                                        </div>
-                                                        <span
-                                                            className={cn(
-                                                                "shrink-0 text-[10px] font-semibold tracking-normal",
-                                                                deleted
-                                                                    ? "text-gray-300"
-                                                                    : typeLabel ===
-                                                                        "PDF"
-                                                                    ? "text-red-600"
-                                                                    : "text-blue-600",
-                                                            )}
-                                                        >
-                                                            {typeLabel}
-                                                        </span>
-                                                    </div>
-                                                    <div className="truncate text-[11px] text-gray-400">
-                                                        {filename}
-                                                    </div>
-                                                    <div className="flex min-w-0 items-center gap-2">
-                                                        <div className="min-w-0 flex-1 truncate text-[11px] text-gray-400">
-                                                            {version.created_at
-                                                                ? new Date(
-                                                                      version.created_at,
-                                                                  ).toLocaleString()
-                                                                : "—"}
-                                                        </div>
-                                                        <div
-                                                            className={cn(
-                                                                "flex h-5 shrink-0 items-center gap-0.5 transition-opacity",
-                                                                deleted ||
-                                                                    selected
-                                                                    ? "opacity-100"
-                                                                    : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
-                                                            )}
-                                                        >
-                                                            {deleted ? (
-                                                                <span className="text-[11px] font-medium text-gray-800">
-                                                                    Deleted
-                                                                </span>
-                                                            ) : (
-                                                                <>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={(
-                                                                            event,
-                                                                        ) => {
-                                                                            event.stopPropagation();
-                                                                            requestReplaceVersion(
-                                                                                version,
-                                                                            );
-                                                                        }}
-                                                                        disabled={
-                                                                            replacingVersionId !=
-                                                                                null ||
-                                                                            deletingVersionId !=
-                                                                                null
-                                                                        }
-                                                                        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-blue-500 transition-colors hover:bg-blue-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
-                                                                        aria-label={`Replace ${title}`}
-                                                                        title="Replace version file"
-                                                                    >
-                                                                        {versionReplacing ? (
-                                                                            <Loader2 className="h-3 w-3 animate-spin" />
-                                                                        ) : (
-                                                                            <Upload className="h-3 w-3" />
-                                                                        )}
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={(
-                                                                            event,
-                                                                        ) => {
-                                                                            event.stopPropagation();
-                                                                            void onDownloadVersion(
-                                                                                doc.id,
-                                                                                version.id,
-                                                                                filename,
-                                                                            );
-                                                                        }}
-                                                                        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
-                                                                        aria-label={`Download ${title}`}
-                                                                        title="Download version"
-                                                                    >
-                                                                        <Download className="h-3 w-3" />
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={(
-                                                                            event,
-                                                                        ) => {
-                                                                            event.stopPropagation();
-                                                                            void handleDeleteVersion(
-                                                                                version.id,
-                                                                            );
-                                                                        }}
-                                                                        disabled={
-                                                                            (canDelete &&
-                                                                                activeVersionCount <=
-                                                                                    1) ||
-                                                                            deletingVersionId !=
-                                                                                null
-                                                                        }
-                                                                        className={cn(
-                                                                            "inline-flex h-5 w-5 items-center justify-center rounded-full text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40",
-                                                                            !canDelete &&
-                                                                                "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-red-500",
-                                                                        )}
-                                                                        aria-label={`Delete ${title}`}
-                                                                        title={
-                                                                            canDelete
-                                                                                ? "Delete version"
-                                                                                : "Only the document owner can delete versions"
-                                                                        }
-                                                                    >
-                                                                        {versionDeleting ? (
-                                                                            <Loader2 className="h-3 w-3 animate-spin" />
-                                                                        ) : (
-                                                                            <Trash2 className="h-3 w-3" />
-                                                                        )}
-                                                                    </button>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
+                                        {orderedVersions.map((version) => (
+                                            <VersionRow
+                                                key={version.id}
+                                                version={version}
+                                                doc={doc}
+                                                selectedVersionId={
+                                                    selectedVersionId
+                                                }
+                                                deletingVersionId={
+                                                    deletingVersionId
+                                                }
+                                                replacingVersionId={
+                                                    replacingVersionId
+                                                }
+                                                canDelete={canDelete}
+                                                activeVersionCount={
+                                                    activeVersionCount
+                                                }
+                                                onSelectVersion={
+                                                    onSelectVersion
+                                                }
+                                                onDownloadVersion={
+                                                    onDownloadVersion
+                                                }
+                                                onRequestReplace={
+                                                    requestReplaceVersion
+                                                }
+                                                onDeleteVersion={
+                                                    handleDeleteVersion
+                                                }
+                                            />
+                                        ))}
                                     </div>
                                 )}
                             </div>
@@ -976,97 +820,4 @@ export function DocumentSidePanel({
         </div>,
         document.body,
     );
-}
-
-function DataRow({ label, value }: { label: string; value: string }) {
-    return (
-        <div className="grid grid-cols-[112px_minmax(0,1fr)] gap-2 text-xs">
-            <span className="text-gray-400">{label}</span>
-            <span className="truncate text-gray-800">{value}</span>
-        </div>
-    );
-}
-
-function VersionUploadSkeleton() {
-    return (
-        <div className="rounded-lg border border-white/70 bg-white px-3 py-2 shadow-[0_1px_4px_rgba(15,23,42,0.045),inset_0_1px_0_rgba(255,255,255,0.72)]">
-            <div className="animate-pulse space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                    <div className="h-3 w-20 rounded-full bg-gray-200" />
-                    <div className="h-3 w-9 rounded-full bg-blue-100" />
-                </div>
-                <div className="h-2.5 w-4/5 rounded-full bg-gray-200" />
-                <div className="h-2.5 w-2/5 rounded-full bg-gray-200" />
-            </div>
-        </div>
-    );
-}
-
-function versionSkeletonCount(activeVersionNumber: number | null | undefined) {
-    if (
-        typeof activeVersionNumber === "number" &&
-        Number.isFinite(activeVersionNumber) &&
-        activeVersionNumber > 0
-    ) {
-        return Math.min(activeVersionNumber, 8);
-    }
-    return 2;
-}
-
-function clampPanelWidth(width: number, dataColumnWidth: number) {
-    const minWidth = MIN_DOC_COLUMN_WIDTH + RESIZER_WIDTH + dataColumnWidth;
-    const maxWidth =
-        typeof window === "undefined"
-            ? MAX_PANEL_WIDTH
-            : Math.min(MAX_PANEL_WIDTH, window.innerWidth - 16);
-    return Math.min(maxWidth, Math.max(minWidth, width));
-}
-
-function versionTitleFor(version: DocumentVersion | null) {
-    if (!version) return "this version";
-    if (
-        typeof version.version_number === "number" &&
-        version.version_number >= 1
-    ) {
-        return `Version ${version.version_number}`;
-    }
-    return "Version";
-}
-
-function versionFilenameFor(version: DocumentVersion) {
-    if (version.filename?.trim()) return version.filename.trim();
-    return version.source === "upload" ? "Original" : "—";
-}
-
-function fileTypeForVersion(version: DocumentVersion, fallback: string | null) {
-    const name = version.filename?.trim().toLowerCase() ?? "";
-    if (name.endsWith(".pdf")) return "pdf";
-    if (name.endsWith(".doc") || name.endsWith(".docx")) return "docx";
-    return fallback;
-}
-
-function filenameExtension(filename: string) {
-    const trimmed = filename.trim();
-    const dotIndex = trimmed.lastIndexOf(".");
-    if (dotIndex <= 0 || dotIndex === trimmed.length - 1) return null;
-    return trimmed.slice(dotIndex);
-}
-
-function hasExtensionChange(previous: string, next: string) {
-    const previousExtension = filenameExtension(previous);
-    if (previousExtension == null) return false;
-    return (
-        filenameExtension(next)?.toLowerCase() !==
-        previousExtension.toLowerCase()
-    );
-}
-
-function formatDateTime(iso: string) {
-    return new Date(iso).toLocaleString(undefined, {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-    });
 }
