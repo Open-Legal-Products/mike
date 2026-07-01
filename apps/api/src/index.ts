@@ -16,7 +16,12 @@ initSentry();
 import { app } from "./app";
 import { logger } from "./lib/logger";
 import { env } from "./lib/env";
+import { assertSecretsHardened } from "./lib/secretGuard";
 import { startWorkers, stopWorkers } from "./workers";
+
+// Refuse to boot a real deployment (AIRGAPPED/production) on demo/placeholder
+// secrets — a forged service_role token would otherwise bypass RLS entirely.
+assertSecretsHardened();
 
 const PORT = process.env.PORT ?? 3001;
 
