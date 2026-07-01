@@ -13,6 +13,9 @@ STAMP="$(date +%Y%m%d-%H%M%S)"
 DEST="${1:-backups/${STAMP}}"
 mkdir -p "${DEST}"
 
+echo "[backup] postgres roles → globals.sql"
+docker compose -p "${PROJECT}" exec -T postgres \
+    pg_dumpall -U postgres --globals-only > "${DEST}/globals.sql"
 echo "[backup] postgres → db.sql.gz"
 docker compose -p "${PROJECT}" exec -T postgres \
     pg_dump -U postgres -d postgres --no-owner | gzip > "${DEST}/db.sql.gz"
@@ -23,7 +26,7 @@ docker run --rm --volumes-from "${PROJECT}-minio-1" -v "$(pwd)/${DEST}:/out" \
     echo "[backup] (minio volume name differs — adjust --volumes-from)"
 
 echo "[backup] secrets → secrets.env  (KEEP AS SAFE AS THE DATA)"
-cp .env.generated "${DEST}/secrets.env" 2>/dev/null || \
+{ cp .env.generated "${DEST}/secrets.env" && chmod 600 "${DEST}/secrets.env"; } 2>/dev/null || \
     echo "[backup] WARNING: .env.generated not found — restore will fail without the original secrets"
 
 sha256sum "${DEST}"/* > "${DEST}/SHA256SUMS"

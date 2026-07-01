@@ -17,3 +17,7 @@ next-env.d.ts
 .DS_Store
 .vercel
 coverage
+
+# Air-gap generated secrets (never commit)
+airgapped/.env.generated
+airgapped/backups/

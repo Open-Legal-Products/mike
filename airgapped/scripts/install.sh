@@ -14,7 +14,7 @@ BUNDLE="${1:?usage: install.sh <bundle.tar.gz>}"
 ENV_FILE=".env.generated"
 
 echo "[install] verifying checksum…"
-sha256sum -c "${BUNDLE}.sha256"
+( cd "$(dirname "${BUNDLE}")" && sha256sum -c "$(basename "${BUNDLE}").sha256" )
 
 want_arch="$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')"
 case "$BUNDLE" in

@@ -67,6 +67,19 @@ SMTP_PASS=
 SMTP_ADMIN_EMAIL=admin@mike.local
 SECURE_EMAIL_CHANGE=false
 
+# --- Service wiring (internal compose network) ---
+SUPABASE_URL=http://gateway:8000
+SUPABASE_ANON_KEY=${ANON_KEY}
+NEXT_PUBLIC_SUPABASE_URL=http://gateway:8000
+NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}
+REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+# Object storage → MinIO (S3-compatible)
+R2_ENDPOINT_URL=http://minio:9000
+R2_ACCESS_KEY_ID=mike
+R2_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+R2_BUCKET=mike
+R2_REGION=local
+
 # --- Air-gap mode ---
 AIRGAPPED=true
 NODE_ENV=production

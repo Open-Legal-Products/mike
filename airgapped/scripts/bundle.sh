@@ -30,6 +30,7 @@ IMAGES=(
     "redis:7-alpine"
     "axllent/mailpit:v1.20"
     "ollama/ollama:0.6.8"
+    "alpine:3.20"
 )
 
 echo "[bundle] target arch: ${ARCH}"
@@ -49,7 +50,7 @@ docker buildx build --platform "linux/${ARCH}" --target production \
 echo "[bundle] saving → ${OUT}"
 docker save -o "${OUT}" "${IMAGES[@]}" mike-api:airgapped mike-web:airgapped
 gzip -f "${OUT}"
-sha256sum "${OUT}.gz" > "${OUT}.gz.sha256"
+( cd "${OUT_DIR}" && sha256sum "$(basename "${OUT}").gz" > "$(basename "${OUT}").gz.sha256" )
 
 echo "[bundle] done:"
 ls -lh "${OUT}.gz" "${OUT}.gz.sha256"

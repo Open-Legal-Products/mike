@@ -21,9 +21,12 @@ chmod 600 .env.generated
 echo "[restore] bringing up postgres + db-init…"
 docker compose --env-file .env.generated -f docker-compose.airgapped.yml -p "${PROJECT}" up -d postgres db-init
 
+echo "[restore] restoring roles (globals)…"
+[ -f "${SRC}/globals.sql" ] && docker compose -p "${PROJECT}" exec -T postgres \
+    psql -U postgres -d postgres -v ON_ERROR_STOP=0 < "${SRC}/globals.sql" >/dev/null
 echo "[restore] restoring postgres…"
 gunzip -c "${SRC}/db.sql.gz" | \
-    docker compose -p "${PROJECT}" exec -T postgres psql -U postgres -d postgres >/dev/null
+    docker compose -p "${PROJECT}" exec -T postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1
 
 echo "[restore] restoring minio objects…"
 docker run --rm --volumes-from "${PROJECT}-minio-1" -v "$(pwd)/${SRC}:/in" \

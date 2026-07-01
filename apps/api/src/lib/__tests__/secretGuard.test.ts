@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { describe, expect, it } from "vitest";
 import { assertSecretsHardened } from "../secretGuard";
 
@@ -6,11 +7,21 @@ const DEMO_JWT = "super-secret-jwt-token-with-at-least-32-characters-long";
 const DEMO_ANON =
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0";
 
+const b64url = (b: Buffer) =>
+    b.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+function mintJwt(secret: string, role = "anon"): string {
+    const h = b64url(Buffer.from('{"alg":"HS256","typ":"JWT"}'));
+    const p = b64url(Buffer.from(JSON.stringify({ role, iss: "supabase" })));
+    const s = b64url(crypto.createHmac("sha256", secret).update(`${h}.${p}`).digest());
+    return `${h}.${p}.${s}`;
+}
+
+const JWT_SECRET = "x".repeat(48);
 const GOOD = {
-    JWT_SECRET: "x".repeat(48),
-    SUPABASE_SECRET_KEY: "a.b.c", // non-demo, unparseable issuer is fine
+    JWT_SECRET,
     USER_API_KEYS_ENCRYPTION_SECRET: "k".repeat(40),
     DOWNLOAD_SIGNING_SECRET: "s".repeat(40),
+    MCP_CONNECTORS_ENCRYPTION_SECRET: "m".repeat(40),
 };
 
 describe("assertSecretsHardened", () => {
@@ -50,6 +61,34 @@ describe("assertSecretsHardened", () => {
                 DOWNLOAD_SIGNING_SECRET: "tooshort",
             }),
         ).toThrow(/32 chars/i);
+    });
+
+    it("rejects keys not signed by JWT_SECRET (mismatched triple)", () => {
+        expect(() =>
+            assertSecretsHardened({
+                ...GOOD,
+                AIRGAPPED: "true",
+                ANON_KEY: mintJwt("a-different-secret-entirely-32-chars!!"),
+            }),
+        ).toThrow(/not signed by JWT_SECRET/i);
+    });
+
+    it("accepts keys correctly signed by JWT_SECRET", () => {
+        expect(() =>
+            assertSecretsHardened({
+                ...GOOD,
+                AIRGAPPED: "true",
+                ANON_KEY: mintJwt(JWT_SECRET, "anon"),
+                SERVICE_ROLE_KEY: mintJwt(JWT_SECRET, "service_role"),
+            }),
+        ).not.toThrow();
+    });
+
+    it("requires MCP_CONNECTORS_ENCRYPTION_SECRET too", () => {
+        const { MCP_CONNECTORS_ENCRYPTION_SECRET: _omit, ...rest } = GOOD;
+        expect(() =>
+            assertSecretsHardened({ ...rest, AIRGAPPED: "true" }),
+        ).toThrow(/MCP_CONNECTORS_ENCRYPTION_SECRET/);
     });
 
     it("passes with strong, non-demo secrets in air-gapped mode", () => {

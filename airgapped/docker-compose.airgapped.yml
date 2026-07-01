@@ -169,7 +169,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?run gen-secrets.sh}"]
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?run gen-secrets.sh}", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
     healthcheck:
@@ -185,7 +185,43 @@ services:
     restart: unless-stopped
     # SMTP 1025 + UI 8025 internal only; front the UI behind the TLS proxy+auth.
 
+  ollama:
+    image: ollama/ollama:0.6.8
+    volumes:
+      # Pre-pull the model into this volume in the bundle (phase 4); the API
+      # points OPENAI_BASE_URL at http://ollama:11434/v1.
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    # No host port — internal only.
+
+  api:
+    image: mike-api:airgapped
+    depends_on:
+      rest:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      ollama:
+        condition: service_started
+    # All secrets + air-gap config come from the generated env file. The boot
+    # guard (assertSecretsHardened) runs here and refuses demo/placeholder secrets.
+    env_file: [.env.generated]
+    environment:
+      PORT: "3001"
+    restart: unless-stopped
+
+  web:
+    image: mike-web:airgapped
+    depends_on:
+      api:
+        condition: service_started
+    env_file: [.env.generated]
+    restart: unless-stopped
+
 volumes:
   pg_data:
   minio_data:
   redis_data:
+  ollama_data:
