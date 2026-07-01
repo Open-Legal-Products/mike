@@ -374,6 +374,19 @@ directly when working on the SDK:
 cd sdks/python && pip install -e '.[dev]' && pytest
 ```
 
+#### Stack integration tests
+
+Most API tests mock Supabase. A separate, **gated** suite exercises the real stack
+(GoTrue auth + Postgres RLS + the credit RPC) — the auth↔API contract, the deny-all
+RLS firewall, and cross-tenant isolation. It is skipped in the default unit run and
+is the harness you re-run on **every Supabase version bump** to prove the stack
+contract still holds (the prerequisite for pinning a fixed image set):
+
+```bash
+supabase start                 # once, in the repo
+cd apps/api && npm run test:stack   # auto-reads keys from `supabase status`
+```
+
 ### Project structure
 
 ```

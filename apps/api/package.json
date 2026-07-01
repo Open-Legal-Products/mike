@@ -10,7 +10,8 @@
     "test:integration:supabase": "SUPABASE_TEST_URL=${SUPABASE_TEST_URL:-$SUPABASE_URL} SUPABASE_TEST_SERVICE_ROLE_KEY=${SUPABASE_TEST_SERVICE_ROLE_KEY:-$SUPABASE_SECRET_KEY} vitest run src/__tests__/integration/access.supabase.test.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:stack": "bash scripts/test-stack.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
