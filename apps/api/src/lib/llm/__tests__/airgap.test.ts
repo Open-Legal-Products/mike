@@ -11,6 +11,8 @@ import {
     registerBuiltinProviders,
     assertModelAvailable,
     assertAirgapLlmConfig,
+    resolveModel,
+    airgapDefaultModel,
     ModelUnavailableError,
 } from "../index";
 import { _resetRegistryForTesting, getRegisteredProvider } from "../registry";
@@ -66,6 +68,41 @@ describe("air-gapped LLM enforcement", () => {
         expect(() => assertModelAvailable("totally-made-up-model", {})).toThrow(
             /no registered provider/i,
         );
+    });
+});
+
+describe("air-gapped default model (resolveModel)", () => {
+    const AG = { AIRGAPPED: "true" };
+    const CLOUD_DEFAULT = "gemini-3-flash-preview";
+
+    it("swaps a cloud DEFAULT for the local default when no model is given", () => {
+        registerBuiltinProviders({ AIRGAPPED: "true", OPENAI_BASE_URL: "http://ollama:11434/v1" });
+        // No model → would fall back to the cloud default → use local instead.
+        expect(resolveModel(undefined, CLOUD_DEFAULT, AG)).toBe(airgapDefaultModel(AG));
+        expect(resolveModel(undefined, CLOUD_DEFAULT, AG)).toBe("llama3.3");
+    });
+
+    it("preserves an EXPLICIT cloud model so the boundary guard can refuse it", () => {
+        registerBuiltinProviders({ AIRGAPPED: "true", OPENAI_BASE_URL: "http://ollama:11434/v1" });
+        // Explicit cloud model is recognized by the static set → kept as-is…
+        expect(resolveModel("claude-opus-4-8", CLOUD_DEFAULT, AG)).toBe("claude-opus-4-8");
+        // …and then refused at the boundary.
+        expect(() => assertModelAvailable("claude-opus-4-8", AG)).toThrow(ModelUnavailableError);
+    });
+
+    it("honors AIRGAP_DEFAULT_MODEL override", () => {
+        registerBuiltinProviders({
+            AIRGAPPED: "true",
+            OPENAI_BASE_URL: "http://ollama:11434/v1",
+            OLLAMA_MODELS: "my-local-model",
+        });
+        const env = { AIRGAPPED: "true", AIRGAP_DEFAULT_MODEL: "my-local-model" };
+        expect(resolveModel(undefined, CLOUD_DEFAULT, env)).toBe("my-local-model");
+    });
+
+    it("leaves the cloud default in place when NOT air-gapped", () => {
+        registerBuiltinProviders({});
+        expect(resolveModel(undefined, CLOUD_DEFAULT, {})).toBe(CLOUD_DEFAULT);
     });
 });
 

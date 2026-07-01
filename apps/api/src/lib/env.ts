@@ -78,6 +78,10 @@ const envSchema = z.object({
     // docs/SELF_HOSTING_AIRGAPPED_PLAN.md. Read directly from process.env at
     // startup as well (registerBuiltinProviders) to avoid import-order coupling.
     AIRGAPPED: z.enum(["true", "false"]).default("false"),
+    // Local model used when an air-gapped request would otherwise fall back to a
+    // cloud default (main chat / title / tabular). Must be a registered Ollama
+    // model. Defaults to "llama3.3".
+    AIRGAP_DEFAULT_MODEL: z.string().optional(),
 
     // Quota-accounting failure policy. Credit checks talk to the DB/RPC; when
     // that read fails the request either proceeds (fail-open) or is rejected

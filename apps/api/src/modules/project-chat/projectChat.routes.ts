@@ -12,7 +12,7 @@ import {
     PROJECT_EXTRA_TOOLS,
     type ChatMessage,
 } from "../../lib/chatTools";
-import { assertModelAvailable, DEFAULT_MAIN_MODEL, ModelUnavailableError } from "../../lib/llm";
+import { assertModelAvailable, DEFAULT_MAIN_MODEL, ModelUnavailableError, resolveModel } from "../../lib/llm";
 import { getUserApiKeys } from "../../lib/userSettings";
 import { consumeMessageCredit, refundMessageCredit } from "../../lib/credits";
 import { parseBody, sendError } from "../../lib/http";
@@ -86,7 +86,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
     // air-gapped mode) before any work — mirrors POST /chat. Check the effective
     // model so an omitted `model` can't slip the cloud default past the boundary.
     try {
-        assertModelAvailable(model || DEFAULT_MAIN_MODEL);
+        assertModelAvailable(resolveModel(model, DEFAULT_MAIN_MODEL));
     } catch (err) {
         if (err instanceof ModelUnavailableError) {
             return void res.status(400).json({ detail: err.message });

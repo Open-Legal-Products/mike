@@ -57,6 +57,16 @@ USER_API_KEYS_ENCRYPTION_SECRET=$(rand 32)
 MCP_CONNECTORS_ENCRYPTION_SECRET=$(rand 32)
 DOWNLOAD_SIGNING_SECRET=$(rand 32)
 
+# --- Email (optional). Login/signup work with NO mail. Only email-CHANGE sends
+#     mail; leave these at the Mailpit catcher unless you have an internal relay,
+#     in which case set SMTP_* and SECURE_EMAIL_CHANGE=true. ---
+SMTP_HOST=mailpit
+SMTP_PORT=1025
+SMTP_USER=
+SMTP_PASS=
+SMTP_ADMIN_EMAIL=admin@mike.local
+SECURE_EMAIL_CHANGE=false
+
 # --- Air-gap mode ---
 AIRGAPPED=true
 NODE_ENV=production
@@ -64,4 +74,7 @@ OPENAI_BASE_URL=http://ollama:11434/v1
 OPENAI_ALLOW_LOCAL_BASE_URL=true
 OPENAI_API_KEY=ollama
 ENABLE_OLLAMA=true
+# Local model used when a request would otherwise fall back to a cloud default
+# (main chat / title / tabular). Must be a registered Ollama model.
+AIRGAP_DEFAULT_MODEL=llama3.3
 EOF

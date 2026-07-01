@@ -81,12 +81,19 @@ services:
       GOTRUE_JWT_SECRET: *jwt_secret
       GOTRUE_JWT_ISSUER: http://gateway:8000/auth/v1
       GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
-      # Autoconfirm: no external SMTP needed on the critical path. Email-*change*
-      # still needs a real relay (phase 5); catch-only via Mailpit otherwise.
+      # Autoconfirm signups: no external SMTP needed on the login/signup critical
+      # path. Email-CHANGE is the only flow that sends mail; with no delivery its
+      # confirmation link would only reach Mailpit (caught, not delivered), so
+      # secure email change is OFF by default. An operator with an internal SMTP
+      # relay sets SMTP_HOST/PORT/USER/PASS + SECURE_EMAIL_CHANGE=true to require
+      # confirmation. Everything else works with no email at all.
       GOTRUE_MAILER_AUTOCONFIRM: "true"
-      GOTRUE_SMTP_HOST: mailpit
-      GOTRUE_SMTP_PORT: "1025"
-      GOTRUE_SMTP_ADMIN_EMAIL: admin@mike.local
+      GOTRUE_MAILER_SECURE_EMAIL_CHANGE_ENABLED: "${SECURE_EMAIL_CHANGE:-false}"
+      GOTRUE_SMTP_HOST: "${SMTP_HOST:-mailpit}"
+      GOTRUE_SMTP_PORT: "${SMTP_PORT:-1025}"
+      GOTRUE_SMTP_USER: "${SMTP_USER:-}"
+      GOTRUE_SMTP_PASS: "${SMTP_PASS:-}"
+      GOTRUE_SMTP_ADMIN_EMAIL: "${SMTP_ADMIN_EMAIL:-admin@mike.local}"
       GOTRUE_SMTP_SENDER_NAME: Mike
       GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
       GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/v1/verify

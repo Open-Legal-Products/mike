@@ -86,8 +86,29 @@ export function providerForModel(model: string): string {
  * falls back to the static ALL_MODELS set so the function works in test
  * contexts where no providers have been registered.
  */
-export function resolveModel(id: string | null | undefined, fallback: string): string {
-    if (!id) return fallback;
-    if (allRegisteredModels().has(id) || ALL_MODELS.has(id)) return id;
-    return fallback;
+/**
+ * The local model to use in air-gapped mode when a request would otherwise fall
+ * back to a cloud default. Operator-overridable via AIRGAP_DEFAULT_MODEL; the
+ * value must be a registered local (Ollama) model.
+ */
+export function airgapDefaultModel(env: NodeJS.ProcessEnv = process.env): string {
+    return env.AIRGAP_DEFAULT_MODEL || "llama3.3";
+}
+
+export function resolveModel(
+    id: string | null | undefined,
+    fallback: string,
+    env: NodeJS.ProcessEnv = process.env,
+): string {
+    const usedId = !!id && (allRegisteredModels().has(id) || ALL_MODELS.has(id));
+    const chosen = usedId ? (id as string) : fallback;
+    // Air-gapped: if we FELL BACK to a default that has no local provider (the
+    // built-in defaults are cloud models), use the configured local default so
+    // no-model requests still work. An EXPLICITLY requested cloud model is left
+    // as-is — the boundary guard (assertModelAvailable) refuses it rather than
+    // silently swapping it.
+    if (env.AIRGAPPED === "true" && !usedId && !findProviderForModel(chosen)) {
+        return airgapDefaultModel(env);
+    }
+    return chosen;
 }

@@ -59,9 +59,17 @@ RUN_STACK_E2E=1 airgapped/scripts/acceptance.sh
 - **Version bumps:** change a pinned image → run the stack-E2E harness against the
   embedded compose in CI before shipping (auth contract + RLS still hold).
 
-## Known follow-ups
+## Email policy
 
-- Air-gap default LLM model: tabular/title generation still reference cloud default
-  model IDs (no egress — the registry has no cloud adapter — but they error instead
-  of using a local model). Make the defaults air-gap-aware.
-- Email-*change* needs a real internal SMTP relay (Mailpit only catches).
+Login and signup need **no email** (GoTrue autoconfirm). The only mail-sending flow
+is **email-change**. Air-gap has no delivery, so `SECURE_EMAIL_CHANGE=false` by
+default (the change applies without a confirmation link the user couldn't receive).
+If you run an **internal SMTP relay**, set `SMTP_HOST/PORT/USER/PASS` and
+`SECURE_EMAIL_CHANGE=true` in `.env.generated` to restore confirmed email change.
+
+## Default model
+
+`AIRGAP_DEFAULT_MODEL` (default `llama3.3`) is the local model used whenever a
+request would otherwise fall back to a cloud default (main chat, title, tabular).
+An explicitly-requested cloud model is still refused, not silently swapped. Set it
+to a model you've bundled into Ollama.
