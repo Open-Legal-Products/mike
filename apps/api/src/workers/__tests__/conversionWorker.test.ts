@@ -24,7 +24,13 @@ vi.mock("../../lib/convert", () => ({
         `converted-pdfs/${userId}/${docId}.pdf`,
 }));
 
-import { runConversionJob } from "../conversionWorker";
+import {
+    runConversionJob,
+    setDocumentTerminalStatus,
+    isPermanentFailure,
+} from "../conversionWorker";
+import type { Job } from "bullmq";
+import type { ConversionJobData } from "../../lib/queue/conversionQueue";
 
 type Call = { table: string; update: Record<string, unknown> };
 
@@ -105,5 +111,41 @@ describe("runConversionJob", () => {
         );
         expect(docxToPdf).not.toHaveBeenCalled();
         expect(db.calls).toHaveLength(0);
+    });
+});
+
+describe("setDocumentTerminalStatus", () => {
+    it("updates the document to the given terminal status", async () => {
+        const db = makeDb();
+
+        await setDocumentTerminalStatus(db as never, "doc-1", "error");
+
+        expect(db.calls).toHaveLength(1);
+        expect(db.calls[0].table).toBe("documents");
+        expect(db.calls[0].update.status).toBe("error");
+        expect(db.calls[0].update).toHaveProperty("updated_at");
+    });
+});
+
+describe("isPermanentFailure", () => {
+    const job = (attemptsMade: number, attempts?: number) =>
+        ({
+            attemptsMade,
+            opts: { attempts },
+        }) as unknown as Job<ConversionJobData>;
+
+    it("is false while retries remain", () => {
+        expect(isPermanentFailure(job(1, 3))).toBe(false);
+        expect(isPermanentFailure(job(2, 3))).toBe(false);
+    });
+
+    it("is true once retries are exhausted", () => {
+        expect(isPermanentFailure(job(3, 3))).toBe(true);
+        expect(isPermanentFailure(job(4, 3))).toBe(true);
+    });
+
+    it("defaults to a single attempt when opts.attempts is unset", () => {
+        expect(isPermanentFailure(job(1))).toBe(true);
+        expect(isPermanentFailure(job(0))).toBe(false);
     });
 });

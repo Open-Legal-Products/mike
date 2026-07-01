@@ -66,6 +66,27 @@ export async function runConversionJob(
     }
 }
 
+/**
+ * Move a document to a terminal status (e.g. "error"). Extracted so the
+ * permanent-failure path is unit-testable without a live queue/Redis.
+ */
+export async function setDocumentTerminalStatus(
+    db: Db,
+    documentId: string,
+    status: string,
+): Promise<void> {
+    await db
+        .from("documents")
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq("id", documentId);
+}
+
+/** True once a job has exhausted its retries (BullMQ 'failed', no attempts left). */
+export function isPermanentFailure(job: Job<ConversionJobData>): boolean {
+    const maxAttempts = job.opts.attempts ?? 1;
+    return job.attemptsMade >= maxAttempts;
+}
+
 let worker: Worker<ConversionJobData> | null = null;
 
 export function createConversionWorker(): Worker<ConversionJobData> {
@@ -75,13 +96,52 @@ export function createConversionWorker(): Worker<ConversionJobData> {
         async (job: Job<ConversionJobData>) => {
             await runConversionJob(job.data);
         },
-        { connection: getRedisConnection(), concurrency: 2 },
+        {
+            connection: getRedisConnection(),
+            concurrency: 2,
+            // Recover jobs orphaned by a worker crash mid-run: re-queue a job
+            // whose lock hasn't been renewed within stalledInterval, up to
+            // maxStalledCount times before it's failed for good.
+            stalledInterval: 30_000,
+            maxStalledCount: 2,
+        },
     );
-    worker.on("failed", (job, err) => {
-        logger.error(
-            { jobId: job?.id, err },
-            "[conversion-worker] job failed (will retry if attempts remain)",
+    worker.on("stalled", (jobId) => {
+        logger.warn(
+            { jobId },
+            "[conversion-worker] job stalled; will be re-queued",
         );
+    });
+    worker.on("failed", async (job, err) => {
+        if (!job) {
+            logger.error({ err }, "[conversion-worker] job failed (no job)");
+            return;
+        }
+        if (!isPermanentFailure(job)) {
+            logger.error(
+                { jobId: job.id, err },
+                "[conversion-worker] job failed (will retry, attempts remain)",
+            );
+            return;
+        }
+        // Retries exhausted: the document is stuck "processing" with no PDF and
+        // no path forward — surface it to the user as a terminal "error".
+        logger.error(
+            { jobId: job.id, documentId: job.data.documentId, err },
+            "[conversion-worker] job permanently failed; marking document error",
+        );
+        try {
+            await setDocumentTerminalStatus(
+                createServerSupabase(),
+                job.data.documentId,
+                "error",
+            );
+        } catch (updateErr) {
+            logger.error(
+                { jobId: job.id, documentId: job.data.documentId, updateErr },
+                "[conversion-worker] failed to mark document error",
+            );
+        }
     });
     return worker;
 }

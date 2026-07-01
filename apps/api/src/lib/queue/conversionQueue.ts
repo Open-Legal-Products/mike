@@ -28,12 +28,21 @@ export function getConversionQueue(): Queue<ConversionJobData> {
     return queue;
 }
 
+/** Deterministic BullMQ jobId for a conversion. */
+export function conversionJobId(versionId: string): string {
+    return `convert:${versionId}`;
+}
+
 /**
  * Enqueue a conversion. Retries transient failures (storage/LibreOffice
  * hiccups) with exponential backoff; keeps a bounded history for inspection.
+ *
+ * The jobId is derived from the (unique-per-upload) versionId so a double
+ * submit is deduped by BullMQ instead of racing two conversions.
  */
 export function enqueueConversion(data: ConversionJobData) {
     return getConversionQueue().add("convert", data, {
+        jobId: conversionJobId(data.versionId),
         attempts: 3,
         backoff: { type: "exponential", delay: 2000 },
         removeOnComplete: 100,
