@@ -45,6 +45,29 @@ export interface OllamaSetupOptions {
     providerId?: string;
 }
 
+/**
+ * Opt-in bootstrap: register the Ollama provider iff `ENABLE_OLLAMA=true`.
+ *
+ * Gated (not always-on) because registering ~20 local model IDs would pollute
+ * the model picker on cloud deployments that have no Ollama server, and because
+ * running Ollama also requires `OPENAI_ALLOW_LOCAL_BASE_URL=true` — a deliberate
+ * SSRF-guard relaxation we only want when a self-hoster asks for it. Optional
+ * `OLLAMA_MODELS` (comma-separated) adds custom models to the defaults.
+ *
+ * Returns true if it registered the provider. `env` is injectable for testing.
+ */
+export function setupOllamaFromEnv(
+    env: NodeJS.ProcessEnv = process.env,
+): boolean {
+    if (env.ENABLE_OLLAMA !== "true") return false;
+    const models = (env.OLLAMA_MODELS ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    setupOllama({ models });
+    return true;
+}
+
 export function setupOllama(options: OllamaSetupOptions = {}): void {
     const id = options.providerId ?? "ollama";
     const allModels = [...new Set([...DEFAULT_MODELS, ...(options.models ?? [])])];

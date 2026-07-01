@@ -27,12 +27,12 @@ export * from "./models";
  * Register a third-party LLM provider so it is available via
  * streamChatWithTools() and completeText().
  *
- * Example — adding Ollama:
- *   import { registerProvider } from "lib/llm";
- *   import { setupOllama } from "lib/llm/providers/ollama";
- *   setupOllama(["llama3.3", "phi4"]);
+ * Local models via Ollama are built in but opt-in: set ENABLE_OLLAMA=true (see
+ * setupOllamaFromEnv below). Other OpenAI-compatible providers can be added the
+ * same way — call registerProvider()/registerApiKeyProvider(), no core edits.
  */
 export { registerProvider } from "./registry";
+import { setupOllamaFromEnv } from "./providers/ollama";
 
 // ---------------------------------------------------------------------------
 // Register built-in providers
@@ -64,6 +64,13 @@ registerProvider({
     complete: completeOpenAIText,
     models: { main: OPENAI_MAIN_MODELS, mid: OPENAI_MID_MODELS, low: OPENAI_LOW_MODELS },
 });
+
+// Opt-in local-model provider. No-op unless ENABLE_OLLAMA=true; reads
+// process.env directly (not the validated env) to avoid forcing full env
+// validation at module import (this module loads in many unit tests).
+if (setupOllamaFromEnv()) {
+    logger.info("[llm] Ollama provider enabled (ENABLE_OLLAMA=true)");
+}
 
 // ---------------------------------------------------------------------------
 // Retry helper — exponential backoff for transient LLM errors

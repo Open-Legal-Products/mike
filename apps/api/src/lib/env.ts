@@ -62,6 +62,15 @@ const envSchema = z.object({
         .default("false"),
     GEMINI_API_KEY: z.string().optional(),
 
+    // Local models via Ollama (opt-in). When "true", the Ollama provider is
+    // registered at startup (routes its model IDs through the OpenAI-compatible
+    // backend at OPENAI_BASE_URL, which for Ollama points at http://…:11434/v1
+    // and needs OPENAI_ALLOW_LOCAL_BASE_URL=true). Off by default so cloud
+    // deployments' model list and SSRF posture are unaffected. OLLAMA_MODELS is
+    // an optional comma-separated list of extra models to register.
+    ENABLE_OLLAMA: z.enum(["true", "false"]).default("false"),
+    OLLAMA_MODELS: z.string().optional(),
+
     RESEND_API_KEY: z.string().optional(),
 
     // Quota-accounting failure policy. Credit checks talk to the DB/RPC; when
