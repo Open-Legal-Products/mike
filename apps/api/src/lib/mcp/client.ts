@@ -30,8 +30,48 @@ function encryptionSecret(): string {
     return secret;
 }
 
-function encryptionKey(): Buffer {
+// Legacy path: one scrypt-derived key for every connector secret (static salt).
+// Kept only to decrypt rows written before per-row HKDF was introduced.
+function legacyEncryptionKey(): Buffer {
     return crypto.scryptSync(encryptionSecret(), "mike-user-mcp-v1", 32);
+}
+
+// New path: HKDF (RFC 5869) derives a unique 256-bit key per secret from a random
+// 16-byte salt, matching the per-row scheme used for user API keys. One key's
+// compromise no longer exposes every other connector secret.
+function deriveKey(salt: Buffer): Buffer {
+    return Buffer.from(
+        crypto.hkdfSync(
+            "sha256",
+            Buffer.from(encryptionSecret(), "utf8"),
+            salt,
+            Buffer.from("mike-user-mcp-v2", "utf8"),
+            32,
+        ),
+    );
+}
+
+// The salt has to travel with the ciphertext, but the connector tables have no
+// salt column. Rather than a migration across four encrypted fields, pack it
+// into the stored value: `v2.` + base64(salt(16) || ciphertext). A wrong/forged
+// salt derives a wrong key, so GCM auth fails closed on decrypt. Legacy rows
+// have no `v2.` prefix and decrypt with the static key.
+const V2_PREFIX = "v2.";
+
+function packCiphertext(salt: Buffer, ciphertext: Buffer): string {
+    return V2_PREFIX + Buffer.concat([salt, ciphertext]).toString("base64");
+}
+
+// Resolve stored ciphertext to the key that decrypts it and the raw bytes.
+function unpackCiphertext(stored: string): { key: Buffer; data: Buffer } {
+    if (stored.startsWith(V2_PREFIX)) {
+        const buf = Buffer.from(stored.slice(V2_PREFIX.length), "base64");
+        return {
+            key: deriveKey(buf.subarray(0, 16)),
+            data: buf.subarray(16),
+        };
+    }
+    return { key: legacyEncryptionKey(), data: Buffer.from(stored, "base64") };
 }
 
 export function mcpOAuthCallbackUrl() {
@@ -48,14 +88,15 @@ function encryptJson(value: Record<string, unknown>): {
     auth_config_iv: string;
     auth_config_tag: string;
 } {
+    const salt = crypto.randomBytes(16);
     const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv("aes-256-gcm", encryptionKey(), iv);
+    const cipher = crypto.createCipheriv("aes-256-gcm", deriveKey(salt), iv);
     const encrypted = Buffer.concat([
         cipher.update(JSON.stringify(value), "utf8"),
         cipher.final(),
     ]);
     return {
-        encrypted_auth_config: encrypted.toString("base64"),
+        encrypted_auth_config: packCiphertext(salt, encrypted),
         auth_config_iv: iv.toString("base64"),
         auth_config_tag: cipher.getAuthTag().toString("base64"),
     };
@@ -66,14 +107,15 @@ export function encryptString(value: string): {
     iv: string;
     tag: string;
 } {
+    const salt = crypto.randomBytes(16);
     const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv("aes-256-gcm", encryptionKey(), iv);
+    const cipher = crypto.createCipheriv("aes-256-gcm", deriveKey(salt), iv);
     const encrypted = Buffer.concat([
         cipher.update(value, "utf8"),
         cipher.final(),
     ]);
     return {
-        encrypted: encrypted.toString("base64"),
+        encrypted: packCiphertext(salt, encrypted),
         iv: iv.toString("base64"),
         tag: cipher.getAuthTag().toString("base64"),
     };
@@ -86,14 +128,15 @@ export function decryptString(
 ): string | null {
     if (!encrypted || !iv || !tag) return null;
     try {
+        const { key, data } = unpackCiphertext(encrypted);
         const decipher = crypto.createDecipheriv(
             "aes-256-gcm",
-            encryptionKey(),
+            key,
             Buffer.from(iv, "base64"),
         );
         decipher.setAuthTag(Buffer.from(tag, "base64"));
         const decrypted = Buffer.concat([
-            decipher.update(Buffer.from(encrypted, "base64")),
+            decipher.update(data),
             decipher.final(),
         ]);
         return decrypted.toString("utf8");
@@ -117,14 +160,15 @@ export function decryptAuthConfig(row: ConnectorRow): McpConnectorAuthConfig {
         return {};
     }
     try {
+        const { key, data } = unpackCiphertext(row.encrypted_auth_config);
         const decipher = crypto.createDecipheriv(
             "aes-256-gcm",
-            encryptionKey(),
+            key,
             Buffer.from(row.auth_config_iv, "base64"),
         );
         decipher.setAuthTag(Buffer.from(row.auth_config_tag, "base64"));
         const decrypted = Buffer.concat([
-            decipher.update(Buffer.from(row.encrypted_auth_config, "base64")),
+            decipher.update(data),
             decipher.final(),
         ]);
         const parsed = JSON.parse(decrypted.toString("utf8"));
