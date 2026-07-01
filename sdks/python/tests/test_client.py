@@ -15,12 +15,12 @@ BASE_URL = "https://api.example.com"
 
 @pytest.fixture
 def client():
-    return MikeClient(base_url=BASE_URL, session_token="test-token")
+    return MikeClient(base_url=BASE_URL, access_token="test-token")
 
 
 @pytest.fixture
 def async_client():
-    return AsyncMikeClient(base_url=BASE_URL, session_token="test-token")
+    return AsyncMikeClient(base_url=BASE_URL, access_token="test-token")
 
 
 # ---------------------------------------------------------------------------

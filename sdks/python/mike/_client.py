@@ -27,14 +27,22 @@ class MikeClient:
         self,
         *,
         base_url: str,
-        session_token: str | None = None,
+        access_token: str | None = None,
         timeout: float = 60.0,
         http_client: httpx.Client | None = None,
     ) -> None:
+        """Create a synchronous client.
+
+        Args:
+            base_url: Root URL of the Mike API.
+            access_token: Supabase access token (JWT). Sent as an
+                ``Authorization: Bearer <token>`` header, matching the API's
+                auth middleware.
+        """
         self._base_url = base_url.rstrip("/")
         headers: dict[str, str] = {"Content-Type": "application/json"}
-        if session_token:
-            headers["Cookie"] = f"better-auth.session_token={session_token}"
+        if access_token:
+            headers["Authorization"] = f"Bearer {access_token}"
 
         self._http = http_client or httpx.Client(
             base_url=self._base_url,
@@ -97,14 +105,22 @@ class AsyncMikeClient:
         self,
         *,
         base_url: str,
-        session_token: str | None = None,
+        access_token: str | None = None,
         timeout: float = 60.0,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
+        """Create an async client.
+
+        Args:
+            base_url: Root URL of the Mike API.
+            access_token: Supabase access token (JWT). Sent as an
+                ``Authorization: Bearer <token>`` header, matching the API's
+                auth middleware.
+        """
         self._base_url = base_url.rstrip("/")
         headers: dict[str, str] = {"Content-Type": "application/json"}
-        if session_token:
-            headers["Cookie"] = f"better-auth.session_token={session_token}"
+        if access_token:
+            headers["Authorization"] = f"Bearer {access_token}"
 
         self._http = http_client or httpx.AsyncClient(
             base_url=self._base_url,
