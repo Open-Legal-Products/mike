@@ -71,8 +71,6 @@ const envSchema = z.object({
     ENABLE_OLLAMA: z.enum(["true", "false"]).default("false"),
     OLLAMA_MODELS: z.string().optional(),
 
-    RESEND_API_KEY: z.string().optional(),
-
     // Quota-accounting failure policy. Credit checks talk to the DB/RPC; when
     // that read fails the request either proceeds (fail-open) or is rejected
     // (fail-closed). Default "false" (fail-open) preserves the historical

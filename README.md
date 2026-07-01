@@ -187,12 +187,6 @@ Auth uses Application Default Credentials — set `GOOGLE_APPLICATION_CREDENTIAL
 | `VERTEX_AI_PROJECT` | GCP project ID — required to activate Vertex AI routing |
 | `VERTEX_AI_LOCATION` | Region (default: `us-central1`) |
 
-#### Email
-
-| Variable | Description |
-|---|---|
-| `RESEND_API_KEY` | [Resend](https://resend.com) API key for transactional email |
-
 #### Legal research — CourtListener (optional)
 
 Enables US case law citation verification, case fetching, opinion search, and case-law panels in assistant responses. Configure the token here for the whole instance, or let each user add their own under **Account > Models & API Keys**.
