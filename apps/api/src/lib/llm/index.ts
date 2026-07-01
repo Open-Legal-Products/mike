@@ -1,3 +1,5 @@
+import net from "net";
+import { isBlockedIp } from "../privateIp";
 import { streamClaude, completeClaudeText } from "./claude";
 import { streamGemini, completeGeminiText } from "./gemini";
 import { streamOpenAI, completeOpenAIText } from "./openai";
@@ -54,21 +56,31 @@ import { setupOllama, setupOllamaFromEnv } from "./providers/ollama";
  * env validation at module import (this module loads in many unit tests), and is
  * exported so it can be exercised against a controlled env.
  */
-/** Cloud LLM endpoints that must never be the target in air-gapped mode. */
-const CLOUD_LLM_HOSTS = [
-    "api.openai.com",
-    "api.anthropic.com",
-    "generativelanguage.googleapis.com",
-    "openai.azure.com",
-    "api.mistral.ai",
-];
+/**
+ * A host is acceptable for air-gapped LLM traffic ONLY if it is provably local
+ * or internal — an ALLOWLIST, because a denylist of cloud hosts can always be
+ * evaded (trailing dot, an unlisted provider, a public IP, DNS to a public
+ * address). Allowed: localhost, a bare single-label service name (e.g. the
+ * "ollama" compose service), or a private/reserved IP literal. Anything with a
+ * dotted public FQDN or a public IP is rejected.
+ */
+function isLocalOrInternalHost(rawHost: string): boolean {
+    const host = rawHost
+        .toLowerCase()
+        .replace(/\.+$/, "") // strip trailing dot(s): "api.openai.com." → "api.openai.com"
+        .replace(/^\[|\]$/g, ""); // strip IPv6 brackets
+    if (host === "localhost" || host.endsWith(".localhost")) return true;
+    if (net.isIP(host) !== 0) return isBlockedIp(host); // private/reserved → local
+    if (!host.includes(".")) return true; // bare internal service name
+    return false; // dotted public FQDN
+}
 
 /**
  * In air-gapped mode the only provider is Ollama, which routes through the
- * OpenAI-compatible adapter — and that adapter's base URL DEFAULTS to
- * https://api.openai.com/v1. So an unset/cloud OPENAI_BASE_URL would silently
- * send "local" traffic to OpenAI. Fail the boot unless OPENAI_BASE_URL is set to
- * a non-cloud endpoint. Exported for testing.
+ * OpenAI-compatible adapter — whose base URL DEFAULTS to https://api.openai.com/v1.
+ * So an unset/non-local OPENAI_BASE_URL would silently send "local" traffic
+ * outward. Fail the boot unless OPENAI_BASE_URL points at a local/internal host.
+ * Exported for testing.
  */
 export function assertAirgapLlmConfig(env: NodeJS.ProcessEnv = process.env): void {
     const base = env.OPENAI_BASE_URL;
@@ -80,14 +92,14 @@ export function assertAirgapLlmConfig(env: NodeJS.ProcessEnv = process.env): voi
     }
     let host: string;
     try {
-        host = new URL(base).hostname.toLowerCase();
+        host = new URL(base).hostname;
     } catch {
         throw new Error(`AIRGAPPED=true: OPENAI_BASE_URL is not a valid URL: ${base}`);
     }
-    if (CLOUD_LLM_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) {
+    if (!isLocalOrInternalHost(host)) {
         throw new Error(
-            `AIRGAPPED=true forbids a cloud LLM endpoint (OPENAI_BASE_URL host "${host}"); ` +
-                "set it to your local model server.",
+            `AIRGAPPED=true requires OPENAI_BASE_URL to be a local/internal host; ` +
+                `"${host}" is not (public hosts and IPs are forbidden).`,
         );
     }
 }

@@ -19,6 +19,12 @@ let initialized = false;
 export function initSentry(): void {
     if (initialized) return;
 
+    // Air-gapped: never send errors out (they can carry document snippets).
+    if (process.env.AIRGAPPED === "true") {
+        logger.info("Sentry disabled (AIRGAPPED)");
+        return;
+    }
+
     if (!env.SENTRY_DSN) {
         logger.info("Sentry disabled (SENTRY_DSN not set)");
         return;

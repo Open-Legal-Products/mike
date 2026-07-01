@@ -111,15 +111,19 @@ describe("assertAirgapLlmConfig (base-URL egress guard)", () => {
         expect(() => assertAirgapLlmConfig({})).toThrow(/OPENAI_BASE_URL/);
     });
 
-    it("throws when OPENAI_BASE_URL points at a cloud LLM host", () => {
-        expect(() =>
-            assertAirgapLlmConfig({ OPENAI_BASE_URL: "https://api.openai.com/v1" }),
-        ).toThrow(/cloud LLM endpoint/i);
-        expect(() =>
-            assertAirgapLlmConfig({
-                OPENAI_BASE_URL: "https://generativelanguage.googleapis.com/v1",
-            }),
-        ).toThrow(/cloud LLM endpoint/i);
+    it("rejects public hosts — including denylist-evasion cases", () => {
+        for (const url of [
+            "https://api.openai.com/v1",
+            "https://generativelanguage.googleapis.com/v1",
+            "https://api.openai.com./v1", // trailing dot
+            "https://openrouter.ai/api/v1", // unlisted cloud provider
+            "https://api.groq.com/openai/v1", // unlisted
+            "https://8.8.8.8/v1", // public IP literal
+        ]) {
+            expect(() =>
+                assertAirgapLlmConfig({ OPENAI_BASE_URL: url }),
+            ).toThrow(/local\/internal host/i);
+        }
     });
 
     it("throws on a malformed URL", () => {
@@ -128,13 +132,18 @@ describe("assertAirgapLlmConfig (base-URL egress guard)", () => {
         ).toThrow(/not a valid URL/i);
     });
 
-    it("accepts a local model server URL", () => {
-        expect(() =>
-            assertAirgapLlmConfig({ OPENAI_BASE_URL: "http://ollama:11434/v1" }),
-        ).not.toThrow();
-        expect(() =>
-            assertAirgapLlmConfig({ OPENAI_BASE_URL: "http://localhost:11434/v1" }),
-        ).not.toThrow();
+    it("accepts local / internal / private-IP hosts only", () => {
+        for (const url of [
+            "http://ollama:11434/v1", // bare compose service name
+            "http://localhost:11434/v1",
+            "http://127.0.0.1:11434/v1", // loopback
+            "http://10.0.0.5:11434/v1", // private IP
+            "http://[::1]:11434/v1", // IPv6 loopback
+        ]) {
+            expect(() =>
+                assertAirgapLlmConfig({ OPENAI_BASE_URL: url }),
+            ).not.toThrow();
+        }
     });
 
     it("registerBuiltinProviders in air-gapped mode fails fast on a cloud base URL", () => {
@@ -143,6 +152,6 @@ describe("assertAirgapLlmConfig (base-URL egress guard)", () => {
                 AIRGAPPED: "true",
                 OPENAI_BASE_URL: "https://api.openai.com/v1",
             }),
-        ).toThrow(/cloud LLM endpoint/i);
+        ).toThrow(/local\/internal host/i);
     });
 });

@@ -51,6 +51,9 @@ function migrationFiles() {
 async function main() {
     const client = new pg.Client({ connectionString: DATABASE_URL });
     await client.connect();
+    // Serialize concurrent runners (two init containers, a manual re-run during
+    // boot): only one applies migrations at a time; others wait then no-op.
+    await client.query("select pg_advisory_lock($1)", [0x6d696b65]); // "mike"
     try {
         await client.query(LEDGER_DDL);
         const { rows } = await client.query(
@@ -61,8 +64,17 @@ async function main() {
         const files = migrationFiles();
         let ran = 0;
         for (const version of files) {
-            const sql = readFileSync(join(MIGRATIONS_DIR, version), "utf8");
-            const checksum = sha256(sql);
+            const raw = readFileSync(join(MIGRATIONS_DIR, version), "utf8");
+            const checksum = sha256(raw); // checksum the ORIGINAL file
+            // The runner wraps each file in its own transaction (so DDL + the
+            // ledger insert commit atomically). A file that carries its OWN
+            // top-level BEGIN;/COMMIT; would commit the runner's tx early and
+            // leave the ledger insert un-atomic — strip those statements. (Note:
+            // plpgsql BEGIN inside `$$…$$` has no semicolon and is untouched.)
+            const sql = raw.replace(
+                /^\s*(begin|commit|start\s+transaction|rollback)\s*;\s*$/gim,
+                "-- [migrate] stripped transaction control",
+            );
             const prev = applied.get(version);
 
             if (prev !== undefined) {

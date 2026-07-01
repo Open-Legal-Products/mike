@@ -1,4 +1,5 @@
 import { createServerSupabase } from "../supabase";
+import { isAirgapped } from "../airgap";
 import {
   COURTLISTENER_TOOLS,
   type CaseCitationEvent,
@@ -164,9 +165,15 @@ export async function runLLMStream(params: {
     projectId,
     nonce,
   } = params;
-  const researchTools = includeResearchTools ? COURTLISTENER_TOOLS : [];
-  const mcpTools = await buildUserMcpTools(userId, db);
-  const lawLibraryTools = getAllLawLibraryTools();
+  // Air-gapped: strip every tool that could reach an external host. CourtListener
+  // fetches courtlistener.com; user MCP connectors can target public hosts (the
+  // SSRF guard only blocks private IPs, not public ones); law libraries are
+  // external sources. Only local tools remain.
+  const airgapped = isAirgapped();
+  const researchTools =
+    includeResearchTools && !airgapped ? COURTLISTENER_TOOLS : [];
+  const mcpTools = airgapped ? [] : await buildUserMcpTools(userId, db);
+  const lawLibraryTools = airgapped ? [] : getAllLawLibraryTools();
   const baseTools = [
     ...TOOLS,
     ...researchTools,

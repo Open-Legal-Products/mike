@@ -29,6 +29,12 @@ let initialized = false;
 export function initOtel(): void {
     if (initialized) return;
 
+    // Air-gapped: never export traces to an external collector.
+    if (process.env.AIRGAPPED === "true") {
+        logger.info("OpenTelemetry disabled (AIRGAPPED)");
+        return;
+    }
+
     const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
     if (!endpoint) {
         logger.info("OpenTelemetry disabled (OTEL_EXPORTER_OTLP_ENDPOINT not set)");

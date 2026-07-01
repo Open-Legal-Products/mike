@@ -14,19 +14,20 @@
 #    migrate (app migrations, FK to auth.users) -> rest + gateway.
 #  - Images pinned to the exact tags the working Supabase CLI stack uses. For a
 #    true air-gap bundle, repin by @sha256 and vendor (phase 4).
-#  - SECRETS BELOW ARE SUPABASE DEMO VALUES for local bring-up. A real deployment
-#    MUST replace JWT_SECRET / ANON_KEY / SERVICE_ROLE_KEY / passwords via
-#    gen-secrets (phase 5). Do not ship these.
+#  - ALL secrets are supplied via --env-file .env.generated (gen-secrets.sh);
+#    there are NO demo defaults — `${VAR:?}` fails the boot if a secret is
+#    missing, so the stack cannot accidentally ship on the Supabase demo secret.
 #
 # Only the gateway publishes a host port; everything else is compose-internal.
 
-x-demo-jwt-secret: &jwt_secret "super-secret-jwt-token-with-at-least-32-characters-long"
+# Secrets come from --env-file .env.generated (gen-secrets.sh). `:?` fails the
+# boot loudly if a required secret is missing — no demo defaults.
 
 services:
   postgres:
     image: public.ecr.aws/supabase/postgres:15.8.1.085
     environment:
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run gen-secrets.sh}
       POSTGRES_DB: postgres
     volumes:
       - pg_data:/var/lib/postgresql/data
@@ -49,13 +50,13 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      PGPASSWORD: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:?run gen-secrets.sh}
     entrypoint: ["bash", "-c"]
     command:
       - >
         psql -h postgres -U supabase_admin -d postgres
-        -c "alter role supabase_auth_admin with login password 'postgres';"
-        -c "alter role authenticator with login password 'postgres';"
+        -c "alter role supabase_auth_admin with login password '${POSTGRES_PASSWORD}';"
+        -c "alter role authenticator with login password '${POSTGRES_PASSWORD}';"
     restart: "no"
 
   auth:
@@ -70,7 +71,7 @@ services:
       GOTRUE_API_HOST: 0.0.0.0
       GOTRUE_API_PORT: "9999"
       GOTRUE_DB_DRIVER: postgres
-      GOTRUE_DB_DATABASE_URL: postgresql://supabase_auth_admin:postgres@postgres:5432/postgres
+      GOTRUE_DB_DATABASE_URL: postgresql://supabase_auth_admin:${POSTGRES_PASSWORD}@postgres:5432/postgres
       GOTRUE_SITE_URL: http://localhost:3000
       GOTRUE_URI_ALLOW_LIST: "*"
       GOTRUE_DISABLE_SIGNUP: "false"
@@ -78,7 +79,7 @@ services:
       GOTRUE_JWT_AUD: authenticated
       GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
       GOTRUE_JWT_EXP: "3600"
-      GOTRUE_JWT_SECRET: *jwt_secret
+      GOTRUE_JWT_SECRET: ${JWT_SECRET:?run gen-secrets.sh}
       GOTRUE_JWT_ISSUER: http://gateway:8000/auth/v1
       GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
       # Autoconfirm signups: no external SMTP needed on the login/signup critical
@@ -116,7 +117,7 @@ services:
       auth:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
       MIGRATIONS_DIR: /app/supabase/migrations
     command: ["node", "apps/api/scripts/migrate.mjs"]
     restart: "no"
@@ -127,12 +128,12 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      PGRST_DB_URI: postgresql://authenticator:postgres@postgres:5432/postgres
+      PGRST_DB_URI: postgresql://authenticator:${POSTGRES_PASSWORD}@postgres:5432/postgres
       PGRST_DB_SCHEMAS: public
       PGRST_DB_EXTRA_SEARCH_PATH: public,extensions
       PGRST_DB_ANON_ROLE: anon
       PGRST_DB_MAX_ROWS: "1000"
-      PGRST_JWT_SECRET: *jwt_secret
+      PGRST_JWT_SECRET: ${JWT_SECRET:?run gen-secrets.sh}
     restart: unless-stopped
 
   gateway:
@@ -153,8 +154,8 @@ services:
     image: minio/minio:RELEASE.2026-05-06T00-18-40Z
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?run gen-secrets.sh}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?run gen-secrets.sh}
       MINIO_UPDATE: "off"
     volumes:
       - minio_data:/data
@@ -168,11 +169,11 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--requirepass", "airgap-redis-pass"]
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?run gen-secrets.sh}"]
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "airgap-redis-pass", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 5s
       timeout: 5s
       retries: 20
