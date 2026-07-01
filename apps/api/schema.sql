@@ -454,6 +454,12 @@ create index if not exists workflow_shares_workflow_id_idx
 create index if not exists workflow_shares_email_idx
   on public.workflow_shares(shared_with_email);
 
+-- FK index: shared_by_user_id references auth.users ON DELETE CASCADE, so
+-- deleting a user would full-scan this table without it. (workflow_id is already
+-- covered by workflow_shares_workflow_id_idx + the unique constraint.)
+create index if not exists workflow_shares_shared_by_user_id_idx
+  on public.workflow_shares(shared_by_user_id);
+
 create or replace function public.get_workflows_overview(
   p_user_id uuid,
   p_user_email text default null,
