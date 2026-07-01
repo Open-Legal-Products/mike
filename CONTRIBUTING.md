@@ -20,6 +20,33 @@ Thanks for helping improve Mike. Please keep contributions small, focused, and e
     - why
     - testing
 
+## Commit messages
+
+Commits follow a simple, consistent convention. Browse `git log --oneline` for
+many worked examples.
+
+- **Subject: `type(scope): description`.** Use an imperative, present-tense
+  description ("add", "fix", "extract" — not "added" or "fixes"). Keep it under
+  ~72 characters and don't end it with a period.
+- **`type`** is the kind of change: `feat`, `fix`, `refactor`, `perf`, `test`,
+  `docs`, `chore`, `ci`, `build`, `a11y`, and `security` for hardening work.
+- **`scope`** is the area touched: `api`, `web`, `db`, `word-addin`, `e2e`,
+  `merge`, etc. Omit it only when the change is genuinely repo-wide.
+- **Body explains the _why_.** Describe the motivation, the tradeoffs you
+  weighed, and how you verified the change — not a restatement of the diff
+  (the diff already shows what changed). Wrap the body at ~72 columns.
+
+Example:
+
+```
+fix(security): make prompt-injection spotlighting unforgeable
+
+The old fence used a static tag an attacker could reproduce inside
+document text. Bind the open/close tags to a per-request nonce so
+injected content can't spoof the boundary. Verified with the new
+route test that feeds a crafted document.
+```
+
 ## Security
 
 Do not open a public issue for security vulnerabilities. Use [GitHub's private vulnerability reporting](https://github.com/willchen96/mike/security/advisories/new) instead.

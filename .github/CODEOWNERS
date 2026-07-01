@@ -12,24 +12,20 @@
 #
 # SYNTAX: <pattern>  <@user or @org/team>
 # Patterns follow .gitignore rules. The LAST matching rule wins.
-#
-# NOTE FOR THIS REPO: replace @willchen96 with your actual GitHub username
-# or team names.  Until you configure real owners, this file is a no-op
-# (GitHub ignores unresolvable CODEOWNERS entries).
 
 # Default owner for everything
-*                                   @willchen96
+*                                   @amal66
 
 # Security-sensitive backend files — always need a careful review
-apps/api/src/middleware/auth.ts     @willchen96
-apps/api/src/lib/env.ts             @willchen96
-apps/api/src/lib/userApiKeys.ts     @willchen96
-apps/api/src/core/downloadTokens.ts @willchen96
-apps/api/src/lib/access.ts          @willchen96
+apps/api/src/middleware/auth.ts     @amal66
+apps/api/src/lib/env.ts             @amal66
+apps/api/src/lib/userApiKeys.ts     @amal66
+apps/api/src/core/downloadTokens.ts @amal66
+apps/api/src/lib/access.ts          @amal66
 
 # Database migrations — irreversible in production, need careful sign-off
-supabase/migrations/                @willchen96
+supabase/migrations/                @amal66
 
 # CI/CD pipelines — changes here can break deployments or weaken security
-.github/workflows/                  @willchen96
-.github/CODEOWNERS                  @willchen96
+.github/workflows/                  @amal66
+.github/CODEOWNERS                  @amal66

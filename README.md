@@ -25,6 +25,18 @@
 
 ---
 
+## Relationship to upstream
+
+This repository is a **hardened fork** of [`willchen96/mike`](https://github.com/willchen96/mike), the original open-source Mike project. It tracks upstream and layers on top of it:
+
+- **Security & code-quality hardening** — a multi-phase campaign (prompt-injection fencing, IDOR fixes, timing-safe token handling, structured logging, test coverage floors, and more). See [TECH_DUE_DILIGENCE.md](TECH_DUE_DILIGENCE.md), [REMEDIATION_PLAN.md](REMEDIATION_PLAN.md), and [CHANGELOG.md](CHANGELOG.md).
+- **Reorganization & extensibility** — pluggable LLM-provider, storage, and law-library registries so common customizations are one-file, no-core-edit operations.
+- **Microsoft Word add-in** — an Office.js task pane that brings Mike into Word, sharing one design system with the web app.
+
+Upstream copyright remains with the Mike authors; fork changes are © 2026 the fork author. Both are licensed under AGPL-3.0. See [NOTICE](NOTICE) and [LICENSE](LICENSE) for full attribution.
+
+---
+
 ## What is Mike?
 
 Mike is a self-hosted AI assistant for legal documents. Upload contracts, briefs, or case files and ask questions in plain language. You supply your own LLM API keys — Anthropic, Google Gemini, or OpenAI — so no document content leaves your infrastructure through a third-party service.
