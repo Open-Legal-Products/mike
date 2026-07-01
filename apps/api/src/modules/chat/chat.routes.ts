@@ -299,9 +299,24 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
 
-    const write = (line: string) => res.write(line);
     const streamAbort = new AbortController();
     let streamFinished = false;
+
+    // Slow-consumer guard. res.write() buffers in the Node heap when the client
+    // reads slower than the LLM produces; res.on("close") only fires on a real
+    // disconnect and the 180s stream watchdog is the ultimate bound, but neither
+    // caps memory for a client that stays connected while barely draining.
+    // Producer-side pause would mean threading async backpressure through the
+    // synchronous provider callbacks — so instead, if the unflushed buffer blows
+    // past a ceiling no healthy client reaches, treat the consumer as stalled and
+    // abort (same path as a disconnect: refunds the credit, saves the partial).
+    const MAX_UNFLUSHED_BYTES = 8 * 1024 * 1024; // 8 MB
+    const write = (line: string) => {
+        res.write(line);
+        if (!streamFinished && res.writableLength > MAX_UNFLUSHED_BYTES) {
+            streamAbort.abort();
+        }
+    };
     res.on("close", () => {
         if (!streamFinished) streamAbort.abort();
     });
