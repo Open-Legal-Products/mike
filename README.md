@@ -39,7 +39,9 @@ Upstream copyright remains with the Mike authors; fork changes are © 2026 the f
 
 ## What is Mike?
 
-Mike is a self-hosted AI assistant for legal documents. Upload contracts, briefs, or case files and ask questions in plain language. You supply your own LLM API keys — Anthropic, Google Gemini, or OpenAI — so no document content leaves your infrastructure through a third-party service.
+Mike is a self-hosted AI assistant for legal documents. Upload contracts, briefs, or case files and ask questions in plain language. Mike is **bring-your-own-key (BYOK)**: you supply your own LLM API keys — Anthropic, Google Gemini, OpenAI, Vertex AI, or any OpenAI-compatible endpoint. There is no Mike-operated backend or telemetry in the loop, so no vendor-hosted Mike service ever receives your documents.
+
+To answer questions, Mike sends the relevant document content to whichever model provider **you** configure, over **your** account, under **that provider's terms**. Choose (or self-host, e.g. Ollama) a provider whose data-handling terms you accept. Mike does not add a third party beyond the model provider you pick.
 
 **Key features:**
 - Document chat with multi-turn conversation and tool use
@@ -349,6 +351,27 @@ npm run lint --prefix apps/web
 ```bash
 npm run build --prefix apps/api
 npm run build --prefix apps/web
+```
+
+### Verifying the whole repo
+
+The default root scripts (`npm test`, `npm run lint`, `npm run typecheck`) use
+`--workspaces`, which covers `apps/api`, `apps/web`, and `packages/*` but **not**
+the Word add-in (an intentionally standalone npm project) or the Python SDK
+(`sdks/python`, not a Node project). Two aggregate scripts exercise every project
+from a single entrypoint:
+
+```bash
+npm run test:all      # workspace tests + Word add-in build + Python SDK test note
+npm run verify:all    # lint + typecheck + build across everything, then test:all
+```
+
+`verify:all` also runs the Word add-in build (`word-addin`). The Python SDK is not
+an npm project, so `test:all` prints its command rather than running it; run it
+directly when working on the SDK:
+
+```bash
+cd sdks/python && pip install -e '.[dev]' && pytest
 ```
 
 ### Project structure

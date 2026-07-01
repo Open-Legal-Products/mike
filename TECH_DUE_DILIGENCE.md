@@ -8,6 +8,52 @@
 
 ---
 
+## 0. Status: remediated (updated 2026-06-30)
+
+**All four "must-fix" findings from §3 have since been fixed on `main`, along with
+several §4 hardening items. This section maps each original finding to its current
+status, verified against the code as of 2026-06-30.** The body of the report below
+is preserved as the original point-in-time review; read it together with this
+status map. Where a fix is only partial, that is called out explicitly.
+
+| Old finding | Original severity | Status | Mechanism / evidence (verified) |
+|---|---|:--:|---|
+| **#1 Untrusted Word document body reaches the LLM unspotlighted** | Critical | **RESOLVED** | `documentContext` is now nonce-fenced via `spotlight()` before entering the prompt: `apps/api/src/modules/chat/chat.service.ts:530-531`, `apps/api/src/modules/project-chat/projectChat.service.ts:185`. `spotlight()` (`apps/api/src/lib/chatContext.ts:59-66`) puts the per-request nonce on **both** the opening and closing tags, redacts any echoed nonce, and HTML-encodes any literal `<untrusted-content>` the text smuggles in. Tool-returned document/workflow bodies are fenced the same way (`apps/api/src/lib/tools/runToolCalls.ts:209,280,321`). |
+| **#2 Credits TOCTOU race** | High | **RESOLVED** | The check-then-increment pair straddling the stream is replaced by a single atomic reservation, `consumeMessageCredit()`, taken **before** `flushHeaders()` and refunded via `refundMessageCredit()` if the stream fails (`apps/api/src/modules/chat/chat.routes.ts:284-290,343`; same in `projectChat.routes.ts:118`). No window remains between check and decrement. |
+| **#3 No graceful shutdown** | High | **RESOLVED** | `apps/api/src/index.ts:52-83` installs SIGTERM/SIGINT handlers that `server.close(...)` then `await stopWorkers()`, draining in-flight requests and the job queue on rollout/Ctrl-C. |
+| **#4 OpenAI base-URL SSRF** | High | **RESOLVED (config-time; residual noted)** | `apps/api/src/lib/llm/baseUrl.ts` now rejects private/reserved **IP literals** via the shared `isBlockedIp()` guard (parity with the MCP path), in addition to `localhost`. Residual: it does not DNS-resolve hostnames — by design, since `OPENAI_BASE_URL` is operator env config, not user input. The user-facing MCP egress path does pin DNS (see below). |
+
+**Additional hardening since the original review:**
+
+- **MCP egress is now DNS-pinned (SSRF/rebinding).** `guardedFetch` routes every
+  outbound MCP request through `pinnedGuardAgent()`, an undici dispatcher whose
+  connect-time DNS `lookup` runs `isBlockedIp()` and returns **only** validated
+  addresses — so the address validated is the address connected to, closing the
+  DNS-rebinding TOCTOU. It also forces `redirect: "manual"` so a 3xx to an internal
+  host can't smuggle egress. `apps/api/src/lib/mcp/client.ts:390-442`.
+- **Per-row HKDF now covers MCP connector secrets too, not just user API keys.**
+  User API keys already used per-row HKDF + random salt (`apps/api/src/lib/userApiKeys.ts:52-66`);
+  MCP connector auth config now uses the same scheme via a `v2.`-prefixed
+  `base64(salt‖ciphertext)` envelope (`apps/api/src/lib/mcp/client.ts:39-113`),
+  with a legacy static-key decrypt path retained for old rows.
+- **Download tokens now *require* expiry.** `verifyDownloadPayload` rejects any
+  token whose `e` (expiry) is missing or in the past — previously expiry was
+  optional and a token without it was valid forever
+  (`apps/api/src/core/downloadTokens.ts:87-93`).
+- **CODEOWNERS is real and scoped.** `.github/CODEOWNERS` sets `@amal66` as default
+  owner and adds explicit ownership on the security-sensitive files (`auth.ts`,
+  `env.ts`, `userApiKeys.ts`, `downloadTokens.ts`, `access.ts`), migrations, and CI.
+- **Conversion worker sets a terminal status on permanent failure.** On BullMQ
+  `failed` with retries exhausted, `setDocumentTerminalStatus()` moves the document
+  to `error` instead of leaving it stuck in `processing`
+  (`apps/api/src/workers/conversionWorker.ts:70-82,117-135`).
+
+Items in §4 that were flagged Medium/Low (e.g. service/repository layer, thin
+route-level test coverage, `console.*` drift, missing FK indexes) are **not**
+claimed resolved here and remain open backlog unless independently verified.
+
+---
+
 ## 1. Verdict
 
 **Strong acquire signal on the engineer; the codebase needs a focused hardening
@@ -35,9 +81,12 @@ focused quarter of work.
 
 - **Security maturity well above median.**
   - API-key encryption: HKDF-SHA256 + per-row random salt, AES-256-GCM, legacy
-    migration path (`apps/api/src/lib/userApiKeys.ts:43-79`).
+    migration path (`apps/api/src/lib/userApiKeys.ts:43-79`). *(The same per-row
+    HKDF scheme now also protects MCP connector secrets — see §0.)*
   - Download tokens: HMAC-SHA256, constant-time compare on zero-padded buffers,
-    optional expiry (`apps/api/src/core/downloadTokens.ts:24-31`).
+    **mandatory expiry** — a token missing/past `e` is rejected
+    (`apps/api/src/core/downloadTokens.ts:24-31,87-93`). *(Originally noted as
+    "optional expiry"; expiry is now required — see §0.)*
   - IDOR guards centralized in `apps/api/src/lib/access.ts` (`checkProjectAccess`,
     `ensureDocAccess`, `filterAccessibleDocumentIds`), used at 40+ call sites.
   - **MCP connector SSRF defense** (`apps/api/src/lib/mcp/client.ts:226-293`):
@@ -74,14 +123,18 @@ focused quarter of work.
 
 ## 3. Must-fix before scaling (verified against code)
 
-| # | Severity | Issue | Evidence |
-|---|----------|-------|----------|
-| 1 | **Critical** | Untrusted Word document body reaches the LLM **unspotlighted** (literal `<word-document>` tags; a nonce is generated but `spotlight()` is never applied). Contradicts the SECURITY-MODEL's "spotlighting everywhere" claim. *Introduced in the recent Word-add-in integration, not the baseline.* | `apps/api/src/modules/chat/chat.routes.ts:600`; `apps/api/src/modules/project-chat/projectChat.routes.ts:206` |
-| 2 | **High** | **Credits TOCTOU race.** `checkMessageCredits` and `incrementMessageCredits` straddle the entire LLM stream, so concurrent requests from a user at their limit all pass the check before any increment → quota bypass (bounded by concurrency). | `chat.routes.ts:629` (check), `:671` (increment) |
-| 3 | **High** | **No graceful shutdown.** The server handle is never stored and `stopWorkers()` is never called; on SIGTERM the process drops in-flight streams and leaves the job queue dirty. | `apps/api/src/index.ts` |
-| 4 | **High** | **OpenAI base-URL SSRF.** Validation blocks `localhost` but not private IP ranges (10/8, 172.16/12, 192.168/16) — the MCP path already does this correctly and should be reused. | `apps/api/src/lib/llm/baseUrl.ts:14-37` |
+> **All four items below are now RESOLVED on `main` (2026-06-30).** The original
+> findings are preserved for the record; see §0 for the fix/mechanism and current
+> `file:line` evidence for each.
 
-Items #1 and #3 are small and should be fixed immediately.
+| # | Severity | Status | Issue | Evidence (as originally filed) |
+|---|----------|:--:|-------|----------|
+| 1 | **Critical** | **RESOLVED** | Untrusted Word document body reaches the LLM **unspotlighted** (literal `<word-document>` tags; a nonce is generated but `spotlight()` is never applied). Contradicts the SECURITY-MODEL's "spotlighting everywhere" claim. *Introduced in the recent Word-add-in integration, not the baseline.* — **Fixed:** `documentContext` now nonce-fenced via `spotlight()` (`chat.service.ts:530`, `projectChat.service.ts:185`). | `apps/api/src/modules/chat/chat.routes.ts:600`; `apps/api/src/modules/project-chat/projectChat.routes.ts:206` |
+| 2 | **High** | **RESOLVED** | **Credits TOCTOU race.** `checkMessageCredits` and `incrementMessageCredits` straddle the entire LLM stream, so concurrent requests from a user at their limit all pass the check before any increment → quota bypass (bounded by concurrency). — **Fixed:** atomic `consumeMessageCredit()` reservation before the stream, with refund on failure (`chat.routes.ts:284-290,343`). | `chat.routes.ts:629` (check), `:671` (increment) |
+| 3 | **High** | **RESOLVED** | **No graceful shutdown.** The server handle is never stored and `stopWorkers()` is never called; on SIGTERM the process drops in-flight streams and leaves the job queue dirty. — **Fixed:** SIGTERM/SIGINT → `server.close()` + `stopWorkers()` (`index.ts:52-83`). | `apps/api/src/index.ts` |
+| 4 | **High** | **RESOLVED** | **OpenAI base-URL SSRF.** Validation blocks `localhost` but not private IP ranges (10/8, 172.16/12, 192.168/16) — the MCP path already does this correctly and should be reused. — **Fixed:** private/reserved IP literals now rejected via shared `isBlockedIp()` (`baseUrl.ts`); MCP path additionally DNS-pins via `pinnedGuardAgent`. | `apps/api/src/lib/llm/baseUrl.ts:14-37` |
+
+Items #1 and #3 were small and have since been fixed immediately, along with #2 and #4 (see §0).
 
 ---
 
@@ -141,7 +194,7 @@ Items #1 and #3 are small and should be fixed immediately.
 
 ### 4.4 Security
 
-- Critical/High items #1 and #4 in §3.
+- Critical/High items #1 and #4 in §3 — both now **RESOLVED** (see §0).
 - **Strengths** (verified): MFA enforcement (`middleware/auth.ts`), HKDF key
   encryption, timing-safe download tokens, comprehensive IDOR guards, MCP SSRF
   defense, RLS deny-all, helmet CSP, per-endpoint rate limiting, magic-byte upload
@@ -149,8 +202,10 @@ Items #1 and #3 are small and should be fixed immediately.
 - **Gaps (low):** project-sharing emails aren't format-validated
   (`projects.routes.ts:168-184`); `console.error` for a crypto failure in
   `lib/mcp/client.ts:98-99`.
-- **Note:** the SECURITY-MODEL is honest and mostly accurate; finding #1 is the one
-  place its coverage claim is currently false.
+- **Note:** the SECURITY-MODEL is honest and mostly accurate. Finding #1 was the one
+  place its coverage claim was false at review time; it is now **RESOLVED** (the Word
+  `documentContext` is nonce-fenced via `spotlight()`), so the "spotlighting
+  everywhere" claim holds — see §0.
 
 ### 4.5 Testing, CI & operations
 
@@ -218,7 +273,7 @@ Items #1 and #3 are small and should be fixed immediately.
 
 | Dimension | Grade | Note |
 |-----------|:-----:|------|
-| Security | A− | Deep and mostly correct; one critical spotlight gap, one SSRF gap |
+| Security | A− | Deep and mostly correct; the flagged spotlight and SSRF gaps are now resolved (§0) |
 | Data layer | B+ | Solid model; indexes/pagination/N+1 to tidy; documented migration risk |
 | Backend architecture | B− | Clean adapters; no service layer; one god-file |
 | Frontend architecture | B− | Modern stack; god-components; no caching layer |
