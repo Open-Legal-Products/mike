@@ -16,6 +16,7 @@ import { getUserApiKeys } from "../../lib/userSettings";
 import { consumeMessageCredit, refundMessageCredit } from "../../lib/credits";
 import { parseBody, sendError } from "../../lib/http";
 import { safeErrorLog, safeErrorMessage } from "../../lib/safeError";
+import { startSseHeartbeat } from "../../lib/sseHeartbeat";
 import { prepareProjectChatStream } from "./projectChat.service";
 
 const chatMessageSchema = z.object({
@@ -144,6 +145,10 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         if (!streamFinished) streamAbort.abort();
     });
 
+    // Keep the SSE connection warm through long tool-call silences so an idle
+    // proxy/load-balancer doesn't drop it mid-stream (see sseHeartbeat).
+    const stopHeartbeat = startSseHeartbeat(res);
+
     try {
         write(`data: ${JSON.stringify({ type: "chat_id", chatId })}\n\n`);
 
@@ -250,6 +255,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         }
     } finally {
         streamFinished = true;
+        stopHeartbeat();
         res.end();
     }
 });
