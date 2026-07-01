@@ -45,6 +45,7 @@
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "resend": "^4.5.1",
+    "undici": "^6.27.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

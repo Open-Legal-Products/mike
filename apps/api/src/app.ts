@@ -113,10 +113,12 @@ app.use(
 
 // The Office.js add-in (Word task pane) runs at https://localhost:3000 during
 // development — office-addin tooling forces HTTPS even locally, so the HTTPS
-// variant must be allowed alongside the regular frontend origin.
+// variant must be allowed alongside the regular frontend origin. This dev-only
+// origin is deliberately excluded in production so a localhost origin never
+// ships in the prod allowlist; env.FRONTEND_URL is always allowed.
 const allowedOrigins = new Set<string>([
     env.FRONTEND_URL,
-    "https://localhost:3000",
+    ...(isProduction ? [] : ["https://localhost:3000"]),
 ]);
 
 app.use(

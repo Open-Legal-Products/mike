@@ -5,10 +5,16 @@ const envSchema = z.object({
     SUPABASE_SECRET_KEY: z.string().min(1, "SUPABASE_SECRET_KEY must be set"),
     DOWNLOAD_SIGNING_SECRET: z
         .string()
-        .min(1, "DOWNLOAD_SIGNING_SECRET must be set"),
+        .min(
+            32,
+            "DOWNLOAD_SIGNING_SECRET must be at least 32 characters (e.g. `openssl rand -hex 32`)",
+        ),
     USER_API_KEYS_ENCRYPTION_SECRET: z
         .string()
-        .min(1, "USER_API_KEYS_ENCRYPTION_SECRET must be set"),
+        .min(
+            32,
+            "USER_API_KEYS_ENCRYPTION_SECRET must be at least 32 characters (e.g. `openssl rand -hex 32`)",
+        ),
 
     PORT: z.coerce.number().positive().default(3001),
     NODE_ENV: z
