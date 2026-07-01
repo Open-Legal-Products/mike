@@ -35,3 +35,19 @@ COPY --from=build /app/apps/api/node_modules ./apps/api/node_modules
 EXPOSE 3001
 ENV NODE_ENV=production
 CMD ["node", "dist/apps/api/src/index.js"]
+
+# ── Air-gapped runtime ─────────────────────────────────────────────────────
+# Adds LibreOffice (+fonts) so DOCX→PDF conversion works offline — lib/convert.ts
+# shells out to `soffice`, which the lean image lacks (conversion silently no-ops
+# today). Also bundles the SQL migrations + runner so the `migrate` init
+# container applies them with no CLI. Build target: mike-api:airgapped.
+FROM production AS production-airgapped
+USER root
+RUN apk add --no-cache \
+        libreoffice \
+        ttf-dejavu ttf-liberation font-noto \
+    && rm -rf /var/cache/apk/*
+# Migration runner + ordered SQL for the migrate init container.
+COPY apps/api/scripts/migrate.mjs ./apps/api/scripts/migrate.mjs
+COPY supabase/migrations ./supabase/migrations
+CMD ["node", "dist/apps/api/src/index.js"]

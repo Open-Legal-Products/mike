@@ -1,6 +1,10 @@
 FROM node:22-alpine AS base
 WORKDIR /app
 
+# Next.js phones home to Vercel at build/run; disable it everywhere (required for
+# air-gap, harmless otherwise).
+ENV NEXT_TELEMETRY_DISABLED=1
+
 # Copy manifests first to get a cacheable dependency layer.
 COPY package.json package-lock.json ./
 COPY apps/api/package.json ./apps/api/
@@ -36,4 +40,5 @@ COPY --from=build /app/apps/web/node_modules ./apps/web/node_modules
 
 EXPOSE 3000
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 CMD ["node_modules/.bin/next", "start"]

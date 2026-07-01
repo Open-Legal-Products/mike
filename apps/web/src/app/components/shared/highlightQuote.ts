@@ -10,8 +10,10 @@ export async function getPdfJs() {
     return pdfjsLib;
 }
 
-export const STANDARD_FONT_DATA_URL =
-    "https://unpkg.com/pdfjs-dist@4.10.38/standard_fonts/";
+// Self-hosted so PDF rendering needs no CDN (air-gap safe; also faster/more
+// reliable for every deployment). Files are vendored under
+// apps/web/public/pdf-standard-fonts/ (copied from pdfjs-dist/standard_fonts).
+export const STANDARD_FONT_DATA_URL = "/pdf-standard-fonts/";
 
 const HIGHLIGHT_CLASS = "pdf-text-highlight";
 const ORIGINAL_TEXT_ATTR = "data-original-text";

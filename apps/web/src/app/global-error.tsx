@@ -16,8 +16,9 @@ export default function GlobalError({
             <head>
                 <title>Something went wrong – Mike</title>
                 <style>{`
-                    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=EB+Garamond:wght@400;500&display=swap');
-                    
+                    /* No external font import: the global error page must render
+                       with no network (air-gap safe). Falls back to the system
+                       font stack below. */
                     * { margin: 0; padding: 0; box-sizing: border-box; }
                     
                     body {
