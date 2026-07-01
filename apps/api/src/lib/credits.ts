@@ -10,6 +10,17 @@ export const MONTHLY_CREDIT_LIMIT = process.env.MONTHLY_CREDIT_LIMIT
     ? Number(process.env.MONTHLY_CREDIT_LIMIT)
     : 999_999;
 
+// Quota-accounting failure policy (see env.ts CREDITS_FAIL_CLOSED). When a
+// credit read fails, do we fail OPEN (allow, historical self-host default) or
+// fail CLOSED (deny)? Read lazily from process.env so it's evaluated per call
+// and the schema-validated default flows through — hosted billing sets this
+// truthy so an unreadable quota can't leak unmetered usage. Kept off the env
+// module import on purpose: this file already reads config via process.env
+// (MONTHLY_CREDIT_LIMIT) and stays free of the full env-validation graph.
+function creditsFailClosed(): boolean {
+    return process.env.CREDITS_FAIL_CLOSED === "true";
+}
+
 export type CreditCheckResult =
     | { allowed: true }
     | { allowed: false; used: number; limit: number; resetDate: string };
@@ -88,9 +99,11 @@ export async function incrementMessageCredits(
  * concurrent requests could all pass a read-only check and overspend.
  *
  * Returns `{ allowed: true }` when a credit was consumed, or a structured
- * rejection when over the limit. Fails OPEN on a DB error (matches the historical
- * checkMessageCredits behavior). Refund with refundMessageCredit if the stream
- * then fails.
+ * rejection when over the limit. On a DB error the behavior is policy-controlled
+ * by CREDITS_FAIL_CLOSED: unset/false fails OPEN (allow — matches the historical
+ * self-host behavior), true fails CLOSED (deny) so hosted billing never gives
+ * away unmetered usage when the quota store is unreadable. Refund with
+ * refundMessageCredit if the stream then fails.
  */
 export async function consumeMessageCredit(
     userId: string,
@@ -100,7 +113,17 @@ export async function consumeMessageCredit(
         p_user_id: userId,
         p_limit: MONTHLY_CREDIT_LIMIT,
     });
-    if (error) return { allowed: true };
+    if (error) {
+        // Fail-open (default) preserves self-host UX; fail-closed protects
+        // hosted metering when the DB/RPC is unreadable.
+        if (!creditsFailClosed()) return { allowed: true };
+        return {
+            allowed: false,
+            used: MONTHLY_CREDIT_LIMIT,
+            limit: MONTHLY_CREDIT_LIMIT,
+            resetDate: new Date().toISOString(),
+        };
+    }
     const row = Array.isArray(data) ? data[0] : data;
     if (!row || row.allowed) return { allowed: true };
     return {

@@ -64,6 +64,15 @@ const envSchema = z.object({
 
     RESEND_API_KEY: z.string().optional(),
 
+    // Quota-accounting failure policy. Credit checks talk to the DB/RPC; when
+    // that read fails the request either proceeds (fail-open) or is rejected
+    // (fail-closed). Default "false" (fail-open) preserves the historical
+    // self-host behavior: a DB hiccup never blocks chat on a non-critical
+    // accounting check. Hosted/metered deployments that bill for usage should
+    // set this "true" so an unreadable quota denies the request rather than
+    // giving away unmetered usage.
+    CREDITS_FAIL_CLOSED: z.enum(["true", "false"]).default("false"),
+
     // Job queue (BullMQ). REDIS_URL points at the Redis instance from
     // docker-compose; defaults to localhost for bare-metal dev.
     REDIS_URL: z.string().default("redis://localhost:6379"),
