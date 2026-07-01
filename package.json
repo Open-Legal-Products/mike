@@ -21,7 +21,7 @@
     "@playwright/test": "^1.61.1"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "license": "AGPL-3.0-only"
 }
