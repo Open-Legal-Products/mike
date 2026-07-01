@@ -34,4 +34,4 @@ COPY --from=build /app/apps/api/node_modules ./apps/api/node_modules
 
 EXPOSE 3001
 ENV NODE_ENV=production
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/apps/api/src/index.js"]
