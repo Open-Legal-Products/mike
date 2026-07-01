@@ -40,7 +40,7 @@ export class R2StorageAdapter implements StorageAdapter {
     private client(): S3Client {
         if (!this._client) {
             this._client = new S3Client({
-                region: "auto",
+                region: env.R2_REGION,
                 endpoint: env.R2_ENDPOINT_URL!,
                 forcePathStyle: true,
                 credentials: {

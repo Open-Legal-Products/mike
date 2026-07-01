@@ -32,6 +32,10 @@ const envSchema = z.object({
     R2_ACCESS_KEY_ID: z.string().optional(),
     R2_SECRET_ACCESS_KEY: z.string().optional(),
     R2_BUCKET_NAME: z.string().default("mike"),
+    // S3 signing region. "auto" works for Cloudflare R2; other S3-compatible
+    // backends need their own value (Supabase Storage → "local", MinIO →
+    // "us-east-1", real AWS → the bucket's region).
+    R2_REGION: z.string().default("auto"),
 
     // Google Cloud Storage (optional — set to use GCS instead of R2)
     GCS_BUCKET_NAME: z.string().default("mike"),
