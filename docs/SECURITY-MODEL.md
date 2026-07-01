@@ -24,12 +24,12 @@ Every piece of user-controlled text that reaches the LLM's context is wrapped in
 ```
 <untrusted-content nonce="a3f8…">
 [document body / filename / workflow content here]
-</untrusted-content>
+</untrusted-content nonce="a3f8…">
 ```
 
-The nonce is generated fresh per request (`crypto.randomBytes(16)`). The system prompt instructs the model to treat everything inside `<untrusted-content>` blocks as **data**, never as instructions.
+The nonce is generated fresh per request (`crypto.randomBytes(16)`) and appears on **both** the opening and closing tags. The system prompt instructs the model to treat everything inside `<untrusted-content>` blocks as **data**, never as instructions, and to treat any `</untrusted-content>` *without* the current nonce as ordinary data rather than a boundary.
 
-The nonce makes it computationally infeasible for injected content to forge the closing tag — the document author cannot predict a tag they would need to insert to escape the fence.
+The nonce makes it infeasible for injected content to forge the closing tag — the document author cannot predict the per-request nonce they would need to insert to escape the fence. As defense-in-depth, `spotlight()` also neutralizes fence tokens in the wrapped text: it HTML-encodes the `<` of any literal `<untrusted-content>`/`</untrusted-content>` in the input and redacts any occurrence of the live nonce, so even a lenient model never sees a clean, correctly-nonce'd boundary inside the data. (This closed a real gap: earlier only the *opening* tag carried the nonce and the text was unsanitized, so a literal `</untrusted-content>` in a document body could terminate the fence.)
 
 **Where spotlighting is applied** (see `apps/api/src/lib/chatTools.ts`):
 | Location | Why it's untrusted |

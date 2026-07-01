@@ -45,9 +45,23 @@ export function generateSpotlightNonce(): string {
  * Wraps untrusted user-controlled text in a nonce-fenced tag.
  * The LLM is instructed (in SYSTEM_PROMPT) to treat everything inside these
  * tags as data, not as instructions — a technique called "spotlighting".
+ *
+ * The nonce is on BOTH the opening and closing tags and is unpredictable per
+ * request, so untrusted text cannot fabricate a matching closing tag to escape
+ * the fence. As defense-in-depth we also neutralize any fence tokens the text
+ * tries to smuggle in — HTML-encoding the `<` of any literal
+ * `<untrusted-content>` / `</untrusted-content>` and redacting any echoed nonce
+ * — so even a sloppy model never sees a clean boundary token inside the data.
+ * (Previously only the opening tag carried the nonce and the text was
+ * unsanitized, so a literal `</untrusted-content>` in a document body, filename,
+ * or workflow title closed the fence and the rest was read as trusted input.)
  */
 export function spotlight(text: string, nonce: string): string {
-    return `<untrusted-content nonce="${nonce}">\n${text}\n</untrusted-content>`;
+    const neutralized = String(text)
+        .split(nonce)
+        .join("[redacted-nonce]")
+        .replace(/<(\/?)untrusted-content/gi, "&lt;$1untrusted-content");
+    return `<untrusted-content nonce="${nonce}">\n${neutralized}\n</untrusted-content nonce="${nonce}">`;
 }
 
 // ---------------------------------------------------------------------------
