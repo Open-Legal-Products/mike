@@ -11,6 +11,7 @@ import {
     stripTransientAssistantEvents,
     type ChatMessage,
 } from "../../lib/chatTools";
+import { assertModelAvailable, DEFAULT_MAIN_MODEL, ModelUnavailableError } from "../../lib/llm";
 import { getUserApiKeys } from "../../lib/userSettings";
 import { consumeMessageCredit, refundMessageCredit } from "../../lib/credits";
 import { parseBody } from "../../lib/http";
@@ -214,6 +215,19 @@ chatRouter.post("/", requireAuth, async (req, res) => {
 
     const messages = parsed.messages as ChatMessage[];
     const model = parsed.model;
+
+    // Refuse a model with no registered provider before any work (credit
+    // reserve / header flush). We check the EFFECTIVE model — the request's
+    // model or the downstream default — so a request that omits `model` can't
+    // slip the default (a cloud model) past the boundary in air-gapped mode.
+    try {
+        assertModelAvailable(model || DEFAULT_MAIN_MODEL);
+    } catch (err) {
+        if (err instanceof ModelUnavailableError) {
+            return void res.status(400).json({ detail: err.message });
+        }
+        throw err;
+    }
 
     // project_id distinguishes "not provided" (key absent => undefined) from
     // "explicitly cleared" (null): prepareChatStream only enforces the

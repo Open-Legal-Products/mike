@@ -4,6 +4,7 @@ import { streamOpenAI, completeOpenAIText } from "./openai";
 import {
     registerProvider,
     getRegisteredProvider,
+    findProviderForModel,
 } from "./registry";
 import {
     providerForModel,
@@ -32,7 +33,7 @@ export * from "./models";
  * same way — call registerProvider()/registerApiKeyProvider(), no core edits.
  */
 export { registerProvider } from "./registry";
-import { setupOllamaFromEnv } from "./providers/ollama";
+import { setupOllama, setupOllamaFromEnv } from "./providers/ollama";
 
 // ---------------------------------------------------------------------------
 // Register built-in providers
@@ -41,35 +42,127 @@ import { setupOllamaFromEnv } from "./providers/ollama";
 // test files mock e.g. "../claude" before this module loads, so the mocked
 // function is captured here and ends up in the registry.
 
-registerProvider({
-    id: "claude",
-    matchesModel: (m) => m.startsWith("claude"),
-    stream: streamClaude,
-    complete: completeClaudeText,
-    models: { main: CLAUDE_MAIN_MODELS, mid: CLAUDE_MID_MODELS, low: CLAUDE_LOW_MODELS },
-});
+/**
+ * Register the built-in LLM providers. In air-gapped mode the cloud providers
+ * (claude/gemini/openai) are NOT registered — this is the in-code half of the
+ * "no external egress" guarantee (network isolation is the other half): a cloud
+ * model can't be dispatched because no adapter exists for it, and
+ * assertModelAvailable() refuses it at the request boundary. Only local (Ollama)
+ * models are served.
+ *
+ * Reads process.env directly (not the validated env) so it doesn't force full
+ * env validation at module import (this module loads in many unit tests), and is
+ * exported so it can be exercised against a controlled env.
+ */
+/** Cloud LLM endpoints that must never be the target in air-gapped mode. */
+const CLOUD_LLM_HOSTS = [
+    "api.openai.com",
+    "api.anthropic.com",
+    "generativelanguage.googleapis.com",
+    "openai.azure.com",
+    "api.mistral.ai",
+];
 
-registerProvider({
-    id: "gemini",
-    matchesModel: (m) => m.startsWith("gemini"),
-    stream: streamGemini,
-    complete: completeGeminiText,
-    models: { main: GEMINI_MAIN_MODELS, mid: GEMINI_MID_MODELS, low: GEMINI_LOW_MODELS },
-});
+/**
+ * In air-gapped mode the only provider is Ollama, which routes through the
+ * OpenAI-compatible adapter — and that adapter's base URL DEFAULTS to
+ * https://api.openai.com/v1. So an unset/cloud OPENAI_BASE_URL would silently
+ * send "local" traffic to OpenAI. Fail the boot unless OPENAI_BASE_URL is set to
+ * a non-cloud endpoint. Exported for testing.
+ */
+export function assertAirgapLlmConfig(env: NodeJS.ProcessEnv = process.env): void {
+    const base = env.OPENAI_BASE_URL;
+    if (!base) {
+        throw new Error(
+            "AIRGAPPED=true requires OPENAI_BASE_URL to point at a local model server " +
+                "(e.g. http://ollama:11434/v1); it is unset, which would default to api.openai.com.",
+        );
+    }
+    let host: string;
+    try {
+        host = new URL(base).hostname.toLowerCase();
+    } catch {
+        throw new Error(`AIRGAPPED=true: OPENAI_BASE_URL is not a valid URL: ${base}`);
+    }
+    if (CLOUD_LLM_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) {
+        throw new Error(
+            `AIRGAPPED=true forbids a cloud LLM endpoint (OPENAI_BASE_URL host "${host}"); ` +
+                "set it to your local model server.",
+        );
+    }
+}
 
-registerProvider({
-    id: "openai",
-    matchesModel: (m) => m.startsWith("gpt-"),
-    stream: streamOpenAI,
-    complete: completeOpenAIText,
-    models: { main: OPENAI_MAIN_MODELS, mid: OPENAI_MID_MODELS, low: OPENAI_LOW_MODELS },
-});
+export function registerBuiltinProviders(
+    env: NodeJS.ProcessEnv = process.env,
+): void {
+    const airgapped = env.AIRGAPPED === "true";
 
-// Opt-in local-model provider. No-op unless ENABLE_OLLAMA=true; reads
-// process.env directly (not the validated env) to avoid forcing full env
-// validation at module import (this module loads in many unit tests).
-if (setupOllamaFromEnv()) {
-    logger.info("[llm] Ollama provider enabled (ENABLE_OLLAMA=true)");
+    if (!airgapped) {
+        registerProvider({
+            id: "claude",
+            matchesModel: (m) => m.startsWith("claude"),
+            stream: streamClaude,
+            complete: completeClaudeText,
+            models: { main: CLAUDE_MAIN_MODELS, mid: CLAUDE_MID_MODELS, low: CLAUDE_LOW_MODELS },
+        });
+        registerProvider({
+            id: "gemini",
+            matchesModel: (m) => m.startsWith("gemini"),
+            stream: streamGemini,
+            complete: completeGeminiText,
+            models: { main: GEMINI_MAIN_MODELS, mid: GEMINI_MID_MODELS, low: GEMINI_LOW_MODELS },
+        });
+        registerProvider({
+            id: "openai",
+            matchesModel: (m) => m.startsWith("gpt-"),
+            stream: streamOpenAI,
+            complete: completeOpenAIText,
+            models: { main: OPENAI_MAIN_MODELS, mid: OPENAI_MID_MODELS, low: OPENAI_LOW_MODELS },
+        });
+    } else {
+        logger.info(
+            "[llm] AIRGAPPED=true — cloud providers (claude/gemini/openai) NOT registered; local models only",
+        );
+    }
+
+    // Local models. Forced in air-gapped mode (the only option); otherwise opt-in
+    // via ENABLE_OLLAMA.
+    if (airgapped) {
+        assertAirgapLlmConfig(env);
+        setupOllama();
+        logger.info("[llm] AIRGAPPED=true — Ollama local provider registered");
+    } else if (setupOllamaFromEnv(env)) {
+        logger.info("[llm] Ollama provider enabled (ENABLE_OLLAMA=true)");
+    }
+}
+
+registerBuiltinProviders();
+
+/** Thrown when a requested model has no registered provider (e.g. a cloud model
+ *  in air-gapped mode). Carries an attributed, user-facing message. */
+export class ModelUnavailableError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "ModelUnavailableError";
+    }
+}
+
+/**
+ * Refuse a model that has no registered provider — at the request boundary,
+ * before any credit reservation or stream setup. In air-gapped mode this is what
+ * turns "cloud provider not registered" into an explicit, attributed refusal
+ * rather than an opaque downstream failure.
+ */
+export function assertModelAvailable(
+    model: string,
+    env: NodeJS.ProcessEnv = process.env,
+): void {
+    if (findProviderForModel(model)) return;
+    throw new ModelUnavailableError(
+        env.AIRGAPPED === "true"
+            ? `Model "${model}" is unavailable in air-gapped mode — only local models are served. Configure a local (Ollama) model.`
+            : `Model "${model}" has no registered provider.`,
+    );
 }
 
 // ---------------------------------------------------------------------------

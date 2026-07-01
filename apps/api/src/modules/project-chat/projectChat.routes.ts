@@ -12,6 +12,7 @@ import {
     PROJECT_EXTRA_TOOLS,
     type ChatMessage,
 } from "../../lib/chatTools";
+import { assertModelAvailable, DEFAULT_MAIN_MODEL, ModelUnavailableError } from "../../lib/llm";
 import { getUserApiKeys } from "../../lib/userSettings";
 import { consumeMessageCredit, refundMessageCredit } from "../../lib/credits";
 import { parseBody, sendError } from "../../lib/http";
@@ -80,6 +81,18 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         attached_documents?: { filename: string; document_id: string }[];
         documentContext?: string;
     };
+
+    // Refuse a model with no registered provider (e.g. a cloud model in
+    // air-gapped mode) before any work — mirrors POST /chat. Check the effective
+    // model so an omitted `model` can't slip the cloud default past the boundary.
+    try {
+        assertModelAvailable(model || DEFAULT_MAIN_MODEL);
+    } catch (err) {
+        if (err instanceof ModelUnavailableError) {
+            return void res.status(400).json({ detail: err.message });
+        }
+        throw err;
+    }
 
     const db = createServerSupabase();
 

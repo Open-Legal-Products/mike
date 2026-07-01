@@ -71,6 +71,14 @@ const envSchema = z.object({
     ENABLE_OLLAMA: z.enum(["true", "false"]).default("false"),
     OLLAMA_MODELS: z.string().optional(),
 
+    // Air-gapped deployment mode. When "true", the server enforces "no external
+    // egress" in code (not just via network isolation): cloud LLM providers
+    // (claude/gemini/openai) are NOT registered and their models are refused at
+    // the request boundary; only local (Ollama) models are served. See
+    // docs/SELF_HOSTING_AIRGAPPED_PLAN.md. Read directly from process.env at
+    // startup as well (registerBuiltinProviders) to avoid import-order coupling.
+    AIRGAPPED: z.enum(["true", "false"]).default("false"),
+
     // Quota-accounting failure policy. Credit checks talk to the DB/RPC; when
     // that read fails the request either proceeds (fail-open) or is rejected
     // (fail-closed). Default "false" (fail-open) preserves the historical
