@@ -80,9 +80,14 @@ export function verifyDownloadPayload(
       return null;
     }
     if (!parsed.p || !parsed.f) return null;
-    // Reject expired tokens. Tokens without `e` (legacy) are still accepted
-    // for backwards compatibility — they'll be re-issued on next access.
-    if (typeof parsed.e === "number" && parsed.e < Math.floor(Date.now() / 1000)) {
+    // Every token must carry an expiry. A token without `e` is legacy (issued
+    // before expiry existed) and would otherwise be valid forever, so reject it
+    // — any such link is long stale (all issuers have set `e` since), and a
+    // fresh, expiring token is re-issued on next access.
+    if (
+      typeof parsed.e !== "number" ||
+      parsed.e < Math.floor(Date.now() / 1000)
+    ) {
       return null;
     }
     return { path: parsed.p, filename: parsed.f };
