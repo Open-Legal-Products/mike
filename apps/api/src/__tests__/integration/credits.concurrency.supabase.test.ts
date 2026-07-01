@@ -11,13 +11,19 @@ const serviceKey = process.env.SUPABASE_TEST_SERVICE_ROLE_KEY;
 const maybeDescribe = url && serviceKey ? describe : describe.skip;
 
 maybeDescribe("consume_message_credit — concurrency (row-lock)", () => {
-    const admin = createClient(url!, serviceKey!, {
-        auth: { autoRefreshToken: false, persistSession: false },
-    });
+    // Constructed lazily in beforeAll (not at describe-body scope): Vitest still
+    // executes a `describe.skip` factory to collect its tests, so building the
+    // client here would call createClient(undefined) and throw in the default,
+    // env-less run — failing the suite it's meant to skip. beforeAll doesn't run
+    // for a skipped describe, so this only constructs when the env is present.
+    let admin: ReturnType<typeof createClient>;
     const email = `credit-race-${Date.now()}@test.local`;
     let userId = "";
 
     beforeAll(async () => {
+        admin = createClient(url!, serviceKey!, {
+            auth: { autoRefreshToken: false, persistSession: false },
+        });
         const { data, error } = await admin.auth.admin.createUser({
             email,
             password: "CreditRaceTest1!",
