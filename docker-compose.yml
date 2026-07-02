@@ -84,7 +84,7 @@ services:
     restart: unless-stopped
 
   minio:
-    image: minio/minio:RELEASE.2026-05-06T00-18-40Z
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     ports:
       - "9000:9000"
@@ -102,7 +102,7 @@ services:
     restart: unless-stopped
 
   minio-init:
-    image: minio/mc:RELEASE.2026-05-07T22-56-36Z
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     depends_on:
       minio:
         condition: service_healthy
