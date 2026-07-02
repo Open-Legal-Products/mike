@@ -130,6 +130,23 @@ const envSchema = z.object({
     // migration (768); adapters request this width where the API supports it.
     EMBEDDING_DIMENSION: z.coerce.number().positive().default(768),
 
+    // Native DMS connectors (R3 — iManage / NetDocuments). All optional: a
+    // deployment only sets the credentials for the DMS it uses. The OAuth
+    // client is registered per-vendor with the DMS provider; SCOPE is the
+    // space-delimited OAuth scope string. When AIRGAPPED=true these cloud
+    // connectors are disabled regardless of whether the vars are set.
+    IMANAGE_OAUTH_CLIENT_ID: z.string().optional(),
+    IMANAGE_OAUTH_CLIENT_SECRET: z.string().optional(),
+    IMANAGE_OAUTH_SCOPE: z.string().optional(),
+    NETDOCS_OAUTH_CLIENT_ID: z.string().optional(),
+    NETDOCS_OAUTH_CLIENT_SECRET: z.string().optional(),
+    NETDOCS_OAUTH_SCOPE: z.string().optional(),
+    // Master secret for DMS connector auth configs + OAuth tokens. Optional
+    // alias: when set it is used ahead of USER_API_KEYS_ENCRYPTION_SECRET (see
+    // the aliasing below), reusing the exact MCP HKDF+GCM scheme. When unset,
+    // DMS secrets fall back to USER_API_KEYS_ENCRYPTION_SECRET like MCP does.
+    DMS_CONNECTORS_ENCRYPTION_SECRET: z.string().optional(),
+
     // Error monitoring (optional). When SENTRY_DSN is unset, Sentry is fully
     // disabled — no SDK init, no network traffic. SENTRY_TRACES_SAMPLE_RATE
     // controls performance tracing (0 = errors only). SENTRY_ENVIRONMENT
@@ -159,3 +176,17 @@ if (!result.success) {
 }
 
 export const env = result.data;
+
+// DMS secret handling reuses the MCP crypto (lib/mcp/client.ts), whose master
+// secret resolves MCP_CONNECTORS_ENCRYPTION_SECRET → USER_API_KEYS_ENCRYPTION_SECRET.
+// To let operators name the variable after the DMS feature without a second
+// crypto implementation, alias DMS_CONNECTORS_ENCRYPTION_SECRET onto the MCP
+// slot when the MCP one is not itself set. Runs at env load, before any
+// encrypt/decrypt call (those read process.env lazily).
+if (
+    env.DMS_CONNECTORS_ENCRYPTION_SECRET &&
+    !process.env.MCP_CONNECTORS_ENCRYPTION_SECRET
+) {
+    process.env.MCP_CONNECTORS_ENCRYPTION_SECRET =
+        env.DMS_CONNECTORS_ENCRYPTION_SECRET;
+}

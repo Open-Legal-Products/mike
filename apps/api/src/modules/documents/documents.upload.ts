@@ -24,6 +24,11 @@ export async function createDocumentFromUpload(
     filename: string;
     suffix: string;
     content: Buffer;
+    // Provenance recorded on the V1 document_versions row. Defaults to the
+    // interactive "upload" path; the DMS import pipeline passes "dms_import" so
+    // a document pulled from iManage/NetDocuments is distinguishable from a
+    // user upload (must be an allowed document_versions.source value).
+    source?: string;
   },
   db: Db,
   log: Log,
@@ -33,6 +38,7 @@ export async function createDocumentFromUpload(
   | { ok: false; kind: "processing_failed"; detail: string }
 > {
   const { userId, projectId, filename, suffix, content } = params;
+  const source = params.source ?? "upload";
 
   const orgId = await resolveContentOrgId(db, { userId, projectId });
   const { data: doc, error: insertErr } = await db
@@ -115,7 +121,7 @@ export async function createDocumentFromUpload(
         document_id: docId,
         storage_path: key,
         pdf_storage_path: pdfStoragePath,
-        source: "upload",
+        source,
         version_number: 1,
         filename: filename,
         file_type: suffix,

@@ -440,7 +440,8 @@ create table if not exists public.document_versions (
       'assistant_edit'::text,
       'user_accept'::text,
       'user_reject'::text,
-      'generated'::text
+      'generated'::text,
+      'dms_import'::text
     ]))
 );
 
@@ -1130,6 +1131,92 @@ create table if not exists public.courtlistener_opinion_cluster_index (
 alter table public.courtlistener_opinion_cluster_index enable row level security;
 
 -- ---------------------------------------------------------------------------
+-- DMS connectors (iManage / NetDocuments) — see
+-- 20260701000004_dms_connectors.sql. Mirrors the MCP connector tables.
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.dms_connectors (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  kind text not null
+    check (kind in ('imanage', 'netdocuments', 'fake')),
+  name text not null,
+  base_url text not null,
+  auth_type text not null default 'oauth'
+    check (auth_type in ('oauth')),
+  enabled boolean not null default true,
+  encrypted_auth_config text,
+  auth_config_iv text,
+  auth_config_tag text,
+  config jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_dms_connectors_user
+  on public.dms_connectors(user_id);
+
+alter table public.dms_connectors enable row level security;
+
+create table if not exists public.dms_connector_oauth_tokens (
+  id uuid primary key default gen_random_uuid(),
+  connector_id uuid not null references public.dms_connectors(id) on delete cascade,
+  encrypted_access_token text,
+  access_token_iv text,
+  access_token_tag text,
+  encrypted_refresh_token text,
+  refresh_token_iv text,
+  refresh_token_tag text,
+  token_type text,
+  scope text,
+  expires_at timestamptz,
+  authorization_server text,
+  token_endpoint text,
+  client_id text,
+  encrypted_client_secret text,
+  client_secret_iv text,
+  client_secret_tag text,
+  resource text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(connector_id)
+);
+
+alter table public.dms_connector_oauth_tokens enable row level security;
+
+create table if not exists public.dms_connector_oauth_states (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  connector_id uuid not null references public.dms_connectors(id) on delete cascade,
+  state_hash text not null unique,
+  encrypted_state_config text not null,
+  state_config_iv text not null,
+  state_config_tag text not null,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_dms_connector_oauth_states_expires
+  on public.dms_connector_oauth_states(expires_at);
+
+alter table public.dms_connector_oauth_states enable row level security;
+
+create table if not exists public.dms_document_links (
+  id uuid primary key default gen_random_uuid(),
+  document_id uuid not null references public.documents(id) on delete cascade,
+  connector_id uuid not null references public.dms_connectors(id) on delete cascade,
+  dms_doc_id text not null,
+  dms_version text,
+  created_at timestamptz not null default now(),
+  unique(document_id)
+);
+
+create index if not exists idx_dms_document_links_connector
+  on public.dms_document_links(connector_id);
+
+alter table public.dms_document_links enable row level security;
+
+-- ---------------------------------------------------------------------------
 -- Direct client grant hardening
 -- ---------------------------------------------------------------------------
 --
@@ -1166,3 +1253,7 @@ revoke all on public.user_mcp_connector_tools from anon, authenticated;
 revoke all on public.user_mcp_tool_audit_logs from anon, authenticated;
 revoke all on public.courtlistener_citation_index from anon, authenticated;
 revoke all on public.courtlistener_opinion_cluster_index from anon, authenticated;
+revoke all on public.dms_connectors from anon, authenticated;
+revoke all on public.dms_connector_oauth_tokens from anon, authenticated;
+revoke all on public.dms_connector_oauth_states from anon, authenticated;
+revoke all on public.dms_document_links from anon, authenticated;
