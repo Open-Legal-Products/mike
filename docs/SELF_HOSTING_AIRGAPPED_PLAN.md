@@ -1,8 +1,13 @@
 # Plan: Turnkey Air-Gapped Self-Hosting (v2, adversarially reviewed)
 
-Status: **proposal / scoping** (v2, 2026-07-01). Revised after three adversarial
-red-team reviews (security/egress, 4-service correctness, ops/turnkey). No
-implementation is claimed as done here except where a commit is cited. Owner: @amal66.
+Status: **IMPLEMENTED — kept as design record** (updated 2026-07-01). The plan
+below was executed; the shipped profile lives in `airgapped/` (compose, secret
+generation, bundle/install/backup/restore scripts, `OPERATIONS.md` runbook) with
+the app-side posture in `apps/api/src/lib/airgap.ts` and `secretGuard.ts`. See
+`MANUAL_FOLLOW_UP.md` for the one remaining operator-side acceptance gap
+(full disconnected bring-up with the built API image + preloaded model).
+Original v2 header follows: revised after three adversarial red-team reviews
+(security/egress, 4-service correctness, ops/turnkey). Owner: @amal66.
 
 ## 1. Goal
 

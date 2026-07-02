@@ -1,8 +1,9 @@
 # Manual Follow-Up
 
-This file tracks items from `ACTION_PLAN.md` and `FORK_REPORT.md` that could not
-be closed in a quick code pass — they needed credentials, product decisions, or
-longer design work. **Status refreshed 2026-07-01.** Most of the original list
+This file tracks items from the original fork audit (its working documents,
+`ACTION_PLAN.md` and `FORK_REPORT.md`, were pre-fork artifacts and are not part
+of this repository) that could not be closed in a quick code pass — they needed
+credentials, product decisions, or longer design work. **Status refreshed 2026-07-01.** Most of the original list
 has since shipped; the table below maps each item to where it landed, and the
 sections after it describe what is genuinely still open.
 
