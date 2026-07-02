@@ -2,25 +2,23 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { requireAuth } from "../../middleware/auth";
 import { createServerSupabase } from "../../lib/supabase";
 import { logger } from "../../lib/logger";
+import {
+  listWorkflows,
+  createWorkflow,
+  updateWorkflow,
+  deleteWorkflow,
+  getWorkflowDetail,
+  listHiddenWorkflows,
+  hideWorkflow,
+  unhideWorkflow,
+  listWorkflowShares,
+  deleteWorkflowShare,
+  shareWorkflow,
+  exportWorkflow,
+  importWorkflow,
+} from "./workflows.service";
 
 export const workflowsRouter = Router();
-
-type Db = ReturnType<typeof createServerSupabase>;
-
-type WorkflowRecord = {
-  id: string;
-  user_id: string | null;
-  is_system: boolean;
-  [key: string]: unknown;
-};
-
-type WorkflowAccess =
-  | {
-      workflow: WorkflowRecord;
-      allowEdit: boolean;
-      isOwner: boolean;
-    }
-  | null;
 
 type AsyncRoute = (req: Request, res: Response) => Promise<unknown>;
 
@@ -30,49 +28,6 @@ function asyncRoute(handler: AsyncRoute) {
   };
 }
 
-function withWorkflowAccess<T extends Record<string, unknown>>(
-  workflow: T,
-  access: { allowEdit: boolean; isOwner: boolean; sharedByName?: string | null },
-) {
-  return {
-    ...workflow,
-    allow_edit: access.allowEdit,
-    is_owner: access.isOwner,
-    shared_by_name: access.sharedByName ?? null,
-  };
-}
-
-async function resolveWorkflowAccess(
-  workflowId: string,
-  userId: string,
-  userEmail: string | null | undefined,
-  db: Db,
-): Promise<WorkflowAccess> {
-  const { data: workflow } = await db
-    .from("workflows")
-    .select("*")
-    .eq("id", workflowId)
-    .single();
-  if (!workflow) return null;
-  const workflowRecord = workflow as WorkflowRecord;
-  if (workflowRecord.user_id === userId) {
-    return { workflow: workflowRecord, allowEdit: true, isOwner: true };
-  }
-
-  const normalizedUserEmail = (userEmail ?? "").trim().toLowerCase();
-  if (!normalizedUserEmail) return null;
-
-  const { data: share } = await db
-    .from("workflow_shares")
-    .select("allow_edit")
-    .eq("workflow_id", workflowId)
-    .eq("shared_with_email", normalizedUserEmail)
-    .maybeSingle();
-  if (!share) return null;
-
-  return { workflow: workflowRecord, allowEdit: !!share.allow_edit, isOwner: false };
-}
-
 // GET /workflows
 workflowsRouter.get("/", requireAuth, asyncRoute(async (req, res) => {
   const userId = res.locals.userId as string;
@@ -80,14 +35,14 @@ workflowsRouter.get("/", requireAuth, asyncRoute(async (req, res) => {
   const { type } = req.query as { type?: string };
   const db = createServerSupabase();
 
-  const { data, error } = await db.rpc("get_workflows_overview", {
-    p_user_id: userId,
-    p_user_email: userEmail ?? null,
-    p_type: typeof type === "string" && type ? type : null,
+  const result = await listWorkflows(db, {
+    userId,
+    userEmail,
+    type: typeof type === "string" && type ? type : null,
   });
-  if (error) return void res.status(500).json({ detail: error.message });
+  if (!result.ok) return void res.status(500).json({ detail: result.detail });
 
-  res.json(data ?? []);
+  res.json(result.data);
 }));
 
 // POST /workflows
@@ -108,58 +63,35 @@ workflowsRouter.post("/", requireAuth, asyncRoute(async (req, res) => {
       .json({ detail: "type must be 'assistant' or 'tabular'" });
 
   const db = createServerSupabase();
-  const { data, error } = await db
-    .from("workflows")
-    .insert({
-      user_id: userId,
-      title: title.trim(),
-      type,
-      prompt_md: prompt_md ?? null,
-      columns_config: columns_config ?? null,
-      practice: practice ?? null,
-      is_system: false,
-    })
-    .select("*")
-    .single();
-  if (error) return void res.status(500).json({ detail: error.message });
-  res.status(201).json(data);
+  const result = await createWorkflow(db, {
+    userId,
+    title,
+    type,
+    prompt_md,
+    columns_config,
+    practice,
+  });
+  if (!result.ok) return void res.status(500).json({ detail: result.detail });
+  res.status(201).json(result.workflow);
 }));
 
 async function handleWorkflowUpdate(req: Request, res: Response) {
   const userId = res.locals.userId as string;
   const userEmail = res.locals.userEmail as string | undefined;
   const { workflowId } = req.params;
-  const updates: Record<string, unknown> = {};
-  if (req.body.title != null) updates.title = req.body.title;
-  if (req.body.prompt_md != null) updates.prompt_md = req.body.prompt_md;
-  if (req.body.columns_config != null)
-    updates.columns_config = req.body.columns_config;
-  if ("practice" in req.body) updates.practice = req.body.practice ?? null;
-
   const db = createServerSupabase();
-  const access = await resolveWorkflowAccess(workflowId, userId, userEmail, db);
-  if (!access || access.workflow.is_system || !access.allowEdit) {
+
+  const result = await updateWorkflow(db, {
+    workflowId,
+    userId,
+    userEmail,
+    body: req.body,
+  });
+  if (!result.ok)
     return void res
       .status(404)
       .json({ detail: "Workflow not found or not editable" });
-  }
-  const { data, error } = await db
-    .from("workflows")
-    .update(updates)
-    .eq("id", workflowId)
-    .eq("is_system", false)
-    .select("*")
-    .single();
-  if (error || !data)
-    return void res
-      .status(404)
-      .json({ detail: "Workflow not found or not editable" });
-  res.json(
-    withWorkflowAccess(data, {
-      allowEdit: access.allowEdit,
-      isOwner: access.isOwner,
-    }),
-  );
+  res.json(result.body);
 }
 
 // PUT /workflows/:workflowId
@@ -173,13 +105,9 @@ workflowsRouter.delete("/:workflowId", requireAuth, asyncRoute(async (req, res) 
   const userId = res.locals.userId as string;
   const { workflowId } = req.params;
   const db = createServerSupabase();
-  const { error } = await db
-    .from("workflows")
-    .delete()
-    .eq("id", workflowId)
-    .eq("user_id", userId)
-    .eq("is_system", false);
-  if (error) return void res.status(500).json({ detail: error.message });
+
+  const result = await deleteWorkflow(db, userId, workflowId);
+  if (!result.ok) return void res.status(500).json({ detail: result.detail });
   res.status(204).send();
 }));
 
@@ -187,12 +115,10 @@ workflowsRouter.delete("/:workflowId", requireAuth, asyncRoute(async (req, res) 
 workflowsRouter.get("/hidden", requireAuth, asyncRoute(async (req, res) => {
   const userId = res.locals.userId as string;
   const db = createServerSupabase();
-  const { data, error } = await db
-    .from("hidden_workflows")
-    .select("workflow_id")
-    .eq("user_id", userId);
-  if (error) return void res.status(500).json({ detail: error.message });
-  res.json((data ?? []).map((r: any) => r.workflow_id));
+
+  const result = await listHiddenWorkflows(db, userId);
+  if (!result.ok) return void res.status(500).json({ detail: result.detail });
+  res.json(result.ids);
 }));
 
 // POST /workflows/hidden
@@ -202,10 +128,9 @@ workflowsRouter.post("/hidden", requireAuth, asyncRoute(async (req, res) => {
   if (!workflow_id?.trim())
     return void res.status(400).json({ detail: "workflow_id is required" });
   const db = createServerSupabase();
-  const { error } = await db
-    .from("hidden_workflows")
-    .upsert({ user_id: userId, workflow_id }, { onConflict: "user_id,workflow_id" });
-  if (error) return void res.status(500).json({ detail: error.message });
+
+  const result = await hideWorkflow(db, userId, workflow_id);
+  if (!result.ok) return void res.status(500).json({ detail: result.detail });
   res.status(204).send();
 }));
 
@@ -214,12 +139,9 @@ workflowsRouter.delete("/hidden/:workflowId", requireAuth, asyncRoute(async (req
   const userId = res.locals.userId as string;
   const { workflowId } = req.params;
   const db = createServerSupabase();
-  const { error } = await db
-    .from("hidden_workflows")
-    .delete()
-    .eq("user_id", userId)
-    .eq("workflow_id", workflowId);
-  if (error) return void res.status(500).json({ detail: error.message });
+
+  const result = await unhideWorkflow(db, userId, workflowId);
+  if (!result.ok) return void res.status(500).json({ detail: result.detail });
   res.status(204).send();
 }));
 
@@ -229,15 +151,11 @@ workflowsRouter.get("/:workflowId", requireAuth, asyncRoute(async (req, res) => 
   const userEmail = res.locals.userEmail as string | undefined;
   const { workflowId } = req.params;
   const db = createServerSupabase();
-  const access = await resolveWorkflowAccess(workflowId, userId, userEmail, db);
-  if (!access)
+
+  const result = await getWorkflowDetail(db, { workflowId, userId, userEmail });
+  if (!result.ok)
     return void res.status(404).json({ detail: "Workflow not found" });
-  res.json(
-    withWorkflowAccess(access.workflow, {
-      allowEdit: access.allowEdit,
-      isOwner: access.isOwner,
-    }),
-  );
+  res.json(result.body);
 }));
 
 // GET /workflows/:workflowId/shares
@@ -246,23 +164,16 @@ workflowsRouter.get("/:workflowId/shares", requireAuth, asyncRoute(async (req, r
   const { workflowId } = req.params;
   const db = createServerSupabase();
 
-  const { data: wf } = await db
-    .from("workflows")
-    .select("id")
-    .eq("id", workflowId)
-    .eq("user_id", userId)
-    .eq("is_system", false)
-    .single();
-  if (!wf) return void res.status(404).json({ detail: "Workflow not found or not editable" });
+  const result = await listWorkflowShares(db, { workflowId, userId });
+  if (!result.ok) {
+    if (result.kind === "not_found")
+      return void res
+        .status(404)
+        .json({ detail: "Workflow not found or not editable" });
+    return void res.status(500).json({ detail: result.detail });
+  }
 
-  const { data: shares, error } = await db
-    .from("workflow_shares")
-    .select("id, shared_with_email, allow_edit, created_at")
-    .eq("workflow_id", workflowId)
-    .order("created_at", { ascending: true });
-  if (error) return void res.status(500).json({ detail: error.message });
-
-  res.json(shares ?? []);
+  res.json(result.shares);
 }));
 
 // DELETE /workflows/:workflowId/shares/:shareId
@@ -271,15 +182,9 @@ workflowsRouter.delete("/:workflowId/shares/:shareId", requireAuth, asyncRoute(a
   const { workflowId, shareId } = req.params;
   const db = createServerSupabase();
 
-  const { data: wf } = await db
-    .from("workflows")
-    .select("id")
-    .eq("id", workflowId)
-    .eq("user_id", userId)
-    .single();
-  if (!wf) return void res.status(404).json({ detail: "Workflow not found" });
-
-  await db.from("workflow_shares").delete().eq("id", shareId).eq("workflow_id", workflowId);
+  const result = await deleteWorkflowShare(db, { workflowId, shareId, userId });
+  if (!result.ok)
+    return void res.status(404).json({ detail: "Workflow not found" });
   res.status(204).send();
 }));
 
@@ -291,46 +196,24 @@ workflowsRouter.post("/:workflowId/share", requireAuth, asyncRoute(async (req, r
   const { emails, allow_edit } = req.body as { emails: string[]; allow_edit: boolean };
 
   if (!emails?.length) return void res.status(400).json({ detail: "emails is required" });
-  const normalizedEmails = [
-    ...new Set(
-      emails
-        .map((email) => email.trim().toLowerCase())
-        .filter(Boolean),
-    ),
-  ];
-  if (normalizedEmails.length === 0) {
-    return void res.status(400).json({ detail: "emails is required" });
-  }
-  const normalizedUserEmail = userEmail?.trim().toLowerCase();
-  if (normalizedUserEmail && normalizedEmails.includes(normalizedUserEmail)) {
-    return void res
-      .status(400)
-      .json({ detail: "You cannot share a workflow with yourself." });
-  }
 
   const db = createServerSupabase();
-  // Verify ownership
-  const { data: wf } = await db
-    .from("workflows")
-    .select("id")
-    .eq("id", workflowId)
-    .eq("user_id", userId)
-    .eq("is_system", false)
-    .single();
-  if (!wf) return void res.status(404).json({ detail: "Workflow not found or not editable" });
-
-  const rows = normalizedEmails.map((email: string) => ({
-    workflow_id: workflowId,
-    shared_by_user_id: userId,
-    shared_with_email: email,
-    allow_edit: allow_edit ?? false,
-  }));
-  // Upsert on (workflow_id, shared_with_email) so re-sharing to the same
-  // person updates the existing row instead of stacking duplicates.
-  const { error } = await db
-    .from("workflow_shares")
-    .upsert(rows, { onConflict: "workflow_id,shared_with_email" });
-  if (error) return void res.status(500).json({ detail: error.message });
+  const result = await shareWorkflow(db, {
+    workflowId,
+    userId,
+    userEmail,
+    emails,
+    allow_edit,
+  });
+  if (!result.ok) {
+    if (result.kind === "not_found")
+      return void res
+        .status(404)
+        .json({ detail: "Workflow not found or not editable" });
+    if (result.kind === "db_error")
+      return void res.status(500).json({ detail: result.detail });
+    return void res.status(400).json({ detail: result.detail });
+  }
 
   res.status(204).send();
 }));
@@ -344,39 +227,16 @@ workflowsRouter.get("/:workflowId/export", requireAuth, asyncRoute(async (req, r
   const { workflowId } = req.params;
   const db = createServerSupabase();
 
-  const { data: wf } = await db
-    .from("workflows")
-    .select("title, type, prompt_md, columns_config, practice")
-    .eq("id", workflowId)
-    .eq("user_id", userId)
-    .eq("is_system", false)
-    .single();
+  const result = await exportWorkflow(db, { workflowId, userId });
+  if (!result.ok)
+    return void res.status(404).json({ detail: "Workflow not found" });
 
-  if (!wf) return void res.status(404).json({ detail: "Workflow not found" });
-
-  const payload = {
-    formatVersion: 1,
-    exportedAt: new Date().toISOString(),
-    workflow: {
-      title: wf.title,
-      type: wf.type,
-      prompt_md: wf.prompt_md ?? null,
-      columns_config: wf.columns_config ?? null,
-      practice: wf.practice ?? null,
-    },
-  };
-
-  // Produce a safe filename from the workflow title.
-  const safeName = String(wf.title ?? "workflow")
-    .replace(/[^a-zA-Z0-9 _-]/g, "")
-    .trim()
-    .replace(/\s+/g, "-")
-    .slice(0, 80) || "workflow";
-
-  const filename = `${safeName}.mikeworkflow.json`;
   res.setHeader("Content-Type", "application/json");
-  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-  res.json(payload);
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${result.filename}"`,
+  );
+  res.json(result.payload);
 }));
 
 // POST /workflows/import
@@ -385,44 +245,19 @@ workflowsRouter.get("/:workflowId/export", requireAuth, asyncRoute(async (req, r
 // workflow always gets a fresh ID — it is never merged with an existing one.
 workflowsRouter.post("/import", requireAuth, asyncRoute(async (req, res) => {
   const userId = res.locals.userId as string;
-
-  // Validate the shape of the import payload.
-  const body = req.body as Record<string, unknown>;
-  if (!body || typeof body !== "object" || body.formatVersion !== 1) {
-    return void res.status(400).json({ detail: "Invalid workflow file format. Expected formatVersion: 1." });
-  }
-  const wf = body.workflow as Record<string, unknown> | undefined;
-  if (!wf || typeof wf !== "object") {
-    return void res.status(400).json({ detail: "Missing workflow object in import payload." });
-  }
-  const title = typeof wf.title === "string" ? wf.title.trim() : "";
-  if (!title) return void res.status(400).json({ detail: "workflow.title is required." });
-
-  const type = wf.type;
-  if (type !== "assistant" && type !== "tabular") {
-    return void res.status(400).json({ detail: "workflow.type must be 'assistant' or 'tabular'." });
-  }
-
   const db = createServerSupabase();
-  const { data, error } = await db
-    .from("workflows")
-    .insert({
-      user_id: userId,
-      title,
-      type,
-      prompt_md: typeof wf.prompt_md === "string" ? wf.prompt_md : null,
-      columns_config: wf.columns_config ?? null,
-      practice: typeof wf.practice === "string" ? wf.practice : null,
-      is_system: false,
-    })
-    .select("*")
-    .single();
 
-  if (error || !data) {
-    return void res.status(500).json({ detail: error?.message ?? "Failed to import workflow." });
+  const result = await importWorkflow(db, {
+    userId,
+    body: req.body as Record<string, unknown>,
+  });
+  if (!result.ok) {
+    if (result.kind === "validation")
+      return void res.status(400).json({ detail: result.detail });
+    return void res.status(500).json({ detail: result.detail });
   }
 
-  res.status(201).json(data);
+  res.status(201).json(result.workflow);
 }));
 
 workflowsRouter.use(
