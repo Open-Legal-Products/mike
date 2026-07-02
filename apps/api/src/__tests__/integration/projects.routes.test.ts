@@ -4,10 +4,13 @@ import request from "supertest";
 // ---------------------------------------------------------------------------
 // Hoisted mock fns we want to reconfigure per-test.
 // ---------------------------------------------------------------------------
-const { checkProjectAccess, deleteUserProjects } = vi.hoisted(() => ({
-    checkProjectAccess: vi.fn(),
-    deleteUserProjects: vi.fn(),
-}));
+const { checkProjectAccess, deleteUserProjects, getOrgRole } = vi.hoisted(
+    () => ({
+        checkProjectAccess: vi.fn(),
+        deleteUserProjects: vi.fn(),
+        getOrgRole: vi.fn(),
+    }),
+);
 
 vi.mock("../../lib/env", () => ({
     env: {
@@ -109,6 +112,11 @@ vi.mock("../../middleware/auth", () => ({
 
 vi.mock("../../lib/access", () => ({
     checkProjectAccess: (...args: unknown[]) => checkProjectAccess(...args),
+    // Org helpers projects.service now imports. Default to "no org context" so
+    // these tests keep exercising the owner/shared_with paths unchanged.
+    getOrgRole: (...args: unknown[]) => getOrgRole(...args),
+    getPersonalOrgId: vi.fn(async () => null),
+    resolveContentOrgId: vi.fn(async () => null),
 }));
 
 vi.mock("../../lib/userDataCleanup", () => ({
@@ -133,9 +141,12 @@ describe("projects.routes", () => {
         checkProjectAccess.mockResolvedValue({
             ok: true,
             isOwner: true,
+            role: null,
+            canManage: true,
             project: { id: "p1", user_id: "u1", shared_with: null },
         });
         deleteUserProjects.mockResolvedValue(1);
+        getOrgRole.mockResolvedValue(null);
     });
 
     // ── GET /projects (overview) ──────────────────────────────────────────
@@ -262,6 +273,29 @@ describe("projects.routes", () => {
 
             expect(res.status).toBe(404);
             expect(res.body.detail).toBe("Project not found");
+        });
+
+        it("grants an org member access via the org branch (is_owner false)", async () => {
+            // Project owned by someone else, not shared by email, but in an org
+            // the caller belongs to → getOrgRole resolves and access is granted.
+            supabaseState.tables.projects = {
+                data: {
+                    id: "p1",
+                    user_id: "someone-else",
+                    shared_with: [],
+                    org_id: "org-x",
+                },
+                error: null,
+            };
+            supabaseState.tables.documents = { data: [], error: null };
+            supabaseState.tables.project_subfolders = { data: [], error: null };
+            getOrgRole.mockResolvedValue("member");
+
+            const res = await request(app).get("/projects/p1").set(...AUTH);
+
+            expect(res.status).toBe(200);
+            expect(res.body).toMatchObject({ id: "p1", is_owner: false });
+            expect(getOrgRole).toHaveBeenCalled();
         });
 
         it("returns 200 with documents/folders/is_owner when owned", async () => {

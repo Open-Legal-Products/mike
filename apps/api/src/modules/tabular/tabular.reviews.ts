@@ -12,6 +12,7 @@ import {
     checkProjectAccess,
     ensureReviewAccess,
     filterAccessibleDocumentIds,
+    resolveContentOrgId,
 } from "../../lib/access";
 import {
     extractDocxMarkdown,
@@ -91,6 +92,12 @@ export async function createTabularReview(
     const allowedDocumentIds = Array.isArray(document_ids)
         ? await filterAccessibleDocumentIds(document_ids, userId, userEmail, db)
         : [];
+    // Tenant assignment: inherit the project's org when project-scoped,
+    // otherwise the caller's personal org.
+    const orgId = await resolveContentOrgId(db, {
+        userId,
+        projectId: project_id ?? null,
+    });
     const { data: review, error } = await db
         .from("tabular_reviews")
         .insert({
@@ -100,6 +107,7 @@ export async function createTabularReview(
             document_ids: allowedDocumentIds,
             project_id: project_id ?? null,
             workflow_id: workflow_id ?? null,
+            org_id: orgId,
         })
         .select("*")
         .single();
@@ -248,7 +256,7 @@ export async function getTabularReviewPeople(
 
     const { data: review } = await db
         .from("tabular_reviews")
-        .select("id, user_id, project_id, shared_with")
+        .select("id, user_id, project_id, shared_with, org_id")
         .eq("id", reviewId)
         .single();
     if (!review) return { ok: false };
@@ -582,7 +590,7 @@ export async function clearTabularCells(
 
     const { data: review, error: reviewError } = await db
         .from("tabular_reviews")
-        .select("id, user_id, project_id")
+        .select("id, user_id, project_id, org_id")
         .eq("id", reviewId)
         .single();
     if (reviewError || !review) return { ok: false, kind: "not_found" };

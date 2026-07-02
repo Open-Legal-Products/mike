@@ -19,7 +19,12 @@ import {
   storageKey,
 } from "../../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../../lib/convert";
-import { checkProjectAccess } from "../../lib/access";
+import {
+  checkProjectAccess,
+  getOrgRole,
+  getPersonalOrgId,
+  resolveContentOrgId,
+} from "../../lib/access";
 import { deleteUserProjects } from "../../lib/userDataCleanup";
 import { loadPdfjs } from "../../lib/pdfjs";
 
@@ -243,9 +248,10 @@ export async function createProject(
     name: string;
     cm_number?: string;
     shared_with?: unknown;
+    org_id?: string | null;
   },
 ): Promise<CreateProjectResult> {
-  const { userId, userEmail, name, cm_number, shared_with } = params;
+  const { userId, userEmail, name, cm_number, shared_with, org_id } = params;
   if (!name?.trim())
     return { ok: false, kind: "validation", detail: "name is required" };
 
@@ -258,6 +264,22 @@ export async function createProject(
       detail: "You cannot share a project with yourself.",
     };
 
+  // Tenant assignment: an explicit org_id must be one the caller belongs to;
+  // otherwise the project lands in the caller's personal org.
+  let resolvedOrgId: string | null;
+  if (org_id) {
+    const role = await getOrgRole(userId, org_id, db);
+    if (!role)
+      return {
+        ok: false,
+        kind: "validation",
+        detail: "You are not a member of that organization.",
+      };
+    resolvedOrgId = org_id;
+  } else {
+    resolvedOrgId = await getPersonalOrgId(userId, db);
+  }
+
   const { data, error } = await db
     .from("projects")
     .insert({
@@ -265,6 +287,7 @@ export async function createProject(
       name: name.trim(),
       cm_number: cm_number ?? null,
       shared_with: shared.cleaned,
+      org_id: resolvedOrgId,
     })
     .select("*")
     .single();
@@ -285,13 +308,17 @@ export async function getProjectDetail(
   if (error || !project) return { ok: false };
 
   const normalizedEmailForAccess = userEmail?.toLowerCase();
-  const canAccess =
+  let canAccess =
     project.user_id === userId ||
     (normalizedEmailForAccess &&
       Array.isArray(project.shared_with) &&
       (project.shared_with as string[]).some(
         (e) => e.toLowerCase() === normalizedEmailForAccess,
       ));
+  // Third access branch: org membership on the project's org (multi-tenant).
+  if (!canAccess && project.org_id) {
+    canAccess = (await getOrgRole(userId, project.org_id, db)) !== null;
+  }
   if (!canAccess) return { ok: false };
 
   const [{ data: docs }, { data: folderData }] = await Promise.all([
@@ -449,11 +476,16 @@ export async function updateProject(
     updates.shared_with = shared.cleaned;
   }
 
+  // Editing a project's name / sharing is a management operation: the row owner
+  // OR an org owner/admin may do it. Plain org members and email-share
+  // collaborators can read but not mutate (canManage stays false for them).
+  const access = await checkProjectAccess(projectId, userId, userEmail, db);
+  if (!access.ok || !access.canManage) return { ok: false, kind: "not_found" };
+
   const { data, error } = await db
     .from("projects")
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq("id", projectId)
-    .eq("user_id", userId)
     .select("*")
     .single();
   if (error || !data) return { ok: false, kind: "not_found" };
@@ -571,10 +603,15 @@ export async function assignOrCopyDocument(
   if (doc.project_id === projectId) return { ok: true, status: 200, doc };
 
   if (doc.project_id === null) {
-    // Standalone → assign project_id
+    // Standalone → assign project_id (and inherit the project's org).
+    const targetOrgId = await resolveContentOrgId(db, { userId, projectId });
     const { data: updated, error } = await db
       .from("documents")
-      .update({ project_id: projectId, updated_at: new Date().toISOString() })
+      .update({
+        project_id: projectId,
+        org_id: targetOrgId,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", documentId)
       .select("*")
       .single();
@@ -610,12 +647,14 @@ export async function assignOrCopyDocument(
     return { ok: false, kind: "read_failed" };
   }
 
+  const copyOrgId = await resolveContentOrgId(db, { userId, projectId });
   const { data: copy, error } = await db
     .from("documents")
     .insert({
       project_id: projectId,
       user_id: userId,
       status: doc.status,
+      org_id: copyOrgId,
     })
     .select("*")
     .single();
@@ -804,12 +843,14 @@ export async function processProjectDocumentUpload(
 ): Promise<UploadDocumentResult> {
   const { userId, projectId, filename, suffix, content } = params;
 
+  const orgId = await resolveContentOrgId(db, { userId, projectId });
   const { data: doc, error: insertErr } = await db
     .from("documents")
     .insert({
       project_id: projectId,
       user_id: userId,
       status: "processing",
+      org_id: orgId,
     })
     .select("*")
     .single();

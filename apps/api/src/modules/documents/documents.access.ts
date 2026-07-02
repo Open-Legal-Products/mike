@@ -12,6 +12,7 @@ type DocRow = {
   id: string;
   user_id: string;
   project_id: string | null;
+  org_id?: string | null;
   current_version_id?: string | null;
 };
 
@@ -30,7 +31,7 @@ export async function ensureDocumentAccess(
 ): Promise<{ ok: true; doc: DocRow; isOwner: boolean } | { ok: false }> {
   const { data: doc } = await db
     .from("documents")
-    .select(opts.select ?? "id, user_id, project_id")
+    .select(opts.select ?? "id, user_id, project_id, org_id")
     .eq("id", documentId)
     .single();
   if (!doc) return { ok: false };

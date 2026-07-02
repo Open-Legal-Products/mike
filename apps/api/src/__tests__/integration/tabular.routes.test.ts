@@ -125,6 +125,9 @@ vi.mock("../../lib/access", () => ({
     checkProjectAccess: (...args: unknown[]) => checkProjectAccess(...args),
     filterAccessibleDocumentIds: (...args: unknown[]) =>
         filterAccessibleDocumentIds(...args),
+    // createReview now stamps org_id via resolveContentOrgId; default to "no
+    // org context" so these tests are unaffected.
+    resolveContentOrgId: vi.fn(async () => null),
 }));
 
 vi.mock("../../lib/userSettings", () => ({

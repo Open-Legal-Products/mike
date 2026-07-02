@@ -17,7 +17,7 @@ export async function listTabularChats(
     // Verify access (owner or shared-project member).
     const { data: review, error } = await db
         .from("tabular_reviews")
-        .select("id, user_id, project_id")
+        .select("id, user_id, project_id, org_id")
         .eq("id", reviewId)
         .single();
     if (error || !review) return { ok: false };
@@ -68,7 +68,7 @@ export async function getTabularChatMessages(
 
     const { data: review } = await db
         .from("tabular_reviews")
-        .select("id, user_id, project_id")
+        .select("id, user_id, project_id, org_id")
         .eq("id", reviewId)
         .single();
     if (!review) return { ok: false, kind: "review_not_found" };

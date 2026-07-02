@@ -7,6 +7,7 @@
 // results onto HTTP status codes, headers, and response bodies.
 
 import { createServerSupabase } from "../../lib/supabase";
+import { getOrgRole, getPersonalOrgId } from "../../lib/access";
 
 type Db = ReturnType<typeof createServerSupabase>;
 
@@ -55,17 +56,33 @@ async function resolveWorkflowAccess(
   }
 
   const normalizedUserEmail = (userEmail ?? "").trim().toLowerCase();
-  if (!normalizedUserEmail) return null;
+  if (normalizedUserEmail) {
+    const { data: share } = await db
+      .from("workflow_shares")
+      .select("allow_edit")
+      .eq("workflow_id", workflowId)
+      .eq("shared_with_email", normalizedUserEmail)
+      .maybeSingle();
+    if (share)
+      return {
+        workflow: workflowRecord,
+        allowEdit: !!share.allow_edit,
+        isOwner: false,
+      };
+  }
 
-  const { data: share } = await db
-    .from("workflow_shares")
-    .select("allow_edit")
-    .eq("workflow_id", workflowId)
-    .eq("shared_with_email", normalizedUserEmail)
-    .maybeSingle();
-  if (!share) return null;
+  // Org-visibility branch: a workflow living in an org the caller belongs to is
+  // readable (allow_edit stays false; edits remain owner/share-gated). Keeps
+  // the workflow_shares mechanism intact and consistent with the updated
+  // get_workflows_overview RPC.
+  const orgId = (workflowRecord as { org_id?: string | null }).org_id ?? null;
+  if (orgId) {
+    const role = await getOrgRole(userId, orgId, db);
+    if (role)
+      return { workflow: workflowRecord, allowEdit: false, isOwner: false };
+  }
 
-  return { workflow: workflowRecord, allowEdit: !!share.allow_edit, isOwner: false };
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +118,7 @@ export async function createWorkflow(
   | { ok: false; detail: string }
 > {
   const { userId, title, type, prompt_md, columns_config, practice } = params;
+  const orgId = await getPersonalOrgId(userId, db);
   const { data, error } = await db
     .from("workflows")
     .insert({
@@ -111,6 +129,7 @@ export async function createWorkflow(
       columns_config: columns_config ?? null,
       practice: practice ?? null,
       is_system: false,
+      org_id: orgId,
     })
     .select("*")
     .single();

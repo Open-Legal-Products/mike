@@ -6,6 +6,7 @@ import rateLimit from "express-rate-limit";
 import { httpLogger } from "./middleware/httpLogger";
 import { chatRouter } from "./modules/chat/chat.routes";
 import { projectsRouter } from "./modules/projects/projects.routes";
+import { orgsRouter } from "./modules/orgs/orgs.routes";
 import { projectChatRouter } from "./modules/project-chat/projectChat.routes";
 import { documentsRouter } from "./modules/documents/documents.routes";
 import { tabularRouter } from "./modules/tabular/tabular.routes";
@@ -169,6 +170,7 @@ app.delete("/user/tabular-reviews", dataDeleteLimiter);
 
 app.use("/chat", chatRouter);
 app.use("/projects", projectsRouter);
+app.use("/orgs", orgsRouter);
 app.use("/projects/:projectId/chat", projectChatRouter);
 app.use("/single-documents", documentsRouter);
 app.use("/tabular-review", tabularRouter);

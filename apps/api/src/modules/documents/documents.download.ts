@@ -3,7 +3,7 @@
 
 import { downloadFile, getSignedUrl } from "../../lib/storage";
 import { loadActiveVersion } from "../../lib/documentVersions";
-import { listAccessibleProjectIds } from "../../lib/access";
+import { listAccessibleProjectIds, listUserOrgIds } from "../../lib/access";
 import {
   DOCX_MIME,
   downloadFilenameForVersion,
@@ -85,25 +85,28 @@ export async function buildZipForDocuments(
 > {
   const { data: rawDocs, error } = await db
     .from("documents")
-    .select("id, current_version_id, user_id, project_id")
+    .select("id, current_version_id, user_id, project_id, org_id")
     .in("id", documentIds);
 
   if (error) return { ok: false, kind: "db", detail: error.message };
-  // Filter to docs the user can access (own + shared-project). Fetch the
-  // accessible project set ONCE and test membership in-memory rather than
-  // calling ensureDocAccess per document (which issued a project query each) —
-  // that was an N+1 of up to MAX_ZIP_DOCUMENTS queries.
-  const accessibleProjectIds = new Set(
-    await listAccessibleProjectIds(userId, userEmail, db),
-  );
+  // Filter to docs the user can access (own + shared-project + org member).
+  // Fetch the accessible project set + org set ONCE and test membership
+  // in-memory rather than calling ensureDocAccess per document (which issued a
+  // project query each) — that was an N+1 of up to MAX_ZIP_DOCUMENTS queries.
+  const [accessibleProjectIds, userOrgIds] = await Promise.all([
+    listAccessibleProjectIds(userId, userEmail, db).then((ids) => new Set(ids)),
+    listUserOrgIds(userId, db).then((ids) => new Set(ids)),
+  ]);
   const docs = ((rawDocs ?? []) as {
     id: string;
     user_id: string;
     project_id: string | null;
+    org_id?: string | null;
   }[])
     .filter(
       (d) =>
         d.user_id === userId ||
+        (d.org_id != null && userOrgIds.has(d.org_id)) ||
         (d.project_id != null && accessibleProjectIds.has(d.project_id)),
     )
     .map((d) => ({ id: d.id }));

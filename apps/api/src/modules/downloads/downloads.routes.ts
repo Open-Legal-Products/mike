@@ -48,7 +48,7 @@ downloadsRouter.get("/:token", requireAuth, async (req, res) => {
 
     const { data: doc } = await db
         .from("documents")
-        .select("id, user_id, project_id")
+        .select("id, user_id, project_id, org_id")
         .eq("id", version.document_id)
         .single();
     if (!doc)

@@ -4,6 +4,7 @@ import { storageKey, uploadFile } from "../../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../../lib/convert";
 import { env } from "../../lib/env";
 import { enqueueConversion } from "../../lib/queue/conversionQueue";
+import { resolveContentOrgId } from "../../lib/access";
 import {
   DOCX_MIME,
   countPdfPages,
@@ -32,12 +33,14 @@ export async function createDocumentFromUpload(
 > {
   const { userId, projectId, filename, suffix, content } = params;
 
+  const orgId = await resolveContentOrgId(db, { userId, projectId });
   const { data: doc, error: insertErr } = await db
     .from("documents")
     .insert({
       project_id: projectId,
       user_id: userId,
       status: "processing",
+      org_id: orgId,
     })
     .select("*")
     .single();

@@ -157,6 +157,90 @@ async function removeEmailFromSharedWith(
     );
 }
 
+/**
+ * Tear down a user's organization footprint on account deletion.
+ *
+ *  - Personal orgs (one-per-user) are deleted outright; the ON DELETE CASCADE
+ *    on org_members/teams/team_members cleans up their rows.
+ *  - For shared orgs the user merely belonged to, their membership row is
+ *    removed. If they were the org's sole owner, ownership is handed to the
+ *    earliest remaining member so the org isn't stranded ownerless; if no
+ *    members remain, the now-empty org is deleted.
+ *  - Any team memberships are removed.
+ *
+ * Without this, deleting a user would orphan their personal organization and
+ * its org_members rows (org_id on content uses ON DELETE SET NULL, so the
+ * cascade that removes their content does not remove their org).
+ */
+export async function deleteUserOrganizations(db: Db, userId: string) {
+    const { data: personalOrgs, error: personalError } = await db
+        .from("organizations")
+        .select("id")
+        .eq("created_by", userId)
+        .eq("personal", true);
+    await throwIfError(personalError, "Failed to load personal organizations");
+    const personalOrgIds = new Set(
+        uniqueStrings(
+            ((personalOrgs ?? []) as { id: string | null }[]).map((r) => r.id),
+        ),
+    );
+    await deleteByIds(db, "organizations", [...personalOrgIds]);
+
+    const { data: memberships, error: membershipError } = await db
+        .from("org_members")
+        .select("id, org_id, role")
+        .eq("user_id", userId);
+    await throwIfError(membershipError, "Failed to load org memberships");
+
+    for (const m of (memberships ?? []) as {
+        id: string;
+        org_id: string;
+        role: string;
+    }[]) {
+        if (personalOrgIds.has(m.org_id)) continue; // already cascade-deleted
+
+        const { error: deleteError } = await db
+            .from("org_members")
+            .delete()
+            .eq("id", m.id);
+        await throwIfError(deleteError, "Failed to remove org membership");
+
+        if (m.role !== "owner") continue;
+
+        // Sole-owner handoff: if no owners remain, promote the earliest member;
+        // if the org is now empty, delete it.
+        const { data: owners } = await db
+            .from("org_members")
+            .select("id")
+            .eq("org_id", m.org_id)
+            .eq("role", "owner");
+        if (((owners ?? []) as unknown[]).length > 0) continue;
+
+        const { data: remaining } = await db
+            .from("org_members")
+            .select("id")
+            .eq("org_id", m.org_id)
+            .order("created_at", { ascending: true })
+            .limit(1);
+        const heir = ((remaining ?? []) as { id: string }[])[0];
+        if (heir) {
+            const { error: promoteError } = await db
+                .from("org_members")
+                .update({ role: "owner" })
+                .eq("id", heir.id);
+            await throwIfError(promoteError, "Failed to hand off org ownership");
+        } else {
+            await deleteByIds(db, "organizations", [m.org_id]);
+        }
+    }
+
+    const { error: teamError } = await db
+        .from("team_members")
+        .delete()
+        .eq("user_id", userId);
+    await throwIfError(teamError, "Failed to remove team memberships");
+}
+
 export async function deleteAllUserChats(db: Db, userId: string) {
     const [assistantChats, tabularChats] = await Promise.all([
         db.from("chats").delete().eq("user_id", userId),
@@ -340,4 +424,8 @@ export async function deleteUserAccountData(
     for (const result of results) {
         await throwIfError(result.error, "Failed to delete account data");
     }
+
+    // Organizations use ON DELETE SET NULL on content (not CASCADE), so the
+    // content deletions above never remove the user's orgs — do that here.
+    await deleteUserOrganizations(db, userId);
 }
