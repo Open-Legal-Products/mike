@@ -51,6 +51,13 @@ export default defineConfig({
         globals: true,
         environment: "jsdom",
         setupFiles: ["./vitest.setup.ts"],
+        // jsdom 27's CSS-color parser (@asamuzakjp/css-color) is CJS but
+        // require()s the ESM-only @csstools/css-calc. That require() happens
+        // in the worker process while the jsdom environment boots — before
+        // Vite's transform pipeline is involved — so deps.inline can't fix it.
+        // Instead, let Node itself handle require(esm): default on >=22.12,
+        // and enabled by this (there harmless) flag on 22.0–22.11.
+        execArgv: ["--experimental-require-module"],
         // Unit tests only. Keep the Playwright e2e specs (*.spec.ts) out.
         include: ["src/**/*.test.{ts,tsx}"],
         exclude: ["node_modules/**", "e2e/**", "**/*.spec.ts"],

@@ -331,16 +331,14 @@ test("file upload type validation — .txt file is rejected", { timeout: 60_000 
      * The "Add Documents" button opens AddDocumentsModal which has a
      * hidden file input with accept=".pdf,.docx,.doc".
      *
-     * The backend rejects unsupported extensions with:
-     *   HTTP 400  { detail: "Unsupported file type: txt. Allowed: pdf, docx, doc" }
-     *
-     * NOTE: AddDocumentsModal currently catches upload errors silently
-     * (console.error only) — no user-visible error message is surfaced.
-     * This test therefore:
-     *   (a) intercepts the API response to assert the 400 rejection, and
-     *   (b) asserts the .txt filename does NOT appear in the document list.
-     * TODO: verify selector — once the UI shows a visible upload error
-     *       (e.g. a toast or inline message), add an assertion here.
+     * Validation is now two layers, and this test covers both:
+     *   (a) UI: AddDocumentsModal filters unsupported files client-side
+     *       (partitionSupportedDocumentFiles) and shows a visible warning —
+     *       no request is sent, so we assert the warning + absence of the file.
+     *   (b) Server: the upload endpoint must still 400 unsupported extensions
+     *       (defense in depth for API/SDK callers that bypass the web UI).
+     *       The UI never emits that request anymore, so we exercise the
+     *       endpoint directly with the browser session's bearer token.
      */
 
     /* Open the Add Documents modal. The "Add Documents" button only renders once
@@ -348,16 +346,43 @@ test("file upload type validation — .txt file is rejected", { timeout: 60_000 
        "Project not found") or be slow under load, so reload-guard the page. */
     const addDocsBtn = page.getByRole("button", { name: "Add Documents" });
     await waitForProjectLoaded(page, addDocsBtn);
-    await addDocsBtn.click();
 
-    /* The modal's Upload button triggers a hidden file input */
-    // Wait for the response BEFORE clicking so we don't miss a fast rejection
-    const uploadResponsePromise = page.waitForResponse(
-        (resp) =>
-            /\/projects\/.+\/documents$/.test(resp.url()) &&
-            resp.request().method() === "POST",
-        { timeout: 15_000 },
+    /* (b) Server-side rejection — REGRESSION: fails if type validation is
+       removed from the upload handler. */
+    const projectId = page.url().match(/\/projects\/([0-9a-f-]{36})/)?.[1];
+    expect(projectId, "expected to be on a /projects/<id> page").toBeTruthy();
+    const accessToken = await page.evaluate(() => {
+        const item = Object.entries(localStorage).find(([k]) =>
+            k.includes("auth-token"),
+        );
+        if (!item) return null;
+        try {
+            return JSON.parse(item[1]).access_token ?? null;
+        } catch {
+            return null;
+        }
+    });
+    expect(accessToken, "expected a Supabase session in localStorage").toBeTruthy();
+    const apiBase = process.env.MIKE_API_BASE_URL ?? "http://localhost:3001";
+    const uploadResponse = await page.request.post(
+        `${apiBase}/projects/${projectId}/documents`,
+        {
+            headers: { Authorization: `Bearer ${accessToken}` },
+            multipart: {
+                file: {
+                    name: "test.txt",
+                    mimeType: "text/plain",
+                    buffer: Buffer.from(
+                        "This is a plain text file that should be rejected.",
+                    ),
+                },
+            },
+        },
     );
+    expect(uploadResponse.status()).toBe(400);
+
+    /* (a) UI-side filtering with a visible warning. */
+    await addDocsBtn.click();
 
     const fileChooserPromise = page.waitForEvent("filechooser");
     /* The Upload button label is "Upload" (not "Uploading…") when idle */
@@ -366,8 +391,8 @@ test("file upload type validation — .txt file is rejected", { timeout: 60_000 
 
     /*
      * Playwright's setFiles accepts an in-memory file descriptor, bypassing
-     * the browser's accept-attribute filter so the request actually reaches
-     * the server.
+     * the browser's accept-attribute filter so the client-side partition
+     * logic (not the accept attribute) is what's under test.
      */
     await fileChooser.setFiles({
         name: "test.txt",
@@ -375,11 +400,13 @@ test("file upload type validation — .txt file is rejected", { timeout: 60_000 
         buffer: Buffer.from("This is a plain text file that should be rejected."),
     });
 
-    /* Wait for the API to respond */
-    const uploadResponse = await uploadResponsePromise;
-
-    // REGRESSION: fails if file type validation is removed from the upload handler
-    expect(uploadResponse.status()).toBe(400);
+    // REGRESSION: fails if the visible unsupported-type warning is removed
+    // (UNSUPPORTED_DOCUMENT_WARNING_MESSAGE in documentUploadValidation.ts).
+    await expect(
+        page.getByText(
+            "Unsupported file type. Only PDF, DOCX, and DOC files can be uploaded.",
+        ),
+    ).toBeVisible({ timeout: 10_000 });
 
     /* The .txt file must not appear in the modal's document list */
     await expect(page.getByText("test.txt")).not.toBeVisible();

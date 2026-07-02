@@ -215,12 +215,20 @@ test.describe("Workflows", () => {
                 await page.keyboard.type(".");
             }
             // Guard #1: the save() handler must run (sets "Saving…" synchronously).
+            // PageHeader renders its actions twice — a desktop inline copy and a
+            // portal-mounted mobile copy — so an unscoped text locator resolves to
+            // two nodes and trips strict mode. Filter to the visible instance.
             await expect(
-                page.locator("text=Saving…").or(page.locator("text=Saved")),
+                page
+                    .getByText(/^(Saving…|Saved)$/)
+                    .filter({ visible: true })
+                    .first(),
             ).toBeVisible({ timeout: 10_000 });
             // Guard #2: the PATCH must resolve to "Saved" (transient 502s retried).
             saveConfirmed = await page
                 .getByText("Saved")
+                .filter({ visible: true })
+                .first()
                 .waitFor({ state: "visible", timeout: 8_000 })
                 .then(() => true)
                 .catch(() => false);
@@ -313,10 +321,20 @@ test.describe("Account Settings", () => {
             // (which leaves the input empty via the null-displayName fallback, with no
             // client-side refetch) is retried with a fresh fetch rather than looping on a
             // permanently-empty page.
+            //
+            // Hydration signal: wait for the profile GET itself, not for a non-empty
+            // input. A fresh e2e user (fresh database) has displayName=null, so
+            // "input pre-filled with the stored name" can never happen on the
+            // first-ever run — the old not.toHaveValue("") wait deadlocked there.
+            const profileLoaded = page.waitForResponse(
+                (resp) =>
+                    resp.url().endsWith("/user/profile") &&
+                    resp.request().method() === "GET" &&
+                    resp.ok(),
+                { timeout: 10_000 },
+            );
             await page.goto("/account");
-            // Wait for hydration to land (input pre-filled with the stored, non-empty name),
-            // then (re)apply our value right before saving.
-            await expect(nameInput).not.toHaveValue("", { timeout: 10_000 });
+            await profileLoaded;
             await nameInput.fill(newName);
             await expect(nameInput).toHaveValue(newName, { timeout: 2_000 });
 
@@ -333,10 +351,13 @@ test.describe("Account Settings", () => {
 
     /* ── Test 7: API keys page loads and shows all three provider sections ── */
 
-    test("models and API keys page loads and shows Anthropic, Google, and OpenAI sections", async ({
+    test("API keys page loads and shows Anthropic, Google, and OpenAI sections", async ({
         page,
     }) => {
-        await page.goto("/account/models");
+        // API keys were split out of /account/models into their own settings
+        // page (the "API Keys" sidebar entry) — /account/models now holds only
+        // model preferences.
+        await page.goto("/account/api-keys");
 
         // The shared account layout still renders "Settings"
         await expect(
@@ -344,12 +365,12 @@ test.describe("Account Settings", () => {
         ).toBeVisible({ timeout: 10_000 });
 
         // The h2 "API Keys" section is present
-        // REGRESSION: fails if the /account/models page is broken or the API Keys section is removed
+        // REGRESSION: fails if the /account/api-keys page is broken or the API Keys section is removed
         await expect(
             page.getByRole("heading", { name: "API Keys" }),
         ).toBeVisible({ timeout: 10_000 });
 
-        // All three provider label texts (from API_KEY_FIELDS in models/page.tsx) must appear
+        // All three provider label texts (from MODEL_API_KEY_FIELDS in api-keys/page.tsx) must appear
         // REGRESSION: fails if any provider section is removed from the API keys page
         await expect(
             page.getByText("Anthropic (Claude) API Key"),
