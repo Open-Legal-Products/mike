@@ -41,11 +41,16 @@ export async function createDocumentFromUpload(
   const source = params.source ?? "upload";
 
   const orgId = await resolveContentOrgId(db, { userId, projectId });
+  // documents.filename is NOT NULL (baseline schema) and chatContext still
+  // reads it for doc labels. The canonical name history lives on
+  // document_versions, but the initial insert must seed the documents copy —
+  // omitting it fails every upload on a freshly-migrated database.
   const { data: doc, error: insertErr } = await db
     .from("documents")
     .insert({
       project_id: projectId,
       user_id: userId,
+      filename,
       status: "processing",
       org_id: orgId,
     })

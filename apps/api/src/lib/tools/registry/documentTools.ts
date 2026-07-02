@@ -350,6 +350,8 @@ const replicateDocument: ToolHandler = async (args, ctx) => {
         const docRows = filenames.map((fn) => ({
           project_id: projectId,
           user_id: userId,
+          // documents.filename is NOT NULL (baseline schema).
+          filename: fn,
           status: "ready",
         }));
         const { data: insertedDocs, error: docErr } = await db

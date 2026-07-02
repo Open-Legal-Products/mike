@@ -653,6 +653,8 @@ export async function assignOrCopyDocument(
     .insert({
       project_id: projectId,
       user_id: userId,
+      // documents.filename is NOT NULL; seed it from the copied version.
+      filename: activeVersionFilename,
       status: doc.status,
       org_id: copyOrgId,
     })
@@ -849,6 +851,8 @@ export async function processProjectDocumentUpload(
     .insert({
       project_id: projectId,
       user_id: userId,
+      // documents.filename is NOT NULL (baseline schema).
+      filename,
       status: "processing",
       org_id: orgId,
     })
