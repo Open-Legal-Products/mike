@@ -35,7 +35,13 @@ const PORT = process.env.PORT ?? 3001;
 // Note: "exit cleanly" is intentional — a process with unknown corrupted
 // state is more dangerous than a fresh restart.
 process.on("unhandledRejection", (reason) => {
-  logger.fatal({ reason }, "Unhandled promise rejection — exiting");
+  // Log under `err` so pino's error serializer emits message/stack —
+  // `{ reason }` renders Error objects as "{}" (their props are
+  // non-enumerable), which hides exactly the information needed here.
+  logger.fatal(
+    { err: reason instanceof Error ? reason : new Error(String(reason)) },
+    "Unhandled promise rejection — exiting",
+  );
   captureException(reason);
   process.exit(1);
 });

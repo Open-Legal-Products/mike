@@ -1,4 +1,5 @@
 import { createServerSupabase } from "./supabase";
+import { logger } from "./logger";
 
 type Db = ReturnType<typeof createServerSupabase>;
 
@@ -86,10 +87,14 @@ export async function incrementMessageCredits(
     userId: string,
     db: Db = createServerSupabase(),
 ): Promise<void> {
-    await db.rpc("increment_message_credits", { uid: userId }).catch(() => {
+    // See refundMessageCredit: the builder is a thenable with no .catch —
+    // await inside try/catch, or a refactor-era TypeError crashes the process.
+    try {
+        await db.rpc("increment_message_credits", { uid: userId });
+    } catch {
         // increment_message_credits is a Postgres function (see migration).
         // If it doesn't exist yet, degrade gracefully.
-    });
+    }
 }
 
 /**
@@ -142,7 +147,20 @@ export async function refundMessageCredit(
     userId: string,
     db: Db = createServerSupabase(),
 ): Promise<void> {
-    await db.rpc("refund_message_credit", { p_user_id: userId }).catch(() => {
-        /* best-effort: never let a refund failure surface to the user */
-    });
+    // The Supabase query builder is a thenable, not a Promise — it has no
+    // .catch() method, and calling one throws a TypeError that (since this
+    // runs inside stream-failure cleanup) escapes the route's error handling
+    // entirely and crashes the process as an unhandled rejection. Await it
+    // in a try/catch instead; RPC-level failures come back as `error`.
+    try {
+        const { error } = await db.rpc("refund_message_credit", {
+            p_user_id: userId,
+        });
+        if (error) {
+            logger.warn({ err: error, userId }, "[credits] refund failed");
+        }
+    } catch (err) {
+        // best-effort: never let a refund failure surface to the user
+        logger.warn({ err, userId }, "[credits] refund threw");
+    }
 }

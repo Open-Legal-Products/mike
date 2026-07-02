@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
     checkMessageCredits,
     consumeMessageCredit,
+    incrementMessageCredits,
     refundMessageCredit,
     MONTHLY_CREDIT_LIMIT,
 } from "../credits";
@@ -222,6 +223,64 @@ describe("refundMessageCredit", () => {
         await expect(refundMessageCredit("user-1", db)).resolves.toBeUndefined();
         expect(rpc).toHaveBeenCalledWith("refund_message_credit", {
             p_user_id: "user-1",
+        });
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Thenable-builder regression
+//
+// The real Supabase query builder is a PromiseLike with only .then() — it has
+// NO .catch() method. Code that called db.rpc(...).catch(...) threw a
+// synchronous TypeError; in refundMessageCredit that happened inside the chat
+// stream's failure cleanup, where it escaped every route-level handler and
+// crashed the whole API process via the unhandledRejection hook. These mocks
+// mimic the real builder shape so the mistake can't come back.
+// ---------------------------------------------------------------------------
+
+function makeThenableRpcDb(result: { data?: unknown; error?: unknown }) {
+    const thenable = {
+        then<T>(onFulfilled: (v: { data: unknown; error: unknown }) => T) {
+            return Promise.resolve(
+                onFulfilled({
+                    data: result.data ?? null,
+                    error: result.error ?? null,
+                }),
+            );
+        },
+    };
+    const rpc = vi.fn().mockReturnValue(thenable);
+    return {
+        db: { rpc } as unknown as Parameters<typeof refundMessageCredit>[1],
+        rpc,
+    };
+}
+
+describe("refundMessageCredit (thenable builder regression)", () => {
+    it("resolves when db.rpc returns a catch-less thenable (the real builder shape)", async () => {
+        const { db, rpc } = makeThenableRpcDb({});
+        await expect(refundMessageCredit("user-1", db)).resolves.toBeUndefined();
+        expect(rpc).toHaveBeenCalledWith("refund_message_credit", {
+            p_user_id: "user-1",
+        });
+    });
+
+    it("swallows an RPC-level error returned by the thenable", async () => {
+        const { db } = makeThenableRpcDb({
+            error: { message: "function refund_message_credit does not exist" },
+        });
+        await expect(refundMessageCredit("user-1", db)).resolves.toBeUndefined();
+    });
+});
+
+describe("incrementMessageCredits (thenable builder regression)", () => {
+    it("resolves when db.rpc returns a catch-less thenable", async () => {
+        const { db, rpc } = makeThenableRpcDb({});
+        await expect(
+            incrementMessageCredits("user-1", db),
+        ).resolves.toBeUndefined();
+        expect(rpc).toHaveBeenCalledWith("increment_message_credits", {
+            uid: "user-1",
         });
     });
 });
