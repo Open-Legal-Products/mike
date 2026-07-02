@@ -1,7 +1,11 @@
 "use client";
 
-import { File, FileText, Loader2, Scale } from "lucide-react";
-import { displayCitationQuote, formatCitationPage } from "../../shared/types";
+import { AlertTriangle, File, FileText, Loader2, Scale } from "lucide-react";
+import {
+    citationVerificationStatus,
+    displayCitationQuote,
+    formatCitationPage,
+} from "../../shared/types";
 import type { CitationAnnotation } from "../../shared/types";
 import { RESPONSE_GLASS_SURFACE, RESPONSE_GLASS_ANNOTATION } from "./constants";
 import { buildCitationSourceRows, documentExtension } from "./citationUtils";
@@ -73,23 +77,53 @@ export function CitationsBlock({
                                 </button>
                                 <div className="flex shrink-0 flex-wrap justify-end gap-1">
                                     {row.entries.map(
-                                        ({ annotation, index }) => (
-                                            <button
-                                                key={`${row.key}:${index}`}
-                                                type="button"
-                                                onClick={() =>
-                                                    onCitationClick?.(
-                                                        annotation,
-                                                    )
-                                                }
-                                                className={
-                                                    RESPONSE_GLASS_ANNOTATION
-                                                }
-                                                title={`${formatCitationPage(annotation)}: "${displayCitationQuote(annotation)}"`}
-                                            >
-                                                {annotation.ref}
-                                            </button>
-                                        ),
+                                        ({ annotation, index }) => {
+                                            // Server-side verification status for
+                                            // document quotes (undefined for case
+                                            // citations, which are verified
+                                            // upstream, and for annotations from
+                                            // paths that skip verification). Only
+                                            // an explicit 'unverified'/'repaired'
+                                            // gets a trust badge so a quote is
+                                            // never silently presented as trusted.
+                                            const status =
+                                                citationVerificationStatus(
+                                                    annotation,
+                                                );
+                                            const flagged =
+                                                status === "unverified" ||
+                                                status === "repaired";
+                                            const badgeLabel =
+                                                status === "unverified"
+                                                    ? "Not verified against source"
+                                                    : "Corrected to match source";
+                                            const title = flagged
+                                                ? `${formatCitationPage(annotation)} (${status === "unverified" ? "not verified against source" : "corrected to match source"}): "${displayCitationQuote(annotation)}"`
+                                                : `${formatCitationPage(annotation)}: "${displayCitationQuote(annotation)}"`;
+                                            return (
+                                                <button
+                                                    key={`${row.key}:${index}`}
+                                                    type="button"
+                                                    onClick={() =>
+                                                        onCitationClick?.(
+                                                            annotation,
+                                                        )
+                                                    }
+                                                    className={`${RESPONSE_GLASS_ANNOTATION}${flagged ? " text-amber-700" : ""}`}
+                                                    title={title}
+                                                >
+                                                    {flagged && (
+                                                        <AlertTriangle
+                                                            className="mr-0.5 inline h-3 w-3 align-text-top"
+                                                            aria-label={
+                                                                badgeLabel
+                                                            }
+                                                        />
+                                                    )}
+                                                    {annotation.ref}
+                                                </button>
+                                            );
+                                        },
                                     )}
                                 </div>
                             </div>

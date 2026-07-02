@@ -2,6 +2,15 @@ import type { DocIndex } from "../chatToolDefs";
 import { resolveDoc } from "./docResolve";
 import type { CourtlistenerTurnState } from "./types";
 
+// Server-side document-quote verification is layered onto document annotations
+// after they are shaped here (see verifyCitations.ts + stream.ts). Re-exported
+// so the citation surface stays cohesive; createCitationAnnotation itself
+// leaves verification_status undefined and never touches case citations.
+export {
+  verifyDocumentCitationAnnotation,
+  verifyDocumentCitations,
+} from "./verifyCitations";
+
 type ParsedDocumentCitation = {
   kind: "document";
   ref: number;

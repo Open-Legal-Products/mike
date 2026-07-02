@@ -272,9 +272,36 @@ export interface CitationQuote {
   quote: string;
 }
 
+/**
+ * Result of server-side verification of a document quote against the extracted
+ * source text.
+ * - `verified`   — the quote was found and is character-identical to the source.
+ * - `repaired`   — the quote was found under whitespace/case/punctuation-tolerant
+ *                  matching but drifted from the source; `source_excerpt` holds the
+ *                  exact source text and has been swapped into the displayed quote.
+ * - `unverified` — no tolerant match; the model's quote is preserved but untrusted.
+ *
+ * A MISSING status (undefined) must be treated as untrusted by the UI — some
+ * paths (tabular, abort/error persistence) do not run verification.
+ */
+export type CitationVerificationStatus = "verified" | "unverified" | "repaired";
+
+/**
+ * Per-quote verification result. `start_char`/`end_char` index into the
+ * EXTRACTED source text (not the raw file bytes) and are only present for
+ * single-segment quotes that matched.
+ */
+export type QuoteVerification = {
+  status: CitationVerificationStatus;
+  start_char?: number;
+  end_char?: number;
+  source_excerpt?: string;
+};
+
 export type DocumentCitationQuote = {
   page: number | string;
   quote: string;
+  verification?: QuoteVerification;
 };
 
 export type DocumentCitationAnnotation = {
@@ -290,6 +317,12 @@ export type DocumentCitationAnnotation = {
   page: number | string;
   quote: string;
   quotes?: DocumentCitationQuote[];
+  /**
+   * Aggregate verification over all quotes: `unverified` if any quote is
+   * unverified, else `repaired` if any is repaired, else `verified`. Absent on
+   * annotations produced by paths that skip verification.
+   */
+  verification_status?: CitationVerificationStatus;
 };
 
 export type CaseCitationAnnotation = {
@@ -373,6 +406,19 @@ export function formatCitationPage(a: CitationAnnotation): string {
   if (pages.length === 1) return `Page ${pages[0]}`;
   if (typeof a.page === "string") return `Page ${a.page}`;
   return `Page ${a.page}`;
+}
+
+/**
+ * Aggregate verification status of a citation, or `undefined` when unknown.
+ * Case-law citations are existence-verified upstream (CourtListener) and are
+ * never re-marked here, so this always returns `undefined` for them — callers
+ * must not present a document quote with an `undefined` status as trusted.
+ */
+export function citationVerificationStatus(
+  a: CitationAnnotation,
+): CitationVerificationStatus | undefined {
+  if (a.kind === "case") return undefined;
+  return a.verification_status;
 }
 
 /** Produce a reader-friendly version of the quote (replaces [[PAGE_BREAK]] with "..."). */

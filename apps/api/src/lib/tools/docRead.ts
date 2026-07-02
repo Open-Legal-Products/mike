@@ -172,14 +172,30 @@ export async function readDocumentContent(
     }
 }
 
+/** A character is "punctuation" for tolerant matching if it is not a letter,
+ *  number, or whitespace. Dropped entirely (not replaced with a space) so
+ *  "U.S." collapses to "us" and "plaintiff's" to "plaintiffs". */
+function isPunctuation(ch: string): boolean {
+  return !/[\p{L}\p{N}\s]/u.test(ch);
+}
+
 /**
  * Build a whitespace-collapsed, lowercased copy of `text`, plus a map from
  * each character index in the normalized form back to the corresponding
- * index in the original text. Used by `findInDocumentContent` so matches
- * are tolerant of case + whitespace variance but can still return the
- * exact original excerpt.
+ * index in the original text. Used by `findInDocumentContent` (and server-side
+ * citation verification) so matches are tolerant of case + whitespace variance
+ * but can still return the exact original excerpt.
+ *
+ * With `stripPunctuation`, punctuation characters are removed from the
+ * normalized form too, making matching tolerant of punctuation drift (e.g. a
+ * model that adds a stray comma or drops a period). The index map still points
+ * back at the surviving original characters so the recovered excerpt is exact.
  */
-function normalizeWithMap(text: string): { norm: string; origIdx: number[] } {
+export function normalizeWithMap(
+  text: string,
+  opts: { stripPunctuation?: boolean } = {},
+): { norm: string; origIdx: number[] } {
+  const stripPunctuation = opts.stripPunctuation ?? false;
   const norm: string[] = [];
   const origIdx: number[] = [];
   let prevSpace = false;
@@ -191,6 +207,10 @@ function normalizeWithMap(text: string): { norm: string; origIdx: number[] } {
         origIdx.push(i);
         prevSpace = true;
       }
+    } else if (stripPunctuation && isPunctuation(ch)) {
+      // Drop punctuation without disturbing the space-collapsing state so
+      // "foo, bar" -> "foo bar" but "U.S." -> "us".
+      continue;
     } else {
       norm.push(ch.toLowerCase());
       origIdx.push(i);

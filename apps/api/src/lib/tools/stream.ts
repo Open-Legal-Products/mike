@@ -30,6 +30,9 @@ import {
 } from "../chatToolDefs";
 import { throwIfAborted } from "./abort";
 import { runToolCalls } from "./runToolCalls";
+import { readDocumentContent } from "./docRead";
+import { resolveDocLabel } from "./docResolve";
+import { verifyDocumentCitations } from "./verifyCitations";
 import {
   CITATIONS_OPEN_TAG,
   parseCitations,
@@ -518,15 +521,39 @@ export async function runLLMStream(params: {
   // Parse and emit citations from <CITATIONS> block
   const { citations: parsedCitations, diagnostics: citationDiagnostics } =
     parseCitationsWithDiagnostics(fullText);
-  const citations = buildCitations
-    ? buildCitations(fullText)
-    : parsedCitations.map((c) =>
-        createCitationAnnotation(
-          c,
-          docIndex,
-          courtlistenerTurnState.casesByClusterId,
-        ),
-      );
+  let citations: unknown[];
+  if (buildCitations) {
+    // Custom builders (tabular) bypass verification; annotations carry no
+    // verification_status and the UI treats a missing status as untrusted.
+    citations = buildCitations(fullText);
+  } else {
+    const rawCitations = parsedCitations.map((c) =>
+      createCitationAnnotation(
+        c,
+        docIndex,
+        courtlistenerTurnState.casesByClusterId,
+      ),
+    );
+    // Server-side document-quote verification. Fetch each document's extracted
+    // source text at most once per turn (memoized by doc_id), reading only the
+    // bytes already in storage with emitEvents:false so no new events fire and
+    // the air-gap guarantee holds. Case citations pass through untouched.
+    const sourceTextByDocId = new Map<string, Promise<string>>();
+    const getSourceText = (docId: string): Promise<string> => {
+      let pending = sourceTextByDocId.get(docId);
+      if (!pending) {
+        const label = resolveDocLabel(docId, docStore, docIndex);
+        pending = label
+          ? readDocumentContent(label, docStore, () => {}, docIndex, db, {
+              emitEvents: false,
+            })
+          : Promise.resolve("");
+        sourceTextByDocId.set(docId, pending);
+      }
+      return pending;
+    };
+    citations = await verifyDocumentCitations(rawCitations, getSourceText);
+  }
   logger.debug({
     hasCitationsBlock: citationDiagnostics.hasBlock,
     citationsBlockLength: citationDiagnostics.rawLength,
