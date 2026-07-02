@@ -52,6 +52,7 @@ logic lives in `lib/` and the route files are pure HTTP mapping.
 Cross-cutting infrastructure lives in `apps/api/src/lib/`: access control
 (`access.ts`), the LLM provider registry (`llm/`), the storage adapter
 (`storage/`), the tool-call dispatcher (`tools/`), MCP connectors (`mcp/`),
-jurisdiction law libraries (`lawLibraries/`), the BullMQ conversion queue
-(`queue/` + `workers/`), and the air-gap posture (`airgap.ts`,
+jurisdiction law libraries (`lawLibraries/`), the BullMQ background job queues
+(`queue/` + `workers/` — DOCX→PDF conversion and tabular-review extraction; see
+[async-jobs.md](async-jobs.md)), and the air-gap posture (`airgap.ts`,
 `secretGuard.ts`).

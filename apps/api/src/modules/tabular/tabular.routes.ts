@@ -1,8 +1,12 @@
 import { Router } from "express";
 import { requireAuth } from "../../middleware/auth";
 import { createServerSupabase } from "../../lib/supabase";
-import { downloadFile } from "../../lib/storage";
-import { logger } from "../../lib/logger";
+import { env } from "../../lib/env";
+import {
+    streamTabularGenerateAsync,
+    streamTabularRunView,
+} from "./tabular.generateStream";
+import { extractDocumentColumns } from "./tabular.extractDoc";
 import {
     AssistantStreamError,
     buildCancelledAssistantMessage,
@@ -19,8 +23,6 @@ import {
     clearTabularCells,
     deleteTabularChat,
     deleteTabularReview,
-    extractDocxMarkdown,
-    extractPdfMarkdown,
     extractTabularAnnotations,
     generateChatTitle,
     generateColumnPrompt,
@@ -31,7 +33,6 @@ import {
     listTabularChats,
     prepareTabularChat,
     prepareTabularGenerate,
-    queryTabularAllColumns,
     regenerateTabularCell,
     updateTabularReview,
 } from "./tabular.service";
@@ -331,6 +332,22 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
         });
     }
 
+    // Async path: hand extraction to the durable BullMQ queue and turn this
+    // request into a reconnectable view that tails progress. The work survives
+    // a disconnect and retries on failure. Falls through to the historical
+    // inline path when the flag is off (no Redis required).
+    if (env.ASYNC_TABULAR_EXTRACTION === "true") {
+        await streamTabularGenerateAsync({
+            res,
+            db,
+            reviewId,
+            userId,
+            prepared: prepared.data,
+            log: req.log,
+        });
+        return;
+    }
+
     const { columns, cellMap, docs, tabular_model, api_keys } = prepared.data;
 
     res.setHeader("Content-Type", "text/event-stream");
@@ -341,110 +358,71 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
 
     const write = (line: string) => res.write(line);
 
+    const cellFrame = (
+        docId: string,
+        columnIndex: number,
+        content: unknown,
+        status: "generating" | "done" | "error",
+    ): void => {
+        write(
+            `data: ${JSON.stringify({ type: "cell_update", document_id: docId, column_index: columnIndex, content, status })}\n\n`,
+        );
+    };
+
     try {
         await Promise.all(
             docs.map(async (doc) => {
                 const docId = doc.id as string;
-                let markdown = "";
-
-                const filename =
-                    (typeof doc.filename === "string" && doc.filename.trim()
-                        ? doc.filename.trim()
-                        : "Untitled document");
-                const storagePath =
-                    typeof doc.storage_path === "string" ? doc.storage_path : "";
-                const fileType =
-                    typeof doc.file_type === "string" ? doc.file_type : "";
-                if (storagePath) {
-                    const buf = await downloadFile(storagePath);
-                    if (buf) {
-                        try {
-                            markdown =
-                                fileType === "pdf"
-                                    ? await extractPdfMarkdown(buf)
-                                    : await extractDocxMarkdown(buf);
-                        } catch (err) {
-                            logger.error(
-                                { err, docId },
-                                "[tabular/generate] extraction error",
-                            );
-                        }
-                    }
-                }
-
-                // Filter to only columns that need processing
-                const columnsToProcess = columns.filter((col) => {
+                const existingByColumn = new Map<
+                    number,
+                    Record<string, unknown>
+                >();
+                for (const col of columns) {
                     const cell = cellMap.get(`${docId}:${col.index}`);
-                    return !(cell?.status === "done" && cell?.content);
+                    if (cell) existingByColumn.set(col.index, cell);
+                }
+
+                // Shared extraction core (identical to the async worker); the
+                // sink writes SSE frames. Columns the model omits come back in
+                // `missing` — the synchronous path marks them "error" inline
+                // (the async path retries them instead).
+                const { missing } = await extractDocumentColumns({
+                    db,
+                    reviewId,
+                    doc: {
+                        id: docId,
+                        filename:
+                            typeof doc.filename === "string" &&
+                            doc.filename.trim()
+                                ? doc.filename.trim()
+                                : "Untitled document",
+                        storagePath:
+                            typeof doc.storage_path === "string"
+                                ? doc.storage_path
+                                : "",
+                        fileType:
+                            typeof doc.file_type === "string"
+                                ? doc.file_type
+                                : "",
+                    },
+                    columns,
+                    existingByColumn,
+                    model: tabular_model,
+                    apiKeys: api_keys,
+                    sink: {
+                        generating: (id, ci) => cellFrame(id, ci, null, "generating"),
+                        done: (id, ci, result) => cellFrame(id, ci, result, "done"),
+                    },
                 });
-                if (columnsToProcess.length === 0) return;
 
-                // Mark all as generating upfront
-                for (const col of columnsToProcess) {
-                    write(
-                        `data: ${JSON.stringify({ type: "cell_update", document_id: docId, column_index: col.index, content: null, status: "generating" })}\n\n`,
-                    );
-                    const existingCell = cellMap.get(`${docId}:${col.index}`);
-                    if (existingCell) {
-                        await db
-                            .from("tabular_cells")
-                            .update({ status: "generating", content: null })
-                            .eq("id", existingCell.id);
-                    } else {
-                        await db.from("tabular_cells").insert({
-                            review_id: reviewId,
-                            document_id: docId,
-                            column_index: col.index,
-                            status: "generating",
-                        });
-                    }
-                }
-
-                // Single LLM call for all columns, streaming one JSON line per column
-                const receivedColumns = new Set<number>();
-                try {
-                    await queryTabularAllColumns(
-                        tabular_model,
-                        filename,
-                        markdown,
-                        columnsToProcess,
-                        async (columnIndex, result) => {
-                            receivedColumns.add(columnIndex);
-                            await db
-                                .from("tabular_cells")
-                                .update({
-                                    content: JSON.stringify(result),
-                                    status: "done",
-                                })
-                                .eq("review_id", reviewId)
-                                .eq("document_id", docId)
-                                .eq("column_index", columnIndex);
-                            write(
-                                `data: ${JSON.stringify({ type: "cell_update", document_id: docId, column_index: columnIndex, content: result, status: "done" })}\n\n`,
-                            );
-                        },
-                        api_keys,
-                    );
-                } catch (err) {
-                    logger.error(
-                        { err: safeErrorLog(err), docId },
-                        "[tabular/generate] queryTabularAllColumns error",
-                    );
-                }
-
-                // Mark any columns the LLM didn't return as error
-                for (const col of columnsToProcess) {
-                    if (!receivedColumns.has(col.index)) {
-                        await db
-                            .from("tabular_cells")
-                            .update({ status: "error" })
-                            .eq("review_id", reviewId)
-                            .eq("document_id", docId)
-                            .eq("column_index", col.index);
-                        write(
-                            `data: ${JSON.stringify({ type: "cell_update", document_id: docId, column_index: col.index, content: null, status: "error" })}\n\n`,
-                        );
-                    }
+                for (const columnIndex of missing) {
+                    await db
+                        .from("tabular_cells")
+                        .update({ status: "error" })
+                        .eq("review_id", reviewId)
+                        .eq("document_id", docId)
+                        .eq("column_index", columnIndex);
+                    cellFrame(docId, columnIndex, null, "error");
                 }
             }),
         );
@@ -465,6 +443,50 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
         res.end();
     }
 });
+
+// GET /tabular-review/:reviewId/generate/stream — reconnect to an in-flight (or
+// just-finished) generate run without re-triggering work. A client whose POST
+// /generate stream dropped can resume here and catch up on the remaining cells.
+// Pure observer: it never enqueues. (Registered before the /:reviewId/chats
+// group; no path collision since the segments differ.)
+tabularRouter.get(
+    "/:reviewId/generate/stream",
+    requireAuth,
+    async (req, res) => {
+        const userId = res.locals.userId as string;
+        const userEmail = res.locals.userEmail as string | undefined;
+        const { reviewId } = req.params;
+        const db = createServerSupabase();
+
+        const prepared = await prepareTabularGenerate(db, {
+            reviewId,
+            userId,
+            userEmail,
+        });
+        if (!prepared.ok) {
+            if (prepared.kind === "not_found")
+                return void res
+                    .status(404)
+                    .json({ detail: "Review not found" });
+            if (prepared.kind === "no_columns")
+                return void res
+                    .status(400)
+                    .json({ detail: "No columns configured" });
+            return void res.status(422).json({
+                code: "missing_api_key",
+                ...prepared.missingKey,
+            });
+        }
+
+        await streamTabularRunView({
+            res,
+            db,
+            reviewId,
+            prepared: prepared.data,
+            log: req.log,
+        });
+    },
+);
 
 // GET /tabular-review/:reviewId/chats — list chats (metadata only, no messages)
 tabularRouter.get("/:reviewId/chats", requireAuth, async (req, res) => {

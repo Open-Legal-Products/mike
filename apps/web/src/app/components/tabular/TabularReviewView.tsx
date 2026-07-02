@@ -25,6 +25,7 @@ import {
     getTabularReviewPeople,
     regenerateTabularCell,
     streamTabularGeneration,
+    resumeTabularGeneration,
     updateTabularReview,
     uploadReviewDocument,
 } from "@/app/lib/mikeApi";
@@ -360,38 +361,82 @@ export function TRView({ reviewId, projectId }: Props) {
                 ),
             );
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = "";
+            // Apply one SSE frame to the grid. Idempotent — cells are matched
+            // by (document_id, column_index) — so replaying a frame after a
+            // reconnect can't corrupt state.
+            const applyFrame = (data: {
+                type?: string;
+                document_id?: string;
+                column_index?: number;
+                content?: unknown;
+                status?: string;
+            }) => {
+                if (data.type !== "cell_update") return;
+                setCells((prev) =>
+                    prev.map((c) =>
+                        c.document_id === data.document_id &&
+                        c.column_index === data.column_index
+                            ? {
+                                  ...c,
+                                  content: data.content as typeof c.content,
+                                  status: data.status as typeof c.status,
+                              }
+                            : c,
+                    ),
+                );
+            };
 
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split("\n");
-                buffer = lines.pop() ?? "";
-
-                for (const line of lines) {
-                    if (!line.startsWith("data:")) continue;
-                    const dataStr = line.slice(5).trim();
-                    if (dataStr === "[DONE]") break;
-                    try {
-                        const data = JSON.parse(dataStr);
-                        if (data.type === "cell_update") {
-                            setCells((prev) =>
-                                prev.map((c) =>
-                                    c.document_id === data.document_id &&
-                                    c.column_index === data.column_index
-                                        ? {
-                                              ...c,
-                                              content: data.content,
-                                              status: data.status,
-                                          }
-                                        : c,
-                                ),
-                            );
+            // Read an SSE response to completion. Returns true if it saw the
+            // terminal [DONE]; false if the stream dropped first (network error
+            // or the reader ending without [DONE]).
+            const consume = async (res: Response): Promise<boolean> => {
+                if (!res.body) return false;
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = "";
+                let sawDone = false;
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split("\n");
+                        buffer = lines.pop() ?? "";
+                        for (const line of lines) {
+                            if (!line.startsWith("data:")) continue;
+                            const dataStr = line.slice(5).trim();
+                            if (dataStr === "[DONE]") {
+                                sawDone = true;
+                                break;
+                            }
+                            try {
+                                applyFrame(JSON.parse(dataStr));
+                            } catch {}
                         }
-                    } catch {}
+                        if (sawDone) break;
+                    }
+                } catch (err) {
+                    console.error("Generation stream dropped", err);
+                }
+                return sawDone;
+            };
+
+            let sawDone = await consume(response);
+
+            // Reconnect if the stream dropped before completing. In async mode
+            // the extraction jobs survive the disconnect on the server; the GET
+            // resume endpoint tails the remaining cells and catches up from the
+            // DB. Bounded retries with linear backoff.
+            const MAX_RESUMES = 5;
+            for (let attempt = 0; !sawDone && attempt < MAX_RESUMES; attempt++) {
+                await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+                try {
+                    const resumed = await resumeTabularGeneration(reviewId);
+                    if (!resumed.ok) break;
+                    sawDone = await consume(resumed);
+                } catch (err) {
+                    console.error("Generation resume failed", err);
+                    break;
                 }
             }
         } catch (err) {

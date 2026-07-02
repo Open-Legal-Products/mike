@@ -15,9 +15,10 @@ import { initSentry, captureException } from "./lib/observability/sentry";
 initSentry();
 import { app } from "./app";
 import { logger } from "./lib/logger";
-import { env } from "./lib/env";
 import { assertSecretsHardened } from "./lib/secretGuard";
-import { startWorkers, stopWorkers } from "./workers";
+import { anyWorkerEnabled, startWorkers, stopWorkers } from "./workers";
+// Note: `./lib/env` is imported for its validation side effect above; the
+// worker gate reads flags via anyWorkerEnabled() rather than `env` directly.
 
 // Refuse to boot a real deployment (AIRGAPPED/production) on demo/placeholder
 // secrets — a forged service_role token would otherwise bypass RLS entirely.
@@ -47,9 +48,9 @@ process.on("uncaughtException", (err) => {
 
 const server = app.listen(PORT, () => {
   logger.info({ port: PORT }, "Mike backend started");
-  // Start in-process job-queue workers only when async conversion is enabled,
-  // so the default (synchronous) deployment needs no Redis.
-  if (env.ASYNC_DOCUMENT_CONVERSION === "true") {
+  // Start in-process job-queue workers only when at least one async queue is
+  // enabled, so the default (synchronous) deployment needs no Redis.
+  if (anyWorkerEnabled()) {
     startWorkers();
   }
 });

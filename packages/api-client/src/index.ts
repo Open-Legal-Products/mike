@@ -1175,6 +1175,25 @@ export async function streamTabularGeneration(
     );
 }
 
+/**
+ * Reconnect to an in-flight (or just-finished) generate run without
+ * re-triggering work. Used to resume tailing after the POST /generate stream
+ * drops. Emits the same `cell_update` frames and a final `[DONE]`; re-applying
+ * frames is idempotent (cells are matched by document_id + column_index).
+ */
+export async function resumeTabularGeneration(
+    reviewId: string,
+): Promise<Response> {
+    const authHeaders = await getAuthHeader();
+    return clientConfig.fetchImpl(
+        apiUrl(`/tabular-review/${reviewId}/generate/stream`),
+        {
+            method: "GET",
+            headers: { ...authHeaders },
+        },
+    );
+}
+
 export async function streamTabularChat(
     reviewId: string,
     messages: { role: string; content: string }[],
