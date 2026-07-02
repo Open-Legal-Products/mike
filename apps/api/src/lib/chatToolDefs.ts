@@ -440,4 +440,33 @@ export const TOOLS = [
             },
         },
     },
+    {
+        type: "function",
+        function: {
+            name: "search_documents",
+            description:
+                "Semantic (meaning-based) search across the documents in this chat. Returns the most relevant passages with their source document and page for citation. Use this to locate relevant material by concept when you don't know the exact wording — complementary to find_in_document's literal Ctrl+F match. Prefer this over read_document when the documents are long and you only need the passages relevant to a question.",
+            parameters: {
+                type: "object",
+                properties: {
+                    query: {
+                        type: "string",
+                        description:
+                            "The concept or question to search for. Phrase it as the meaning you want, not exact keywords.",
+                    },
+                    top_k: {
+                        type: "integer",
+                        description:
+                            "Maximum number of passages to return (default 8, max 25).",
+                    },
+                    doc_id: {
+                        type: "string",
+                        description:
+                            "Optional. Restrict the search to a single document (e.g. 'doc-0'). Omit to search all documents in the chat.",
+                    },
+                },
+                required: ["query"],
+            },
+        },
+    },
 ];

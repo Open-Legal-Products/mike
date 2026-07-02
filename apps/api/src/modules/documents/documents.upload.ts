@@ -4,6 +4,7 @@ import { storageKey, uploadFile } from "../../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../../lib/convert";
 import { env } from "../../lib/env";
 import { enqueueConversion } from "../../lib/queue/conversionQueue";
+import { maybeEnqueueEmbedding } from "../../lib/queue/embeddingQueue";
 import { resolveContentOrgId } from "../../lib/access";
 import {
   DOCX_MIME,
@@ -149,6 +150,13 @@ export async function createDocumentFromUpload(
         fileType: suffix,
       });
     }
+
+    // Index the new version for semantic search (no-op unless ASYNC_EMBEDDING).
+    await maybeEnqueueEmbedding({
+      documentId: docId,
+      versionId: versionRow.id,
+      userId,
+    });
 
     const { data: updated } = await db
       .from("documents")

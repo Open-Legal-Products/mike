@@ -9,6 +9,7 @@ import {
 } from "../../lib/storage";
 import { docxToPdf } from "../../lib/convert";
 import { loadActiveVersion } from "../../lib/documentVersions";
+import { maybeEnqueueEmbedding } from "../../lib/queue/embeddingQueue";
 import {
   DOCX_MIME,
   countPdfPages,
@@ -249,6 +250,14 @@ export async function createVersionFromDocument(
     };
   }
 
+  // Re-index the new current version for semantic search (no-op unless
+  // ASYNC_EMBEDDING); mirrors the conversion enqueue on the upload path.
+  await maybeEnqueueEmbedding({
+    documentId,
+    versionId: versionRow.id as string,
+    userId: params.userId,
+  });
+
   if (willDeleteSource) {
     const { error: deleteErr } = await deleteDocumentAndVersionFiles(
       db,
@@ -416,6 +425,12 @@ export async function addUploadedVersion(
       detail: "Failed to update document current version.",
     };
   }
+
+  await maybeEnqueueEmbedding({
+    documentId,
+    versionId: versionRow.id as string,
+    userId,
+  });
 
   return { ok: true, version: versionRow };
 }
@@ -614,6 +629,10 @@ export async function writeReplacementVersion(
       .filter((path): path is string => !!path)
       .map((path) => deleteFile(path).catch(() => {})),
   );
+
+  // The version's bytes changed in place — re-index it if it is the current
+  // version (the ingestion job skips it otherwise).
+  await maybeEnqueueEmbedding({ documentId, versionId, userId });
 
   return { ok: true, version: updated };
 }

@@ -4,6 +4,8 @@
 -- newer than the version of Mike they currently have deployed.
 
 create extension if not exists "pgcrypto";
+-- pgvector: powers the document_chunks embedding column + semantic search.
+create extension if not exists vector;
 
 -- ---------------------------------------------------------------------------
 -- User profiles
@@ -501,6 +503,71 @@ create index if not exists document_edits_message_id_idx
 
 create index if not exists document_edits_version_id_idx
   on public.document_edits(version_id);
+
+-- ---------------------------------------------------------------------------
+-- document_chunks — RAG / semantic-retrieval index (pgvector)
+-- ---------------------------------------------------------------------------
+-- Token-aware chunks + embeddings of a document version. RLS default-deny; the
+-- API (service_role) enforces authz in app-layer helpers and only ever hands
+-- match_document_chunks the pre-scoped set of accessible document ids. org_id
+-- mirrors documents.org_id so org members can search shared documents.
+
+create table if not exists public.document_chunks (
+  id uuid primary key default gen_random_uuid(),
+  document_id uuid not null references public.documents(id) on delete cascade,
+  version_id uuid not null references public.document_versions(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  org_id uuid references public.organizations(id) on delete set null,
+  chunk_index int not null,
+  content text not null,
+  page int,
+  token_count int,
+  embedding_model text not null,
+  embedding vector(768) not null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  unique (version_id, chunk_index)
+);
+
+create index if not exists idx_document_chunks_embedding
+  on public.document_chunks using hnsw (embedding vector_cosine_ops);
+create index if not exists idx_document_chunks_document on public.document_chunks(document_id);
+create index if not exists idx_document_chunks_version on public.document_chunks(version_id);
+create index if not exists idx_document_chunks_user on public.document_chunks(user_id);
+create index if not exists idx_document_chunks_org on public.document_chunks(org_id);
+
+alter table public.document_chunks enable row level security;
+
+create or replace function public.match_document_chunks(
+  p_query_embedding vector,
+  p_document_ids uuid[],
+  p_model text,
+  p_match_count int
+)
+returns table (
+  document_id uuid,
+  version_id uuid,
+  chunk_index int,
+  content text,
+  page int,
+  distance double precision
+)
+language sql
+stable
+as $$
+  select
+    c.document_id,
+    c.version_id,
+    c.chunk_index,
+    c.content,
+    c.page,
+    (c.embedding <=> p_query_embedding)::double precision as distance
+  from public.document_chunks c
+  where c.document_id = any (p_document_ids)
+    and c.embedding_model = p_model
+  order by c.embedding <=> p_query_embedding
+  limit greatest(1, p_match_count);
+$$;
 
 -- ---------------------------------------------------------------------------
 -- Workflows
@@ -1080,6 +1147,7 @@ revoke all on public.projects from anon, authenticated;
 revoke all on public.project_subfolders from anon, authenticated;
 revoke all on public.documents from anon, authenticated;
 revoke all on public.document_versions from anon, authenticated;
+revoke all on public.document_chunks from anon, authenticated;
 revoke all on public.document_edits from anon, authenticated;
 revoke all on public.workflows from anon, authenticated;
 revoke all on public.hidden_workflows from anon, authenticated;

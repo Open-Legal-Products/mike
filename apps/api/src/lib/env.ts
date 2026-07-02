@@ -70,6 +70,9 @@ const envSchema = z.object({
     // an optional comma-separated list of extra models to register.
     ENABLE_OLLAMA: z.enum(["true", "false"]).default("false"),
     OLLAMA_MODELS: z.string().optional(),
+    // Extra local embedding model IDs (comma-separated) to register for the
+    // Ollama embedding provider, beyond the built-in defaults (nomic-embed-text …).
+    OLLAMA_EMBEDDING_MODELS: z.string().optional(),
 
     // Air-gapped deployment mode. When "true", the server enforces "no external
     // egress" in code (not just via network isolation): cloud LLM providers
@@ -101,6 +104,31 @@ const envSchema = z.object({
     // frontend to poll document status. When "false" conversion runs inline on
     // the request thread (the historical, synchronous behavior).
     ASYNC_DOCUMENT_CONVERSION: z.enum(["true", "false"]).default("false"),
+    // Off by default: when "true", tabular-review cell extraction is enqueued to
+    // the BullMQ `tabular-extraction` queue (one job per document) instead of
+    // running inline inside the POST /:reviewId/generate SSE request. Extraction
+    // then survives client disconnects and server restarts, and failed documents
+    // retry with backoff. The /generate request becomes a reconnectable *view*
+    // that tails progress over Redis pub/sub (see tabular.generateStream.ts).
+    // Requires REDIS_URL. When "false" extraction runs inline (the historical,
+    // synchronous behavior that dies with the request).
+    ASYNC_TABULAR_EXTRACTION: z.enum(["true", "false"]).default("false"),
+    // Off by default: when "true", chunking + embedding of new/replaced document
+    // versions is enqueued to the BullMQ `document-embedding` queue so the
+    // `search_documents` semantic-search tool has an index to query. When
+    // "false" no embeddings are produced and search_documents returns nothing
+    // (it degrades gracefully). Requires REDIS_URL and a configured embedding
+    // model (EMBEDDING_MODEL / a local Ollama embed model when air-gapped).
+    ASYNC_EMBEDDING: z.enum(["true", "false"]).default("false"),
+    // The single embedding model used to ingest AND search (they must match).
+    // Unset → cloud deployments use text-embedding-3-small; air-gapped uses the
+    // local nomic-embed-text. A vector(N) column has ONE fixed width, so the
+    // whole deployment pins one model; changing it requires re-embedding
+    // (scripts/backfillEmbeddings.ts).
+    EMBEDDING_MODEL: z.string().optional(),
+    // Embedding vector width. MUST equal the vector(N) in the document_chunks
+    // migration (768); adapters request this width where the API supports it.
+    EMBEDDING_DIMENSION: z.coerce.number().positive().default(768),
 
     // Error monitoring (optional). When SENTRY_DSN is unset, Sentry is fully
     // disabled — no SDK init, no network traffic. SENTRY_TRACES_SAMPLE_RATE
