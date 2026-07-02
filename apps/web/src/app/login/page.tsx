@@ -26,7 +26,10 @@ export default function LoginPage() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
+    const [guestLoading, setGuestLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // Gated to non-production builds; the API endpoint is independently gated too.
+    const guestEnabled = process.env.NODE_ENV !== "production";
 
     useEffect(() => {
         if (!authLoading && isAuthenticated) {
@@ -52,6 +55,33 @@ export default function LoginPage() {
             setError(error.message || "An error occurred during login");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleGuest = async () => {
+        setGuestLoading(true);
+        setError(null);
+        try {
+            const apiBase =
+                process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+            const res = await fetch(`${apiBase}/auth/guest`, {
+                method: "POST",
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.detail || "Guest login is unavailable");
+            }
+            const { access_token, refresh_token } = await res.json();
+            const { error } = await supabase.auth.setSession({
+                access_token,
+                refresh_token,
+            });
+            if (error) throw error;
+            router.push("/assistant");
+        } catch (err: any) {
+            setError(err.message || "Guest login failed");
+        } finally {
+            setGuestLoading(false);
         }
     };
 
@@ -130,6 +160,22 @@ export default function LoginPage() {
                             {loading ? "Logging in..." : "Log in"}
                         </Button>
                     </form>
+
+                    {guestEnabled && (
+                        <div className="mt-5 border-t border-gray-200/70 pt-4">
+                            <Button
+                                type="button"
+                                onClick={handleGuest}
+                                disabled={guestLoading}
+                                className="w-full bg-white text-gray-900 border border-gray-300 hover:bg-gray-50"
+                            >
+                                {guestLoading ? "Starting…" : "Continue as guest"}
+                            </Button>
+                            <p className="mt-2 text-center text-xs text-gray-400">
+                                Local development only
+                            </p>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

@@ -13,6 +13,7 @@ import { workflowsRouter } from "./modules/workflows/workflows.routes";
 import { userRouter } from "./modules/user/user.routes";
 import { downloadsRouter } from "./modules/downloads/downloads.routes";
 import { caseLawRouter } from "./modules/case-law/caseLaw.routes";
+import { guestRouter } from "./modules/auth/guest.routes";
 import { getAdminClient } from "./lib/supabase";
 import { checkStorageReady } from "./lib/storage";
 import { env } from "./lib/env";
@@ -176,6 +177,7 @@ app.use("/user", userRouter);
 app.use("/users", userRouter);
 app.use("/download", downloadsRouter);
 app.use("/case-law", caseLawRouter);
+app.use("/auth", guestRouter);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
