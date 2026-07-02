@@ -74,9 +74,9 @@ const envSchema = z.object({
     // Air-gapped deployment mode. When "true", the server enforces "no external
     // egress" in code (not just via network isolation): cloud LLM providers
     // (claude/gemini/openai) are NOT registered and their models are refused at
-    // the request boundary; only local (Ollama) models are served. See
-    // docs/SELF_HOSTING_AIRGAPPED_PLAN.md. Read directly from process.env at
-    // startup as well (registerBuiltinProviders) to avoid import-order coupling.
+    // the request boundary; only local (Ollama) models are served. Read
+    // directly from process.env at startup as well (registerBuiltinProviders)
+    // to avoid import-order coupling.
     AIRGAPPED: z.enum(["true", "false"]).default("false"),
     // Local model used when an air-gapped request would otherwise fall back to a
     // cloud default (main chat / title / tabular). Must be a registered Ollama

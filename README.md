@@ -29,7 +29,7 @@
 
 This repository is a **hardened fork** of [`willchen96/mike`](https://github.com/willchen96/mike), the original open-source Mike project. It tracks upstream and layers on top of it:
 
-- **Security & code-quality hardening** — a multi-phase campaign (prompt-injection fencing, IDOR fixes, timing-safe token handling, structured logging, test coverage floors, and more). See [TECH_DUE_DILIGENCE.md](TECH_DUE_DILIGENCE.md), [REMEDIATION_PLAN.md](REMEDIATION_PLAN.md), and [CHANGELOG.md](CHANGELOG.md).
+- **Security & code-quality hardening** — a multi-phase campaign (prompt-injection fencing, IDOR fixes, timing-safe token handling, structured logging, test coverage floors, and more). See [CHANGELOG.md](CHANGELOG.md) and the git history (every hardening commit documents its rationale); open work is tracked in [docs/ROADMAP.md](docs/ROADMAP.md).
 - **Reorganization & extensibility** — pluggable LLM-provider, storage, and law-library registries so common customizations are one-file, no-core-edit operations.
 - **Microsoft Word add-in** — an Office.js task pane that brings Mike into Word, sharing one design system with the web app.
 

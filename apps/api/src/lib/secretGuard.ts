@@ -4,7 +4,7 @@
 // deployments (AIRGAPPED or production): a self-hoster who copies the demo
 // compose and forgets gen-secrets.sh must not silently ship the Supabase demo
 // JWT secret + keys (which would let anyone forge a service_role token and
-// bypass RLS entirely). See docs/SELF_HOSTING_AIRGAPPED_PLAN.md §10.
+// bypass RLS entirely).
 
 import crypto from "crypto";
 

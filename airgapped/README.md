@@ -1,7 +1,6 @@
 # Air-gapped embedded stack
 
-Implements phase 3 of [the plan](../docs/SELF_HOSTING_AIRGAPPED_PLAN.md): the
-Supabase data plane embedded as **3 services** (Postgres + GoTrue + PostgREST)
+The Supabase data plane embedded as **3 services** (Postgres + GoTrue + PostgREST)
 behind an **nginx gateway**, plus MinIO, Redis, and a local model server — no
 external dependency, no Supabase CLI.
 

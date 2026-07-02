@@ -35,7 +35,7 @@ async function fetchWorkflows(): Promise<WorkflowsData> {
 }
 
 /**
- * Cached read for the workflows list (TECH_DUE_DILIGENCE §4.2). Follows the
+ * Cached read for the workflows list. Follows the
  * `useProjectsQuery` reference pattern: wrap the `@mike/api-client` calls in a
  * typed `useQuery` with a stable key and let React Query handle dedup /
  * stale-while-revalidate. The list page does not gate on auth, so `enabled`

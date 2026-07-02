@@ -7,7 +7,7 @@ import {
 } from "@tanstack/react-query";
 
 /**
- * App-wide React Query provider (TECH_DUE_DILIGENCE §4.2 request-caching layer).
+ * App-wide React Query provider — the request-caching layer for data reads.
  *
  * The QueryClient is created with `useState(() => …)` so it is a single stable
  * instance per browser session — the standard Next.js App Router pattern that

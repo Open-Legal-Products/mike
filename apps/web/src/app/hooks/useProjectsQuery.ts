@@ -12,11 +12,12 @@ import type { Project } from "@/app/components/shared/types";
 export const projectsQueryKey = ["projects"] as const;
 
 /**
- * Reference implementation for the request-caching layer (TECH_DUE_DILIGENCE
- * §4.2). New data *reads* should follow this pattern: wrap the `@mike/api-client`
- * call in a typed `useQuery` hook with a stable query key, and let React Query
- * handle dedup / stale-while-revalidate / focus behaviour from the shared
- * QueryClient defaults (see apps/web/src/components/providers.tsx).
+ * Reference implementation for the request-caching layer (see
+ * query-client-provider.tsx). New data *reads* should follow this pattern: wrap
+ * the `@mike/api-client` call in a typed `useQuery` hook with a stable query
+ * key, and let React Query handle dedup / stale-while-revalidate / focus
+ * behaviour from the shared QueryClient defaults
+ * (see apps/web/src/components/providers.tsx).
  *
  * `enabled` lets callers gate the fetch on auth readiness; while disabled the
  * query stays idle (no fetch) so callers can show their own pre-auth state.

@@ -13,7 +13,7 @@ import type { TabularReview } from "@/app/components/shared/types";
 export const tabularReviewsQueryKey = ["tabular-reviews"] as const;
 
 /**
- * Cached read for the tabular-reviews list (TECH_DUE_DILIGENCE §4.2). Follows
+ * Cached read for the tabular-reviews list. Follows
  * the `useProjectsQuery` reference pattern. The list page does not gate on
  * auth, so `enabled` defaults to `true`. The page pairs this with
  * `useProjectsQuery` (sharing the ["projects"] cache) to label each review's

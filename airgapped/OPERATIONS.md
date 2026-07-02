@@ -1,7 +1,7 @@
 # Air-gapped operations
 
-End-to-end runbook for [the plan](../docs/SELF_HOSTING_AIRGAPPED_PLAN.md). Honest
-about what is one-command vs. a manual pre-step.
+End-to-end runbook for the air-gapped deployment. Honest about what is
+one-command vs. a manual pre-step.
 
 ## What's verified in-repo vs. operator-validated
 

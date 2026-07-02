@@ -31,9 +31,7 @@ acquisition-readiness. Notable changes relative to upstream include:
   and adapters.
 - A Microsoft Word task-pane add-in that brings Mike into Word, sharing one
   design system with the web app.
-- A merge of upstream willchen96/mike into the hardened fork, plus
-  supporting documentation (TECH_DUE_DILIGENCE.md, REMEDIATION_PLAN.md,
-  MANUAL_FOLLOW_UP.md).
+- A merge of upstream willchen96/mike into the hardened fork.
 
 Nothing in this NOTICE modifies or supersedes the terms of the AGPL-3.0
 license in LICENSE. In the event of any conflict, the LICENSE controls.
