@@ -4,7 +4,7 @@
 
 Every access-control decision in Mike is enforced by the **API layer** (Express, via the access helpers in `apps/api/src/lib/access.ts`), not by the language model. See "Authorization posture" below for how this relates to Supabase RLS.
 
-When the LLM calls a tool such as `read_document`, `edit_document`, or `generate_docx`, the tool handler in `apps/api/src/lib/chatTools.ts` independently verifies that the requesting user has permission to access the target document. The model's own stated intent — "the user asked me to read this file" — is never trusted on its own.
+When the LLM calls a tool such as `read_document`, `edit_document`, or `generate_docx`, the tool handler (registered in `apps/api/src/lib/tools/registry/`, dispatched by `apps/api/src/lib/tools/runToolCalls.ts`) independently verifies that the requesting user has permission to access the target document. The model's own stated intent — "the user asked me to read this file" — is never trusted on its own. Built-in handlers always win a name collision with plugin-registered handlers, so a plugin cannot shadow a built-in tool and bypass its access checks or output fencing.
 
 This means:
 - A prompt-injected instruction such as "read all documents belonging to user X" will fail at the tool handler, not at the model.
@@ -31,7 +31,7 @@ The nonce is generated fresh per request (`crypto.randomBytes(16)`) and appears 
 
 The nonce makes it infeasible for injected content to forge the closing tag — the document author cannot predict the per-request nonce they would need to insert to escape the fence. As defense-in-depth, `spotlight()` also neutralizes fence tokens in the wrapped text: it HTML-encodes the `<` of any literal `<untrusted-content>`/`</untrusted-content>` in the input and redacts any occurrence of the live nonce, so even a lenient model never sees a clean, correctly-nonce'd boundary inside the data. (This closed a real gap: earlier only the *opening* tag carried the nonce and the text was unsanitized, so a literal `</untrusted-content>` in a document body could terminate the fence.)
 
-**Where spotlighting is applied** (see `apps/api/src/lib/chatTools.ts`):
+**Where spotlighting is applied** (see `apps/api/src/lib/chatContext.ts` for `spotlight()` and `apps/api/src/lib/tools/registry/` for the tool handlers that fence their outputs):
 | Location | Why it's untrusted |
 |---|---|
 | Document filenames in the `AVAILABLE DOCUMENTS` system-prompt section | User uploads name their own files |
