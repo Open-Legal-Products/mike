@@ -10,21 +10,48 @@ libraries in `packages/`.
 - `packages/api-client` contains the typed HTTP client used by the web app and
   SDKs.
 - `packages/sdk-js` exposes the public JavaScript SDK facade.
+- `packages/shared` is the design system consumed by both `apps/web` and the
+  Word add-in.
 - `apps/api` owns HTTP routing, authentication, persistence, document
   processing, and provider integrations.
 - `apps/web` owns the Next.js user interface.
+- `word-addin/` is the Office.js task pane (not an npm workspace; built via
+  `npm run build:word-addin`).
 
 Dependencies should point inward:
 
 ```text
-apps/web  -> packages/api-client -> packages/core
-apps/api  -> packages/core
-sdk-js    -> packages/api-client -> packages/core
+apps/web   -> packages/api-client -> packages/core
+apps/api   -> packages/core
+sdk-js     -> packages/api-client -> packages/core
+word-addin -> packages/shared (design system), packages/api-client
 ```
 
 ## API Modules
 
-API route implementations live under `apps/api/src/modules/<feature>`.
-Compatibility exports remain under `apps/api/src/routes` so the server entry
-point stays small and stable. New backend behavior should move business logic
-into `*.service.ts` files and database access into `*.repository.ts` files.
+API route implementations live under `apps/api/src/modules/<feature>`, one
+directory per feature (`auth`, `case-law`, `chat`, `documents`, `downloads`,
+`project-chat`, `projects`, `tabular`, `user`, `workflows`), mounted directly
+in `apps/api/src/app.ts`.
+
+The convention inside a module:
+
+- `<module>.routes.ts` — HTTP concerns only: auth extraction, zod request
+  validation, status codes, headers.
+- `<module>.service.ts` — business logic. Service functions take the database
+  client and plain params (never `req`/`res`) and return typed results the
+  routes map onto responses. Large services are decomposed into cohesive
+  sibling files (e.g. `documents.versions.ts`, `tabular.extract.ts`) with
+  `<module>.service.ts` as the stable facade, so importers never chase the
+  internal layout.
+- `__tests__/` — module tests.
+
+Two modules are deliberately routes-only (`case-law`, `downloads`): their
+logic lives in `lib/` and the route files are pure HTTP mapping.
+
+Cross-cutting infrastructure lives in `apps/api/src/lib/`: access control
+(`access.ts`), the LLM provider registry (`llm/`), the storage adapter
+(`storage/`), the tool-call dispatcher (`tools/`), MCP connectors (`mcp/`),
+jurisdiction law libraries (`lawLibraries/`), the BullMQ conversion queue
+(`queue/` + `workers/`), and the air-gap posture (`airgap.ts`,
+`secretGuard.ts`).
