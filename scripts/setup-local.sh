@@ -14,16 +14,13 @@ fi
 echo "==> Starting local Supabase..."
 supabase start
 
-# supabase status outputs JSON in recent CLI versions:
+# Parse `supabase status -o json` with Node (already a prerequisite — no jq needed):
 #   { "API_URL": "...", "ANON_KEY": "...", "SERVICE_ROLE_KEY": "...", ... }
-if ! command -v jq &>/dev/null; then
-  echo "jq not found. Install with: brew install jq"
-  exit 1
-fi
+STATUS_JSON=$(supabase status -o json 2>/dev/null)
 
-STATUS_JSON=$(supabase status 2>/dev/null | sed -n '/^{/,/^}/p')
-
-extract() { echo "$STATUS_JSON" | jq -r ".$1 // empty" 2>/dev/null; }
+extract() {
+  node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s)[process.argv[1]] ?? "")))' "$1" <<<"$STATUS_JSON"
+}
 
 API_URL=$(extract "API_URL")
 ANON_KEY=$(extract "ANON_KEY")

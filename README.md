@@ -73,13 +73,14 @@ To answer questions, Mike sends the relevant document content to whichever model
 
 ### Prerequisites
 
-- Node.js 20+
-- npm
-- A [Supabase](https://supabase.com) project (free tier is fine for local dev)
-- A storage bucket: [Cloudflare R2](https://developers.cloudflare.com/r2/), [Google Cloud Storage](#google-cloud-storage), or [MinIO](https://min.io) running locally
-- At least one LLM API key: [Anthropic](https://console.anthropic.com), [Google Gemini](https://aistudio.google.com), or [OpenAI](https://platform.openai.com)
-- Optional: a [CourtListener](https://www.courtlistener.com) API token for US case law lookup and citation verification
-- LibreOffice (only needed for DOC/DOCX → PDF conversion)
+These are required to run Mike locally. Each item links to its setup instructions.
+
+- **Node.js 20+** and **npm** — install via [nodejs.org](https://nodejs.org/en/download) or [nvm](https://github.com/nvm-sh/nvm#installing-and-updating) (npm ships with Node.js)
+- **Docker** — [install Docker Desktop](https://docs.docker.com/get-docker/); the default setup runs Postgres/Supabase and object storage (MinIO) locally, so no cloud accounts are needed
+- **[Supabase CLI](https://supabase.com/docs/guides/cli/getting-started)** — the recommended setup runs Supabase locally (or use a free [hosted project](https://supabase.com/dashboard) instead — see the alternative in step 2)
+- **At least one LLM API key** — get one from [Anthropic](https://console.anthropic.com), [Google Gemini](https://aistudio.google.com), or [OpenAI](https://platform.openai.com) (or add it later in the UI)
+
+> Some features have their own optional dependencies — LibreOffice for DOC/DOCX conversion, a CourtListener token for US case law lookup. See [Configuration](#configuration) for those; they are not required to run Mike.
 
 ### 1. Clone and install
 
@@ -89,39 +90,33 @@ cd mike
 npm install
 ```
 
-### 2. Configure environment
+### 2. Set up services, database, and env
+
+The recommended path is **fully local** — no cloud accounts. It needs just Docker and the [Supabase CLI](https://supabase.com/docs/guides/cli/getting-started).
 
 ```bash
-cp apps/api/.env.example apps/api/.env        # or create from scratch — see below
-cp apps/web/.env.example apps/web/.env.local  # or create from scratch
+docker compose up -d minio minio-init   # object storage (MinIO)
+./scripts/setup-local.sh                # local Supabase + writes both .env files + applies migrations
 ```
 
-See the [Configuration](#configuration) section for every env var.
-
-### 3. Set up the database
-
-For a **new** Supabase project, open the SQL editor and run `apps/api/schema.sql`.
-
-For an **existing** database, apply migrations incrementally instead:
+Then set the two required secrets in `apps/api/.env` (and optionally an LLM key now — you can also add one later in the UI):
 
 ```bash
-# Install the Supabase CLI then:
-supabase db push
+DOWNLOAD_SIGNING_SECRET=$(openssl rand -hex 32)
+USER_API_KEYS_ENCRYPTION_SECRET=$(openssl rand -hex 32)
+# optional: ANTHROPIC_API_KEY=…   (or GEMINI_API_KEY / OPENAI_API_KEY)
 ```
 
-> Never run the full `schema.sql` against a live database. Use the migration files in `supabase/migrations/`.
+> Deploying, or prefer a managed database? See [Hosted Supabase](#hosted-supabase) for pointing Mike at a cloud Supabase project instead of the local CLI.
 
-### 4. Run locally
+### 3. Run
 
 ```bash
-# Backend (http://localhost:3001)
-npm run dev --prefix apps/api
-
-# Frontend (http://localhost:3000)
-npm run dev --prefix apps/web
+npm run dev:api    # backend  → http://localhost:3001
+npm run dev:web    # frontend → http://localhost:3000
 ```
 
-### 5. First login
+### 4. First login
 
 1. Open [http://localhost:3000](http://localhost:3000) and sign up.
 2. If email confirmation is enabled in Supabase, disable it under **Authentication > Providers > Email** for local dev.
@@ -150,7 +145,24 @@ npm run dev --prefix apps/web
 | `FRONTEND_URL` | `http://localhost:3000` | Used for CORS and redirect URLs |
 | `NODE_ENV` | `development` | `development`, `production`, or `test` |
 
-#### Storage — Cloudflare R2 (default)
+#### Storage — local MinIO (default)
+
+The default. `docker compose up -d minio minio-init` and the `.env.example` values
+work as-is — no cloud account, nothing to configure:
+
+| Variable | Default |
+|---|---|
+| `R2_ENDPOINT_URL` | `http://localhost:9000` |
+| `R2_ACCESS_KEY_ID` | `minioadmin` |
+| `R2_SECRET_ACCESS_KEY` | `minioadmin` |
+| `R2_BUCKET_NAME` | `mike` |
+| `R2_REGION` | `us-east-1` |
+
+<details>
+<summary><strong>Alternative — Cloudflare R2 or any S3-compatible bucket</strong></summary>
+
+For production, point the same `R2_*` vars at a real bucket (`R2_REGION=auto` for
+Cloudflare R2):
 
 | Variable | Description |
 |---|---|
@@ -159,7 +171,10 @@ npm run dev --prefix apps/web
 | `R2_SECRET_ACCESS_KEY` | R2 API token secret |
 | `R2_BUCKET_NAME` | Bucket name (default: `mike`) |
 
-#### Storage — Google Cloud Storage
+</details>
+
+<details>
+<summary><strong>Alternative — Google Cloud Storage</strong></summary>
 
 Set these instead of the R2 vars. See [Extending Mike → Google Cloud Storage](#google-cloud-storage).
 
@@ -170,6 +185,8 @@ Set these instead of the R2 vars. See [Extending Mike → Google Cloud Storage](
 | `GCS_SIGNED_URL_TTL` | Signed URL lifetime in seconds (default: `3600`) |
 
 Auth uses Application Default Credentials — set `GOOGLE_APPLICATION_CREDENTIALS` to a service account key file path for local dev, or use Workload Identity on GKE/Cloud Run with no extra config.
+
+</details>
 
 #### LLM providers
 
@@ -273,6 +290,21 @@ Call this once at startup before any uploads. Set `GCS_BUCKET_NAME` and `GCS_PRO
 ### Custom storage backend
 
 Implement the `StorageAdapter` interface (five methods: `upload`, `download`, `delete`, `getSignedUrl`, `checkReady`) and call `setStorageAdapter()`. See [`lib/storage/adapter.ts`](apps/api/src/lib/storage/adapter.ts) for the interface and [`lib/storage/r2.ts`](apps/api/src/lib/storage/r2.ts) for the reference implementation.
+
+### Hosted Supabase
+
+The [Quick Start](#quick-start) runs Supabase locally via the CLI. For a deployment (or if you'd rather not run it locally), point Mike at a cloud [Supabase](https://supabase.com/dashboard) project instead:
+
+```bash
+cp apps/api/.env.example apps/api/.env
+cp apps/web/.env.local.example apps/web/.env.local
+```
+
+- In `apps/api/.env`, set `SUPABASE_URL` and `SUPABASE_SECRET_KEY` (the **service role** key).
+- In `apps/web/.env.local`, set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY` (the **anon** key).
+- Set the schema: open the project's **SQL Editor** and run `apps/api/schema.sql` for a new project, or apply `supabase/migrations/` incrementally on an existing one (`supabase link` → `supabase db push`).
+
+Storage is independent of this — keep the default local MinIO or point the `R2_*` vars at a cloud bucket (see [Storage](#storage--local-minio-default)).
 
 ### Jurisdiction-specific law library
 

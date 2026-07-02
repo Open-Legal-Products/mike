@@ -21,3 +21,6 @@ coverage
 # Air-gap generated secrets (never commit)
 airgapped/.env.generated
 airgapped/backups/
+
+# Supabase CLI local state
+supabase/.temp/
