@@ -75,7 +75,7 @@ To answer questions, Mike sends the relevant document content to whichever model
 
 These are required to run Mike locally. Each item links to its setup instructions.
 
-- **Node.js 20+** and **npm** — install via [nodejs.org](https://nodejs.org/en/download) or [nvm](https://github.com/nvm-sh/nvm#installing-and-updating) (npm ships with Node.js)
+- **Node.js 22+** and **npm** — install via [nodejs.org](https://nodejs.org/en/download) or [nvm](https://github.com/nvm-sh/nvm#installing-and-updating) (npm ships with Node.js)
 - **Docker** — [install Docker Desktop](https://docs.docker.com/get-docker/); the default setup runs Postgres/Supabase and object storage (MinIO) locally, so no cloud accounts are needed
 - **[Supabase CLI](https://supabase.com/docs/guides/cli/getting-started)** — the recommended setup runs Supabase locally (or use a free [hosted project](https://supabase.com/dashboard) instead — see the alternative in step 2)
 - **At least one LLM API key** — get one from [Anthropic](https://console.anthropic.com), [Google Gemini](https://aistudio.google.com), or [OpenAI](https://platform.openai.com) (or add it later in the UI)
@@ -306,6 +306,14 @@ cp apps/web/.env.local.example apps/web/.env.local
 
 Storage is independent of this — keep the default local MinIO or point the `R2_*` vars at a cloud bucket (see [Storage](#storage--local-minio-default)).
 
+> **Which migration runner?** There are two, for two contexts, over the same
+> `supabase/migrations/` files: local dev uses the Supabase CLI
+> (`supabase migration up`, run for you by `setup-local.sh`); deployments
+> without the CLI — notably the [air-gapped profile](airgapped/OPERATIONS.md) —
+> use `npm run migrate --workspace apps/api`, a ledgered, checksummed runner
+> (`apps/api/scripts/migrate.mjs`) that records applied migrations in
+> `public.schema_migrations` and fails loudly on drift.
+
 ### Jurisdiction-specific law library
 
 Add citation conventions and optional tool schemas for a jurisdiction without touching `chatTools.ts`:
@@ -418,8 +426,14 @@ cd apps/api && npm run test:stack   # auto-reads keys from `supabase status`
 ```
 apps/api/              Express API — routes, LLM adapters, document processing, Supabase access
 apps/web/              Next.js frontend
+word-addin/            Microsoft Word task-pane add-in (Office.js)
 packages/core/         Shared types and utilities (no framework dependencies)
-sdks/python/           Python client SDK
+packages/api-client/   Typed HTTP client for the Mike API (used by web + add-in)
+packages/shared/       Shared design system (web + Word add-in)
+packages/sdk-js/       JS SDK surface (license status: see docs/LICENSING.md)
+sdks/python/           Python client SDK (MIT)
+airgapped/             Turnkey air-gapped self-hosting (compose profile + operator scripts)
+evals/                 Offline LLM eval harness (exit-code gated)
 supabase/migrations/   Incremental database migrations
 schemas/               JSON Schemas for portable formats (workflows, etc.)
 docs/                  Architecture, API, workflow, and safe-local-testing guides

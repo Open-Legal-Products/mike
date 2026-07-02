@@ -13,7 +13,7 @@ import { workflowsRouter } from "./modules/workflows/workflows.routes";
 import { userRouter } from "./modules/user/user.routes";
 import { downloadsRouter } from "./modules/downloads/downloads.routes";
 import { caseLawRouter } from "./modules/case-law/caseLaw.routes";
-import { guestRouter } from "./modules/auth/guest.routes";
+import { guestRouter } from "./modules/auth/auth.routes";
 import { getAdminClient } from "./lib/supabase";
 import { checkStorageReady } from "./lib/storage";
 import { env } from "./lib/env";

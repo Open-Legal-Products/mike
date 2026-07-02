@@ -14,7 +14,7 @@ vi.mock("../../../lib/supabase", () => ({
     },
 }));
 
-import { guestRouter } from "../guest.routes";
+import { guestRouter } from "../auth.routes";
 
 function makeApp() {
     const app = express();

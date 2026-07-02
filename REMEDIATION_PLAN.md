@@ -1,5 +1,10 @@
 # Remediation Plan — Mike (the ~1-quarter hardening)
 
+> **ARCHIVED — COMPLETE (2026-06-30).** Every actionable item in this plan has
+> landed on `main` (see the closing note at the bottom). This document is kept
+> as the historical record of how the hardening was sequenced and verified; for
+> what is still open, see [MANUAL_FOLLOW_UP.md](MANUAL_FOLLOW_UP.md).
+
 Execution plan for the backlog identified in [TECH_DUE_DILIGENCE.md](./TECH_DUE_DILIGENCE.md).
 Sequenced by risk and dependency: safe high-value fixes first, then tests (so the
 big refactors have a safety net), then the structural refactors, then prod-readiness.

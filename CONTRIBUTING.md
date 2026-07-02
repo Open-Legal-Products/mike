@@ -49,7 +49,7 @@ route test that feeds a crafted document.
 
 ## Security
 
-Do not open a public issue for security vulnerabilities. Use [GitHub's private vulnerability reporting](https://github.com/willchen96/mike/security/advisories/new) instead.
+Do not open a public issue for security vulnerabilities. Use GitHub's private vulnerability reporting **on this repository** — see [SECURITY.md](SECURITY.md) for the full policy. (Do not report fork issues to the upstream `willchen96/mike` tracker.)
 
 We will aim to respond promptly and coordinate a disclosure timeline with you.
 

@@ -1,93 +1,47 @@
 # Manual Follow-Up
 
-This file tracks items from `ACTION_PLAN.md` and `FORK_REPORT.md` that should
-not be faked in a quick code pass. They need credentials, product decisions, or
-longer design work.
+This file tracks items from `ACTION_PLAN.md` and `FORK_REPORT.md` that could not
+be closed in a quick code pass — they needed credentials, product decisions, or
+longer design work. **Status refreshed 2026-07-01.** Most of the original list
+has since shipped; the table below maps each item to where it landed, and the
+sections after it describe what is genuinely still open.
 
-## Needs Manual Validation
+## Status of the original items
 
-### Local Full API Test Run
+| Original item | Status | Where it landed |
+|---|:--:|---|
+| Local full API test run (sandbox blocked Supertest) | **Done** | Full suite runs green locally and in CI (`.github/workflows/ci.yml`): 328 passed / 6 skipped as of 2026-07-01. |
+| Supabase integration + RLS/IDOR tests | **Mostly done** | Gated live harness `apps/api/src/__tests__/integration/stack.supabase.test.ts` proves the GoTrue contract, deny-all RLS, tenant isolation, and a leak sweep over all public tables (`npm run test:stack`). Still open: route-level proof for tabular-review and zip/download routes with real JWTs (see below). |
+| Full async job queue | **Done for conversion** | BullMQ + Redis `document-conversion` queue: `apps/api/src/lib/queue/conversionQueue.ts` + `apps/api/src/workers/conversionWorker.ts`, behind `ASYNC_DOCUMENT_CONVERSION`. Still open: workflow-execution queue, job-status API + frontend polling (see below). |
+| Playwright E2E | **Done (needs a live verification run)** | 27 web specs + non-gating `.github/workflows/e2e.yml`. Selectors were written pre-redesign; run `npm run test:e2e` locally before making the workflow required. |
+| MCP connectors | **Done** | User-configurable connectors with OAuth 2.1 (`apps/api/src/lib/mcp/`), DNS-pinned SSRF guard, per-row HKDF secret encryption, and fail-safe tool confirmation. See TECH_DUE_DILIGENCE.md §0. |
+| Local / alternative LLM providers | **Done for Ollama + OpenAI-compatible** | Ollama adapter behind `ENABLE_OLLAMA` (`apps/api/src/lib/llm/providers/ollama.ts`); any OpenAI-compatible endpoint via `OPENAI_BASE_URL` with SSRF guardrails; full offline posture via `AIRGAPPED=true` (see `airgapped/`). OpenRouter/Azure/Bedrock remain undecided product questions. |
 
-The sandbox blocks Supertest's ephemeral listener with `listen EPERM`, so the
-full `npm test --workspace apps/api` command could not be completed here. The
-non-listener subset passed (`112` tests, `1` skipped), and the built API import
-smoke passed.
+## Still open — needs work
 
-Manual setup needed:
+### Route-level RLS proof for tabular review and downloads
 
-1. Run `npm test --workspace apps/api` from a normal terminal.
-2. Optionally remove stale generated output with `rm -rf apps/api/dist` before
-   rebuilding; the current runtime path is `dist/apps/api/src/index.js`.
+The gated stack harness proves the access-helper and RLS boundaries with real
+Supabase data. Still missing: route-level tests (real JWTs, two tenants) for
+`POST /tabular-review`, `GET /tabular-review/:reviewId`,
+`POST /tabular-review/:reviewId/generate`, and the document zip/download routes.
 
-### Supabase Integration And RLS/IDOR Tests
+### Workflow-execution queue + job-status surface
 
-The branch now has mock-based access tests for the core helpers, CI runs
-`supabase db reset` against the local Supabase stack, and a skipped-by-default
-live harness exists at
-`apps/api/src/__tests__/integration/access.supabase.test.ts`.
+Document conversion is off the request thread, but workflow execution still runs
+in-request, and there is no job-status API or frontend polling for queued
+conversions — enabling `ASYNC_DOCUMENT_CONVERSION` in production needs the
+frontend to poll document status. Design the status contract (`jobId`,
+polling/SSE, retries, dead-letter visibility) as its own PR series.
 
-Manual setup needed:
+### One live E2E verification run
 
-1. Run `supabase start`.
-2. Capture the local API URL, anon key, and service role key printed by the CLI.
-3. Run `npm run test:integration:supabase --prefix apps/api`.
-4. Cover:
-   - Already scaffolded: access helper proof that inaccessible document IDs are
-     filtered with real Supabase data.
-   - Still needed: route-level proof that `POST /tabular-review`,
-     `GET /tabular-review/:reviewId`, `POST /tabular-review/:reviewId/generate`,
-     and document zip/download routes enforce that same boundary with real JWTs.
+The Playwright suite was ported onto the merged layout but has not been verified
+against the current UI (selectors may have drifted; chat specs need an
+`ANTHROPIC_API_KEY` secret). Run it once, fix drift, then consider making
+`e2e.yml` a required check.
 
-## Product-Sized Follow-Ups
-
-### Full Async Job Queue
-
-Document conversion and workflow execution still need a durable worker design.
-The action plan recommends BullMQ plus Redis, but that changes the runtime
-architecture and API contract (`jobId`, polling/SSE status, retries, worker
-deployment, dead-letter behavior). Design this as its own PR series.
-
-Partially automated:
-
-- Redis now runs in Docker Compose and is exposed as `redis://localhost:6379`
-  for future BullMQ workers.
-
-Remaining scope:
-
-1. Add BullMQ/ioredis dependencies.
-2. Add `document-ingestion`, `conversion`, and `workflow-execution` queues.
-3. Move LibreOffice conversion out of request handlers.
-4. Add job status APIs and frontend status states.
-5. Add worker health checks and failure visibility.
-
-### Playwright E2E
-
-The critical browser path still needs an end-to-end test:
-
-`sign in -> upload PDF -> ask a question -> receive streamed answer`
-
-This needs a deterministic local Supabase auth setup, local object storage, and
-either a mocked LLM provider or disposable provider keys. Add it after the
-seeded Supabase integration harness exists.
-
-### MCP Connectors
-
-PR #32 and multiple forks built user-configurable MCP connectors with URL,
-headers, and OAuth 2.1. This is valuable, but it needs SSRF protection, secret
-storage, OAuth callback UX, per-request tool scoping, and connector health
-status. Treat it as a feature project, not a drive-by merge.
-
-### Local / Alternative LLM Providers
-
-The provider abstraction is stronger now, and OpenAI-compatible base URL
-support exists through `OPENAI_BASE_URL` with production HTTPS guardrails. The
-fork report still shows demand for Ollama, OpenRouter, Azure OpenAI, and
-Bedrock. Before adding more first-class providers, decide:
-
-- which providers are first-class vs. generic compatible endpoints
-- how users configure base URLs and custom auth headers in the UI
-- what safety checks prevent SSRF for user-provided endpoints
-- how model availability appears in the UI
+## Product-sized follow-ups (unchanged — need product direction)
 
 ### DOCX Tracked Changes Library Replacement
 

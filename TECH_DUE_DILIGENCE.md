@@ -161,6 +161,9 @@ Items #1 and #3 were small and have since been fixed immediately, along with #2 
   `ProjectDocumentsView.tsx` (2,967), `AssistantMessage.tsx` (2,570),
   `TRChatPanel.tsx` (1,927), `TabularReviewView.tsx` (1,140), `DocumentSidePanel.tsx`
   (1,072, 16 callback props). **(High/Critical)**
+  _(Line counts are as of this review, 2026-06-30. Several have since been
+  decomposed — e.g. `AssistantMessage` 2,570→~650 via `assistant-message/*`,
+  `ProjectDocumentsView` 2,967→~1,800, `TRChatPanel` 1,927→~1,160.)_
 - **No data-fetching cache.** `@mike/api-client` sets `cache: "no-store"` on every
   request (`packages/api-client/src/index.ts:130`); lists are refetched without dedup
   or stale-while-revalidate. Recommend React Query/SWR. **(High)**
