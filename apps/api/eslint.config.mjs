@@ -28,6 +28,11 @@ export default [
         rules: {
             // TypeScript-specific
             "no-unused-vars": "off",
+            // no-undef is redundant under TypeScript — tsc already resolves
+            // every identifier, and the rule false-positives on type-only
+            // globals like NodeJS.Timeout / NodeJS.ProcessEnv. Disabling it is
+            // the typescript-eslint-recommended setup for TS-parsed files.
+            "no-undef": "off",
             "no-control-regex": "warn",
             "no-useless-escape": "warn",
             "@typescript-eslint/no-explicit-any": "warn",
@@ -63,6 +68,18 @@ export default [
         rules: {
             "@typescript-eslint/no-explicit-any": "off",
             "security/detect-object-injection": "off",
+        },
+    },
+    {
+        // Standalone Node scripts (migrations, backfills) are plain .mjs run
+        // directly by node, so they get Node's globals (process, console, …).
+        // Without this they only match js.configs.recommended and every
+        // process/console reference trips no-undef.
+        files: ["scripts/**/*.mjs"],
+        languageOptions: {
+            globals: {
+                ...globals.node,
+            },
         },
     },
 ];
