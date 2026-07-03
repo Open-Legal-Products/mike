@@ -7,9 +7,11 @@ import { Spinner } from "@mike/shared/ui/spinner";
 import { MikeIcon } from "@mike/shared/chat/mike-icon";
 
 export function LoginPage(): React.ReactElement {
-  const { login, loading, error } = useAuth();
+  const { login, loginAsGuest, loading, error } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // Gated to non-production builds; the /auth/guest endpoint is gated too.
+  const guestEnabled = process.env.NODE_ENV !== "production";
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
@@ -81,6 +83,23 @@ export function LoginPage(): React.ReactElement {
           >
             {loading ? <Spinner label="Signing in…" /> : "Sign in"}
           </Button>
+
+          {guestEnabled && (
+            <div className="flex flex-col gap-2 border-t border-border pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={loading}
+                onClick={() => void loginAsGuest()}
+              >
+                Continue as guest
+              </Button>
+              <p className="text-center text-xs text-muted-foreground">
+                Local development only
+              </p>
+            </div>
+          )}
         </div>
       </form>
     </div>

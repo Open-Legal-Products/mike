@@ -28,6 +28,11 @@ const REFRESH_KEY = "mike_refresh_token";
 const SUPABASE_URL: string = process.env.REACT_APP_SUPABASE_URL ?? "";
 const SUPABASE_ANON_KEY: string = process.env.REACT_APP_SUPABASE_ANON_KEY ?? "";
 
+// Mike API base — same var the API client uses. In dev the pane calls it over
+// the HTTPS proxy (https://localhost:3000/api → :3001) to avoid mixed content.
+const API_BASE_URL: string =
+  process.env.REACT_APP_API_BASE_URL ?? "http://localhost:3001";
+
 // Refresh a little BEFORE the token's `exp` so an in-flight request can't race
 // the expiry boundary (covers modest client/server clock skew too).
 const EXPIRY_SKEW_SECONDS = 60;
@@ -281,6 +286,44 @@ export async function signIn(email: string, password: string): Promise<void> {
   } catch (e) {
     _loading = false;
     _error = e instanceof Error ? e.message : "Login failed";
+    broadcast();
+  }
+}
+
+/**
+ * Sign in as an ephemeral guest (local development only). Mirrors the web app:
+ * POST {API}/auth/guest returns a Supabase session which we persist like a
+ * normal login. The endpoint is gated to non-production on the server too.
+ */
+export async function signInAsGuest(): Promise<void> {
+  _loading = true;
+  _error = null;
+  broadcast();
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/auth/guest`, { method: "POST" });
+
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as {
+        detail?: string;
+        message?: string;
+      };
+      throw new Error(
+        body.detail ?? body.message ?? "Guest login is unavailable"
+      );
+    }
+
+    const data = (await res.json()) as {
+      access_token: string;
+      refresh_token?: string;
+    };
+    await writeSession(data.access_token, data.refresh_token ?? null);
+    _loading = false;
+    _error = null;
+    broadcast();
+  } catch (e) {
+    _loading = false;
+    _error = e instanceof Error ? e.message : "Guest login failed";
     broadcast();
   }
 }
