@@ -11,7 +11,7 @@ import {
     stripTransientAssistantEvents,
     type ChatMessage,
 } from "../../lib/chatTools";
-import { assertModelAvailable, DEFAULT_MAIN_MODEL, ModelUnavailableError, resolveModel } from "../../lib/llm";
+import { assertModelAvailable, DEFAULT_MAIN_MODEL, DEMO_MODEL, ModelUnavailableError, providerForModel, resolveModel } from "../../lib/llm";
 import { getUserApiKeys } from "../../lib/userSettings";
 import { consumeMessageCredit, refundMessageCredit } from "../../lib/credits";
 import { parseBody } from "../../lib/http";
@@ -28,6 +28,29 @@ import {
 } from "./chat.service";
 
 export const chatRouter = Router();
+
+/**
+ * Pick the model to actually run. If the requested model's provider has no
+ * usable key (env or per-user), fall back to the keyless demo model so the user
+ * gets a helpful placeholder instead of a raw provider auth error. An explicit
+ * demo request, or a provider with a key present, is returned unchanged.
+ * Exported for unit testing.
+ */
+export function resolveDemoFallback(
+    requestedModel: string | null | undefined,
+    apiKeys: Record<string, string | null | undefined>,
+): string {
+    const model = resolveModel(requestedModel, DEFAULT_MAIN_MODEL);
+    if (model === DEMO_MODEL) return model;
+    let provider: string;
+    try {
+        provider = providerForModel(model);
+    } catch {
+        return model; // unknown model — let the normal path surface the error
+    }
+    if (provider === "demo") return model;
+    return apiKeys[provider]?.trim() ? model : DEMO_MODEL;
+}
 
 // Zod schemas mirror the project-chat module's convention (parseBody + zod)
 // so request validation is uniform across the chat surface. project_id is
@@ -311,6 +334,12 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         });
     }
 
+    // Keyless-demo fallback: if the chosen model's provider has no configured
+    // key, answer in demo mode instead of failing with a raw provider auth
+    // error. An explicitly selected demo model is left as-is. This is what makes
+    // a brand-new instance usable before any key is set up.
+    const effectiveModel = resolveDemoFallback(model, apiKeys);
+
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -355,7 +384,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             write,
             workflowStore,
             includeResearchTools: legalResearchUs,
-            model,
+            model: effectiveModel,
             apiKeys,
             signal: streamAbort.signal,
             projectId: resolvedProjectId,

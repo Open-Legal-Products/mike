@@ -15,6 +15,7 @@ export default function AssistantPage() {
         handleNewChat,
         cancel,
         chatId,
+        retryLast,
     } = useAssistantChat();
 
     async function handleInitialSubmit(message: Message) {
@@ -37,6 +38,7 @@ export default function AssistantPage() {
             isResponseLoading={isResponseLoading}
             handleChat={handleChat}
             cancel={cancel}
+            retryLast={retryLast}
         />
     );
 }

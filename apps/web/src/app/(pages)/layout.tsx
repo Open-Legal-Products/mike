@@ -8,6 +8,7 @@ import { ChatHistoryProvider } from "@/app/contexts/ChatHistoryContext";
 import { SidebarContext } from "@/app/contexts/SidebarContext";
 import { PageChromeContext } from "@/app/contexts/PageChromeContext";
 import { AppSidebar } from "@/app/components/shared/AppSidebar";
+import { ApiKeyBanner } from "@/app/components/shared/ApiKeyBanner";
 
 export default function MikeLayout({
     children,
@@ -103,6 +104,7 @@ export default function MikeLayout({
                     }}
                 >
                     <div className="h-dvh flex flex-col bg-gray-50/80">
+                        <ApiKeyBanner />
                         <div className="flex-1 flex min-w-0 overflow-visible">
                             <AppSidebar
                                 isOpen={isSidebarOpen}

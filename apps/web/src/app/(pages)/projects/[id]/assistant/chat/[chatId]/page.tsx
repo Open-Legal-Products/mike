@@ -258,8 +258,14 @@ export default function ProjectAssistantChatPage({ params }: Props) {
         renameChat: renameChatInHistory,
     } = useChatHistoryContext();
     const [initialMessages] = useState<Message[]>(newChatMessages ?? []);
-    const { messages, isResponseLoading, handleChat, setMessages, cancel } =
-        useAssistantChat({ initialMessages, chatId, projectId });
+    const {
+        messages,
+        isResponseLoading,
+        handleChat,
+        setMessages,
+        cancel,
+        retryLast,
+    } = useAssistantChat({ initialMessages, chatId, projectId });
 
     const hasLoaded = useRef(false);
     const hasAutoSent = useRef(false);
@@ -1205,6 +1211,19 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                                                 isResponseLoading
                                             }
                                             isError={!!(msg as any).error}
+                                            errorMessage={(msg as any).error}
+                                            onRetry={
+                                                i === messages.length - 1 &&
+                                                !!(msg as any).error &&
+                                                !isResponseLoading
+                                                    ? retryLast
+                                                    : undefined
+                                            }
+                                            errorModel={
+                                                (messages[lastUserIdx] as any)
+                                                    ?.model
+                                            }
+                                            errorChatId={chatId ?? undefined}
                                             annotations={msg.annotations}
                                             citationStatus={
                                                 msg.citationStatus

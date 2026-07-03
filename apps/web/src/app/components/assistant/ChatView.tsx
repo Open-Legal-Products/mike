@@ -27,6 +27,7 @@ interface Props {
     isResponseLoading: boolean;
     handleChat: (message: Message) => Promise<string | null>;
     cancel: () => void;
+    retryLast?: () => Promise<string | null>;
 }
 
 const ASSISTANT_PANEL_TRANSITION_MS = 500;
@@ -45,6 +46,7 @@ export function ChatView({
     isResponseLoading,
     handleChat,
     cancel,
+    retryLast,
 }: Props) {
     const [tabs, setTabs] = useState<AssistantSidePanelTab[]>([]);
     const [activeTabId, setActiveTabId] = useState<string | null>(null);
@@ -637,6 +639,22 @@ export function ChatView({
                                                 }
                                                 isError={!!msg.error}
                                                 errorMessage={msg.error}
+                                                onRetry={
+                                                    i ===
+                                                        messages.length - 1 &&
+                                                    !!msg.error &&
+                                                    !isResponseLoading &&
+                                                    retryLast
+                                                        ? retryLast
+                                                        : undefined
+                                                }
+                                                errorModel={
+                                                    messages[lastUserIndex]
+                                                        ?.model
+                                                }
+                                                errorChatId={
+                                                    chatId ?? undefined
+                                                }
                                                 annotations={msg.annotations}
                                                 citationStatus={
                                                     msg.citationStatus

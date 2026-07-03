@@ -282,21 +282,29 @@ export function useAssistantChat({
     message: Message,
     opts?: {
       displayedDoc?: { filename: string; documentId: string } | null;
+      /**
+       * Explicit message history to build on, overriding the hook's own
+       * `messages` closure. Used by retry, which trims the errored assistant
+       * turn and re-generates from a known-good history in the same tick
+       * (before the setMessages above has flushed).
+       */
+      baseMessages?: Message[];
     },
   ): Promise<string | null> => {
     if (!message.content.trim()) return null;
 
     setIsResponseLoading(true);
 
-    const lastMessage = messages[messages.length - 1];
+    const currentMessages = opts?.baseMessages ?? messages;
+    const lastMessage = currentMessages[currentMessages.length - 1];
     const isMessageAlreadyAdded =
       lastMessage &&
       lastMessage.role === "user" &&
       lastMessage.content === message.content;
 
     const newMessages: Message[] = isMessageAlreadyAdded
-      ? messages
-      : [...messages, message];
+      ? currentMessages
+      : [...currentMessages, message];
 
     setMessages([
       ...newMessages,
@@ -1262,6 +1270,21 @@ export function useAssistantChat({
     return newChatId;
   };
 
+  /**
+   * Re-run the most recent user turn after a failure. Drops any trailing
+   * assistant message(s) (the errored/partial reply) and re-generates from the
+   * last user message — reusing its original attachments and model.
+   */
+  const retryLast = async (): Promise<string | null> => {
+    if (isResponseLoading) return null;
+    const lastUserIdx = messages.map((m) => m.role).lastIndexOf("user");
+    if (lastUserIdx === -1) return null;
+    const base = messages.slice(0, lastUserIdx + 1);
+    const lastUser = base[base.length - 1];
+    setMessages(base);
+    return handleChat(lastUser, { baseMessages: base });
+  };
+
   return {
     messages,
     isResponseLoading,
@@ -1272,5 +1295,6 @@ export function useAssistantChat({
     setMessages,
     cancel,
     chatId,
+    retryLast,
   };
 }

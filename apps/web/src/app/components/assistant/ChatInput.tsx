@@ -21,15 +21,10 @@ import {
 import { AddDocButton } from "./AddDocButton";
 import { AddDocumentsModal } from "../shared/AddDocumentsModal";
 import { AssistantWorkflowModal } from "./AssistantWorkflowModal";
-import { ApiKeyMissingModal } from "../shared/ApiKeyMissingModal";
-import { ModelToggle } from "./ModelToggle";
+import { ModelToggle, DEMO_MODEL_ID } from "./ModelToggle";
 import { useSelectedModel } from "@/app/hooks/useSelectedModel";
 import { useUserProfile } from "@/contexts/UserProfileContext";
-import {
-    getModelProvider,
-    isModelAvailable,
-    type ModelProvider,
-} from "@/app/lib/modelAvailability";
+import { isModelAvailable } from "@/app/lib/modelAvailability";
 import type { Document, Message } from "../shared/types";
 import { cn } from "@/lib/utils";
 
@@ -75,8 +70,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
     const [compactControls, setCompactControls] = useState(false);
     const [docSelectorOpen, setDocSelectorOpen] = useState(false);
     const [workflowModalOpen, setWorkflowModalOpen] = useState(false);
-    const [apiKeyModalProvider, setApiKeyModalProvider] =
-        useState<ModelProvider | null>(null);
 
     useImperativeHandle(ref, () => ({
         addDoc: (doc: Document) => {
@@ -127,10 +120,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
     const handleSubmit = () => {
         const query = value.trim();
         if (!query || isLoading) return;
-        if (apiKeys && !isModelAvailable(model, apiKeys)) {
-            setApiKeyModalProvider(getModelProvider(model));
-            return;
-        }
+        // If the chosen model has no configured key, fall back to the keyless
+        // demo model so the user still gets an answer. The demo reply and the
+        // global "set up API keys" banner both nudge them to add a real key.
+        const effectiveModel =
+            apiKeys && !isModelAvailable(model, apiKeys) ? DEMO_MODEL_ID : model;
         setValue("");
         if (textareaRef.current) {
             textareaRef.current.style.height = "auto";
@@ -149,7 +143,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
             content: query,
             files: files.length > 0 ? files : undefined,
             workflow: wf ?? undefined,
-            model,
+            model: effectiveModel,
         });
     };
 
@@ -347,11 +341,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                 }}
                 projectName={projectName}
                 projectCmNumber={projectCmNumber}
-            />
-            <ApiKeyMissingModal
-                open={apiKeyModalProvider !== null}
-                provider={apiKeyModalProvider}
-                onClose={() => setApiKeyModalProvider(null)}
             />
         </>
     );

@@ -36,6 +36,7 @@ export * from "./models";
  */
 export { registerProvider } from "./registry";
 import { setupOllama, setupOllamaFromEnv } from "./providers/ollama";
+import { setupDemo } from "./providers/demo";
 
 // ---------------------------------------------------------------------------
 // Register built-in providers
@@ -108,6 +109,11 @@ export function registerBuiltinProviders(
     env: NodeJS.ProcessEnv = process.env,
 ): void {
     const airgapped = env.AIRGAPPED === "true";
+
+    // Keyless demo model — always available (cloud and air-gapped). Lets a
+    // brand-new user get a response before any API key is configured, and backs
+    // the auto-fallback in chat.routes.ts.
+    setupDemo();
 
     if (!airgapped) {
         registerProvider({

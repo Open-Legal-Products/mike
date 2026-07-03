@@ -1,7 +1,11 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, RotateCcw, LifeBuoy } from "lucide-react";
+import {
+    sanitizeAssistantError,
+    buildSupportMailto,
+} from "@/app/lib/assistantError";
 import type {
     AssistantEvent,
     CitationAnnotation,
@@ -35,8 +39,13 @@ interface Props {
     events?: AssistantEvent[];
     isStreaming?: boolean;
     isError?: boolean;
-    /** Human-readable error text rendered alongside the red Mike icon. */
+    /** Raw error text; sanitized to friendly copy before display. */
     errorMessage?: string;
+    /** Re-run the failed turn. Shown as a "Retry" action on errored messages. */
+    onRetry?: () => void;
+    /** Model + chat id — attached to the "Report to support" email context. */
+    errorModel?: string;
+    errorChatId?: string;
     annotations?: CitationAnnotation[];
     citationStatus?: "started" | "partial" | "final";
     onCitationClick?: (citation: CitationAnnotation) => void;
@@ -104,6 +113,9 @@ export function AssistantMessage({
     isStreaming = false,
     isError = false,
     errorMessage,
+    onRetry,
+    errorModel,
+    errorChatId,
     annotations = [],
     citationStatus,
     onCitationClick,
@@ -496,11 +508,42 @@ export function AssistantMessage({
                     </div>
                 ) : null}
 
-                {topLevelErrorMessage && (
-                    <p className="mt-2 text-base font-serif leading-7 text-red-700">
-                        {topLevelErrorMessage}
-                    </p>
-                )}
+                {effectiveErrorMessage &&
+                    !isStreaming &&
+                    (() => {
+                        const friendly =
+                            sanitizeAssistantError(effectiveErrorMessage);
+                        return (
+                            <div className="mt-2">
+                                <p className="text-base font-serif leading-7 text-red-700">
+                                    {friendly.message}
+                                </p>
+                                <div className="mt-2 flex flex-wrap items-center gap-2 font-sans">
+                                    {onRetry && (
+                                        <button
+                                            type="button"
+                                            onClick={onRetry}
+                                            className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                                        >
+                                            <RotateCcw className="h-3.5 w-3.5" />
+                                            Retry
+                                        </button>
+                                    )}
+                                    <a
+                                        href={buildSupportMailto({
+                                            error: friendly,
+                                            model: errorModel,
+                                            chatId: errorChatId,
+                                        })}
+                                        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-gray-500 underline-offset-2 transition-colors hover:text-gray-700 hover:underline"
+                                    >
+                                        <LifeBuoy className="h-3.5 w-3.5" />
+                                        Report to support
+                                    </a>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                 {/* Download card for each edited doc — only after streaming
                     stops, and deduped per document (keep the latest edit). */}
