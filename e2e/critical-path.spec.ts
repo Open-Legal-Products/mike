@@ -6,10 +6,38 @@
  *
  * Prerequisite: auth.setup.ts has already saved the session to e2e/.auth/user.json
  */
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import path from "path";
 
 const PDF_FIXTURE = path.join(__dirname, "fixtures/test.pdf");
+
+/**
+ * Select the built-in keyless "demo" model in the chat input's ModelToggle.
+ *
+ * The default model (Gemini) has no key configured in this environment, so a
+ * submit would be blocked by the ApiKeyMissingModal. The demo model
+ * (ModelToggle DEMO_MODEL_ID) is always available and streams a canned response
+ * via providers/demo.ts, letting the "receive a response" assertion run
+ * deterministically without any provider key. The Radix DropdownMenu trigger's
+ * title is "Choose model" (current model available) or "API key missing for
+ * selected model" (default-Gemini case).
+ */
+async function selectDemoModel(page: Page) {
+    const trigger = page
+        .locator(
+            'button[title="Choose model"], button[title="API key missing for selected model"]',
+        )
+        .first();
+    await expect(trigger).toBeVisible({ timeout: 10_000 });
+    await trigger.click();
+    await page
+        .getByRole("menuitem", { name: "Demo (no key needed)" })
+        .click();
+    // After selection the trigger label reflects the chosen model.
+    await expect(
+        page.getByRole("button", { name: /Demo \(no key needed\)/ }),
+    ).toBeVisible({ timeout: 5_000 });
+}
 
 /* ─── Test 1: authenticated landing ─────────────────────────────────────── */
 
@@ -106,16 +134,16 @@ test("create project, upload PDF, ask a question and receive a response", async 
 
     /* ── Step 6: open the project assistant ───────────────────────────────── */
     /* We're already on /projects/[id] (Documents tab by default). The project
-       assistant lives at ?tab=assistant. Navigate there directly rather than
-       clicking through the tab bar to avoid ambiguity with the "Assistant"
-       item in the sidebar nav. ProjectPage fetches getProject() on mount and
-       does NOT retry, so under the local-Supabase load the page can land on a
-       permanent "Project not found" or a slow skeleton; re-navigate until the
-       assistant tab's "+ Create New" affordance renders. */
+       assistant is now a nested route, /projects/[id]/assistant. Navigate there
+       directly rather than clicking through the tab bar to avoid ambiguity with
+       the "Assistant" item in the sidebar nav. The workspace fetches
+       getProject() on mount and does NOT retry, so under the local-Supabase load
+       the page can land on a permanent "Project not found" or a slow skeleton;
+       re-navigate until the assistant tab's "+ Create New" affordance renders. */
     const projectUrl = page.url().split("?")[0];
     const createNew = page.getByText("+ Create New");
     for (let attempt = 1; attempt <= 6; attempt++) {
-        await page.goto(`${projectUrl}?tab=assistant`);
+        await page.goto(`${projectUrl}/assistant`);
         await page
             .waitForLoadState("networkidle", { timeout: 20_000 })
             .catch(() => {});
@@ -130,28 +158,27 @@ test("create project, upload PDF, ask a question and receive a response", async 
     await page.waitForURL(/\/projects\/.+\/assistant/, { timeout: 10_000 });
     await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
 
-    /* ── Step 7: type a question in the chat input ────────────────────────── */
+    /* ── Step 7: select the keyless demo model, type a question, submit ───── */
     const chatInput = page.getByPlaceholder(
         "Ask a question about your documents...",
     );
     await expect(chatInput).toBeVisible({ timeout: 10_000 });
 
+    /* The default Gemini model has no key configured, so submitting it would be
+       blocked by the ApiKeyMissingModal. Select the keyless demo model so the
+       request actually streams a response. */
+    await selectDemoModel(page);
     await chatInput.fill("What is this document about?");
-    /* Submit with Ctrl+Enter (the chat component intercepts keyboard events) */
-    await chatInput.press("Control+Enter");
+    /* This ChatInput submits on Enter (Shift+Enter inserts a newline). */
+    await chatInput.press("Enter");
 
-    /* ── Step 8: verify a response begins ────────────────────────────────── */
-    /* A loading indicator or first response token appears */
-    /* We look for any element that indicates the assistant is responding */
-    await expect(
-        page.locator('[data-testid="loading"], .animate-pulse, [aria-busy="true"]').first().or(
-            /* Fallback: any new non-empty text appears after the question */
-            page.locator("text=…").first()
-        ),
-    ).toBeVisible({ timeout: 30_000 }).catch(async () => {
-        /* If none of the above appear, at minimum the input should be disabled
-           while the stream is in flight, proving the request was sent */
-        await expect(chatInput).toBeDisabled({ timeout: 30_000 });
+    /* ── Step 8: verify the assistant streams a response ─────────────────── */
+    /* The demo provider always opens its reply with "Demo mode …"
+       (providers/demo.ts buildDemoAnswer). Its appearance proves the message
+       was sent, streamed, and rendered end-to-end — deterministically and
+       without any provider key. */
+    await expect(page.getByText("Demo mode").first()).toBeVisible({
+        timeout: 30_000,
     });
 });
 

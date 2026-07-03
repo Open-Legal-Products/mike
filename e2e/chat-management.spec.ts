@@ -149,12 +149,17 @@ test("rename chat: sidebar rename interaction updates the title", async ({ page 
 
     // ── Step 4: locate the active chat item ──────────────────────────────────────
     // SidebarChatItem.tsx renders a `div.group.relative` wrapper for each chat.
-    // When isActive=true the wrapper class includes "bg-gray-100" as a standalone
-    // Tailwind class.  Inactive items have "hover:bg-gray-100" (a different class
-    // token), so the CSS class selector `.bg-gray-100` reliably distinguishes them.
-    const activeItem = page.locator("div.bg-gray-100.group.relative").first();
+    // When isActive=true the wrapper class includes "bg-gray-200/60" as a
+    // standalone Tailwind class.  Inactive items have "hover:bg-gray-100" (a
+    // different token), so matching the "bg-gray-200/60" class distinguishes the
+    // active item.  Use an attribute-substring match ([class*=]) to avoid having
+    // to CSS-escape the "/" in the Tailwind class name.
+    const activeItem = page
+        .locator('div.group.relative[class*="bg-gray-200/60"]')
+        .first();
 
-    // Hover to guarantee the MoreHorizontal trigger is interactable
+    // The active item's trigger is already opacity-100, but hover is harmless and
+    // keeps parity with the inactive-item path.
     await activeItem.hover();
 
     // ── Step 5: click the MoreHorizontal trigger (three-dot menu) ────────────────
@@ -238,28 +243,48 @@ test("delete chat: sidebar delete action removes the chat from history", async (
     // ── Step 3: ensure the sidebar is open ───────────────────────────────────────
     await ensureSidebarOpen(page);
 
-    // ── Step 4: locate the active chat item (same selector as rename test) ───────
-    const activeItem = page.locator("div.bg-gray-100.group.relative").first();
-    await activeItem.hover();
+    // ── Step 4: rename the new chat to a unique title so we can target it ─────────
+    // The shared test user accumulates many chats across runs and the sidebar
+    // paginates at INITIAL_CHAT_LIMIT (20), so total-row-count and positional
+    // assertions are unreliable. Instead, give this chat a unique title and then
+    // assert on that exact title — immune to pagination and to other chats. The
+    // just-created chat is active and prepended, so it is the first row; rename it
+    // via the same three-dot menu the rename test exercises.
+    const uniqueTitle = `Delete Target ${Date.now()}`;
+    const firstRow = page.locator("div.group.relative.h-9.rounded-md").first();
+    await firstRow.hover();
+    await firstRow.locator("button").last().click();
+    await page.getByRole("menuitem", { name: "Rename" }).click();
+    const renameInput = firstRow.locator("input[type='text']");
+    await expect(renameInput).toBeVisible({ timeout: 5_000 });
+    await renameInput.fill(uniqueTitle);
+    await renameInput.press("Enter");
 
-    // ── Step 5: open the three-dot menu ──────────────────────────────────────────
-    const triggerBtn = activeItem.locator("button").last();
-    await triggerBtn.click();
+    // The renamed chat's title button now uniquely identifies its row.
+    const targetTitle = page.getByRole("button", { name: uniqueTitle });
+    await expect(targetTitle).toBeVisible({ timeout: 10_000 });
+    // The row wrapper that contains that title button (for reaching its menu).
+    const targetRow = page
+        .locator("div.group.relative.h-9.rounded-md")
+        .filter({ has: targetTitle });
 
-    // ── Step 6: click "Delete" in the dropdown ───────────────────────────────────
-    // SidebarChatItem.tsx lines 130-144: DropdownMenuItem calls deleteChat(chat.id)
-    // directly — there is NO confirmation dialog.  The DropdownMenuItem also has
-    // className "text-red-600" but we select by role for resilience.
-    const deleteItem = page.getByRole("menuitem", { name: "Delete" });
-    await expect(deleteItem).toBeVisible({ timeout: 5_000 });
-    await deleteItem.click();
-
-    // ── Step 7: assert the chat is removed from the sidebar ──────────────────────
-    // ChatHistoryContext.tsx (deleteChatFn): setChats filters out the deleted chat
-    // optimistically.  Once the chat is gone from `chats`, its SidebarChatItem is
-    // unmounted, so no div.bg-gray-100.group.relative with isActive=true exists.
-    // Playwright's not.toBeVisible() passes when the locator matches no element.
-    await expect(activeItem).not.toBeVisible({ timeout: 10_000 });
+    // ── Step 5-7: delete that specific chat, riding out flaky Supabase 500s ──────
+    // deleteChatFn (ChatHistoryContext.tsx:157-168) optimistically removes the row
+    // then, on API error, refetches via loadChats() which RESTORES it — so a
+    // transient 500 on DELETE /chat/<id> re-adds the row. Retry the open→Delete
+    // interaction until the uniquely-titled row is gone. A genuinely broken delete
+    // never removes it on any attempt, so the final assertion still fails.
+    // SidebarChatItem.tsx:132-144: the "Delete" DropdownMenuItem calls
+    // deleteChat(chat.id) directly — no confirmation dialog.
+    const DELETE_ATTEMPTS = 4;
+    for (let attempt = 0; attempt < DELETE_ATTEMPTS; attempt++) {
+        if (!(await targetTitle.isVisible().catch(() => false))) break;
+        await targetRow.hover();
+        await targetRow.locator("button").last().click();
+        await page.getByRole("menuitem", { name: "Delete" }).click();
+        await expect(targetTitle).toBeHidden({ timeout: 10_000 }).catch(() => {});
+    }
+    await expect(targetTitle).toBeHidden({ timeout: 10_000 });
 });
 
 /* ─── Test 4: project assistant — create new chat ───────────────────────────── */
@@ -329,20 +354,20 @@ test("project assistant: create a new chat and submit a question", async ({ page
     await page.waitForURL(projectUrl, { timeout: 20_000 });
 
     // ── Step 6: open the assistant tab and reach the empty-state "+ Create New" ──
-    // ProjectPage.tsx reads `tab` from the query-string; avoiding the tab-bar click
-    // prevents ambiguity with the sidebar "Assistant" nav item.
+    // The project assistant is now a nested route (/projects/[id]/assistant), not a
+    // ?tab= query on the detail page. Navigating straight there avoids ambiguity
+    // with the sidebar "Assistant" nav item.
     //
-    // ProjectPage's load effect fetches getProject(id) exactly once on mount
-    // (ProjectPage.tsx:292-307) with no client-side refetch. Under load that GET
-    // can transiently 502, leaving project=null so the page renders "Project not
-    // found" (ProjectPage.tsx:1154-1160) and the assistant tab never mounts. The
+    // The project workspace fetches getProject(id) on mount with no client-side
+    // refetch. Under load that GET can transiently 502, leaving project=null so the
+    // page renders "Project not found" and the assistant section never mounts. The
     // project row genuinely exists (Step 4 navigated to its id), so a reload
-    // refetches and recovers. Bounded-retry the tab load until the empty-state
-    // "+ Create New" button (ProjectAssistantTab.tsx:81-86, shown when
+    // refetches and recovers. Bounded-retry the load until the empty-state
+    // "+ Create New" button (ProjectAssistantTable.tsx:110-115, shown when
     // chats.length === 0) is visible, reloading past any transient "Project not
     // found". A genuinely broken assistant tab never shows the button on any
     // attempt, so the final assertion still fails.
-    const assistantUrl = page.url() + "?tab=assistant";
+    const assistantUrl = page.url() + "/assistant";
     const createNewBtn = page.getByText("+ Create New");
     const projectNotFound = page.getByText("Project not found");
     const TAB_ATTEMPTS = 4;

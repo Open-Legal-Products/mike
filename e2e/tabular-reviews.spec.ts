@@ -215,9 +215,14 @@ test("review detail page renders the table structure and toolbar controls", asyn
     // The breadcrumb header shows the review title via RenameableTitle
     await expect(page.getByText(reviewName)).toBeVisible({ timeout: 10_000 });
 
-    // The breadcrumb also contains a "Tabular Reviews" back-nav button
+    // The breadcrumb also contains a "Tabular Reviews" back-nav button. Scope to
+    // the <main> landmark: the left sidebar nav also has a "Tabular Reviews"
+    // button, so an unscoped role query is a strict-mode violation. exact:true
+    // avoids also matching the mobile-only "Back to Tabular Reviews" control.
     await expect(
-        page.getByRole("button", { name: "Tabular Reviews" }),
+        page
+            .getByRole("main")
+            .getByRole("button", { name: "Tabular Reviews", exact: true }),
     ).toBeVisible({ timeout: 5_000 });
 
     // TRTable always renders a "Document" column header, even when the review

@@ -24,6 +24,7 @@ airgapped/backups/
 
 # Supabase CLI local state
 supabase/.temp/
+supabase/.branches/
 
 # Playwright artifacts and the bootstrapped e2e session (contains auth tokens)
 test-results/
