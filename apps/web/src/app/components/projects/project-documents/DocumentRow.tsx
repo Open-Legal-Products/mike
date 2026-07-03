@@ -252,13 +252,17 @@ export function DocumentRow({
                             onClick={() => void toggleVersions(doc.id)}
                             className="flex items-center gap-1 rounded px-1 py-0.5 hover:bg-gray-100 transition-colors"
                         >
-                            <span>{versionNumber}</span>
+                            <span>v{versionNumber}</span>
                             {isVersionsOpen ? (
                                 <ChevronDown className="h-3 w-3 text-gray-400" />
                             ) : (
                                 <ChevronRight className="h-3 w-3 text-gray-400" />
                             )}
                         </button>
+                    ) : typeof versionNumber === "number" ? (
+                        // Single-version doc: still show its version (was "—",
+                        // which read as "no version" even though V1 exists).
+                        <span className="pl-1">v{versionNumber}</span>
                     ) : (
                         <span className="text-gray-300 pl-1">—</span>
                     )}

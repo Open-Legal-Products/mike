@@ -825,14 +825,10 @@ export function ProjectDocumentsView({ projectId }: Props) {
             setOwnerOnlyAction("delete this document");
             return;
         }
-        const versionCount =
-            versionsByDocId.get(doc.id)?.versions.length ??
-            currentVersionNumber(doc) ??
-            1;
-        if (versionCount <= 1) {
-            void handleRemoveDoc(doc.id);
-            return;
-        }
+        // Always confirm — deleting a document is permanent and removes it from
+        // the whole library (every project/review that references it), so a
+        // single misclick must never delete without a prompt, regardless of how
+        // many versions it has.
         setPendingDeleteStatus("idle");
         setPendingDeleteDoc(doc);
     }
@@ -1751,7 +1747,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                         "Projects",
                         project.name +
                             (project.cm_number
-                                ? ` (${project.cm_number})`
+                                ? ` (#${project.cm_number})`
                                 : ""),
                         "Add Documents",
                     ]}

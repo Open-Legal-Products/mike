@@ -50,9 +50,12 @@ export function PendingDeleteDocMessage({
                 <span className="font-medium text-gray-950">
                     {doc.filename}
                 </span>{" "}
-                has {versionCount}{" "}
-                {versionCount === 1 ? "version" : "versions"}. Deleting this
-                document will delete all of its versions.
+                will be permanently deleted
+                {versionCount > 1
+                    ? `, including all ${versionCount} versions`
+                    : ""}
+                . This removes it from every project and review that uses it and
+                can’t be undone.
             </p>
         </div>
     );
