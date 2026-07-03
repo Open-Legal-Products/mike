@@ -839,6 +839,12 @@ export function TRView({ reviewId, projectId }: Props) {
                                         columns.length === 0 ||
                                         documents.length === 0 ||
                                         savingColumnsConfig,
+                                    title:
+                                        columns.length === 0
+                                            ? "Add at least one column to run the review"
+                                            : documents.length === 0
+                                              ? "Add documents to run the review"
+                                              : "Run the review across all documents",
                                     icon: generating ? (
                                         <Loader2 className="h-4 w-4 animate-spin" />
                                     ) : (

@@ -9,6 +9,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { uploadStandaloneDocument } from "@/app/lib/mikeApi";
+import { toastSuccess, toastError } from "@/lib/toast";
 import type { Document } from "../shared/types";
 
 interface Props {
@@ -37,8 +38,13 @@ export function AddDocButton({
                 files.map((f) => uploadStandaloneDocument(f)),
             );
             uploaded.forEach((doc) => onSelectDoc(doc));
+            toastSuccess(
+                uploaded.length === 1
+                    ? `“${uploaded[0].filename}” saved to your library`
+                    : `${uploaded.length} documents saved to your library`,
+            );
         } catch (err) {
-            console.error("Upload failed:", err);
+            toastError(err, "Upload failed. Please try again.");
         } finally {
             setUploading(false);
             if (fileInputRef.current) fileInputRef.current.value = "";

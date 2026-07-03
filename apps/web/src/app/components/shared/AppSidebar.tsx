@@ -18,14 +18,13 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { MikeIcon } from "@/components/chat/mike-icon";
 import { SidebarChatItem } from "@/app/components/shared/SidebarChatItem";
-import { listProjects } from "@/app/lib/mikeApi";
-import type { Project } from "@/app/components/shared/types";
+import { useProjectsQuery } from "@/app/hooks/useProjectsQuery";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
     { href: "/assistant", label: "Assistant", icon: MessageSquare },
     { href: "/projects", label: "Projects", icon: FolderOpen },
-    { href: "/tabular-reviews", label: "Tabular Review", icon: Table2 },
+    { href: "/tabular-reviews", label: "Tabular Reviews", icon: Table2 },
     { href: "/workflows", label: "Workflows", icon: Library },
 ];
 
@@ -55,35 +54,28 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [projectsCollapsed, setProjectsCollapsed] = useState(false);
     const [historyCollapsed, setHistoryCollapsed] = useState(false);
-    const [projectNames, setProjectNames] = useState<Record<string, string>>(
-        {},
-    );
-    const [recentProjects, setRecentProjects] = useState<Project[] | null>(
-        null,
-    );
 
-    useEffect(() => {
-        if (!user) return;
-        listProjects()
-            .then((projects) => {
-                const map: Record<string, string> = {};
-                for (const p of projects) map[p.id] = p.name;
-                setProjectNames(map);
-                setRecentProjects(
-                    [...projects]
-                        .sort(
-                            (a, b) =>
-                                Date.parse(b.updated_at || b.created_at) -
-                                Date.parse(a.updated_at || a.created_at),
-                        )
-                        .slice(0, 5),
-                );
-            })
-            .catch(() => {
-                setProjectNames({});
-                setRecentProjects([]);
-            });
-    }, [user]);
+    // Read the shared projects cache (React Query) instead of a component-local
+    // copy, so creating/renaming/deleting a project on any page updates the
+    // sidebar reactively without a full reload.
+    const { data: allProjects } = useProjectsQuery(!!user);
+
+    const projectNames = useMemo<Record<string, string>>(() => {
+        const map: Record<string, string> = {};
+        for (const p of allProjects ?? []) map[p.id] = p.name;
+        return map;
+    }, [allProjects]);
+
+    const recentProjects = useMemo(() => {
+        if (!allProjects) return null; // still loading
+        return [...allProjects]
+            .sort(
+                (a, b) =>
+                    Date.parse(b.updated_at || b.created_at) -
+                    Date.parse(a.updated_at || a.created_at),
+            )
+            .slice(0, 5);
+    }, [allProjects]);
 
     useEffect(() => {
         if (!isOpen) setShouldAnimate(true);

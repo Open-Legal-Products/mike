@@ -355,9 +355,8 @@ export function ProjectsOverview() {
                                     Projects
                                 </p>
                                 <p className="mt-1 text-xs text-gray-400 max-w-xs">
-                                    Upload documents into projects and to
-                                    commence chats and tabular reviews with
-                                    them.
+                                    Group documents into a project to run chats
+                                    and tabular reviews across them.
                                 </p>
                                 <button
                                     onClick={() => setModalOpen(true)}
