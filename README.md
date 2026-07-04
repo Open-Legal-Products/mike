@@ -69,6 +69,122 @@ To answer questions, Mike sends the relevant document content to whichever model
 
 ---
 
+## Architecture
+
+> A cheat-sheet for reading, explaining, and defending the codebase. The repo is
+> large because it is a full product, not because it is dense — once you learn
+> the handful of patterns below, ~85k lines collapses into "the same shapes,
+> repeated."
+
+### The 30-second map
+
+```
+apps/api/   ~41k LOC   Express API — one module per feature, one shared lib/ underneath
+apps/web/   ~43k LOC   Next.js App Router — one route per page, container hooks + presenters
+packages/   ~3k  LOC   Shared code (types, HTTP client, design system, SDK surface)
+```
+
+The line count tracks **feature count**, not complexity. Each API module is a
+self-contained feature (documents, chat, tabular reviews, workflows, case-law,
+orgs, users); each web route is one screen over that API. Nothing here is
+framework glue — it is all product surface.
+
+### The API module pattern (learn one, know all of them)
+
+Every feature lives under `apps/api/src/modules/<feature>/` and reads the same
+way. Learn `documents/` or `projects/` once and the other modules follow:
+
+| File | Present in | Responsibility |
+|---|---|---|
+| `*.routes.ts` | every module | **Thin HTTP layer.** Parses the request, calls the service, maps typed results → status codes. No business logic. |
+| `*.service.ts` | every module with real logic (a few thin ones — `auth`, `downloads`, `case-law` — are routes-only) | **Business logic + data access.** Takes an explicit Supabase client (`db`) + request-derived primitives; returns values or typed `{ ok: false, kind }` results. Never touches `req`/`res`. |
+| `*.access.ts` / `*.shared.ts` | where the module needs them | Module-local authorization and shared helpers. Cross-module authorization primitives live in `lib/access.ts`. |
+
+Larger modules split the service by concern rather than growing one file — e.g.
+`projects/` is `projects.crud.ts`, `projects.documents.ts`, `projects.folders.ts`,
+`projects.chats.ts`, and `projects.shared.ts`, re-exported through
+`projects.service.ts` as a single import surface. Same pattern, more files.
+
+### Request lifecycle (a worked example)
+
+A document upload, end to end — the path every write request follows:
+
+```
+POST /projects/:projectId/documents
+  → middleware/auth.ts          requireAuth: verify Supabase JWT → req.user
+  → projects.routes.ts          validate file (extension + magic bytes), call service
+  → ensureProjectUploadAccess   projects.documents.ts: check caller may write here
+  → processProjectDocumentUpload
+        lib/storage.ts          upload original to S3-compatible storage
+        lib/convert.ts          DOCX → PDF rendition for display
+        lib/pdfjs.ts            count pages
+        db.documents / db.document_versions   insert rows, point current_version_id
+  → route maps { ok: true, doc } → 201 JSON   (or { ok:false, kind } → 4xx/5xx)
+```
+
+Read requests are the same minus the storage writes. The invariant everywhere:
+**routes decide HTTP, services decide behaviour, `lib/` does the heavy lifting.**
+
+### Cross-cutting subsystems (`apps/api/src/lib/`)
+
+Modules stay small by composing shared subsystems instead of re-implementing them:
+
+| Area | What it does |
+|---|---|
+| `llm/` | Provider-agnostic LLM adapter (Anthropic / Gemini / OpenAI), streaming, tool-calling |
+| `storage/`, `storage.ts` | S3-compatible object storage adapter (R2 / GCS / MinIO) |
+| `rag/` | Retrieval over document text for chat context |
+| `mcp/` | Model Context Protocol connectors + OAuth |
+| `courtlistener.ts`, `legalSourcesTools/` | Case-law search / retrieval |
+| `access.ts` | Shared authorization primitives (org roles, project access) |
+| `queue/`, `workers/` | Background jobs (BullMQ) |
+| `observability/`, `logger.ts` | OpenTelemetry + Pino structured logging |
+
+### The web app (`apps/web/src/app/`)
+
+Standard Next.js App Router. Routes live under `(pages)/`; shared UI under
+`components/`; data-fetching hooks under `hooks/`.
+
+The pattern that keeps screens readable is **container/presenter**:
+
+- **Presenter** — a `*.tsx` component that is (almost) pure JSX. It receives
+  state + callbacks and renders them. Example: `ProjectDocumentsView.tsx`.
+- **Controller hook** — a `use*.ts` hook holding all the state and handlers
+  (optimistic updates, drag-and-drop, uploads). Example:
+  `project-documents/useProjectDocumentsController.ts`.
+
+Similarly the assistant chat is split into `useAssistantChat.ts` (request
+orchestration), `useAssistantEvents.ts` (the streaming event buffer), and
+`applyAssistantStreamEvent.ts` (a flat SSE dispatch table). When a component
+looks big, its logic has usually been lifted into a sibling hook — read the hook
+for behaviour, the component for layout.
+
+### Where does feature X live?
+
+| Feature | API | Web |
+|---|---|---|
+| Projects & documents | `modules/projects`, `modules/documents` | `components/projects` |
+| Assistant chat | `modules/chat`, `modules/project-chat` | `components/assistant`, `hooks/useAssistantChat.ts` |
+| Tabular reviews | `modules/tabular` | `components/tabular` |
+| Workflows | `modules/workflows` | `components/workflows`, `(pages)/workflows` |
+| Case law | `modules/case-law`, `lib/courtlistener.ts` | rendered inline in assistant messages |
+| MCP connectors | `lib/mcp` | `(pages)/account/connectors` |
+| Orgs & billing | `modules/orgs`, `modules/user` | `(pages)/account` |
+
+### How to read it without being overwhelmed
+
+1. `apps/api/src/app.ts` + `index.ts` — the wiring. This is your map.
+2. One vertical slice: `modules/documents/` routes → service → access. Trace a
+   single request through and the pattern repeats for all eleven modules.
+3. `lib/` — read subsystems on demand as a slice pulls them in.
+4. Web: `app/layout.tsx` → one `(pages)/` route → its presenter → its controller hook.
+
+Internalize the module pattern **once** and most of the API becomes "the same
+four-file shape, eleven times." That is the whole trick to holding this codebase
+in your head.
+
+---
+
 ## Quick Start
 
 ### Prerequisites
