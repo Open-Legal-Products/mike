@@ -1,5 +1,6 @@
 import { Queue } from "bullmq";
 import { getRedisConnection } from "./connection";
+import { withTraceContext, type OtelCarrier } from "../observability/traceContext";
 
 /**
  * BullMQ queue that runs tabular-review cell extraction off the request thread.
@@ -20,6 +21,8 @@ export interface ExtractionJobData {
     userId: string;
     /** documents.id whose columns this job fills. */
     documentId: string;
+    /** W3C trace context of the enqueuing request; absent when tracing is off. */
+    otel?: OtelCarrier;
 }
 
 let queue: Queue<ExtractionJobData> | null = null;
@@ -50,7 +53,7 @@ export function extractionJobId(reviewId: string, documentId: string): string {
  * lives in the `tabular_cells` table, not in the job record.
  */
 export function enqueueExtraction(data: ExtractionJobData) {
-    return getExtractionQueue().add("extract", data, {
+    return getExtractionQueue().add("extract", withTraceContext(data), {
         jobId: extractionJobId(data.reviewId, data.documentId),
         attempts: 3,
         backoff: { type: "exponential", delay: 2000 },

@@ -8,6 +8,8 @@ import { downloadFile, uploadFile } from "../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../lib/convert";
 import { createServerSupabase } from "../lib/supabase";
 import { logger } from "../lib/logger";
+import { withExtractedContext } from "../lib/observability/traceContext";
+import { runWithRequestContext } from "../lib/observability/requestContext";
 
 type Db = ReturnType<typeof createServerSupabase>;
 
@@ -94,7 +96,17 @@ export function createConversionWorker(): Worker<ConversionJobData> {
     worker = new Worker<ConversionJobData>(
         CONVERSION_QUEUE,
         async (job: Job<ConversionJobData>) => {
-            await runConversionJob(job.data);
+            // Bind job context for logs (ALS) and re-parent to the enqueuing
+            // request's trace (extracted from the payload carrier).
+            await runWithRequestContext(
+                { jobId: job.id, queue: CONVERSION_QUEUE },
+                () =>
+                    withExtractedContext(
+                        job.data.otel,
+                        `${CONVERSION_QUEUE} process`,
+                        () => runConversionJob(job.data),
+                    ),
+            );
         },
         {
             connection: getRedisConnection(),

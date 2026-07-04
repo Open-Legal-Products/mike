@@ -14,6 +14,8 @@ import { extractDocumentColumns } from "../modules/tabular/tabular.extractDoc";
 import type { Column } from "../modules/tabular/tabular.shared";
 import { createServerSupabase } from "../lib/supabase";
 import { logger } from "../lib/logger";
+import { withExtractedContext } from "../lib/observability/traceContext";
+import { runWithRequestContext } from "../lib/observability/requestContext";
 
 type Db = ReturnType<typeof createServerSupabase>;
 
@@ -186,7 +188,17 @@ export function createExtractionWorker(): Worker<ExtractionJobData> {
     worker = new Worker<ExtractionJobData>(
         EXTRACTION_QUEUE,
         async (job: Job<ExtractionJobData>) => {
-            await runExtractionJob(job.data);
+            // Bind job context for logs (ALS) and re-parent to the enqueuing
+            // request's trace (extracted from the payload carrier).
+            await runWithRequestContext(
+                { jobId: job.id, queue: EXTRACTION_QUEUE },
+                () =>
+                    withExtractedContext(
+                        job.data.otel,
+                        `${EXTRACTION_QUEUE} process`,
+                        () => runExtractionJob(job.data),
+                    ),
+            );
         },
         {
             connection: getRedisConnection(),

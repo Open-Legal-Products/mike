@@ -13,6 +13,7 @@ import {
 } from "../../modules/tabular/tabular.extract";
 import { chunkMarkdown } from "./chunker";
 import { logger } from "../logger";
+import type { OtelCarrier } from "../observability/traceContext";
 
 type Db = ReturnType<typeof createServerSupabase>;
 
@@ -22,6 +23,8 @@ export interface EmbeddingJobData {
     versionId: string;
     /** Enqueuer — only used for logging/attribution; the row owner is the doc's. */
     userId: string;
+    /** W3C trace context of the enqueuing request; absent when tracing is off. */
+    otel?: OtelCarrier;
 }
 
 export interface EmbeddingIngestDeps {

@@ -1,5 +1,6 @@
 import { Queue } from "bullmq";
 import { getRedisConnection } from "./connection";
+import { withTraceContext, type OtelCarrier } from "../observability/traceContext";
 
 /** BullMQ queue that runs DOCX/DOC → PDF conversion off the request thread. */
 export const CONVERSION_QUEUE = "document-conversion";
@@ -15,6 +16,8 @@ export interface ConversionJobData {
     storagePath: string;
     /** "docx" | "doc". */
     fileType: string;
+    /** W3C trace context of the enqueuing request; absent when tracing is off. */
+    otel?: OtelCarrier;
 }
 
 let queue: Queue<ConversionJobData> | null = null;
@@ -41,7 +44,7 @@ export function conversionJobId(versionId: string): string {
  * submit is deduped by BullMQ instead of racing two conversions.
  */
 export function enqueueConversion(data: ConversionJobData) {
-    return getConversionQueue().add("convert", data, {
+    return getConversionQueue().add("convert", withTraceContext(data), {
         jobId: conversionJobId(data.versionId),
         attempts: 3,
         backoff: { type: "exponential", delay: 2000 },

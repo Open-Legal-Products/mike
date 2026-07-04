@@ -6,6 +6,8 @@ import {
 } from "../lib/queue/embeddingQueue";
 import { runEmbeddingIngestion } from "../lib/rag/ingest";
 import { logger } from "../lib/logger";
+import { withExtractedContext } from "../lib/observability/traceContext";
+import { runWithRequestContext } from "../lib/observability/requestContext";
 
 /**
  * In-process BullMQ worker that runs the chunk+embed ingestion for one document
@@ -27,15 +29,27 @@ export function createEmbeddingWorker(): Worker<EmbeddingJobData> {
     worker = new Worker<EmbeddingJobData>(
         EMBEDDING_QUEUE,
         async (job: Job<EmbeddingJobData>) => {
-            const result = await runEmbeddingIngestion(job.data);
-            logger.info(
-                {
-                    jobId: job.id,
-                    documentId: job.data.documentId,
-                    versionId: job.data.versionId,
-                    result,
-                },
-                "[embedding-worker] ingestion finished",
+            // Bind job context for logs (ALS) and re-parent to the enqueuing
+            // request's trace (extracted from the payload carrier).
+            await runWithRequestContext(
+                { jobId: job.id, queue: EMBEDDING_QUEUE },
+                () =>
+                    withExtractedContext(
+                        job.data.otel,
+                        `${EMBEDDING_QUEUE} process`,
+                        async () => {
+                            const result = await runEmbeddingIngestion(job.data);
+                            logger.info(
+                                {
+                                    jobId: job.id,
+                                    documentId: job.data.documentId,
+                                    versionId: job.data.versionId,
+                                    result,
+                                },
+                                "[embedding-worker] ingestion finished",
+                            );
+                        },
+                    ),
             );
         },
         {

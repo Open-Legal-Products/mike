@@ -2,6 +2,7 @@ import { Queue } from "bullmq";
 import { getRedisConnection } from "./connection";
 import { env } from "../env";
 import { logger } from "../logger";
+import { withTraceContext } from "../observability/traceContext";
 import type { EmbeddingJobData } from "../rag/ingest";
 
 /**
@@ -41,7 +42,7 @@ export function embeddingJobId(versionId: string): string {
  * same jobId.
  */
 export function enqueueEmbedding(data: EmbeddingJobData) {
-    return getEmbeddingQueue().add("embed", data, {
+    return getEmbeddingQueue().add("embed", withTraceContext(data), {
         jobId: embeddingJobId(data.versionId),
         attempts: 3,
         backoff: { type: "exponential", delay: 2000 },
