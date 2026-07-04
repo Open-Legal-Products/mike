@@ -98,7 +98,7 @@ export function CitationsBlock({
                                                     ? "Not verified against source"
                                                     : "Corrected to match source";
                                             const title = flagged
-                                                ? `${formatCitationPage(annotation)} (${status === "unverified" ? "not verified against source" : "corrected to match source"}): "${displayCitationQuote(annotation)}"`
+                                                ? `${formatCitationPage(annotation)} (${badgeLabel.toLowerCase()}): "${displayCitationQuote(annotation)}"`
                                                 : `${formatCitationPage(annotation)}: "${displayCitationQuote(annotation)}"`;
                                             return (
                                                 <button
