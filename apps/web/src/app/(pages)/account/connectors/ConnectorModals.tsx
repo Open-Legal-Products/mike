@@ -1,141 +1,17 @@
 import { Loader2, RefreshCw } from "lucide-react";
-import { Modal } from "@/app/components/shared/Modal";
+import { Modal } from "@/app/components/modals/Modal";
 import { type McpConnectorSummary } from "@/app/lib/mikeApi";
 import { AccountToggle } from "../AccountToggle";
-import type { AddDraft, AddStep, DetailDraft } from "./connectorShared";
+import type { DetailDraft } from "./connectorShared";
 import {
     ConnectorForm,
-    SuccessToolsList,
-    ConnectorAuthScreen,
     ScrollableToolList,
     ToolListSkeleton,
 } from "./ConnectorForm";
 
-// The two connector dialogs: adding a new MCP connector (form -> working ->
-// auth -> success) and editing an existing one (edit fields, manage tools).
-
-export function AddMcpConnectorModal({
-    open,
-    draft,
-    step,
-    result,
-    error,
-    authMessage,
-    showToken,
-    showAdvanced,
-    onDraftChange,
-    onShowTokenChange,
-    onShowAdvancedChange,
-    onClose,
-    onSubmit,
-    onOpenConnector,
-}: {
-    open: boolean;
-    draft: AddDraft;
-    step: AddStep;
-    result: McpConnectorSummary | null;
-    error: string | null;
-    authMessage: string | null;
-    showToken: boolean;
-    showAdvanced: boolean;
-    onDraftChange: (draft: AddDraft) => void;
-    onShowTokenChange: (show: boolean) => void;
-    onShowAdvancedChange: (show: boolean) => void;
-    onClose: () => void;
-    onSubmit: () => Promise<void>;
-    onOpenConnector: (connectorId: string) => void;
-}) {
-    const canSubmit =
-        draft.name.trim().length > 0 &&
-        draft.serverUrl.trim().length > 0 &&
-        step !== "working" &&
-        step !== "auth";
-
-    return (
-        <Modal
-            open={open}
-            onClose={onClose}
-            breadcrumbs={[
-                "Connectors",
-                step === "success"
-                    ? "Connector added"
-                    : step === "auth"
-                      ? "Authenticate connector"
-                      : "Add MCP connector",
-            ]}
-            size="lg"
-            primaryAction={
-                step === "success" && result
-                    ? {
-                          label: "View connector",
-                          onClick: () => onOpenConnector(result.id),
-                      }
-                    : {
-                          label:
-                              step === "working"
-                                  ? "Connecting..."
-                                  : step === "auth"
-                                    ? "Authorizing..."
-                                  : "Connect",
-                          icon:
-                              step === "working" || step === "auth" ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : undefined,
-                          onClick: () => void onSubmit(),
-                          disabled: !canSubmit,
-                      }
-            }
-            cancelAction={
-                step === "working" || step === "auth"
-                    ? false
-                    : { label: step === "success" ? "Done" : "Cancel", onClick: onClose }
-            }
-            footerStatus={
-                error ? (
-                    <div className="rounded-xl border border-white/70 bg-white/75 px-3 py-2 text-sm text-red-600 shadow-[0_12px_32px_rgba(15,23,42,0.10),inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl">
-                        {error}
-                    </div>
-                ) : null
-            }
-        >
-            {step === "success" && result ? (
-                <SuccessToolsList connector={result} />
-            ) : step === "auth" ? (
-                <ConnectorAuthScreen
-                    message={
-                        authMessage ??
-                        "Complete authorization in the popup to finish connecting this MCP server."
-                    }
-                />
-            ) : (
-                <div className="space-y-4 pb-4">
-                    <p className="text-sm text-gray-500">
-                        The assistant will have access to this MCP server and
-                        its enabled tools.
-                    </p>
-                    <ConnectorForm
-                        draft={draft}
-                        showToken={showToken}
-                        showAdvanced={showAdvanced}
-                        showTokenNote
-                        tokenPlaceholder="Bearer token"
-                        disabled={step === "working"}
-                        onDraftChange={(next) =>
-                            onDraftChange({
-                                name: next.name,
-                                serverUrl: next.serverUrl,
-                                bearerToken: next.bearerToken,
-                                customHeaders: next.customHeaders,
-                            })
-                        }
-                        onShowTokenChange={onShowTokenChange}
-                        onShowAdvancedChange={onShowAdvancedChange}
-                    />
-                </div>
-            )}
-        </Modal>
-    );
-}
+// The connector details dialog: edit an existing MCP connector's fields and
+// manage its tools. (Adding a new connector lives in
+// `@/app/components/account/NewMcpModal`.)
 
 export function McpConnectorDetailsModal({
     connector,
@@ -241,7 +117,7 @@ export function McpConnectorDetailsModal({
             }
         >
             {connector && (
-                <div className="flex min-h-0 flex-1 flex-col gap-5 pb-4">
+                <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pb-4">
                     <ConnectorForm
                         draft={draft}
                         showToken={showToken}

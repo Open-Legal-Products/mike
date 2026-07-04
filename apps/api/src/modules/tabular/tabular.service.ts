@@ -26,6 +26,7 @@
 export { missingModelApiKey, parseCellContent, type MissingApiKey } from "./tabular.shared";
 export { formatPromptSuffix } from "./tabular.prompt";
 export {
+    extractDocumentMarkdown,
     extractDocxMarkdown,
     extractPdfMarkdown,
     extractTabularAnnotations,

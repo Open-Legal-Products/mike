@@ -18,7 +18,10 @@
 
 export {
   DOCX_MIME,
-  ALLOWED_TYPES,
+  ALLOWED_DOCUMENT_TYPES,
+  ALLOWED_DOCUMENT_TYPES_LABEL,
+  contentTypeForDocumentType,
+  shouldConvertToPdf,
   MAX_ZIP_DOCUMENTS,
   deleteDocumentAndVersionFiles,
   downloadFilenameForVersion,

@@ -11,9 +11,9 @@ export function ProjectTableLoading({
 }) {
     return (
         <div className="flex-1 flex flex-col min-h-0">
-            <div className="flex items-center h-8 pr-8 border-b border-gray-200 text-xs text-gray-500 font-medium select-none shrink-0">
+            <div className={`sticky top-0 z-[70] ${stickyCellBg} flex items-center h-8 pr-8 border-b border-gray-200 text-xs text-gray-500 font-medium select-none shrink-0`}>
                 <div
-                    className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${stickyCellBg} flex items-center gap-4 self-stretch pl-4 pr-2 text-left`}
+                    className={`sticky left-0 z-[80] ${DOC_NAME_COL_W} ${stickyCellBg} flex items-center gap-4 self-stretch pl-4 pr-2 text-left`}
                 >
                     <div className="h-2.5 w-2.5 rounded bg-gray-100 animate-pulse" />
                     <span>Name</span>

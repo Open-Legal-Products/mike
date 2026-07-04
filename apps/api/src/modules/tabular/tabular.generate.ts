@@ -10,7 +10,7 @@ import { attachActiveVersionPaths } from "../../lib/documentVersions";
 import {
     type ChatMessage,
     type TabularCellStore,
-} from "../../lib/chatTools";
+} from "../../lib/chat";
 import { type UserApiKeys } from "../../lib/llm";
 import { getUserModelSettings } from "../../lib/userSettings";
 import {

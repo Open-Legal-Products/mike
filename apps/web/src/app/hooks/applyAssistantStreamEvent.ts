@@ -8,7 +8,7 @@ import {
 } from "./useAssistantChat.parsers";
 import type {
   AssistantEvent,
-  CitationAnnotation,
+  Citation,
   Message,
 } from "@/app/components/shared/types";
 
@@ -65,6 +65,23 @@ export function applyAssistantStreamEvent(
     updateMatchingEvent,
     pushThinkingPlaceholder,
   } = ctx;
+  // Upstream (a5fe6d6) targets the latest assistant message rather than
+  // blindly the last message, so ask-input turns (where the stream appends
+  // onto an existing assistant message) land in the right place.
+  const updateLatestAssistantMessage = (
+    updater: (message: Message) => Message,
+  ) => {
+    setMessages((prev) => {
+      const assistantIndex = [...prev]
+        .map((message, index) => ({ message, index }))
+        .reverse()
+        .find(({ message }) => message.role === "assistant")?.index;
+      if (assistantIndex === undefined) return prev;
+      const updated = [...prev];
+      updated[assistantIndex] = updater(updated[assistantIndex]);
+      return updated;
+    });
+  };
 
             if (data.type === "chat_id") {
               onChatId(data.chatId as string);
@@ -88,18 +105,11 @@ export function applyAssistantStreamEvent(
                 { type: "error", message },
               ];
               const snapshot = [...eventsRef.current];
-              setMessages((prev) => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                if (last?.role === "assistant") {
-                  updated[updated.length - 1] = {
-                    ...last,
-                    events: snapshot,
-                    error: message,
-                  };
-                }
-                return updated;
-              });
+              updateLatestAssistantMessage((assistantMessage) => ({
+                ...assistantMessage,
+                events: snapshot,
+                error: message,
+              }));
               setIsResponseLoading(false);
               setIsLoadingCitations(false);
               return;
@@ -131,17 +141,10 @@ export function applyAssistantStreamEvent(
                   },
                 ];
                 const snapshot = [...eventsRef.current];
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  const last = updated[updated.length - 1];
-                  if (last?.role === "assistant") {
-                    updated[updated.length - 1] = {
-                      ...last,
-                      events: snapshot,
-                    };
-                  }
-                  return updated;
-                });
+                updateLatestAssistantMessage((message) => ({
+                  ...message,
+                  events: snapshot,
+                }));
               } else {
                 const nextEvents = [...events];
                 nextEvents[nextEvents.length - 1] = {
@@ -151,17 +154,10 @@ export function applyAssistantStreamEvent(
                 };
                 eventsRef.current = nextEvents;
                 const snapshot = [...nextEvents];
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  const last = updated[updated.length - 1];
-                  if (last?.role === "assistant") {
-                    updated[updated.length - 1] = {
-                      ...last,
-                      events: snapshot,
-                    };
-                  }
-                  return updated;
-                });
+                updateLatestAssistantMessage((message) => ({
+                  ...message,
+                  events: snapshot,
+                }));
               }
               return;
             }
@@ -196,17 +192,10 @@ export function applyAssistantStreamEvent(
                 ];
               }
               const snapshot = [...eventsRef.current];
-              setMessages((prev) => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                if (last?.role === "assistant") {
-                  updated[updated.length - 1] = {
-                    ...last,
-                    events: snapshot,
-                  };
-                }
-                return updated;
-              });
+              updateLatestAssistantMessage((message) => ({
+                ...message,
+                events: snapshot,
+              }));
               return;
             }
 
@@ -223,17 +212,10 @@ export function applyAssistantStreamEvent(
                 ];
               }
               const snapshot = [...eventsRef.current];
-              setMessages((prev) => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                if (last?.role === "assistant") {
-                  updated[updated.length - 1] = {
-                    ...last,
-                    events: snapshot,
-                  };
-                }
-                return updated;
-              });
+              updateLatestAssistantMessage((message) => ({
+                ...message,
+                events: snapshot,
+              }));
               pushThinkingPlaceholder();
               return;
             }
@@ -584,6 +566,85 @@ export function applyAssistantStreamEvent(
               return;
             }
 
+            if (data.type === "ask_inputs") {
+              const rawItems = Array.isArray(data.items)
+                ? (data.items as unknown[])
+                : [];
+              const items = rawItems.reduce<Extract<
+                AssistantEvent,
+                { type: "ask_inputs" }
+              >["items"]>((acc, item, index) => {
+                if (!item || typeof item !== "object") return acc;
+                const row = item as Record<string, unknown>;
+                const id =
+                  typeof row.id === "string" && row.id.trim()
+                    ? row.id.trim()
+                    : `input-${index + 1}`;
+                if (row.kind === "choice") {
+                  const options = Array.isArray(row.options)
+                    ? (row.options as unknown[]).flatMap((option) => {
+                        if (!option || typeof option !== "object") return [];
+                        const optionRow = option as Record<string, unknown>;
+                        const value =
+                          typeof optionRow.value === "string"
+                            ? optionRow.value
+                            : typeof optionRow.label === "string"
+                              ? optionRow.label
+                              : "";
+                        if (!value.trim()) return [];
+                        return [
+                          {
+                            value,
+                          },
+                        ];
+                      })
+                    : [];
+                  acc.push({
+                      id,
+                      kind: "choice" as const,
+                      question:
+                        typeof row.question === "string"
+                          ? row.question
+                          : "Please choose an option.",
+                      options,
+                      allow_other: row.allow_other !== false,
+                      other_label:
+                        typeof row.other_label === "string"
+                          ? row.other_label
+                          : "Other",
+                      response_prefix:
+                        typeof row.response_prefix === "string"
+                          ? row.response_prefix
+                          : undefined,
+                  });
+                  return acc;
+                }
+                if (row.kind === "documents") {
+                  const documentTypes = Array.isArray(row.document_types)
+                    ? (row.document_types as unknown[])
+                        .filter((type): type is string => typeof type === "string")
+                        .map((type) => type.trim())
+                        .filter(Boolean)
+                    : [];
+                  acc.push({
+                      id,
+                      kind: "documents" as const,
+                      document_types: documentTypes,
+                      response_prefix:
+                        typeof row.response_prefix === "string"
+                          ? row.response_prefix
+                          : undefined,
+                  });
+                  return acc;
+                }
+                return acc;
+              }, []);
+              if (items.length > 0) {
+                pushEvent({ type: "ask_inputs", items });
+              }
+              return;
+            }
+
             if (data.type === "doc_read") {
               updateMatchingEvent(
                 (e) =>
@@ -776,41 +837,27 @@ export function applyAssistantStreamEvent(
                   ? data.status
                   : "final";
               const incoming = (data.citations ??
-                []) as CitationAnnotation[];
+                []) as Citation[];
               if (status === "started" || status === "partial") {
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  const last = updated[updated.length - 1];
-                  if (last?.role === "assistant") {
-                    updated[updated.length - 1] = {
-                      ...last,
-                      annotations: incoming,
-                      citationStatus: status,
-                    };
-                  }
-                  return updated;
-                });
+                updateLatestAssistantMessage((message) => ({
+                  ...message,
+                  citations: incoming,
+                  citationStatus: status,
+                }));
                 return;
               }
               // End-of-stream signal — scrub any lingering
               // placeholders so they don't persist into the
               // finalised message. First finalize content so adding
-              // annotations cannot re-render the markdown/citation view
+              // citations cannot re-render the markdown/citation view
               // against a streaming block.
               finalizeStreamingContent();
               clearStreamingPlaceholders();
-              setMessages((prev) => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                if (last?.role === "assistant") {
-                  updated[updated.length - 1] = {
-                    ...last,
-                    annotations: incoming,
-                    citationStatus: incoming.length ? "final" : undefined,
-                  };
-                }
-                return updated;
-              });
+              updateLatestAssistantMessage((message) => ({
+                ...message,
+                citations: incoming,
+                citationStatus: incoming.length ? "final" : undefined,
+              }));
               return;
             }
 }

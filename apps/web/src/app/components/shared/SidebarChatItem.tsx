@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useChatHistoryContext } from "@/app/contexts/ChatHistoryContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
+import { OwnerOnlyPopup } from "@/app/components/popups/OwnerOnlyPopup";
 import type { Chat } from "@/app/components/shared/types";
 import { cn } from "@/lib/utils";
 
@@ -146,7 +146,7 @@ export function SidebarChatItem({ chat, isActive, onSelect, projectName }: Props
                     </DropdownMenu>
                 </>
             )}
-            <OwnerOnlyModal
+            <OwnerOnlyPopup
                 open={!!ownerOnlyAction}
                 action={ownerOnlyAction ?? undefined}
                 onClose={() => setOwnerOnlyAction(null)}

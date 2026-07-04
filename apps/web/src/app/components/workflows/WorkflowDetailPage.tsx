@@ -6,25 +6,38 @@ import dynamic from "next/dynamic";
 import {
     Check,
     ChevronDown,
-    Info,
+    Globe,
     Pencil,
     Plus,
     Trash2,
     Users,
     X,
 } from "lucide-react";
-import { deleteWorkflow, getWorkflow, updateWorkflow } from "@/app/lib/mikeApi";
-import { ShareWorkflowModal } from "@/app/components/workflows/ShareWorkflowModal";
+import {
+    deleteWorkflowShare,
+    deleteWorkflow,
+    getWorkflow,
+    listWorkflowShares,
+    lookupUserByEmail,
+    shareWorkflow,
+    updateWorkflow,
+    type ProjectPeople,
+} from "@/app/lib/mikeApi";
+import { UseWorkflowModal } from "@/app/components/workflows/UseWorkflowModal";
 import { WFEditColumnModal } from "@/app/components/workflows/WFEditColumnModal";
 import { WFColumnViewModal } from "@/app/components/workflows/WFColumnViewModal";
 import { AddColumnModal } from "@/app/components/tabular/AddColumnModal";
-import type { ColumnConfig, Workflow } from "@/app/components/shared/types";
-import { BUILT_IN_WORKFLOWS } from "@/app/components/workflows/builtinWorkflows";
+import type {
+    ColumnConfig,
+    Workflow,
+} from "@/app/components/shared/types";
 import { formatIcon, formatLabel } from "@/app/components/tabular/columnFormat";
-import { ConfirmPopup } from "@/app/components/shared/ConfirmPopup";
+import { ConfirmPopup } from "@/app/components/popups/ConfirmPopup";
 import { HeaderActionsMenu } from "@/app/components/shared/HeaderActionsMenu";
+import { PeopleModal } from "@/app/components/modals/PeopleModal";
+import { OpenSourceWorkflowModal } from "@/app/components/workflows/OpenSourceWorkflowModal";
 import { PageHeader } from "@/app/components/shared/PageHeader";
-import { WorkflowDetailsModal } from "@/app/components/workflows/WorkflowDetailsModal";
+import { NewWorkflowModal } from "@/app/components/workflows/NewWorkflowModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
 // dynamic import keeps Tiptap (browser-only) out of the SSR bundle
@@ -43,8 +56,11 @@ interface Props {
 
 type SaveStatus = "idle" | "saving" | "saved";
 type DeleteStatus = "idle" | "loading" | "complete";
+type WorkflowShare = Awaited<ReturnType<typeof listWorkflowShares>>[number];
 
 const NAME_COL_W = "w-[332px] shrink-0";
+const WORKFLOW_CONTRIBUTIONS_ENABLED =
+    process.env.NEXT_PUBLIC_WORKFLOW_CONTRIBUTIONS_ENABLED === "true";
 
 // ---------------------------------------------------------------------------
 // Page
@@ -54,20 +70,19 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
     const { user } = useAuth();
     const { profile } = useUserProfile();
     const stickyCellBg = "bg-[#fafbfc]";
-    const builtinWorkflow =
-        BUILT_IN_WORKFLOWS.find((w) => w.id === id && w.type === workflowType) ??
-        null;
-    const isBuiltin = builtinWorkflow !== null;
 
     const [workflow, setWorkflow] = useState<Workflow | null>(null);
     const [loading, setLoading] = useState(true);
     const [notFound, setNotFound] = useState(false);
 
     const readOnly =
-        isBuiltin ||
         (workflow?.is_system ?? false) ||
         workflow?.allow_edit === false;
     const canShare = !readOnly && (workflow?.is_owner ?? true);
+    const canOpenSource =
+        WORKFLOW_CONTRIBUTIONS_ENABLED &&
+        canShare &&
+        workflow?.is_system !== true;
 
     // Editor state
     const [promptMd, setPromptMd] = useState("");
@@ -85,11 +100,14 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
     const [editingColumn, setEditingColumn] = useState<ColumnConfig | null>(null);
     const [viewingColumn, setViewingColumn] = useState<ColumnConfig | null>(null);
 
-    // Share popover
+    // Share / use / details popovers
     const [shareOpen, setShareOpen] = useState(false);
+    const [workflowSharedWith, setWorkflowSharedWith] = useState<string[]>([]);
     const [detailsOpen, setDetailsOpen] = useState(false);
+    const [useOpen, setUseOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [deleteStatus, setDeleteStatus] = useState<DeleteStatus>("idle");
+    const [openSourceOpen, setOpenSourceOpen] = useState(false);
 
     // Column actions dropdown
     const [colActionsOpen, setColActionsOpen] = useState(false);
@@ -109,19 +127,6 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
     // Load workflow
     // ---------------------------------------------------------------------------
     useEffect(() => {
-        if (isBuiltin) {
-            const wf = builtinWorkflow;
-            if (!wf) {
-                setNotFound(true);
-            } else {
-                setWorkflow(wf);
-                setPromptMd(wf.prompt_md ?? "");
-                setColumns(wf.columns_config ?? []);
-            }
-            setLoading(false);
-            return;
-        }
-
         getWorkflow(id)
             .then((wf) => {
                 if (wf.type !== workflowType) {
@@ -138,7 +143,83 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
             })
             .catch(() => setNotFound(true))
             .finally(() => setLoading(false));
-    }, [id, isBuiltin, builtinWorkflow, workflowType]);
+    }, [id, workflowType]);
+
+    const fetchWorkflowShares = useCallback(async () => {
+        const shares = await listWorkflowShares(id);
+        setWorkflowSharedWith(
+            shares.map((share) => share.shared_with_email.trim().toLowerCase()),
+        );
+        return shares;
+    }, [id]);
+
+    const fetchWorkflowPeople = useCallback(async (): Promise<ProjectPeople> => {
+        const shares = await fetchWorkflowShares();
+        const members = await Promise.all(
+            shares.map(async (share) => {
+                const email = share.shared_with_email.trim().toLowerCase();
+                const userResult = await lookupUserByEmail(email).catch(
+                    () => null,
+                );
+                return {
+                    email,
+                    display_name:
+                        userResult?.exists === true
+                            ? userResult.display_name
+                            : null,
+                };
+            }),
+        );
+        return {
+            owner: {
+                user_id: user?.id ?? workflow?.user_id ?? "",
+                email: user?.email ?? null,
+                display_name: profile?.displayName ?? null,
+            },
+            members,
+        };
+    }, [
+        fetchWorkflowShares,
+        profile?.displayName,
+        user?.email,
+        user?.id,
+        workflow?.user_id,
+    ]);
+
+    async function handleWorkflowSharedWithChange(nextSharedWith: string[]) {
+        const nextEmails = [
+            ...new Set(
+                nextSharedWith
+                    .map((email) => email.trim().toLowerCase())
+                    .filter(Boolean),
+            ),
+        ];
+        const currentShares = await listWorkflowShares(id);
+        const currentByEmail = new Map<string, WorkflowShare>();
+        for (const share of currentShares) {
+            currentByEmail.set(
+                share.shared_with_email.trim().toLowerCase(),
+                share,
+            );
+        }
+
+        const added = nextEmails.filter((email) => !currentByEmail.has(email));
+        const removed = currentShares.filter(
+            (share) =>
+                !nextEmails.includes(
+                    share.shared_with_email.trim().toLowerCase(),
+                ),
+        );
+
+        await Promise.all([
+            ...removed.map((share) => deleteWorkflowShare(id, share.id)),
+            ...(added.length > 0
+                ? [shareWorkflow(id, { emails: added, allow_edit: false })]
+                : []),
+        ]);
+
+        await fetchWorkflowShares();
+    }
 
     // ---------------------------------------------------------------------------
     // Debounced auto-save for prompt
@@ -160,17 +241,6 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
         },
         [id, readOnly],
     );
-
-    async function handleWorkflowDetailsSave(values: { title: string }) {
-        if (!workflow || readOnly || !values.title) return;
-        if (values.title === workflow.title) return;
-        const updated = await updateWorkflow(id, { title: values.title });
-        setWorkflow({
-            ...updated,
-            shared_by_name:
-                updated.shared_by_name ?? workflow.shared_by_name ?? null,
-        });
-    }
 
     async function handleDeleteWorkflow() {
         if (!workflow || readOnly || workflow.is_owner === false) return;
@@ -198,7 +268,13 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
         setSaveStatus("saving");
         try {
             const updated = await updateWorkflow(id, { columns_config: next });
-            setWorkflow(updated);
+            setWorkflow((current) => ({
+                ...updated,
+                open_source_submission:
+                    updated.open_source_submission ??
+                    current?.open_source_submission ??
+                    null,
+            }));
             setSaveStatus("saved");
             setTimeout(() => setSaveStatus("idle"), 2000);
         } catch {
@@ -243,6 +319,7 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                     ]}
                 />
                 <div className="flex min-h-0 flex-1 flex-col">
+                    <WorkflowMetadataSkeleton />
                     {workflowType === "tabular" ? (
                         <TabularWorkflowEditorSkeleton />
                     ) : (
@@ -260,6 +337,11 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
             </div>
         );
     }
+
+    const defaultContributorName =
+        profile?.displayName?.trim() || user?.email || "your account name";
+    const openSourcePending =
+        workflow.open_source_submission?.status === "pending";
 
     return (
         <div className="flex flex-col h-full">
@@ -281,6 +363,10 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                     },
                 ]}
                 actions={[
+                    {
+                        label: "Use",
+                        onClick: () => setUseOpen(true),
+                    },
                     saveStatus !== "idle"
                         ? {
                               type: "custom",
@@ -312,17 +398,24 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                                       title="Workflow actions"
                                       items={[
                                           {
-                                              label: "Rename",
+                                              label: "Edit details",
                                               icon: Pencil,
                                               onSelect: () =>
                                                   setDetailsOpen(true),
                                           },
-                                          {
-                                              label: "Workflow Details",
-                                              icon: Info,
-                                              onSelect: () =>
-                                                  setDetailsOpen(true),
-                                          },
+                                          ...(canOpenSource
+                                              ? [
+                                                    {
+                                                        label:
+                                                            "Open source this",
+                                                        icon: Globe,
+                                                        onSelect: () =>
+                                                            setOpenSourceOpen(
+                                                                true,
+                                                            ),
+                                                    },
+                                                ]
+                                              : []),
                                           {
                                               label: "Delete",
                                               icon: Trash2,
@@ -341,25 +434,50 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                         : null,
                 ]}
             />
-            <WorkflowDetailsModal
+            <UseWorkflowModal
+                workflows={[]}
+                workflow={useOpen ? workflow : null}
+                onClose={() => setUseOpen(false)}
+                skipSelect
+            />
+            <NewWorkflowModal
                 open={detailsOpen}
-                workflow={workflow}
-                canEdit={!readOnly}
-                canShare={canShare}
-                currentUserDisplayName={profile?.displayName}
-                currentUserEmail={user?.email}
+                editWorkflow={workflow}
                 onClose={() => setDetailsOpen(false)}
-                onSave={handleWorkflowDetailsSave}
-                onShareWorkflow={() => {
+                onCreated={() => undefined}
+                onUpdated={(updated) => {
+                    setWorkflow((current) =>
+                        current
+                            ? {
+                                  ...current,
+                                  ...updated,
+                                  shared_by_name:
+                                      updated.shared_by_name ??
+                                      current.shared_by_name ??
+                                      null,
+                                  open_source_submission:
+                                      updated.open_source_submission ??
+                                      current.open_source_submission ??
+                                      null,
+                              }
+                            : updated,
+                    );
                     setDetailsOpen(false);
-                    setShareOpen(true);
                 }}
             />
             {shareOpen && (
-                <ShareWorkflowModal
-                    workflowId={id}
-                    workflowName={workflow.title}
+                <PeopleModal
+                    open={shareOpen}
                     onClose={() => setShareOpen(false)}
+                    resource={{ id, shared_with: workflowSharedWith }}
+                    fetchPeople={fetchWorkflowPeople}
+                    currentUserEmail={user?.email ?? null}
+                    breadcrumb={[
+                        "Workflows",
+                        workflow.title,
+                        "People",
+                    ]}
+                    onSharedWithChange={handleWorkflowSharedWithChange}
                 />
             )}
             <ConfirmPopup
@@ -375,9 +493,29 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                     setDeleteStatus("idle");
                 }}
             />
+            <OpenSourceWorkflowModal
+                open={openSourceOpen}
+                onClose={() => setOpenSourceOpen(false)}
+                workflowId={id}
+                defaultContributorName={defaultContributorName}
+                pending={openSourcePending}
+                onSubmitted={(submission) =>
+                    setWorkflow((current) =>
+                        current
+                            ? {
+                                  ...current,
+                                  open_source_submission: submission,
+                              }
+                            : current,
+                    )
+                }
+            />
 
             {/* Body */}
             <div className="flex-1 min-h-0 flex flex-col">
+                {/* Metadata */}
+                <WorkflowMetadata workflow={workflow} />
+
                 {workflow.type === "assistant" ? (
                     /* ── Assistant: WYSIWYG editor ── */
                     <div className="flex-1 min-h-0 px-4 pb-2 pt-0 md:px-10 md:pb-3">
@@ -488,9 +626,9 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                                         <div
                                             key={col.index}
                                             onClick={() => readOnly ? setViewingColumn(col) : setEditingColumn(col)}
-                                            className="group flex items-center h-10 pr-3 md:pr-10 border-b border-gray-50 hover:bg-gray-100 cursor-pointer transition-colors"
+                                            className="group flex items-center h-10 pr-3 md:pr-10 border-b border-gray-50 hover:bg-gray-100/70 cursor-pointer transition-colors"
                                         >
-                                            <div className={`sticky left-0 z-[60] ${NAME_COL_W} py-2 pl-4 pr-2 ${isChecked ? "bg-gray-50" : stickyCellBg} transition-colors group-hover:bg-gray-100`}>
+                                            <div className={`sticky left-0 z-[60] ${NAME_COL_W} py-2 pl-4 pr-2 ${isChecked ? "bg-gray-50" : stickyCellBg} transition-colors group-hover:bg-gray-100/70`}>
                                                 <div className="flex min-w-0 items-center gap-4">
                                                     <input
                                                         type="checkbox"
@@ -574,6 +712,77 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
             )}
         </div>
     );
+}
+
+function WorkflowMetadata({ workflow }: { workflow: Workflow }) {
+    const fields: { label: string; value: string }[] = [
+        { label: "Type", value: workflow.type === "tabular" ? "Tabular" : "Assistant" },
+        { label: "Source", value: getWorkflowSourceLabel(workflow) },
+    ];
+    if (workflow.language) fields.push({ label: "Language", value: workflow.language });
+    if (workflow.version) fields.push({ label: "Version", value: workflow.version });
+    if (workflow.practice) fields.push({ label: "Practice", value: workflow.practice });
+    if (workflow.jurisdictions?.length) {
+        fields.push({ label: "Jurisdiction", value: workflow.jurisdictions.join(", ") });
+    }
+    if (workflow.open_source_submission) {
+        const statusLabels: Record<
+            NonNullable<Workflow["open_source_submission"]>["status"],
+            string
+        > = {
+            pending: "Pending review",
+            approved: "Approved",
+            rejected: "Rejected",
+        };
+        fields.push({
+            label: "Open source",
+            value: statusLabels[workflow.open_source_submission.status],
+        });
+    }
+
+    return (
+        <div className="flex flex-wrap gap-x-8 gap-y-3 px-4 py-3 text-xs shrink-0 md:px-10">
+            {fields.map(({ label, value }) => (
+                <div key={label} className="flex flex-col gap-0.5">
+                    <span className="text-gray-400">{label}</span>
+                    <span className="text-gray-700">{value}</span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function WorkflowMetadataSkeleton() {
+    const fields = [
+        { labelWidth: "w-8", valueWidth: "w-16" },
+        { labelWidth: "w-10", valueWidth: "w-14" },
+        { labelWidth: "w-12", valueWidth: "w-20" },
+        { labelWidth: "w-10", valueWidth: "w-12" },
+        { labelWidth: "w-12", valueWidth: "w-24" },
+    ];
+
+    return (
+        <div className="flex shrink-0 flex-wrap gap-x-8 gap-y-3 px-4 py-3 md:px-10">
+            {fields.map((field, index) => (
+                <div key={index} className="flex flex-col gap-1">
+                    <div
+                        className={`h-2.5 ${field.labelWidth} animate-pulse rounded bg-gray-100`}
+                    />
+                    <div
+                        className={`h-3 ${field.valueWidth} animate-pulse rounded bg-gray-100`}
+                    />
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function getWorkflowSourceLabel(workflow: Workflow) {
+    if (workflow.is_system) return "System";
+    if (workflow.is_owner === false) {
+        return workflow.shared_by_name?.trim() || "Shared";
+    }
+    return "User";
 }
 
 function AssistantWorkflowEditorSkeleton() {

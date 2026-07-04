@@ -15,7 +15,7 @@ import {
     stripTransientAssistantEvents,
     TABULAR_TOOLS,
     type ChatMessage,
-} from "../../lib/chatTools";
+} from "../../lib/chat";
 import { getUserModelSettings } from "../../lib/userSettings";
 import { safeErrorLog, safeErrorMessage } from "../../lib/safeError";
 import {
@@ -195,6 +195,8 @@ tabularRouter.patch("/:reviewId", requireAuth, async (req, res) => {
                 return void res.status(403).json({
                     detail: "Only the review owner can change sharing",
                 });
+            case "missing_user":
+                return void res.status(400).json({ detail: result.detail });
             case "move_forbidden":
                 return void res.status(403).json({
                     detail: "Only the review owner can move a review",
@@ -677,17 +679,18 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
                 const partial = buildCancelledAssistantMessage({
                     fullText: err.fullText,
                     events: err.events,
-                    buildAnnotations: (fullText) =>
+                    buildCitations: (fullText) =>
                         extractTabularAnnotations(fullText, tabularStore),
                 });
+                const annotations = partial.citations;
                 const { error: saveError } = await db
                     .from("tabular_review_chat_messages")
                     .insert({
                         chat_id: chatId,
                         role: "assistant",
                         content: partial.events.length ? partial.events : null,
-                        annotations: partial.annotations.length
-                            ? partial.annotations
+                        annotations: annotations.length
+                            ? annotations
                             : null,
                     });
                 if (saveError) {

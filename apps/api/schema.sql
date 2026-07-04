@@ -14,6 +14,7 @@ create extension if not exists vector;
 create table if not exists public.user_profiles (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null unique references auth.users(id) on delete cascade,
+  email text,
   display_name text,
   organisation text,
   tier text not null default 'Free',
@@ -31,6 +32,13 @@ create table if not exists public.user_profiles (
 create index if not exists idx_user_profiles_user
   on public.user_profiles(user_id);
 
+create unique index if not exists user_profiles_email_lower_unique
+  on public.user_profiles (lower(email))
+  where email is not null and btrim(email) <> '';
+
+create index if not exists idx_user_profiles_email
+  on public.user_profiles(email);
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -40,9 +48,11 @@ as $$
 declare
   v_org_id uuid;
 begin
-  insert into public.user_profiles (user_id)
-  values (new.id)
-  on conflict (user_id) do nothing;
+  insert into public.user_profiles (user_id, email)
+  values (new.id, lower(new.email))
+  on conflict (user_id) do update
+    set email = excluded.email,
+        updated_at = now();
 
   -- Multi-tenant RBAC: provision a personal organization + owner membership so
   -- new content has a tenant to land in (one personal org per user, enforced by
@@ -363,6 +373,7 @@ create table if not exists public.projects (
   org_id uuid references public.organizations(id) on delete set null,
   name text not null,
   cm_number text,
+  practice text,
   visibility text not null default 'private',
   shared_with jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
@@ -581,8 +592,9 @@ create table if not exists public.workflows (
   type text not null,
   prompt_md text,
   columns_config jsonb,
-  practice text,
-  is_system boolean not null default false,
+  language text default 'English',
+  practice text default 'General Transactions',
+  jurisdictions text[] default array['General']::text[],
   org_id uuid references public.organizations(id) on delete set null,
   created_at timestamptz not null default now()
 );
@@ -627,6 +639,40 @@ create index if not exists workflow_shares_email_idx
 create index if not exists workflow_shares_shared_by_user_id_idx
   on public.workflow_shares(shared_by_user_id);
 
+-- Review queue for user-submitted workflows that may later be published to the
+-- open-source workflow repository. The backend writes with the service role.
+create table if not exists public.workflow_open_source_submissions (
+  id uuid primary key default gen_random_uuid(),
+  workflow_id uuid not null references public.workflows(id) on delete cascade,
+  submitted_by_user_id uuid not null references auth.users(id) on delete cascade,
+  submitter_email text,
+  submitter_name text,
+  contributor_mode text not null default 'anonymous',
+  status text not null default 'pending',
+  snapshot jsonb not null,
+  submitted_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  reviewed_at timestamptz,
+  reviewed_by_user_id uuid,
+  review_notes text,
+  constraint workflow_open_source_submissions_status_check
+    check (status in ('pending', 'approved', 'rejected')),
+  constraint workflow_open_source_submissions_contributor_mode_check
+    check (contributor_mode in ('named', 'anonymous'))
+);
+
+create unique index if not exists idx_workflow_open_source_submissions_pending
+  on public.workflow_open_source_submissions(workflow_id, submitted_by_user_id)
+  where status = 'pending';
+
+create index if not exists idx_workflow_open_source_submissions_reviewer_queue
+  on public.workflow_open_source_submissions(status, submitted_at desc);
+
+create index if not exists idx_workflow_open_source_submissions_submitter
+  on public.workflow_open_source_submissions(submitted_by_user_id, submitted_at desc);
+
+alter table public.workflow_open_source_submissions enable row level security;
+
 create or replace function public.get_workflows_overview(
   p_user_id uuid,
   p_user_email text default null,
@@ -639,7 +685,9 @@ returns table (
   type text,
   prompt_md text,
   columns_config jsonb,
+  language text,
   practice text,
+  jurisdictions text[],
   is_system boolean,
   created_at timestamptz,
   allow_edit boolean,
@@ -651,19 +699,38 @@ stable
 as $$
   with owned as (
     select
-      w.*,
+      w.id,
+      w.user_id,
+      w.title,
+      w.type,
+      w.prompt_md,
+      w.columns_config,
+      w.language,
+      w.practice,
+      w.jurisdictions,
+      false as is_system,
+      w.created_at,
       true as allow_edit,
       true as is_owner,
       null::text as shared_by_name,
       0 as sort_bucket
     from public.workflows w
     where w.user_id = p_user_id
-      and w.is_system = false
       and (p_type is null or w.type = p_type)
   ),
   shared as (
     select
-      w.*,
+      w.id,
+      w.user_id,
+      w.title,
+      w.type,
+      w.prompt_md,
+      w.columns_config,
+      w.language,
+      w.practice,
+      w.jurisdictions,
+      false as is_system,
+      w.created_at,
       ws.allow_edit,
       false as is_owner,
       nullif(trim(up.display_name), '') as shared_by_name,
@@ -680,7 +747,17 @@ as $$
     -- Workflows in an org the caller belongs to (read-only; edits stay
     -- owner/share-gated). Mirrors the org branch in lib/access.ts.
     select
-      w.*,
+      w.id,
+      w.user_id,
+      w.title,
+      w.type,
+      w.prompt_md,
+      w.columns_config,
+      w.language,
+      w.practice,
+      w.jurisdictions,
+      false as is_system,
+      w.created_at,
       false as allow_edit,
       false as is_owner,
       nullif(trim(up.display_name), '') as shared_by_name,
@@ -688,8 +765,7 @@ as $$
     from public.workflows w
     left join public.user_profiles up
       on up.user_id = w.user_id
-    where w.is_system = false
-      and w.org_id is not null
+    where w.org_id is not null
       and (w.user_id is null or w.user_id <> p_user_id)
       and (p_type is null or w.type = p_type)
       and exists (
@@ -716,7 +792,9 @@ as $$
     vw.type,
     vw.prompt_md,
     vw.columns_config,
+    vw.language,
     vw.practice,
+    vw.jurisdictions,
     vw.is_system,
     vw.created_at,
     vw.allow_edit,
@@ -798,7 +876,7 @@ create table if not exists public.chat_messages (
   role text not null,
   content jsonb,
   files jsonb,
-  annotations jsonb,
+  citations jsonb,
   created_at timestamptz not null default now()
 );
 
@@ -862,6 +940,7 @@ returns table (
   user_id uuid,
   name text,
   cm_number text,
+  practice text,
   shared_with jsonb,
   created_at timestamptz,
   updated_at timestamptz,
@@ -916,6 +995,7 @@ as $$
     vp.user_id,
     vp.name,
     vp.cm_number,
+    vp.practice,
     vp.shared_with,
     vp.created_at,
     vp.updated_at,
@@ -1239,6 +1319,7 @@ revoke all on public.document_edits from anon, authenticated;
 revoke all on public.workflows from anon, authenticated;
 revoke all on public.hidden_workflows from anon, authenticated;
 revoke all on public.workflow_shares from anon, authenticated;
+revoke all on public.workflow_open_source_submissions from anon, authenticated;
 revoke all on public.chats from anon, authenticated;
 revoke all on public.chat_messages from anon, authenticated;
 revoke all on public.tabular_reviews from anon, authenticated;

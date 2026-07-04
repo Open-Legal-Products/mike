@@ -4,14 +4,16 @@ import { requireAuth } from "../../middleware/auth";
 import { createServerSupabase } from "../../lib/supabase";
 import {
     AssistantStreamError,
+    appendAssistantEventsToLastAssistantMessage,
     buildCancelledAssistantMessage,
-    extractAnnotations,
+    extractCitations,
     isAbortError,
+    parseAskInputsResponsePayload,
     runLLMStream,
     stripTransientAssistantEvents,
     PROJECT_EXTRA_TOOLS,
     type ChatMessage,
-} from "../../lib/chatTools";
+} from "../../lib/chat";
 import { assertModelAvailable, DEFAULT_MAIN_MODEL, ModelUnavailableError, resolveModel } from "../../lib/llm";
 import { getUserApiKeys } from "../../lib/userSettings";
 import { consumeMessageCredit, refundMessageCredit } from "../../lib/credits";
@@ -54,6 +56,10 @@ const projectChatBodySchema = z.object({
     // add-in instead of uploading a file (see chat.routes.ts for the rationale).
     // Must be declared here or zod strips it from the parsed body.
     documentContext: z.string().optional(),
+    // Optional answers to an ask_inputs event from a prior assistant turn.
+    // Declared as unknown so zod keeps it; the shape is validated/normalized
+    // by parseAskInputsResponsePayload (shared with the chat lib).
+    ask_inputs_response: z.unknown().optional(),
 });
 
 export const projectChatRouter = Router({ mergeParams: true });
@@ -73,6 +79,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         displayed_doc,
         attached_documents,
         documentContext,
+        ask_inputs_response,
     } = body as {
         messages: ChatMessage[];
         chat_id?: string;
@@ -80,7 +87,11 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         displayed_doc?: { filename: string; document_id: string };
         attached_documents?: { filename: string; document_id: string }[];
         documentContext?: string;
+        ask_inputs_response?: unknown;
     };
+    const askInputsResponse = parseAskInputsResponsePayload(
+        ask_inputs_response,
+    );
 
     // Refuse a model with no registered provider (e.g. a cloud model in
     // air-gapped mode) before any work — mirrors POST /chat. Check the effective
@@ -111,6 +122,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         displayed_doc,
         attached_documents,
         documentContext,
+        askInputsResponse,
     });
     if (!prep.ok)
         return void sendError(res, prep.status, prep.code, prep.detail);
@@ -124,7 +136,6 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         apiMessages,
         workflowStore,
         legalResearchUs,
-        nonce,
     } = prep.prepared;
 
     // Credit reservation and API key fetch must happen BEFORE flushHeaders().
@@ -165,7 +176,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
     try {
         write(`data: ${JSON.stringify({ type: "chat_id", chatId })}\n\n`);
 
-        const { events, annotations } = await runLLMStream({
+        const { events, citations } = await runLLMStream({
             apiMessages,
             docStore,
             docIndex,
@@ -179,17 +190,28 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             apiKeys,
             signal: streamAbort.signal,
             projectId,
-            nonce,
         });
 
         // Credit already reserved before the stream — completed response keeps it.
         const persistedEvents = stripTransientAssistantEvents(events);
-        await db.from("chat_messages").insert({
-            chat_id: chatId,
-            role: "assistant",
-            content: persistedEvents.length ? persistedEvents : null,
-            annotations: annotations.length ? annotations : null,
-        });
+        if (askInputsResponse) {
+            // Ask-inputs turn: the answers were appended onto the previous
+            // assistant message in prepareProjectChatStream, so the follow-up
+            // events continue that same message instead of starting a new one.
+            await appendAssistantEventsToLastAssistantMessage(
+                db,
+                chatId,
+                persistedEvents,
+                citations,
+            );
+        } else {
+            await db.from("chat_messages").insert({
+                chat_id: chatId,
+                role: "assistant",
+                content: persistedEvents.length ? persistedEvents : null,
+                citations: citations.length ? citations : null,
+            });
+        }
 
         if (!chatTitle && lastUser?.content) {
             await db
@@ -206,17 +228,31 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
                 const partial = buildCancelledAssistantMessage({
                     fullText: err.fullText,
                     events: err.events,
-                    buildAnnotations: (fullText, events) =>
-                        extractAnnotations(fullText, docIndex, events),
+                    buildCitations: (fullText, events) =>
+                        extractCitations(fullText, docIndex, events),
                 });
-                const { error: saveError } = await db.from("chat_messages").insert({
-                    chat_id: chatId,
-                    role: "assistant",
-                    content: partial.events.length ? partial.events : null,
-                    annotations: partial.annotations.length
-                        ? partial.annotations
-                        : null,
-                });
+                const saveError = askInputsResponse
+                    ? null
+                    : (
+                          await db.from("chat_messages").insert({
+                              chat_id: chatId,
+                              role: "assistant",
+                              content: partial.events.length
+                                  ? partial.events
+                                  : null,
+                              citations: partial.citations.length
+                                  ? partial.citations
+                                  : null,
+                          })
+                      ).error;
+                if (askInputsResponse) {
+                    await appendAssistantEventsToLastAssistantMessage(
+                        db,
+                        chatId,
+                        partial.events,
+                        partial.citations,
+                    );
+                }
                 if (saveError) {
                     req.log.error(
                         { err: saveError },
@@ -234,17 +270,29 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         const errorFullText =
             err instanceof AssistantStreamError ? err.fullText : "";
         try {
-            const annotations = extractAnnotations(
+            const citations = extractCitations(
                 errorFullText,
                 docIndex,
                 errorEvents,
             );
-            const { error: saveError } = await db.from("chat_messages").insert({
-                chat_id: chatId,
-                role: "assistant",
-                content: errorEvents.length ? errorEvents : null,
-                annotations: annotations.length ? annotations : null,
-            });
+            const saveError = askInputsResponse
+                ? null
+                : (
+                      await db.from("chat_messages").insert({
+                          chat_id: chatId,
+                          role: "assistant",
+                          content: errorEvents.length ? errorEvents : null,
+                          citations: citations.length ? citations : null,
+                      })
+                  ).error;
+            if (askInputsResponse) {
+                await appendAssistantEventsToLastAssistantMessage(
+                    db,
+                    chatId,
+                    errorEvents,
+                    citations,
+                );
+            }
             if (saveError)
                 req.log.error(
                     { err: saveError },

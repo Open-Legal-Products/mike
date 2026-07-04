@@ -1,13 +1,20 @@
 // Extraction for the tabular-review module: tabular citation parsing, the
-// LLM cell-extraction helpers, and document (PDF/DOCX) text extraction.
+// LLM cell-extraction helpers, and document (PDF/DOCX/Office) text extraction.
 
 import { logger } from "../../lib/logger";
-import { normalizeDocxZipPaths } from "../../lib/convert";
+import { docxToPdf, normalizeDocxZipPaths } from "../../lib/convert";
+import {
+    isPresentationDocumentType,
+    isSpreadsheetDocumentType,
+    isWordDocumentType,
+} from "../../lib/documentTypes";
+import { extractPresentationText } from "../../lib/officeText";
+import { spreadsheetToLLMText } from "../../lib/spreadsheet";
 import {
     extractDocxRedlines,
     formatRedlineSummary,
 } from "../../lib/docxTrackedChanges";
-import { type TabularCellStore } from "../../lib/chatTools";
+import { type TabularCellStore } from "../../lib/chat";
 import {
     completeText,
     streamChatWithTools,
@@ -252,6 +259,40 @@ Rules:
 // ---------------------------------------------------------------------------
 // Document text extraction
 // ---------------------------------------------------------------------------
+
+/**
+ * Route a document buffer to the right text extractor for its file type:
+ * PDFs and DOCX extract directly; spreadsheets go through SheetJS; PPTX has a
+ * native XML extractor; remaining Office types take the LibreOffice → PDF
+ * detour.
+ */
+export async function extractDocumentMarkdown(
+    buf: ArrayBuffer,
+    fileType: string | null | undefined,
+): Promise<string> {
+    const normalizedType = (fileType ?? "").toLowerCase();
+    if (normalizedType === "pdf") return extractPdfMarkdown(buf);
+    if (normalizedType === "docx") return extractDocxMarkdown(buf);
+    if (isSpreadsheetDocumentType(normalizedType)) {
+        // SheetJS handles .xlsx/.xlsm/.xls directly, no PDF detour.
+        return spreadsheetToLLMText(Buffer.from(buf));
+    }
+    if (normalizedType === "pptx") {
+        return extractPresentationText(Buffer.from(buf));
+    }
+    if (
+        isPresentationDocumentType(normalizedType) ||
+        isWordDocumentType(normalizedType)
+    ) {
+        const pdfBuf = await docxToPdf(Buffer.from(buf));
+        const pdfArrayBuffer = pdfBuf.buffer.slice(
+            pdfBuf.byteOffset,
+            pdfBuf.byteOffset + pdfBuf.byteLength,
+        ) as ArrayBuffer;
+        return extractPdfMarkdown(pdfArrayBuffer);
+    }
+    return extractDocxMarkdown(buf);
+}
 
 export async function extractPdfMarkdown(buf: ArrayBuffer): Promise<string> {
     try {

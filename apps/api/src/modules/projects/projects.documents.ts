@@ -11,6 +11,10 @@ import {
   storageKey,
 } from "../../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../../lib/convert";
+import {
+  contentTypeForDocumentType,
+  shouldConvertToPdf,
+} from "../../lib/documentTypes";
 import { checkProjectAccess, resolveContentOrgId } from "../../lib/access";
 import {
   type Db,
@@ -146,10 +150,9 @@ export async function assignOrCopyDocument(
   const newKey = storageKey(userId, copy.id as string, activeVersionFilename);
   let newPdfPath: string | null = null;
   try {
-    const contentType =
-      ((srcV.file_type as string | null) ?? doc.file_type) === "pdf"
-        ? "application/pdf"
-        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    const contentType = contentTypeForDocumentType(
+      (srcV.file_type as string | null) ?? doc.file_type,
+    );
     await uploadFile(newKey, srcBytes, contentType);
 
     // PDFs share one object for source + display rendition. DOCX store the
@@ -345,10 +348,7 @@ export async function processProjectDocumentUpload(
   try {
     const docId = doc.id as string;
     const key = storageKey(userId, docId, filename);
-    const contentType =
-      suffix === "pdf"
-        ? "application/pdf"
-        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    const contentType = contentTypeForDocumentType(suffix);
     await uploadFile(
       key,
       content.buffer.slice(
@@ -364,9 +364,10 @@ export async function processProjectDocumentUpload(
     ) as ArrayBuffer;
     const pageCount = suffix === "pdf" ? await countPdfPages(rawBuf) : null;
 
-    // Convert DOCX/DOC → PDF for display. PDFs are their own rendition.
+    // Convert Office files → PDF for display. PDFs are their own rendition.
+    // Spreadsheets stay in their native format (rendered as a grid client-side).
     let pdfStoragePath: string | null = null;
-    if (suffix === "docx" || suffix === "doc") {
+    if (shouldConvertToPdf(suffix)) {
       try {
         const pdfBuf = await docxToPdf(content);
         const pdfKey = convertedPdfKey(userId, docId);
@@ -380,7 +381,7 @@ export async function processProjectDocumentUpload(
         );
         pdfStoragePath = pdfKey;
       } catch (err) {
-        log.error({ err, filename }, "[upload] DOCX→PDF conversion failed");
+        log.error({ err, filename }, "[upload] Office→PDF conversion failed");
       }
     } else if (suffix === "pdf") {
       pdfStoragePath = key;

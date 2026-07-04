@@ -19,12 +19,12 @@ import {
     buildMessages,
     enrichWithPriorEvents,
     buildWorkflowStore,
-    generateSpotlightNonce,
-    spotlight,
+    appendAskInputsResponseToLastAssistantMessage,
+    type AskInputsResponseRequest,
     type ChatMessage,
-} from "../../lib/chatTools";
+} from "../../lib/chat";
+import { generateSpotlightNonce, spotlight } from "../../lib/chatContext";
 import { completeText } from "../../lib/llm";
-import { COURTLISTENER_SYSTEM_PROMPT } from "../../lib/legalSourcesTools/courtlistenerTools";
 import { getUserModelSettings } from "../../lib/userSettings";
 import { checkProjectAccess } from "../../lib/access";
 import { safeErrorLog } from "../../lib/safeError";
@@ -95,8 +95,6 @@ async function getAccessibleChat(
 // produced the edit (always "pending"). If the user later accepts or rejects,
 // `document_edits.status` is updated but the stored event is not. On chat load
 // we merge the current DB status in so EditCards render with the real state.
-// Legacy rows may also have duplicate edit_data in top-level annotations, so
-// keep patching that path until old data no longer matters.
 async function hydrateEditStatuses(
     messages: Record<string, unknown>[],
     db: Db,
@@ -112,7 +110,6 @@ async function hydrateEditStatuses(
         }
     };
     for (const m of messages) {
-        collectFromAnnList(m.annotations);
         const content = m.content;
         if (Array.isArray(content)) {
             for (const ev of content as Record<string, unknown>[]) {
@@ -182,7 +179,6 @@ async function hydrateEditStatuses(
     };
     return messages.map((m) => {
         const next: Record<string, unknown> = { ...m };
-        next.annotations = patchAnnList(m.annotations);
         if (Array.isArray(m.content)) {
             next.content = (m.content as Record<string, unknown>[]).map(
                 (ev) => {
@@ -412,7 +408,6 @@ export type PreparedChatStream = {
     apiMessages: ReturnType<typeof buildMessages>;
     workflowStore: Awaited<ReturnType<typeof buildWorkflowStore>>;
     legalResearchUs: boolean;
-    nonce: string;
 };
 
 export async function prepareChatStream(
@@ -426,6 +421,11 @@ export async function prepareChatStream(
         projectId: string | null;
         // Already trimmed + capped by the route (HTTP concern).
         documentContext: string | undefined;
+        // Parsed `ask_inputs_response` payload (answers to an ask_inputs
+        // event emitted by the assistant in a prior turn). When present, the
+        // user's answers are appended onto the previous assistant message
+        // instead of being stored as a new user message.
+        askInputsResponse: AskInputsResponseRequest | null;
     },
     log: Log,
 ): Promise<
@@ -486,7 +486,13 @@ export async function prepareChatStream(
     }
 
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
-    if (lastUser) {
+    if (args.askInputsResponse) {
+        await appendAskInputsResponseToLastAssistantMessage(
+            db,
+            chatId,
+            args.askInputsResponse,
+        );
+    } else if (lastUser) {
         await db.from("chat_messages").insert({
             chat_id: chatId,
             role: "user",
@@ -519,30 +525,23 @@ export async function prepareChatStream(
         userId,
         db,
     );
-    // Assemble the extra system context: the Word add-in's active-document body
-    // (fenced so the model treats it as data, not instructions) and — when US
-    // legal research is enabled — the CourtListener guidance, paired with
-    // includeResearchTools below so the model has both the case-law tools and
-    // the instructions for using them.
+    // Extra system context: the Word add-in's active-document body. The
+    // CourtListener research guidance is no longer appended here — the chat
+    // lib's buildSystemPrompt splices it in when includeResearchTools is true,
+    // paired with the case-law tools enabled on the stream below.
     // The document body is user-controlled and a prompt-injection vector, so it
     // MUST be nonce-fenced via spotlight() (not plain tags) before entering the
-    // system prompt — same treatment as filenames/workflow titles.
+    // system prompt.
     const wordDocumentContext = args.documentContext
         ? `The user is working in Microsoft Word. The text below is the body of their active document:\n${spotlight(args.documentContext, nonce)}`
         : undefined;
-    const systemPromptExtra =
-        [
-            wordDocumentContext,
-            legalResearchUs ? COURTLISTENER_SYSTEM_PROMPT : undefined,
-        ]
-            .filter(Boolean)
-            .join("\n\n") || undefined;
+    const systemPromptExtra = wordDocumentContext || undefined;
     const apiMessages = buildMessages(
         enrichedMessages,
         docAvailability,
         systemPromptExtra,
         docIndex,
-        nonce,
+        legalResearchUs,
     );
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
@@ -559,7 +558,6 @@ export async function prepareChatStream(
             apiMessages,
             workflowStore,
             legalResearchUs,
-            nonce,
         },
     };
 }

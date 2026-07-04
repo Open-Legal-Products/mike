@@ -261,6 +261,19 @@ route test that feeds a crafted document.
 
 ---
 
+## System Workflows
+
+System workflows live in `workflows/`. Update `metadata.json` for structured
+metadata like author, language, version, practice area, or jurisdictions,
+update `SKILL.md` for workflow instructions, and use `table-config.json` for
+tabular review columns.
+
+After changing system workflows, regenerate the app files:
+
+```bash
+node scripts/build-workflows.js
+```
+
 ## Security
 
 Do not open a public issue for security vulnerabilities. Use GitHub's private vulnerability reporting **on this repository** — see [SECURITY.md](SECURITY.md) for the full policy. (Do not report fork issues to the upstream `willchen96/mike` tracker.)

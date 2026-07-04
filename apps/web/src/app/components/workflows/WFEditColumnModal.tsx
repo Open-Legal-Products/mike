@@ -8,6 +8,7 @@ import { generateTabularColumnPrompt } from "@/app/lib/mikeApi";
 import { FORMAT_OPTIONS, formatLabel, formatIcon } from "../tabular/columnFormat";
 import { TAG_COLORS } from "../tabular/pillUtils";
 import { getPresetConfig, PROMPT_PRESETS } from "../tabular/columnPresets";
+import { ModalFieldLabel } from "../modals/ModalFieldLabel";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -128,7 +129,7 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
                     </div>
                     <button
                         onClick={onClose}
-                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                        className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100/70 hover:text-gray-600 transition-colors"
                     >
                         <X className="h-4 w-4" />
                     </button>
@@ -164,7 +165,7 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
                                     type="button"
                                     onClick={() => setPresetsOpen((v) => !v)}
                                     title="Column presets"
-                                    className="mt-1.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                                    className="mt-1.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100/70 hover:text-gray-700"
                                 >
                                     <ChevronDown className={`h-4 w-4 transition-transform ${presetsOpen ? "rotate-180" : ""}`} />
                                 </button>
@@ -173,7 +174,7 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
                                         <button
                                             type="button"
                                             onClick={() => { update({ name: "", prompt: "", format: "text", tags: [], tagInput: "" }); setPresetsOpen(false); }}
-                                            className="w-full px-3 py-2 text-left text-sm text-gray-400 hover:bg-gray-50 transition-colors border-b border-gray-100"
+                                            className="w-full px-3 py-2 text-left text-sm text-gray-400 transition-all hover:bg-gray-100/70 border-b border-gray-100"
                                         >
                                             No Preset
                                         </button>
@@ -185,7 +186,7 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
                                                     update({ name: preset.name, prompt: preset.prompt, format: preset.format, tags: preset.tags ?? [], tagInput: "" });
                                                     setPresetsOpen(false);
                                                 }}
-                                                className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                                                className="w-full px-3 py-2 text-left text-sm text-gray-700 transition-all hover:bg-gray-100/70"
                                             >
                                                 {preset.name}
                                             </button>
@@ -197,7 +198,7 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
 
                         {/* Format */}
                         <div className="mt-4">
-                            <label className="text-sm font-medium text-gray-500">Format</label>
+                            <ModalFieldLabel className="text-gray-500">Format</ModalFieldLabel>
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                     <button className="mt-1 flex items-center justify-between rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700 hover:border-gray-400 focus:outline-none">
@@ -227,7 +228,7 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
                         {/* Tag input */}
                         {draft.format === "tag" && (
                             <div className="mt-3">
-                                <label className="text-sm font-medium text-gray-500">Tags</label>
+                                <ModalFieldLabel className="text-gray-500">Tags</ModalFieldLabel>
                                 <div className="mt-1 flex flex-wrap gap-1.5 rounded-md border border-gray-200 px-2 py-1.5 focus-within:border-gray-400">
                                     {draft.tags.map((tag, tagIdx) => (
                                         <span
@@ -260,7 +261,7 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
 
                         {/* Prompt */}
                         <div className="mt-4 flex items-center justify-between">
-                            <label className="text-sm font-medium text-gray-500">Prompt</label>
+                            <ModalFieldLabel className="mb-0 text-gray-500">Prompt</ModalFieldLabel>
                             <button
                                 type="button"
                                 onClick={autoGeneratePrompt}
@@ -297,7 +298,7 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
                             <button
                                 type="button"
                                 onClick={onClose}
-                                className="rounded-lg px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 transition-colors"
+                                className="rounded-lg px-4 py-2 text-sm text-gray-500 hover:bg-gray-100/70 transition-colors"
                             >
                                 Cancel
                             </button>

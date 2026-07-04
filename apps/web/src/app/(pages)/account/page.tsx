@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserProfile } from "@/contexts/UserProfileContext";
-import { ConfirmPopup } from "@/app/components/shared/ConfirmPopup";
+import { ConfirmPopup } from "@/app/components/popups/ConfirmPopup";
 import {
     MfaVerificationPopup,
     needsMfaVerification,
-} from "@/app/components/shared/MfaVerificationPopup";
-import { WarningPopup } from "@/app/components/shared/WarningPopup";
+} from "@/app/components/popups/MfaVerificationPopup";
+import { WarningPopup } from "@/app/components/popups/WarningPopup";
 import { deleteAccount, isMfaRequiredError } from "@/app/lib/mikeApi";
 import {
     accountGlassDangerOutlineButtonClassName,

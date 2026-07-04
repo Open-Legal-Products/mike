@@ -29,6 +29,19 @@ const MAGIC_SIGNATURES: Record<string, Buffer[]> = {
     Buffer.from([0x50, 0x4b, 0x03, 0x04]), // ZIP (just in case)
     Buffer.from([0xd0, 0xcf, 0x11, 0xe0]), // OLE2
   ],
+  // Office spreadsheets / presentations: OOXML formats are ZIP archives;
+  // legacy .xls/.ppt are OLE2 compound files.
+  xlsx: [Buffer.from([0x50, 0x4b, 0x03, 0x04])], // ZIP/OOXML
+  xlsm: [Buffer.from([0x50, 0x4b, 0x03, 0x04])], // ZIP/OOXML (macro-enabled)
+  xls: [
+    Buffer.from([0xd0, 0xcf, 0x11, 0xe0]), // OLE2
+    Buffer.from([0x50, 0x4b, 0x03, 0x04]), // ZIP (just in case)
+  ],
+  pptx: [Buffer.from([0x50, 0x4b, 0x03, 0x04])], // ZIP/OOXML
+  ppt: [
+    Buffer.from([0xd0, 0xcf, 0x11, 0xe0]), // OLE2
+    Buffer.from([0x50, 0x4b, 0x03, 0x04]), // ZIP (just in case)
+  ],
 };
 
 /**

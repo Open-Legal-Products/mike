@@ -27,6 +27,7 @@ import {
     getDmsConnector,
     getMcpConnector,
     getUserProfile,
+    lookupUserByEmail,
     importDmsDocument,
     listDmsConnectors,
     listMcpConnectors,
@@ -134,6 +135,17 @@ userRouter.post("/profile", requireAuth, async (_req, res) => {
     const result = await bootstrapUserProfile(db, userId);
     if (!result.ok) return void res.status(500).json({ detail: result.detail });
     res.json({ ok: true });
+});
+
+// GET /user/lookup?email=person@example.com
+userRouter.get("/lookup", requireAuth, async (req, res) => {
+    const email = typeof req.query.email === "string" ? req.query.email : "";
+    if (!email.trim()) {
+        return void res.status(400).json({ detail: "email is required" });
+    }
+
+    const db = createServerSupabase();
+    res.json(await lookupUserByEmail(db, email));
 });
 
 // GET /user/profile

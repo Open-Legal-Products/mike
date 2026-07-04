@@ -10,7 +10,7 @@ import { supabase } from "@/lib/supabase";
 import {
     needsMfaVerification,
     VerificationCodeInput,
-} from "@/app/components/shared/MfaVerificationPopup";
+} from "@/app/components/popups/MfaVerificationPopup";
 import { markMfaVerifiedForGate } from "@/app/components/shared/MfaLoginGate";
 
 type MfaFactor = {

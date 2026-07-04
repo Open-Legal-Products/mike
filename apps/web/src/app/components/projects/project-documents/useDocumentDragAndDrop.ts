@@ -12,7 +12,7 @@ import type {
     Folder as ProjectFolder,
     Project,
 } from "@/app/components/shared/types";
-import { invalidateDirectoryCache } from "@/app/components/shared/AddDocumentsModal";
+import { invalidateDirectoryCache } from "@/app/components/modals/AddDocumentsModal";
 import {
     formatUnsupportedDocumentWarning,
     partitionSupportedDocumentFiles,

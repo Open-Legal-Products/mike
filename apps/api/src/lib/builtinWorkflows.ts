@@ -1,21 +1,17 @@
-import { BUILTIN_WORKFLOWS as CORE_BUILTIN_WORKFLOWS } from "@mike/core";
+import { SYSTEM_ASSISTANT_WORKFLOWS } from "./systemWorkflows";
 
 /**
  * The chat workflow store only cares about "assistant" workflows and only
- * needs their {id, title, prompt_md}. Rather than maintain a second hand-written
- * copy of that data (which had drifted from the web catalog), derive it from the
- * single source of truth in @mike/core.
+ * needs their {id, title, prompt_md}. Built-in workflows are single-sourced in
+ * lib/systemWorkflows.ts (generated from the open-source workflow repository
+ * metadata), so derive the legacy BUILTIN_WORKFLOWS surface from it rather
+ * than maintaining a second hand-written copy.
  *
- * This yields the same three assistant workflows the API served before
- * (builtin-cp-checklist, builtin-credit-summary, builtin-sha-summary), so
- * chatContext.buildWorkflowStore behaves identically.
+ * Kept for the legacy chatContext.buildWorkflowStore path; the new lib/chat
+ * context builders import SYSTEM_ASSISTANT_WORKFLOWS directly.
  */
 export const BUILTIN_WORKFLOWS: {
     id: string;
     title: string;
     prompt_md: string;
-}[] = CORE_BUILTIN_WORKFLOWS.filter((w) => w.type === "assistant").map((w) => ({
-    id: w.id,
-    title: w.title,
-    prompt_md: w.prompt_md ?? "",
-}));
+}[] = SYSTEM_ASSISTANT_WORKFLOWS;

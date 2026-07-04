@@ -5,7 +5,7 @@
 import {
     type ChatMessage,
     type TabularCellStore,
-} from "../../lib/chatTools";
+} from "../../lib/chat";
 import { parseCellContent } from "./tabular.shared";
 
 // ---------------------------------------------------------------------------

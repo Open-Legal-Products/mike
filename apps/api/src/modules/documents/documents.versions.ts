@@ -11,13 +11,16 @@ import { docxToPdf } from "../../lib/convert";
 import { loadActiveVersion } from "../../lib/documentVersions";
 import { maybeEnqueueEmbedding } from "../../lib/queue/embeddingQueue";
 import {
-  DOCX_MIME,
   countPdfPages,
   deleteDocumentAndVersionFiles,
   type Db,
   type Log,
   type UploadedFile,
 } from "./documents.shared";
+import {
+  contentTypeForDocumentType,
+  shouldConvertToPdf,
+} from "../../lib/documentTypes";
 import { ensureDocumentAccess } from "./documents.access";
 
 // ---------------------------------------------------------------------------
@@ -149,7 +152,7 @@ export async function createVersionFromDocument(
     (filename.includes(".") ? filename.split(".").pop()!.toLowerCase() : "");
   const versionSlug = crypto.randomUUID().replace(/-/g, "");
   const key = versionStorageKey(userId, documentId, versionSlug, filename);
-  const contentType = suffix === "pdf" ? "application/pdf" : DOCX_MIME;
+  const contentType = contentTypeForDocumentType(suffix);
 
   try {
     await uploadFile(key, bytes, contentType);
@@ -176,7 +179,7 @@ export async function createVersionFromDocument(
         pdfStoragePath = pdfKey;
       }
     }
-  } else if (suffix === "docx" || suffix === "doc") {
+  } else if (shouldConvertToPdf(suffix)) {
     try {
       const pdfBuf = await docxToPdf(Buffer.from(bytes));
       const pdfKey = `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`;
@@ -192,7 +195,7 @@ export async function createVersionFromDocument(
     } catch (err) {
       log.error(
         { err },
-        `[versions/copy] DOCX→PDF conversion failed for ${filename}:`,
+        `[versions/copy] Office→PDF conversion failed for ${filename}:`,
       );
     }
   }
@@ -312,7 +315,7 @@ export async function addUploadedVersion(
     versionSlug,
     file.originalname,
   );
-  const contentType = suffix === "pdf" ? "application/pdf" : DOCX_MIME;
+  const contentType = contentTypeForDocumentType(suffix);
   try {
     await uploadFile(
       key,
@@ -335,7 +338,7 @@ export async function addUploadedVersion(
   // historical versions without on-demand conversion. Same logic as the
   // initial-upload pipeline; failures don't block the version row.
   let pdfStoragePath: string | null = null;
-  if (suffix === "docx" || suffix === "doc") {
+  if (shouldConvertToPdf(suffix)) {
     try {
       const pdfBuf = await docxToPdf(file.buffer);
       const pdfKey = `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`;
@@ -351,7 +354,7 @@ export async function addUploadedVersion(
     } catch (err) {
       log.error(
         { err, filename: file.originalname },
-        "[versions/upload] DOCX→PDF conversion failed",
+        "[versions/upload] Office→PDF conversion failed",
       );
     }
   } else if (suffix === "pdf") {
@@ -543,7 +546,7 @@ export async function writeReplacementVersion(
     versionSlug,
     file.originalname,
   );
-  const contentType = suffix === "pdf" ? "application/pdf" : DOCX_MIME;
+  const contentType = contentTypeForDocumentType(suffix);
 
   try {
     await uploadFile(
@@ -560,7 +563,7 @@ export async function writeReplacementVersion(
   }
 
   let pdfStoragePath: string | null = null;
-  if (suffix === "docx" || suffix === "doc") {
+  if (shouldConvertToPdf(suffix)) {
     try {
       const pdfBuf = await docxToPdf(file.buffer);
       const pdfKey = `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`;
@@ -576,7 +579,7 @@ export async function writeReplacementVersion(
     } catch (err) {
       log.error(
         { err },
-        `[versions/replace] DOCX→PDF conversion failed for ${file.originalname}:`,
+        `[versions/replace] Office→PDF conversion failed for ${file.originalname}:`,
       );
     }
   } else if (suffix === "pdf") {

@@ -16,7 +16,7 @@
 //   projects.chats.ts      — list a project's chats
 
 export {
-  ALLOWED_TYPES,
+  normalizeOptionalString,
   normalizeDocumentFilename,
 } from "./projects.shared";
 

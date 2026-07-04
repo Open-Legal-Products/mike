@@ -3,9 +3,9 @@
 import { Upload, FolderPlus } from "lucide-react";
 import type { Document } from "@/app/components/shared/types";
 import { closeRowActionMenus } from "@/app/components/shared/RowActions";
-import { AddDocumentsModal } from "@/app/components/shared/AddDocumentsModal";
-import { WarningPopup } from "@/app/components/shared/WarningPopup";
-import { ConfirmPopup } from "@/app/components/shared/ConfirmPopup";
+import { AddDocumentsModal } from "@/app/components/modals/AddDocumentsModal";
+import { WarningPopup } from "@/app/components/popups/WarningPopup";
+import { ConfirmPopup } from "@/app/components/popups/ConfirmPopup";
 import { DOC_NAME_COL_W } from "./ProjectPageParts";
 import { DocumentSidePanel } from "./DocumentSidePanel";
 import { ProjectSectionToolbar } from "./ProjectWorkspace";
@@ -285,7 +285,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
     const sidePanelDoc = viewingDoc
         ? (docs.find((doc) => doc.id === viewingDoc.id) ?? viewingDoc)
         : null;
-    const versionUploadAccept = ".pdf,.docx,.doc";
+    const versionUploadAccept = ".pdf,.docx,.doc,.xlsx,.xlsm,.xls,.pptx,.ppt";
     const q = search.toLowerCase();
     const filteredDocs = q
         ? docs.filter((d) => d.filename.toLowerCase().includes(q))
@@ -448,9 +448,9 @@ export function ProjectDocumentsView({ projectId }: Props) {
                     ) : (
                         <div className="flex-1 flex flex-col min-h-0">
                             {/* Table header */}
-                            <div className="flex items-center h-8 pr-8 border-b border-gray-200 text-xs text-gray-500 font-medium select-none shrink-0">
+                            <div className={`sticky top-0 z-[70] ${stickyCellBg} flex items-center h-8 pr-8 border-b border-gray-200 text-xs text-gray-500 font-medium select-none shrink-0`}>
                                 <div
-                                    className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${stickyCellBg} flex items-center gap-4 self-stretch pl-4 pr-2 text-left`}
+                                    className={`sticky left-0 z-[80] ${DOC_NAME_COL_W} ${stickyCellBg} flex items-center gap-4 self-stretch pl-4 pr-2 text-left`}
                                 >
                                     <input
                                         type="checkbox"
@@ -541,7 +541,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                                     >
                                         <Upload className="h-8 w-8 text-gray-200 mb-3" />
                                         <p className="text-sm text-gray-400">
-                                            Drop PDF, DOCX, or DOC files here
+                                            Drop PDF, Word, Excel, or PowerPoint files here
                                         </p>
                                     </div>
                                 ) : (

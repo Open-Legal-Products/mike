@@ -18,7 +18,15 @@ export type UploadedFile = { buffer: Buffer; originalname: string };
 export const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-export const ALLOWED_TYPES = new Set(["pdf", "docx", "doc"]);
+// Allowed upload types (now including Excel/PowerPoint) and the MIME/PDF
+// conversion helpers live in the shared lib so every module agrees on them.
+export {
+  ALLOWED_DOCUMENT_TYPES,
+  ALLOWED_DOCUMENT_TYPES_LABEL,
+  contentTypeForDocumentType,
+  shouldConvertToPdf,
+} from "../../lib/documentTypes";
+
 export const MAX_ZIP_DOCUMENTS = 50;
 
 // ---------------------------------------------------------------------------

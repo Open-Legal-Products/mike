@@ -17,8 +17,7 @@ import { logger } from "../../lib/logger";
 import { safeErrorLog } from "../../lib/safeError";
 import { type UserApiKeys } from "../../lib/llm";
 import {
-    extractDocxMarkdown,
-    extractPdfMarkdown,
+    extractDocumentMarkdown,
     queryTabularAllColumns,
 } from "./tabular.extract";
 import { type CellResult, type Column, type Db } from "./tabular.shared";
@@ -109,10 +108,7 @@ export async function extractDocumentColumns(args: {
         const buf = await downloadFile(doc.storagePath);
         if (buf) {
             try {
-                markdown =
-                    doc.fileType === "pdf"
-                        ? await extractPdfMarkdown(buf)
-                        : await extractDocxMarkdown(buf);
+                markdown = await extractDocumentMarkdown(buf, doc.fileType);
             } catch (err) {
                 logger.error(
                     { err: safeErrorLog(err), documentId: doc.id },

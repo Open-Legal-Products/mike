@@ -17,6 +17,7 @@ import {
     type ApiKeyStatus,
     getUserApiKeyStatus,
 } from "../../lib/userApiKeys";
+import { findProfileUserByEmail } from "../../lib/userLookup";
 import { type Db } from "./user.shared";
 
 const MONTHLY_CREDIT_LIMIT = 999999;
@@ -372,6 +373,27 @@ export async function getUserProfile(
     });
     if (error) return { ok: false, detail: error.message };
     return { ok: true, body: { ...data, apiKeyStatus } };
+}
+
+/**
+ * Look up whether an email belongs to an existing Mike user via the mirrored
+ * profile email (no auth.users scan). Used by the sharing UIs to validate
+ * recipients before submitting.
+ */
+export async function lookupUserByEmail(
+    db: Db,
+    email: string,
+): Promise<{
+    exists: boolean;
+    email: string;
+    display_name: string | null;
+}> {
+    const user = await findProfileUserByEmail(db, email);
+    return {
+        exists: !!user,
+        email: user?.email ?? email.trim().toLowerCase(),
+        display_name: user?.display_name ?? null,
+    };
 }
 
 export async function updateUserProfile(

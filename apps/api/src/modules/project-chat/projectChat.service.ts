@@ -14,11 +14,11 @@ import {
     buildMessages,
     buildWorkflowStore,
     enrichWithPriorEvents,
-    generateSpotlightNonce,
-    spotlight,
+    appendAskInputsResponseToLastAssistantMessage,
+    type AskInputsResponseRequest,
     type ChatMessage,
-} from "../../lib/chatTools";
-import { COURTLISTENER_SYSTEM_PROMPT } from "../../lib/legalSourcesTools/courtlistenerTools";
+} from "../../lib/chat";
+import { generateSpotlightNonce, spotlight } from "../../lib/chatContext";
 import { getUserModelSettings } from "../../lib/userSettings";
 import { checkProjectAccess } from "../../lib/access";
 
@@ -43,7 +43,6 @@ export type PreparedProjectChatStream = {
     apiMessages: ReturnType<typeof buildMessages>;
     workflowStore: Awaited<ReturnType<typeof buildWorkflowStore>>;
     legalResearchUs: boolean;
-    nonce: string;
 };
 
 export async function prepareProjectChatStream(
@@ -57,6 +56,11 @@ export async function prepareProjectChatStream(
         displayed_doc?: DocRef;
         attached_documents?: DocRef[];
         documentContext?: string;
+        // Parsed `ask_inputs_response` payload (answers to an ask_inputs
+        // event emitted by the assistant in a prior turn). When present, the
+        // user's answers are appended onto the previous assistant message
+        // instead of being stored as a new user message.
+        askInputsResponse: AskInputsResponseRequest | null;
     },
 ): Promise<
     | { ok: true; prepared: PreparedProjectChatStream }
@@ -111,7 +115,13 @@ export async function prepareProjectChatStream(
     }
 
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
-    if (lastUser) {
+    if (args.askInputsResponse) {
+        await appendAskInputsResponseToLastAssistantMessage(
+            db,
+            chatId,
+            args.askInputsResponse,
+        );
+    } else if (lastUser) {
         await db.from("chat_messages").insert({
             chat_id: chatId,
             role: "user",
@@ -190,17 +200,15 @@ export async function prepareProjectChatStream(
         userId,
         db,
     );
-    // Pair the CourtListener guidance with includeResearchTools in the route so
-    // the model gets both the case-law tools and the instructions for using them.
-    if (legalResearchUs) {
-        systemPromptExtra += `\n\n${COURTLISTENER_SYSTEM_PROMPT}`;
-    }
+    // The CourtListener research guidance is no longer appended here — the chat
+    // lib's buildSystemPrompt splices it in when includeResearchTools is true,
+    // paired with the case-law tools enabled on the stream in the route.
     const apiMessages = buildMessages(
         messagesForLLM,
         docAvailability,
         systemPromptExtra,
         docIndex,
-        nonce,
+        legalResearchUs,
     );
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
@@ -216,7 +224,6 @@ export async function prepareProjectChatStream(
             apiMessages,
             workflowStore,
             legalResearchUs,
-            nonce,
         },
     };
 }

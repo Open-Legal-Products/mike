@@ -1,61 +1,61 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
-import { Copy, Check, RotateCcw, LifeBuoy } from "lucide-react";
+import { useRef, useState } from "react";
+import { Check, Copy, LifeBuoy, RotateCcw } from "lucide-react";
 import {
     sanitizeAssistantError,
     buildSupportMailto,
 } from "@/app/lib/assistantError";
-import type {
-    AssistantEvent,
-    CitationAnnotation,
-    EditAnnotation,
-} from "../shared/types";
+import type { AssistantEvent, Citation, EditAnnotation } from "../shared/types";
 import { EditCard } from "./EditCard";
-import { PreResponseWrapper } from "../shared/PreResponseWrapper";
+import { PreResponseWrapper } from "./PreResponseWrapper";
+import { ResponseStatus, type StatusState } from "./message/ResponseStatus";
+import { eventErrorMessage, toolCallLabel } from "./message/eventUtils";
+import { preprocessCitations, internalCaseHref } from "./message/citationUtils";
+import { useSmoothedReveal } from "./message/useSmoothedReveal";
+import { MarkdownContent } from "./message/MarkdownContent";
+import { CitationsBlock, buildCitationAppendix } from "./message/CitationSources";
+import { EditCardsSection } from "./message/EditCardsSection";
 import {
-    eventErrorMessage,
-    internalCaseHref,
-} from "./assistant-message/helpers";
-import {
-    preprocessCitations,
-    buildCitationAppendix,
-} from "./assistant-message/citationUtils";
-import { useSmoothedReveal } from "./assistant-message/useSmoothedReveal";
-import { ResponseStatus } from "./assistant-message/ResponseStatus";
-import type { StatusState } from "./assistant-message/ResponseStatus";
-import { MarkdownContent } from "./assistant-message/MarkdownContent";
-import { CitationsBlock } from "./assistant-message/CitationsBlock";
-import { DocDownloadBlock } from "./assistant-message/DocDownloadBlock";
-import { EditCardsSection } from "./assistant-message/EditCardsSection";
-import { renderEvent as renderEventImpl } from "./assistant-message/renderEvent";
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
+    AskInputsBlock,
+    CourtListenerBlock,
+    DocCreatedBlock,
+    DocDownloadBlock,
+    DocEditedBlock,
+    DocFindBlock,
+    DocReadBlock,
+    DocReplicatedBlock,
+    EventBlock,
+    ReasoningBlock,
+    WorkflowAppliedBlock,
+    type CourtListenerBlockItem,
+} from "./message/EventBlocks";
 
 interface Props {
-    content: string;
     events?: AssistantEvent[];
     isStreaming?: boolean;
     isError?: boolean;
-    /** Raw error text; sanitized to friendly copy before display. */
+    /** Human-readable error text rendered alongside the red Mike icon. */
     errorMessage?: string;
     /** Re-run the failed turn. Shown as a "Retry" action on errored messages. */
     onRetry?: () => void;
     /** Model + chat id — attached to the "Report to support" email context. */
     errorModel?: string;
     errorChatId?: string;
-    annotations?: CitationAnnotation[];
+    citations?: Citation[];
     citationStatus?: "started" | "partial" | "final";
-    onCitationClick?: (citation: CitationAnnotation) => void;
-    onOpenCitationSource?: (citation: CitationAnnotation) => void;
+    onCitationClick?: (citation: Citation) => void;
+    onOpenCitationSource?: (citation: Citation) => void;
     onCaseClick?: (
         citation: Extract<AssistantEvent, { type: "case_citation" }>,
     ) => void;
     minHeight?: string;
     onWorkflowClick?: (workflowId: string) => void;
-    onEditViewClick?: (ann: EditAnnotation, filename: string) => void;
+    onEditViewClick?: (
+        ann: EditAnnotation,
+        filename: string,
+        changeNumber?: number,
+    ) => void;
     /**
      * Opens the editor panel for a document without auto-highlighting any
      * specific edit. Used by the download card click — opening a doc to
@@ -108,7 +108,6 @@ interface Props {
 }
 
 export function AssistantMessage({
-    content: _content,
     events,
     isStreaming = false,
     isError = false,
@@ -116,7 +115,7 @@ export function AssistantMessage({
     onRetry,
     errorModel,
     errorChatId,
-    annotations = [],
+    citations = [],
     citationStatus,
     onCitationClick,
     onOpenCitationSource,
@@ -132,7 +131,6 @@ export function AssistantMessage({
     isEditReloading,
     resolvedEditStatuses,
 }: Props) {
-    const messageKey = useId();
     const contentDivRef = useRef<HTMLDivElement | null>(null);
     const [isCopied, setIsCopied] = useState(false);
     // Per-document override of the download URL, set as Accept/Reject resolves
@@ -179,6 +177,7 @@ export function AssistantMessage({
 
     const isRenderableEvent = (event: AssistantEvent) =>
         event.type !== "error" &&
+        event.type !== "ask_inputs_response" &&
         event.type !== "case_citation" &&
         event.type !== "case_opinions";
 
@@ -217,9 +216,9 @@ export function AssistantMessage({
     );
 
     // Pre-process citations for all content events. Each [N] marker resolves
-    // to exactly one annotation (models are instructed to use shared refs
+    // to exactly one citation (models are instructed to use shared refs
     // only for cross-page continuations via the [[PAGE_BREAK]] sentinel).
-    const citationsList: CitationAnnotation[] = [];
+    const inlineCitationTargets: Citation[] = [];
     const caseCitations = new Map<
         string,
         Extract<AssistantEvent, { type: "case_citation" }>
@@ -242,14 +241,14 @@ export function AssistantMessage({
                 event.type === "content"
                     ? preprocessCitations(
                           i === lastContentIdx ? smoothedLastText : event.text,
-                          annotations,
-                          citationsList,
+                          citations,
+                          inlineCitationTargets,
                       )
                     : "",
             );
         }
     }
-    const handleOpenCitationSource = (citation: CitationAnnotation) => {
+    const handleOpenCitationSource = (citation: Citation) => {
         if (onOpenCitationSource) {
             onOpenCitationSource(citation);
             return;
@@ -262,12 +261,11 @@ export function AssistantMessage({
             versionNumber: citation.version_number ?? null,
         });
     };
-    const canOpenCitationSource = (citation: CitationAnnotation) =>
+    const canOpenCitationSource = (citation: Citation) =>
         !!onOpenCitationSource ||
         (citation.kind !== "case" && !!onOpenDocument);
-    const citationBlockList = citationStatus ? annotations : citationsList;
     const showCitationBlock =
-        !!citationStatus || (!isStreaming && citationsList.length > 0);
+        !!citationStatus || (!isStreaming && citations.length > 0);
     const handleCopy = async () => {
         try {
             let html = "";
@@ -286,7 +284,7 @@ export function AssistantMessage({
                 html = clone.innerHTML;
                 plainText = clone.textContent || "";
             }
-            const appendix = buildCitationAppendix(citationBlockList);
+            const appendix = buildCitationAppendix(citations);
             html += appendix.html;
             plainText += appendix.text;
             const item = new ClipboardItem({
@@ -342,25 +340,403 @@ export function AssistantMessage({
         return false;
     };
 
+    const askInputsResponseFor = (askInputsIdx: number) => {
+        if (!events) return undefined;
+        for (let i = askInputsIdx + 1; i < events.length; i++) {
+            const candidate = events[i];
+            if (candidate.type === "ask_inputs") return undefined;
+            if (candidate.type === "ask_inputs_response") return candidate;
+        }
+        return undefined;
+    };
+
+    const hasPendingAskInput = (group: Extract<EventGroup, { kind: "pre" }>) =>
+        group.events.some(
+            (event, index) =>
+                event.type === "ask_inputs" &&
+                !askInputsResponseFor(group.indices[index]),
+        );
+
     const renderEvent = (
         event: AssistantEvent,
         i: number,
         allEvents: AssistantEvent[],
         globalIdx: number,
-    ) =>
-        renderEventImpl(event, i, allEvents, globalIdx, {
-            events,
-            annotations,
-            lastContentIdx,
-            processedTexts,
-            citationsList,
-            caseCitations,
-            caseOpinions,
-            contentDivRef,
-            onCitationClick,
-            onCaseClick,
-            onWorkflowClick,
-        });
+    ) => {
+        const nextEvent = allEvents[i + 1];
+        const showConnector =
+            nextEvent !== undefined && nextEvent.type !== "content";
+
+        if (event.type === "reasoning") {
+            return (
+                <ReasoningBlock
+                    key={globalIdx}
+                    text={event.text}
+                    isStreaming={!!event.isStreaming}
+                    showConnector={showConnector}
+                />
+            );
+        }
+        if (event.type === "tool_call_start") {
+            return (
+                <EventBlock
+                    key={globalIdx}
+                    showConnector={showConnector}
+                    isStreaming
+                >
+                    <span className="font-medium">
+                        {toolCallLabel(event.name)}
+                    </span>
+                </EventBlock>
+            );
+        }
+        if (event.type === "thinking") {
+            return (
+                <EventBlock
+                    key={globalIdx}
+                    showConnector={showConnector}
+                    isStreaming
+                >
+                    <span>Thinking...</span>
+                </EventBlock>
+            );
+        }
+        if (event.type === "mcp_tool_call") {
+            const isError = event.status === "error";
+            const label = event.connector_name
+                ? `${event.connector_name}: ${event.tool_name}`
+                : toolCallLabel(event.openai_tool_name);
+            return (
+                <EventBlock
+                    key={globalIdx}
+                    showConnector={showConnector}
+                    isStreaming={event.isStreaming}
+                    dotColor={isError ? "red" : "gray"}
+                >
+                    <span className="font-medium">
+                        {event.isStreaming ? "Using connector..." : label}
+                    </span>
+                    {isError && event.error && (
+                        <p className="mt-0.5 text-xs text-red-600">
+                            {event.error}
+                        </p>
+                    )}
+                </EventBlock>
+            );
+        }
+        if (event.type === "doc_read") {
+            const ann = citations.find(
+                (a) => a.kind !== "case" && a.filename === event.filename,
+            );
+            return (
+                <DocReadBlock
+                    key={globalIdx}
+                    filename={event.filename}
+                    isStreaming={event.isStreaming}
+                    onClick={
+                        !event.isStreaming && ann && onCitationClick
+                            ? () => onCitationClick(ann)
+                            : undefined
+                    }
+                    showConnector={showConnector}
+                />
+            );
+        }
+        if (event.type === "doc_find") {
+            return (
+                <DocFindBlock
+                    key={globalIdx}
+                    filename={event.filename}
+                    query={event.query}
+                    totalMatches={event.total_matches}
+                    isStreaming={!!event.isStreaming}
+                    showConnector={showConnector}
+                />
+            );
+        }
+        if (event.type === "doc_created") {
+            return (
+                <DocCreatedBlock
+                    key={globalIdx}
+                    filename={event.filename}
+                    isStreaming={event.isStreaming}
+                    showConnector={showConnector}
+                />
+            );
+        }
+        if (event.type === "doc_replicated") {
+            // The backend now does N copies in one tool call and reports
+            // count + copies on a single event, so no consecutive-event
+            // aggregation needed.
+            return (
+                <DocReplicatedBlock
+                    key={globalIdx}
+                    filename={event.filename}
+                    count={event.count}
+                    isStreaming={!!event.isStreaming}
+                    hasError={!!event.error}
+                    showConnector={showConnector}
+                />
+            );
+        }
+        if (event.type === "doc_edited") {
+            return (
+                <DocEditedBlock
+                    key={globalIdx}
+                    filename={event.filename}
+                    isStreaming={event.isStreaming}
+                    hasError={!!event.error}
+                    showConnector={showConnector}
+                />
+            );
+        }
+        if (event.type === "workflow_applied") {
+            return (
+                <WorkflowAppliedBlock
+                    key={globalIdx}
+                    title={event.title}
+                    showConnector={showConnector}
+                    onClick={
+                        onWorkflowClick
+                            ? () => onWorkflowClick(event.workflow_id)
+                            : undefined
+                    }
+                />
+            );
+        }
+        if (event.type === "ask_inputs") {
+            const response = askInputsResponseFor(globalIdx);
+            return (
+                <AskInputsBlock
+                    key={globalIdx}
+                    event={event}
+                    response={response}
+                    showConnector={showConnector}
+                />
+            );
+        }
+        if (event.type === "courtlistener_search_case_law") {
+            const count = event.result_count ?? 0;
+            const detail = event.isStreaming
+                ? event.query
+                    ? `for "${event.query}"`
+                    : undefined
+                : event.error
+                  ? event.error
+                  : `${count} ${count === 1 ? "result" : "results"}${event.query ? ` for "${event.query}"` : ""}`;
+            return (
+                <CourtListenerBlock
+                    key={globalIdx}
+                    label={
+                        event.isStreaming
+                            ? "Searching case law"
+                            : event.error
+                              ? "Case law search failed"
+                              : "Searched case law"
+                    }
+                    detail={detail}
+                    isStreaming={!!event.isStreaming}
+                    hasError={!!event.error}
+                    showConnector={showConnector}
+                />
+            );
+        }
+        if (event.type === "courtlistener_get_cases") {
+            const caseCount = event.case_count ?? event.cluster_ids.length;
+            const displayLabel = `${caseCount} ${
+                caseCount === 1 ? "case" : "cases"
+            }`;
+            const detail = event.error ? event.error : undefined;
+            const items: CourtListenerBlockItem[] =
+                event.cases?.map((caseItem) => ({
+                    caseName: caseItem.case_name,
+                    citation: caseItem.citation,
+                    url: caseItem.url ?? null,
+                })) ??
+                event.cluster_ids.map((clusterId) => {
+                    const citation = caseCitations.get(`us-case-${clusterId}`);
+                    return {
+                        caseName: citation?.case_name ?? null,
+                        citation: citation?.citation ?? `Cluster ${clusterId}`,
+                        url: citation?.url ?? null,
+                    };
+                });
+            return (
+                <CourtListenerBlock
+                    key={globalIdx}
+                    label={
+                        event.isStreaming
+                            ? `Fetching ${displayLabel}`
+                            : event.error
+                              ? "Case fetch failed"
+                              : `Fetched ${displayLabel}`
+                    }
+                    detail={detail}
+                    isStreaming={!!event.isStreaming}
+                    hasError={!!event.error}
+                    showConnector={showConnector}
+                    items={items.length > 0 ? items : undefined}
+                />
+            );
+        }
+        if (event.type === "courtlistener_find_in_case") {
+            const searches = event.searches ?? [];
+            if (searches.length > 0) {
+                const matches =
+                    event.total_matches ??
+                    searches.reduce(
+                        (sum, search) => sum + (search.total_matches ?? 0),
+                        0,
+                    );
+                const caseIds = new Set(
+                    searches.map(
+                        (search) =>
+                            search.cluster_id ??
+                            `${search.case_name ?? ""}|${search.citation ?? ""}`,
+                    ),
+                );
+                const caseCount = caseIds.size || searches.length;
+                const searchLabel = `${searches.length} ${
+                    searches.length === 1 ? "search" : "searches"
+                } in ${caseCount} ${caseCount === 1 ? "case" : "cases"}`;
+                const detail = event.isStreaming
+                    ? undefined
+                    : event.error
+                      ? event.error
+                      : `(${matches} ${matches === 1 ? "match" : "matches"})`;
+                const items: CourtListenerBlockItem[] = searches.map(
+                    (search) => ({
+                        caseName: search.case_name ?? null,
+                        citation:
+                            search.citation ??
+                            (search.cluster_id
+                                ? `Cluster ${search.cluster_id}`
+                                : null),
+                        url: null,
+                        query: search.query,
+                        totalMatches: search.total_matches ?? 0,
+                        hasError: !!search.error,
+                    }),
+                );
+                return (
+                    <CourtListenerBlock
+                        key={globalIdx}
+                        label={
+                            event.isStreaming
+                                ? `Running ${searchLabel}`
+                                : event.error
+                                  ? "Case searches failed"
+                                  : `Ran ${searchLabel}`
+                        }
+                        detail={detail}
+                        isStreaming={!!event.isStreaming}
+                        hasError={!!event.error}
+                        showConnector={showConnector}
+                        items={items.length > 0 ? items : undefined}
+                    />
+                );
+            }
+            const matches = event.total_matches ?? 0;
+            const caseLabel =
+                [event.case_name, event.citation].filter(Boolean).join(", ") ||
+                (event.cluster_id ? `cluster ${event.cluster_id}` : "case");
+            const detail = event.isStreaming
+                ? event.query
+                    ? `for "${event.query}" in ${caseLabel}`
+                    : caseLabel
+                : event.error
+                  ? event.error
+                  : `${matches} ${matches === 1 ? "match" : "matches"}${event.query ? ` for "${event.query}"` : ""} in ${caseLabel}`;
+            return (
+                <CourtListenerBlock
+                    key={globalIdx}
+                    label={
+                        event.isStreaming
+                            ? "Searching case"
+                            : event.error
+                              ? "Case search failed"
+                              : "Searched case"
+                    }
+                    detail={detail}
+                    isStreaming={!!event.isStreaming}
+                    hasError={!!event.error}
+                    showConnector={showConnector}
+                />
+            );
+        }
+        if (event.type === "courtlistener_read_case") {
+            const count = event.opinion_count ?? 0;
+            const caseLabel =
+                [event.case_name, event.citation].filter(Boolean).join(", ") ||
+                "case";
+            const detail = event.isStreaming
+                ? undefined
+                : event.error
+                  ? event.error
+                  : count > 0
+                    ? `(${count} ${count === 1 ? "opinion" : "opinions"})`
+                    : undefined;
+            return (
+                <CourtListenerBlock
+                    key={globalIdx}
+                    label={
+                        event.isStreaming
+                            ? `Reading case ${caseLabel}`
+                            : event.error
+                              ? `Case read failed ${caseLabel}`
+                              : `Read case ${caseLabel}`
+                    }
+                    detail={detail}
+                    isStreaming={!!event.isStreaming}
+                    hasError={!!event.error}
+                    showConnector={showConnector}
+                />
+            );
+        }
+        if (event.type === "courtlistener_verify_citations") {
+            const citations = event.citation_count ?? 0;
+            const matches = event.match_count ?? 0;
+            const citationLabel = `${citations} ${citations === 1 ? "citation" : "citations"}`;
+            const detail = event.isStreaming
+                ? undefined
+                : event.error
+                  ? event.error
+                  : `(${matches} ${matches === 1 ? "match" : "matches"})`;
+            // Adjacent `case_citation` events are emitted between the start
+            // and final verify_citations events (one per matched citation) —
+            // collect them so the user can expand to see resolved cases.
+            const items: CourtListenerBlockItem[] = [];
+            if (events) {
+                for (let j = globalIdx + 1; j < events.length; j++) {
+                    const e = events[j];
+                    if (e.type !== "case_citation") break;
+                    items.push({
+                        caseName: e.case_name,
+                        citation: e.citation,
+                        url: e.url || null,
+                    });
+                }
+            }
+            return (
+                <CourtListenerBlock
+                    key={globalIdx}
+                    label={
+                        event.isStreaming
+                            ? `Verifying ${citationLabel}`
+                            : event.error
+                              ? "Citation verification failed"
+                              : `Verified ${citationLabel}`
+                    }
+                    detail={detail}
+                    isStreaming={!!event.isStreaming}
+                    hasError={!!event.error}
+                    showConnector={showConnector}
+                    items={items.length > 0 ? items : undefined}
+                />
+            );
+        }
+        return null;
+    };
 
     return (
         <div style={{ minHeight }}>
@@ -376,7 +752,9 @@ export function AssistantMessage({
                                     <div key={`c-${g.index}`}>
                                         <MarkdownContent
                                             text={processedTexts[g.index]}
-                                            citationsList={citationsList}
+                                            inlineCitationTargets={
+                                                inlineCitationTargets
+                                            }
                                             caseCitations={caseCitations}
                                             caseOpinions={caseOpinions}
                                             onCitationClick={onCitationClick}
@@ -391,17 +769,24 @@ export function AssistantMessage({
                                 );
                             }
                             const subsequentContent = hasContentAfter(gIdx);
-                            const wrapperIsStreaming = g.events.some(
-                                (event) =>
-                                    "isStreaming" in event &&
-                                    !!event.isStreaming,
-                            );
+                            const pendingAskInput = hasPendingAskInput(g);
+                            const wrapperIsStreaming =
+                                g.events.some(
+                                    (event) =>
+                                        "isStreaming" in event &&
+                                        !!event.isStreaming,
+                                ) || pendingAskInput;
                             return (
                                 <PreResponseWrapper
                                     key={`p-${g.indices[0]}`}
                                     stepCount={g.events.length}
-                                    shouldMinimize={subsequentContent}
+                                    shouldMinimize={
+                                        pendingAskInput
+                                            ? false
+                                            : subsequentContent
+                                    }
                                     isStreaming={wrapperIsStreaming}
+                                    forceOpen={pendingAskInput}
                                 >
                                     {g.events.map((event, i) =>
                                         renderEvent(
@@ -453,29 +838,40 @@ export function AssistantMessage({
                                         }
                                     }
                                 }
+                                let cardIndex = 0;
                                 const cards = editedEvents.flatMap((e) =>
-                                    e.annotations.map((ann) => (
-                                        <EditCard
-                                            key={`editcard-${ann.edit_id}`}
-                                            annotation={ann}
-                                            resolvedStatus={
-                                                resolvedEditStatuses?.[
-                                                    ann.edit_id
-                                                ]
-                                            }
-                                            isReloading={
-                                                isEditReloading?.(
-                                                    ann.edit_id,
-                                                ) ?? false
-                                            }
-                                            onViewClick={(a) =>
-                                                onEditViewClick?.(a, e.filename)
-                                            }
-                                            onResolveStart={onEditResolveStart}
-                                            onResolved={handleEditResolved}
-                                            onError={onEditError}
-                                        />
-                                    )),
+                                    e.annotations.map((ann) => {
+                                        const changeNumber = ++cardIndex;
+                                        return (
+                                            <EditCard
+                                                key={`editcard-${ann.edit_id}`}
+                                                annotation={ann}
+                                                changeNumber={changeNumber}
+                                                resolvedStatus={
+                                                    resolvedEditStatuses?.[
+                                                        ann.edit_id
+                                                    ]
+                                                }
+                                                isReloading={
+                                                    isEditReloading?.(
+                                                        ann.edit_id,
+                                                    ) ?? false
+                                                }
+                                                onViewClick={(a) =>
+                                                    onEditViewClick?.(
+                                                        a,
+                                                        e.filename,
+                                                        changeNumber,
+                                                    )
+                                                }
+                                                onResolveStart={
+                                                    onEditResolveStart
+                                                }
+                                                onResolved={handleEditResolved}
+                                                onError={onEditError}
+                                            />
+                                        );
+                                    }),
                                 );
                                 const resolvedCount = editedEvents.reduce(
                                     (acc, e) =>
@@ -658,7 +1054,7 @@ export function AssistantMessage({
 
                 {showCitationBlock && (
                     <CitationsBlock
-                        citationsList={citationBlockList}
+                        citations={citations}
                         onCitationClick={onCitationClick}
                         onOpenSource={handleOpenCitationSource}
                         canOpenSource={canOpenCitationSource}
@@ -671,7 +1067,7 @@ export function AssistantMessage({
                 )}
 
                 {/* Copy button */}
-                <div className="flex items-center gap-2 pt-2 pb-4 md:pb-8 font-sans justify-start">
+                <div className="flex items-center gap-2 py-2 font-sans justify-start">
                     {!isStreaming && (
                         <button
                             className="p-1.5 rounded text-gray-500 hover:text-gray-700 hover:bg-gray-100"

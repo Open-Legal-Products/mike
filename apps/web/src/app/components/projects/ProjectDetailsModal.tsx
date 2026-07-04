@@ -1,38 +1,33 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { Loader2, Users } from "lucide-react";
-import { Modal } from "@/app/components/shared/Modal";
+import { useEffect, useMemo, useState } from "react";
+import { Users } from "lucide-react";
+import { Modal } from "@/app/components/modals/Modal";
+import { ModalFieldLabel } from "@/app/components/modals/ModalFieldLabel";
+import { ModalTextInput } from "@/app/components/modals/ModalTextInput";
 import type { Project } from "@/app/components/shared/types";
-import type { ProjectPeople } from "@/app/lib/mikeApi";
+import { ProjectPracticeField } from "./ProjectPracticeField";
 
 interface ProjectDetailsModalProps {
     open: boolean;
     project: Project | null;
     canEdit: boolean;
-    currentUserDisplayName?: string | null;
-    currentUserEmail?: string | null;
-    fetchPeople: (projectId: string) => Promise<ProjectPeople>;
     onClose: () => void;
-    onSave: (values: { name: string; cmNumber: string }) => Promise<void>;
-    onShareProject: () => void;
+    onSave: (values: { name: string; cmNumber: string; practice: string }) => Promise<void>;
+    onShareProject?: () => void;
 }
 
 export function ProjectDetailsModal({
     open,
     project,
     canEdit,
-    currentUserDisplayName,
-    currentUserEmail,
-    fetchPeople,
     onClose,
     onSave,
     onShareProject,
 }: ProjectDetailsModalProps) {
     const [nameDraft, setNameDraft] = useState("");
     const [cmDraft, setCmDraft] = useState("");
-    const [people, setPeople] = useState<ProjectPeople | null>(null);
-    const [peopleLoading, setPeopleLoading] = useState(false);
+    const [practiceDraft, setPracticeDraft] = useState("");
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -41,62 +36,24 @@ export function ProjectDetailsModal({
         if (!open || !project) return;
         setNameDraft(project.name);
         setCmDraft(project.cm_number ?? "");
+        setPracticeDraft(project.practice ?? "");
         setSaved(false);
         setError(null);
     }, [open, project]);
 
-    useEffect(() => {
-        if (!open || !project) return;
-        const isPrivateOwnedProject =
-            project.is_owner !== false &&
-            (!Array.isArray(project.shared_with) ||
-                project.shared_with.length === 0);
-        if (isPrivateOwnedProject) {
-            setPeople(null);
-            setPeopleLoading(false);
-            return;
-        }
-        let cancelled = false;
-        setPeopleLoading(true);
-        fetchPeople(project.id)
-            .then((data) => {
-                if (!cancelled) setPeople(data);
-            })
-            .catch(() => {
-                if (!cancelled) setPeople(null);
-            })
-            .finally(() => {
-                if (!cancelled) setPeopleLoading(false);
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, [open, project, fetchPeople]);
-
     const trimmedName = nameDraft.trim();
     const trimmedCm = cmDraft.trim();
+    const trimmedPractice = practiceDraft.trim();
     const hasChanges = useMemo(() => {
         if (!project) return false;
         return (
             trimmedName !== project.name ||
-            trimmedCm !== (project.cm_number ?? "")
+            trimmedCm !== (project.cm_number ?? "") ||
+            trimmedPractice !== (project.practice ?? "")
         );
-    }, [project, trimmedCm, trimmedName]);
+    }, [project, trimmedCm, trimmedName, trimmedPractice]);
 
     if (!project) return null;
-
-    const accessLabel =
-        Array.isArray(project.shared_with) && project.shared_with.length > 0
-            ? "Shared"
-            : "Private";
-    const isPrivateOwnedProject =
-        project.is_owner !== false && accessLabel === "Private";
-    const ownerLabel =
-        people?.owner.display_name?.trim() ||
-        people?.owner.email?.trim() ||
-        (isPrivateOwnedProject ? currentUserDisplayName?.trim() : "") ||
-        (isPrivateOwnedProject ? currentUserEmail?.trim() : "") ||
-        "Unknown";
 
     async function handleSave() {
         if (!canEdit || saving || !hasChanges || !trimmedName) return;
@@ -104,7 +61,14 @@ export function ProjectDetailsModal({
         setSaved(false);
         setError(null);
         try {
-            await onSave({ name: trimmedName, cmNumber: trimmedCm });
+            await onSave({
+                name: trimmedName,
+                cmNumber: trimmedCm,
+                practice:
+                    trimmedPractice && trimmedPractice !== "Other"
+                        ? trimmedPractice
+                        : "",
+            });
             setSaved(true);
         } catch {
             setError("Could not update project details.");
@@ -118,11 +82,15 @@ export function ProjectDetailsModal({
             open={open}
             onClose={onClose}
             breadcrumbs={["Projects", project.name, "Details"]}
-            secondaryAction={{
-                label: "Share Project",
-                icon: <Users className="h-4 w-4" />,
-                onClick: onShareProject,
-            }}
+            secondaryAction={
+                onShareProject
+                    ? {
+                          label: "Share Project",
+                          icon: <Users className="h-4 w-4" />,
+                          onClick: onShareProject,
+                      }
+                    : undefined
+            }
             footerStatus={
                 error ? (
                     <span className="text-sm text-red-600">{error}</span>
@@ -141,15 +109,12 @@ export function ProjectDetailsModal({
             }
             cancelAction={canEdit ? undefined : false}
         >
-            <div className="flex flex-col gap-5 py-1">
-                <div className="flex flex-col gap-3">
-                    <label
-                        htmlFor="project-details-name"
-                        className="text-xs font-medium text-gray-700"
-                    >
-                        Project Name
-                    </label>
-                    <input
+            <div className="flex min-h-0 flex-1 flex-col gap-6 py-1">
+                <div>
+                    <ModalFieldLabel htmlFor="project-details-name">
+                        Project name
+                    </ModalFieldLabel>
+                    <ModalTextInput
                         id="project-details-name"
                         value={nameDraft}
                         onChange={(e) => {
@@ -158,18 +123,16 @@ export function ProjectDetailsModal({
                             setError(null);
                         }}
                         disabled={!canEdit || saving}
-                        className="h-9 w-full rounded-md border border-gray-200 bg-gray-50 px-3 text-sm text-gray-900 outline-none transition-colors focus:border-gray-300 disabled:cursor-not-allowed disabled:text-gray-400"
+                        placeholder="Add project name"
+                        variant="minimal"
                     />
                 </div>
 
-                <div className="flex flex-col gap-3">
-                    <label
-                        htmlFor="project-details-cm"
-                        className="text-xs font-medium text-gray-700"
-                    >
-                        CM
-                    </label>
-                    <input
+                <div>
+                    <ModalFieldLabel htmlFor="project-details-cm">
+                        CM number
+                    </ModalFieldLabel>
+                    <ModalTextInput
                         id="project-details-cm"
                         value={cmDraft}
                         onChange={(e) => {
@@ -178,39 +141,29 @@ export function ProjectDetailsModal({
                             setError(null);
                         }}
                         disabled={!canEdit || saving}
-                        placeholder="No CM"
-                        className="h-9 w-full rounded-md border border-gray-200 bg-gray-50 px-3 text-sm text-gray-900 outline-none transition-colors focus:border-gray-300 disabled:cursor-not-allowed disabled:text-gray-400"
+                        placeholder="Add a CM number..."
+                        variant="minimal"
+                        className="text-xl text-gray-600"
                     />
                 </div>
 
-                <div className="divide-y divide-gray-100 text-sm">
-                    <DetailRow label="Ownership" value={accessLabel} />
-                    <DetailRow
-                        label="Owner"
-                        value={
-                            peopleLoading && !isPrivateOwnedProject ? (
-                                <span className="inline-flex items-center gap-1.5 text-gray-400">
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    Loading
-                                </span>
-                            ) : (
-                                ownerLabel
-                            )
-                        }
+                <div>
+                    <ModalFieldLabel htmlFor="project-details-practice">
+                        Practice
+                    </ModalFieldLabel>
+                    <ProjectPracticeField
+                        id="project-details-practice"
+                        value={practiceDraft}
+                        onChange={(value) => {
+                            setPracticeDraft(value);
+                            setSaved(false);
+                            setError(null);
+                        }}
+                        disabled={!canEdit || saving}
                     />
                 </div>
+
             </div>
         </Modal>
-    );
-}
-
-function DetailRow({ label, value }: { label: string; value: ReactNode }) {
-    return (
-        <div className="flex items-center justify-between gap-4 py-3">
-            <span className="text-gray-500">{label}</span>
-            <span className="min-w-0 truncate text-right text-gray-900">
-                {value}
-            </span>
-        </div>
     );
 }

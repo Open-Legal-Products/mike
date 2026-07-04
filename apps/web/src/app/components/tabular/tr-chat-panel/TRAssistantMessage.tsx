@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { AssistantEvent } from "../../shared/types";
 import type { TRCitationAnnotation } from "@/app/lib/mikeApi";
-import { PreResponseWrapper } from "../../shared/PreResponseWrapper";
+import { PreResponseWrapper } from "../../assistant/PreResponseWrapper";
 import type { TRMessage } from "./types";
 import { preprocessTRCitations } from "./helpers";
 import { ReasoningBlock } from "./ReasoningBlock";

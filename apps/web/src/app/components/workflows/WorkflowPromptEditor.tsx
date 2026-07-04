@@ -2,6 +2,7 @@
 
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { TableKit } from "@tiptap/extension-table";
 import { Markdown } from "tiptap-markdown";
 import { useEffect, useRef } from "react";
 import {
@@ -65,6 +66,11 @@ export function WorkflowPromptEditor({
                 code: false,
                 blockquote: false,
                 horizontalRule: false,
+            }),
+            TableKit.configure({
+                table: {
+                    renderWrapper: true,
+                },
             }),
             Markdown.configure({
                 html: false,

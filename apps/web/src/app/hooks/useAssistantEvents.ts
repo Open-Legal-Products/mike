@@ -18,6 +18,24 @@ export function useAssistantEvents(
 ) {
   const eventsRef = useRef<AssistantEvent[]>([]);
 
+  // Upstream (a5fe6d6) targets the latest assistant message rather than
+  // blindly the last message, so ask-input turns (where the stream appends
+  // onto an existing assistant message) land in the right place.
+  const updateLatestAssistantMessage = (
+    updater: (message: Message) => Message,
+  ) => {
+    setMessages((prev) => {
+      const assistantIndex = [...prev]
+        .map((message, index) => ({ message, index }))
+        .reverse()
+        .find(({ message }) => message.role === "assistant")?.index;
+      if (assistantIndex === undefined) return prev;
+      const updated = [...prev];
+      updated[assistantIndex] = updater(updated[assistantIndex]);
+      return updated;
+    });
+  };
+
   /**
    * Finalize any in-flight streaming content event so the next
    * content_delta starts a fresh block. Called
@@ -34,17 +52,10 @@ export function useAssistantEvents(
         { type: "content", text: last.text },
       ];
       const snapshot = [...eventsRef.current];
-      setMessages((prev) => {
-        const updated = [...prev];
-        const lastMsg = updated[updated.length - 1];
-        if (lastMsg?.role === "assistant") {
-          updated[updated.length - 1] = {
-            ...lastMsg,
-            events: snapshot,
-          };
-        }
-        return updated;
-      });
+      updateLatestAssistantMessage((message) => ({
+        ...message,
+        events: snapshot,
+      }));
     }
   };
 
@@ -60,17 +71,10 @@ export function useAssistantEvents(
       { type: "reasoning", text: last.text },
     ];
     const snapshot = [...eventsRef.current];
-    setMessages((prev) => {
-      const updated = [...prev];
-      const lastMsg = updated[updated.length - 1];
-      if (lastMsg?.role === "assistant") {
-        updated[updated.length - 1] = {
-          ...lastMsg,
-          events: snapshot,
-        };
-      }
-      return updated;
-    });
+    updateLatestAssistantMessage((message) => ({
+      ...message,
+      events: snapshot,
+    }));
   };
 
   // Transient placeholder events (tool_call_start, thinking) fill the
@@ -103,14 +107,7 @@ export function useAssistantEvents(
     if (after.length === before.length) return;
     eventsRef.current = after;
     const snapshot = [...after];
-    setMessages((prev) => {
-      const updated = [...prev];
-      const last = updated[updated.length - 1];
-      if (last?.role === "assistant") {
-        updated[updated.length - 1] = { ...last, events: snapshot };
-      }
-      return updated;
-    });
+    updateLatestAssistantMessage((message) => ({ ...message, events: snapshot }));
   };
 
   const pushThinkingPlaceholder = () => {
@@ -123,14 +120,7 @@ export function useAssistantEvents(
       { type: "thinking" as const, isStreaming: true },
     ];
     const snapshot = [...eventsRef.current];
-    setMessages((prev) => {
-      const updated = [...prev];
-      const lastMsg = updated[updated.length - 1];
-      if (lastMsg?.role === "assistant") {
-        updated[updated.length - 1] = { ...lastMsg, events: snapshot };
-      }
-      return updated;
-    });
+    updateLatestAssistantMessage((message) => ({ ...message, events: snapshot }));
   };
 
   const pushEvent = (event: AssistantEvent) => {
@@ -141,14 +131,7 @@ export function useAssistantEvents(
     const next = eventsRef.current.filter((e) => !isStreamingPlaceholder(e));
     eventsRef.current = [...next, event];
     const snapshot = [...eventsRef.current];
-    setMessages((prev) => {
-      const updated = [...prev];
-      const last = updated[updated.length - 1];
-      if (last?.role === "assistant") {
-        updated[updated.length - 1] = { ...last, events: snapshot };
-      }
-      return updated;
-    });
+    updateLatestAssistantMessage((message) => ({ ...message, events: snapshot }));
   };
 
   const updateMatchingEvent = (
@@ -165,14 +148,7 @@ export function useAssistantEvents(
     newEvents[idx] = updater(events[idx]);
     eventsRef.current = newEvents;
     const snapshot = [...newEvents];
-    setMessages((prev) => {
-      const updated = [...prev];
-      const last = updated[updated.length - 1];
-      if (last?.role === "assistant") {
-        updated[updated.length - 1] = { ...last, events: snapshot };
-      }
-      return updated;
-    });
+    updateLatestAssistantMessage((message) => ({ ...message, events: snapshot }));
     return true;
   };
 

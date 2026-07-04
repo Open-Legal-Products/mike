@@ -5,7 +5,7 @@ import { Plus } from "lucide-react";
 import {
     MfaVerificationPopup,
     needsMfaVerification,
-} from "@/app/components/shared/MfaVerificationPopup";
+} from "@/app/components/popups/MfaVerificationPopup";
 import {
     type McpConnectorSummary,
     MikeApiError,
@@ -33,7 +33,8 @@ import {
     parseCustomHeaders,
 } from "./connectorShared";
 import { ConnectorsSkeleton, ConnectorRow } from "./ConnectorRow";
-import { AddMcpConnectorModal, McpConnectorDetailsModal } from "./ConnectorModals";
+import { McpConnectorDetailsModal } from "./ConnectorModals";
+import { NewMcpModal } from "@/app/components/account/NewMcpModal";
 
 export default function ConnectorsPage() {
     const [connectors, setConnectors] = useState<McpConnectorSummary[]>([]);
@@ -558,7 +559,7 @@ export default function ConnectorsPage() {
                 )}
             </div>
 
-            <AddMcpConnectorModal
+            <NewMcpModal
                 open={addOpen}
                 draft={addDraft}
                 step={addStep}

@@ -39,6 +39,7 @@ export {
     readBooleanBodyField,
     bootstrapUserProfile,
     getUserProfile,
+    lookupUserByEmail,
     updateUserProfile,
 } from "./user.profile";
 

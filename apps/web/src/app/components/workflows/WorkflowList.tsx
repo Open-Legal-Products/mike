@@ -21,13 +21,11 @@ import {
     type WorkflowsData,
 } from "@/app/hooks/useWorkflowsQuery";
 import type { Workflow } from "../shared/types";
-import { BUILT_IN_WORKFLOWS, BUILT_IN_IDS } from "./builtinWorkflows";
-import { DisplayWorkflowModal } from "./DisplayWorkflowModal";
+import { UseWorkflowModal } from "./UseWorkflowModal";
 import { NewWorkflowModal } from "./NewWorkflowModal";
 import { TableToolbar } from "../shared/TableToolbar";
 import { RowActionMenuItems, RowActions } from "../shared/RowActions";
 import { MikeIcon } from "@/components/chat/mike-icon";
-import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/app/components/shared/PageHeader";
 import { workflowDetailPath } from "./workflowRoutes";
 import { toastError } from "@/lib/toast";
@@ -52,22 +50,29 @@ import {
     TableStickyCell,
 } from "../shared/TablePrimitive";
 
-type WorkflowScope = "all" | "builtin" | "custom" | "hidden";
+type WorkflowScope = "all" | "system" | "user" | "shared";
 
 const WORKFLOW_SCOPES: { id: WorkflowScope; label: string }[] = [
     { id: "all", label: "All" },
-    { id: "builtin", label: "Built-in" },
-    { id: "custom", label: "Custom" },
-    { id: "hidden", label: "Hidden" },
+    { id: "user", label: "User" },
+    { id: "shared", label: "Shared with me" },
+    { id: "system", label: "System" },
 ];
+
+const isDev = process.env.NODE_ENV !== "production";
+const devLog = (...args: Parameters<typeof console.log>) => {
+    if (isDev) console.log(...args);
+};
 
 export function WorkflowList() {
     const router = useRouter();
-    const { user } = useAuth();
     const queryClient = useQueryClient();
     const [selected, setSelected] = useState<Workflow | null>(null);
     const [activeScope, setActiveScope] = useState<WorkflowScope>("all");
     const [newModalOpen, setNewModalOpen] = useState(false);
+    const [editingWorkflow, setEditingWorkflow] = useState<Workflow | null>(
+        null,
+    );
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [actionsOpen, setActionsOpen] = useState(false);
     const [practiceFilter, setPracticeFilter] = useState<string | null>(null);
@@ -79,15 +84,26 @@ export function WorkflowList() {
 
     // Cached read of the workflows list (React Query). Mirrors the previous
     // load-on-mount: `loading` while the first fetch is in flight, and an error
-    // falls back to empty lists (same as the old `.catch(() => setCustom([]))`).
+    // falls back to empty lists. The cached shape still uses the legacy field
+    // names (`custom` = full workflow list incl. system rows, `hiddenBuiltinIds`
+    // = hidden system workflow ids) — aliased here to the upstream naming.
     const workflowsQuery = useWorkflowsQuery();
-    const custom = workflowsQuery.data?.custom ?? [];
-    const hiddenBuiltinIds = workflowsQuery.data?.hiddenBuiltinIds ?? [];
+    const workflows = workflowsQuery.data?.custom ?? [];
+    const hiddenSystemIds = workflowsQuery.data?.hiddenBuiltinIds ?? [];
     const loading = workflowsQuery.isLoading;
+
+    useEffect(() => {
+        if (workflowsQuery.error) {
+            devLog(
+                "[workflows/ui:list] failed; showing no workflows",
+                workflowsQuery.error,
+            );
+        }
+    }, [workflowsQuery.error]);
 
     // Mutations update the cached value in place (preserving the old optimistic
     // UX) instead of holding a second copy in component state.
-    const setCustom = useCallback(
+    const setWorkflows = useCallback(
         (updater: (prev: Workflow[]) => Workflow[]) => {
             queryClient.setQueryData<WorkflowsData>(
                 workflowsQueryKey,
@@ -99,7 +115,7 @@ export function WorkflowList() {
         },
         [queryClient],
     );
-    const setHiddenBuiltinIds = useCallback(
+    const setHiddenSystemIds = useCallback(
         (updater: (prev: string[]) => string[]) => {
             queryClient.setQueryData<WorkflowsData>(
                 workflowsQueryKey,
@@ -111,11 +127,6 @@ export function WorkflowList() {
         },
         [queryClient],
     );
-
-    useEffect(() => {
-        setSelectedIds([]);
-        setActionsOpen(false);
-    }, [activeScope, practiceFilter, typeFilter]);
 
     useEffect(() => {
         function handleClick(e: MouseEvent) {
@@ -130,21 +141,30 @@ export function WorkflowList() {
         return () => document.removeEventListener("mousedown", handleClick);
     }, [actionsOpen]);
 
-    const hiddenBuiltins = BUILT_IN_WORKFLOWS.filter((wf) =>
-        hiddenBuiltinIds.includes(wf.id),
+    const systemWorkflows = workflows.filter((wf) => wf.is_system);
+    const userWorkflows = workflows.filter(
+        (wf) => !wf.is_system && wf.is_owner !== false,
     );
-    const visibleBuiltins = BUILT_IN_WORKFLOWS.filter(
-        (wf) => !hiddenBuiltinIds.includes(wf.id),
+    const sharedWorkflows = workflows.filter(
+        (wf) => !wf.is_system && wf.is_owner === false,
     );
-    const all = [...visibleBuiltins, ...custom];
+    const hiddenSystem = systemWorkflows.filter((wf) =>
+        hiddenSystemIds.includes(wf.id),
+    );
+    const visibleSystem = systemWorkflows.filter(
+        (wf) => !hiddenSystemIds.includes(wf.id),
+    );
+    const systemRows = [...visibleSystem, ...hiddenSystem];
+    const activeRows = [...visibleSystem, ...userWorkflows, ...sharedWorkflows];
+    const allRows = [...systemRows, ...userWorkflows, ...sharedWorkflows];
     const byScope =
-        activeScope === "builtin"
-            ? visibleBuiltins
-            : activeScope === "custom"
-              ? custom
-              : activeScope === "hidden"
-                ? hiddenBuiltins
-                : all;
+        activeScope === "all"
+            ? activeRows
+            : activeScope === "system"
+            ? systemRows
+            : activeScope === "user"
+              ? userWorkflows
+              : sharedWorkflows;
     const practices = Array.from(
         new Set(
             byScope.map((wf) => wf.practice).filter((p): p is string => !!p),
@@ -173,17 +193,37 @@ export function WorkflowList() {
         );
     }
 
+    function clearSelection() {
+        setSelectedIds([]);
+        setActionsOpen(false);
+    }
+
+    function handleScopeChange(scope: WorkflowScope) {
+        setActiveScope(scope);
+        clearSelection();
+    }
+
+    function handleTypeFilterChange(value: Workflow["type"] | null) {
+        setTypeFilter(value);
+        clearSelection();
+    }
+
+    function handlePracticeFilterChange(value: string | null) {
+        setPracticeFilter(value);
+        clearSelection();
+    }
+
     async function handleHideWorkflow(id: string) {
-        setHiddenBuiltinIds((prev) => [...prev, id]);
+        setHiddenSystemIds((prev) => [...prev, id]);
         await hideWorkflow(id).catch(() => {
-            setHiddenBuiltinIds((prev) => prev.filter((x) => x !== id));
+            setHiddenSystemIds((prev) => prev.filter((x) => x !== id));
         });
     }
 
     async function handleUnhideWorkflow(id: string) {
-        setHiddenBuiltinIds((prev) => prev.filter((x) => x !== id));
+        setHiddenSystemIds((prev) => prev.filter((x) => x !== id));
         await unhideWorkflow(id).catch(() => {
-            setHiddenBuiltinIds((prev) => [...prev, id]);
+            setHiddenSystemIds((prev) => [...prev, id]);
         });
     }
 
@@ -191,16 +231,18 @@ export function WorkflowList() {
         const ids = [...selectedIds];
         setActionsOpen(false);
         setSelectedIds([]);
-        const builtinIds = ids.filter((id) => BUILT_IN_IDS.has(id));
-        const customIds = ids.filter((id) => !BUILT_IN_IDS.has(id));
+        const systemIds = ids.filter(
+            (id) => workflows.find((workflow) => workflow.id === id)?.is_system,
+        );
+        const customIds = ids.filter((id) => !systemIds.includes(id));
         let failed = 0;
-        if (builtinIds.length > 0) {
-            setHiddenBuiltinIds((prev) => [
+        if (systemIds.length > 0) {
+            setHiddenSystemIds((prev) => [
                 ...prev,
-                ...builtinIds.filter((id) => !prev.includes(id)),
+                ...systemIds.filter((id) => !prev.includes(id)),
             ]);
             await Promise.all(
-                builtinIds.map((id) =>
+                systemIds.map((id) =>
                     hideWorkflow(id).catch(() => {
                         failed += 1;
                     }),
@@ -215,7 +257,9 @@ export function WorkflowList() {
                     }),
                 ),
             );
-            setCustom((prev) => prev.filter((w) => !customIds.includes(w.id)));
+            setWorkflows((prev) =>
+                prev.filter((w) => !customIds.includes(w.id)),
+            );
         }
         if (failed > 0) {
             toastError(
@@ -229,7 +273,7 @@ export function WorkflowList() {
         const ids = [...selectedIds];
         setActionsOpen(false);
         setSelectedIds([]);
-        setHiddenBuiltinIds((prev) => prev.filter((id) => !ids.includes(id)));
+        setHiddenSystemIds((prev) => prev.filter((id) => !ids.includes(id)));
         let failed = 0;
         await Promise.all(
             ids.map((id) =>
@@ -270,7 +314,7 @@ export function WorkflowList() {
                     className,
                 };
             })}
-            onChange={setTypeFilter}
+            onChange={handleTypeFilterChange}
         />
     );
 
@@ -283,9 +327,21 @@ export function WorkflowList() {
                 value: practice,
                 label: practice,
             }))}
-            onChange={setPracticeFilter}
+            onChange={handlePracticeFilterChange}
         />
     );
+
+    const selectedHiddenSystemIds = selectedIds.filter((id) =>
+        hiddenSystemIds.includes(id),
+    );
+    const selectedSystemIds = selectedIds.filter(
+        (id) => workflows.find((workflow) => workflow.id === id)?.is_system,
+    );
+    const selectedOnlySystem =
+        selectedIds.length > 0 && selectedIds.length === selectedSystemIds.length;
+    const selectedOnlyHiddenSystem =
+        selectedIds.length > 0 &&
+        selectedIds.length === selectedHiddenSystemIds.length;
 
     const toolbarActions =
         selectedIds.length > 0 ? (
@@ -299,19 +355,19 @@ export function WorkflowList() {
                 </button>
                 {actionsOpen && (
                     <div className={`absolute top-full right-0 mt-1 z-[100] w-36 overflow-hidden ${GLASS_DROPDOWN}`}>
-                        {activeScope === "hidden" ? (
+                        {selectedOnlyHiddenSystem ? (
                             <button
                                 onClick={handleBulkUnhide}
                                 className={`w-full px-3 py-1.5 text-left text-xs text-gray-700 ${GLASS_MENU_ITEM}`}
                             >
-                                Unhide
+                                Activate
                             </button>
                         ) : (
                             <button
                                 onClick={handleBulkRemove}
                                 className="w-full px-3 py-1.5 text-left text-xs text-red-600 transition-colors hover:bg-red-500/10"
                             >
-                                Delete
+                                {selectedOnlySystem ? "Deactivate" : "Delete"}
                             </button>
                         )}
                     </div>
@@ -347,14 +403,15 @@ export function WorkflowList() {
             <TableToolbar
                 items={WORKFLOW_SCOPES}
                 active={activeScope}
-                onChange={setActiveScope}
+                onChange={handleScopeChange}
                 actions={toolbarActions}
             />
 
             {/* Table */}
-            <TableScrollArea ariaLabel="Workflows">
-                {/* Column headers */}
-                <TableHeaderRow>
+            <TableScrollArea
+                ariaLabel="Workflows"
+                header={
+                    <TableHeaderRow>
                         <TableStickyCell header>
                             {loading ? (
                                 <SkeletonDot />
@@ -383,11 +440,13 @@ export function WorkflowList() {
                                 {practiceFilterButton}
                             </div>
                         </TableHeaderCell>
-                        <TableHeaderCell className="w-28">Source</TableHeaderCell>
+                        <TableHeaderCell className="w-44">Source</TableHeaderCell>
                         <TableHeaderCell className="w-8" />
-                </TableHeaderRow>
+                    </TableHeaderRow>
+                }
+            >
 
-                    {loading && activeScope !== "builtin" ? (
+                    {loading ? (
                         <TableBody>
                             {[1, 2, 3].map((i) => (
                                 <TableRow
@@ -408,7 +467,7 @@ export function WorkflowList() {
                                     <TableCell className="w-40">
                                         <SkeletonLine className="w-24" />
                                     </TableCell>
-                                    <TableCell className="w-28">
+                                    <TableCell className="w-44">
                                         <SkeletonLine className="w-14" />
                                     </TableCell>
                                     <TableCell className="w-8" />
@@ -417,11 +476,11 @@ export function WorkflowList() {
                         </TableBody>
                     ) : filtered.length === 0 ? (
                         <TableEmptyState>
-                            {activeScope === "custom" ? (
+                            {activeScope === "user" ? (
                                 <>
                                     <Library className="h-8 w-8 text-gray-300 mb-4" />
                                     <p className="text-2xl font-medium font-serif text-gray-900">
-                                        Custom Workflows
+                                        User Workflows
                                     </p>
                                     <p className="mt-1 text-xs text-gray-400 text-left">
                                         Build reusable prompts and tabular
@@ -435,16 +494,15 @@ export function WorkflowList() {
                                         + Create New
                                     </button>
                                 </>
-                            ) : activeScope === "hidden" ? (
+                            ) : activeScope === "shared" ? (
                                 <>
                                     <Library className="h-8 w-8 text-gray-300 mb-4" />
                                     <p className="text-2xl font-medium font-serif text-gray-900">
-                                        Hidden Workflows
+                                        Shared Workflows
                                     </p>
                                     <p className="mt-1 text-xs text-gray-400 text-left">
-                                        Built-in workflows you&apos;ve hidden will
-                                        appear here. You can unhide them at any
-                                        time.
+                                        Workflows shared with you by other users
+                                        will appear here.
                                     </p>
                                 </>
                             ) : (
@@ -463,15 +521,17 @@ export function WorkflowList() {
                     ) : (
                         <TableBody>
                             {filtered.map((wf) => {
+                            const isHiddenSystem = hiddenSystemIds.includes(wf.id);
                             const rowBg = selectedIds.includes(wf.id)
                                 ? "bg-gray-50"
                                 : TABLE_STICKY_CELL_BG;
                             return (
                             <TableRow
                                 key={wf.id}
+                                className={isHiddenSystem ? "opacity-45" : undefined}
                                 rightClickDropdown={
                                     wf.is_system
-                                        ? activeScope === "hidden"
+                                        ? isHiddenSystem
                                             ? (close) => (
                                                   <RowActionMenuItems
                                                       onClose={close}
@@ -497,11 +557,14 @@ export function WorkflowList() {
                                           : (close) => (
                                                 <RowActionMenuItems
                                                     onClose={close}
+                                                    onEditDetails={() =>
+                                                        setEditingWorkflow(wf)
+                                                    }
                                                     onDelete={async () => {
                                                         await deleteWorkflow(
                                                             wf.id,
                                                         );
-                                                        setCustom((prev) =>
+                                                        setWorkflows((prev) =>
                                                             prev.filter(
                                                                 (w) =>
                                                                     w.id !==
@@ -545,22 +608,22 @@ export function WorkflowList() {
                                         </span>
                                     )}
                                 </TableCell>
-                                <TableCell className="w-28">
+                                <TableCell className="w-44">
                                     {wf.is_system ? (
                                         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600">
                                             <MikeIcon size={14} />
-                                            Mike
+                                            System
                                         </span>
-                                    ) : wf.user_id === user?.id ? (
+                                    ) : wf.is_owner !== false ? (
                                         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600">
                                             <User className="h-3.5 w-3.5 text-gray-500" />
-                                            Myself
+                                            User
                                         </span>
                                     ) : (
                                         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 truncate max-w-full">
                                             <User className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                                             <span className="truncate">
-                                                {wf.shared_by_name ?? "Shared"}
+                                                {getSharedByLabel(wf)}
                                             </span>
                                         </span>
                                     )}
@@ -571,7 +634,7 @@ export function WorkflowList() {
                                     onClick={(e) => e.stopPropagation()}
                                 >
                                     {wf.is_system ? (
-                                        activeScope === "hidden" ? (
+                                        isHiddenSystem ? (
                                             <RowActions
                                                 onUnhide={() =>
                                                     handleUnhideWorkflow(wf.id)
@@ -586,9 +649,12 @@ export function WorkflowList() {
                                         )
                                     ) : wf.is_owner === false ? null : (
                                         <RowActions
+                                            onEditDetails={() =>
+                                                setEditingWorkflow(wf)
+                                            }
                                             onDelete={async () => {
                                                 await deleteWorkflow(wf.id);
-                                                setCustom((prev) =>
+                                                setWorkflows((prev) =>
                                                     prev.filter(
                                                         (w) => w.id !== wf.id,
                                                     ),
@@ -604,8 +670,8 @@ export function WorkflowList() {
                     )}
             </TableScrollArea>
 
-            <DisplayWorkflowModal
-                workflows={all}
+            <UseWorkflowModal
+                workflows={allRows}
                 workflow={selected}
                 onClose={() => setSelected(null)}
             />
@@ -614,11 +680,32 @@ export function WorkflowList() {
                 open={newModalOpen}
                 onClose={() => setNewModalOpen(false)}
                 onCreated={(wf) => {
-                    setCustom((prev) => [wf, ...prev]);
+                    setWorkflows((prev) => [wf, ...prev]);
                     setNewModalOpen(false);
                     router.push(workflowDetailPath(wf));
                 }}
             />
+
+            <NewWorkflowModal
+                open={!!editingWorkflow}
+                onClose={() => setEditingWorkflow(null)}
+                onCreated={() => undefined}
+                editWorkflow={editingWorkflow ?? undefined}
+                onUpdated={(updated) => {
+                    setWorkflows((prev) =>
+                        prev.map((workflow) =>
+                            workflow.id === updated.id
+                                ? { ...workflow, ...updated }
+                                : workflow,
+                        ),
+                    );
+                    setEditingWorkflow(null);
+                }}
+            />
         </div>
     );
+}
+
+function getSharedByLabel(workflow: Workflow) {
+    return workflow.shared_by_name?.trim() || "Shared";
 }

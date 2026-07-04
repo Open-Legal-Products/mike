@@ -8,6 +8,7 @@ import { generateTabularColumnPrompt } from "@/app/lib/mikeApi";
 import { FORMAT_OPTIONS, formatLabel, formatIcon } from "./columnFormat";
 import { TAG_COLORS } from "./pillUtils";
 import { getPresetConfig, PROMPT_PRESETS } from "./columnPresets";
+import { ModalFieldLabel } from "../modals/ModalFieldLabel";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -328,9 +329,9 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
 
                                 {/* Format */}
                                 <div className="mt-4">
-                                    <label className="text-sm font-medium text-gray-500">
+                                    <ModalFieldLabel className="text-gray-500">
                                         Format
-                                    </label>
+                                    </ModalFieldLabel>
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
                                             <button className="mt-1 flex items-center justify-between rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700 hover:border-gray-400 focus:outline-none">
@@ -379,9 +380,9 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
                                 {/* Tag input */}
                                 {column.format === "tag" && (
                                     <div className="mt-3">
-                                        <label className="text-sm font-medium text-gray-500">
+                                        <ModalFieldLabel className="text-gray-500">
                                             Tags
-                                        </label>
+                                        </ModalFieldLabel>
                                         <div className="mt-1 flex flex-wrap gap-1.5 rounded-md border border-gray-200 px-2 py-1.5 focus-within:border-gray-400">
                                             {column.tags.map((tag, tagIdx) => (
                                                 <span
@@ -434,9 +435,9 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
 
                                 {/* Prompt */}
                                 <div className="mt-4 flex items-center justify-between">
-                                    <label className="text-sm font-medium text-gray-500">
+                                    <ModalFieldLabel className="mb-0 text-gray-500">
                                         Prompt
-                                    </label>
+                                    </ModalFieldLabel>
                                     <button
                                         type="button"
                                         onClick={() =>

@@ -15,7 +15,12 @@ import {
 } from "../../lib/access";
 import { deleteUserProjects } from "../../lib/userDataCleanup";
 import {
+  findMissingUserEmails,
+  loadProfileUsersByEmail,
+} from "../../lib/userLookup";
+import {
   type Db,
+  normalizeOptionalString,
   normalizeSharedWith,
   attachDocumentOwnerLabels,
 } from "./projects.shared";
@@ -48,11 +53,13 @@ export async function createProject(
     userEmail: string | undefined;
     name: string;
     cm_number?: string;
+    practice?: string;
     shared_with?: unknown;
     org_id?: string | null;
   },
 ): Promise<CreateProjectResult> {
-  const { userId, userEmail, name, cm_number, shared_with, org_id } = params;
+  const { userId, userEmail, name, cm_number, practice, shared_with, org_id } =
+    params;
   if (!name?.trim())
     return { ok: false, kind: "validation", detail: "name is required" };
 
@@ -63,6 +70,15 @@ export async function createProject(
       ok: false,
       kind: "self_share",
       detail: "You cannot share a project with yourself.",
+    };
+
+  // Sharing targets must be existing Mike users (mirrored profile emails).
+  const missingSharedUsers = await findMissingUserEmails(db, shared.cleaned);
+  if (missingSharedUsers.length > 0)
+    return {
+      ok: false,
+      kind: "validation",
+      detail: `${missingSharedUsers[0]} does not belong to a Mike user.`,
     };
 
   // Tenant assignment: an explicit org_id must be one the caller belongs to;
@@ -86,7 +102,8 @@ export async function createProject(
     .insert({
       user_id: userId,
       name: name.trim(),
-      cm_number: cm_number ?? null,
+      cm_number: normalizeOptionalString(cm_number),
+      practice: normalizeOptionalString(practice),
       shared_with: shared.cleaned,
       org_id: resolvedOrgId,
     })
@@ -187,59 +204,18 @@ export async function getProjectPeople(
     !!userEmail && sharedWith.includes(userEmail.toLowerCase());
   if (!isOwner && !isShared) return { ok: false };
 
-  // Pull every auth user (matching the lookup endpoint's pattern). For
-  // larger deployments this should page or be replaced with a bulk-by-id
-  // RPC, but it keeps things simple while user counts are modest.
-  const { data: usersData } = await db.auth.admin.listUsers({ perPage: 1000 });
-  const allUsers = usersData?.users ?? [];
-  const userByEmail = new Map<string, { id: string; email: string }>();
-  const userById = new Map<string, { id: string; email: string }>();
-  for (const u of allUsers) {
-    if (!u.email) continue;
-    const lower = u.email.toLowerCase();
-    userByEmail.set(lower, { id: u.id, email: u.email });
-    userById.set(u.id, { id: u.id, email: u.email });
-  }
-
-  const memberUserIds: string[] = [];
-  for (const email of sharedWith) {
-    const u = userByEmail.get(email);
-    if (u) memberUserIds.push(u.id);
-  }
-
-  const profileIds = [project.user_id as string, ...memberUserIds].filter(
-    (x, i, arr) => arr.indexOf(x) === i,
-  );
-
-  const profileByUserId = new Map<
-    string,
-    { display_name: string | null; organisation: string | null }
-  >();
-  if (profileIds.length > 0) {
-    const { data: profiles } = await db
-      .from("user_profiles")
-      .select("user_id, display_name, organisation")
-      .in("user_id", profileIds);
-    for (const p of profiles ?? []) {
-      profileByUserId.set(p.user_id as string, {
-        display_name: (p.display_name as string | null) ?? null,
-        organisation: (p.organisation as string | null) ?? null,
-      });
-    }
-  }
+  // Use the mirrored profile email so sharing checks do not scan auth.users.
+  const { userByEmail, userById } = await loadProfileUsersByEmail(db);
 
   const ownerInfo = userById.get(project.user_id as string);
   const owner = {
     user_id: project.user_id,
     email: ownerInfo?.email ?? null,
-    display_name:
-      profileByUserId.get(project.user_id as string)?.display_name ?? null,
+    display_name: ownerInfo?.display_name ?? null,
   };
   const members = sharedWith.map((email) => {
     const u = userByEmail.get(email);
-    const display_name = u
-      ? profileByUserId.get(u.id)?.display_name ?? null
-      : null;
+    const display_name = u?.display_name ?? null;
     return { email, display_name };
   });
 
@@ -248,7 +224,7 @@ export async function getProjectPeople(
 
 export type UpdateProjectResult =
   | { ok: true; body: Record<string, unknown> }
-  | { ok: false; kind: "self_share"; detail: string }
+  | { ok: false; kind: "self_share" | "missing_user"; detail: string }
   | { ok: false; kind: "not_found" };
 
 export async function updateProject(
@@ -257,13 +233,21 @@ export async function updateProject(
     projectId: string;
     userId: string;
     userEmail: string | undefined;
-    body: { name?: unknown; cm_number?: unknown; shared_with?: unknown };
+    body: {
+      name?: unknown;
+      cm_number?: unknown;
+      practice?: unknown;
+      shared_with?: unknown;
+    };
   },
 ): Promise<UpdateProjectResult> {
   const { projectId, userId, userEmail, body } = params;
   const updates: Record<string, unknown> = {};
   if (body.name != null) updates.name = body.name;
   if (body.cm_number != null) updates.cm_number = body.cm_number;
+  if ("practice" in body) {
+    updates.practice = normalizeOptionalString(body.practice);
+  }
   if (Array.isArray(body.shared_with)) {
     // Normalise: lowercase + dedupe + drop empties.
     const normalizedUserEmail = userEmail?.trim().toLowerCase();
@@ -273,6 +257,14 @@ export async function updateProject(
         ok: false,
         kind: "self_share",
         detail: "You cannot share a project with yourself.",
+      };
+    // Sharing targets must be existing Mike users (mirrored profile emails).
+    const missingSharedUsers = await findMissingUserEmails(db, shared.cleaned);
+    if (missingSharedUsers.length > 0)
+      return {
+        ok: false,
+        kind: "missing_user",
+        detail: `${missingSharedUsers[0]} does not belong to a Mike user.`,
       };
     updates.shared_with = shared.cleaned;
   }

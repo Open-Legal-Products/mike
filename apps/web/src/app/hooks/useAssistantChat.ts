@@ -13,7 +13,10 @@ import {
   applyAssistantStreamEvent,
   type StreamEventContext,
 } from "./applyAssistantStreamEvent";
-import type { Message } from "@/app/components/shared/types";
+import type {
+  AssistantEvent,
+  Message,
+} from "@/app/components/shared/types";
 
 interface UseAssistantChatOptions {
   initialMessages?: Message[];
@@ -56,22 +59,33 @@ export function useAssistantChat({
     updateMatchingEvent,
   } = useAssistantEvents(setMessages);
 
+  // Upstream (a5fe6d6) targets the latest assistant message rather than
+  // blindly the last message, so ask-input turns (where the stream appends
+  // onto an existing assistant message) land in the right place.
+  const updateLatestAssistantMessage = (
+    updater: (message: Message) => Message,
+  ) => {
+    setMessages((prev) => {
+      const assistantIndex = [...prev]
+        .map((message, index) => ({ message, index }))
+        .reverse()
+        .find(({ message }) => message.role === "assistant")?.index;
+      if (assistantIndex === undefined) return prev;
+      const updated = [...prev];
+      updated[assistantIndex] = updater(updated[assistantIndex]);
+      return updated;
+    });
+  };
+
   const cancel = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       const snapshot = cancelStreamingEvents(eventsRef.current);
       eventsRef.current = snapshot;
-      setMessages((prev) => {
-        const updated = [...prev];
-        const last = updated[updated.length - 1];
-        if (last?.role === "assistant") {
-          updated[updated.length - 1] = {
-            ...last,
-            events: cancelStreamingEvents(last.events ?? snapshot),
-          };
-        }
-        return updated;
-      });
+      updateLatestAssistantMessage((message) => ({
+        ...message,
+        events: cancelStreamingEvents(message.events ?? snapshot),
+      }));
       setIsResponseLoading(false);
       setIsLoadingCitations(false);
     }
@@ -81,6 +95,10 @@ export function useAssistantChat({
     message: Message,
     opts?: {
       displayedDoc?: { filename: string; documentId: string } | null;
+      askInputsResponse?: Extract<
+        AssistantEvent,
+        { type: "ask_inputs_response" }
+      >;
       /**
        * Explicit message history to build on, overriding the hook's own
        * `messages` closure. Used by retry, which trims the errored assistant
@@ -101,24 +119,65 @@ export function useAssistantChat({
       lastMessage.role === "user" &&
       lastMessage.content === message.content;
 
-    const newMessages: Message[] = isMessageAlreadyAdded
+    const apiMessagesForTurn: Message[] = isMessageAlreadyAdded
       ? currentMessages
       : [...currentMessages, message];
+    // Ask-input turns render optimistically: the response (and a thinking
+    // placeholder) are appended onto the assistant message that asked, and
+    // no new user/assistant messages are added to the visible transcript.
+    const askInputsResponseEvent = opts?.askInputsResponse ?? null;
+    const optimisticResponseEvent = askInputsResponseEvent;
+    const userInputThinkingEvent = optimisticResponseEvent
+      ? ({
+          type: "thinking" as const,
+          isStreaming: true,
+        } satisfies AssistantEvent)
+      : null;
+    const displayMessages: Message[] = optimisticResponseEvent
+      ? (() => {
+          const updated = currentMessages.map((item) => ({
+            ...item,
+            events: item.events ? [...item.events] : item.events,
+          }));
+          for (let i = updated.length - 1; i >= 0; i--) {
+            const current = updated[i];
+            if (current.role !== "assistant") continue;
+            updated[i] = {
+              ...current,
+              events: [
+                ...(current.events ?? []),
+                optimisticResponseEvent,
+                ...(userInputThinkingEvent ? [userInputThinkingEvent] : []),
+              ],
+            };
+            return updated;
+          }
+          return updated;
+        })()
+      : apiMessagesForTurn;
 
-    setMessages([
-      ...newMessages,
-      { role: "assistant", content: "", annotations: [], events: [] },
-    ]);
+    setMessages(
+      optimisticResponseEvent
+        ? displayMessages
+        : [
+            ...displayMessages,
+            { role: "assistant", content: "", citations: [], events: [] },
+          ],
+    );
 
     let streamedChatId: string | null = null;
 
-    eventsRef.current = [];
+    eventsRef.current = optimisticResponseEvent
+      ? ([...displayMessages]
+          .reverse()
+          .find((item) => item.role === "assistant")?.events ?? [])
+      : [];
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
     try {
-      const apiMessages = newMessages.map((currentMessage) => ({
+      const apiMessages = apiMessagesForTurn.map((currentMessage) => ({
         role: currentMessage.role,
         content: currentMessage.content,
         files: currentMessage.files,
@@ -155,12 +214,14 @@ export function useAssistantChat({
               : undefined,
             attached_documents:
               attachedDocs.length > 0 ? attachedDocs : undefined,
+            ask_inputs_response: opts?.askInputsResponse,
             signal: controller.signal,
           })
         : streamChat({
             messages: apiMessages,
             chat_id: chatId,
             model,
+            ask_inputs_response: opts?.askInputsResponse,
             signal: controller.signal,
           }));
 
@@ -247,7 +308,7 @@ export function useAssistantChat({
       await loadChats();
 
       const finalChatIdForTitle = streamedChatId || chatId || null;
-      if (finalChatIdForTitle && newMessages.length === 1) {
+      if (finalChatIdForTitle && apiMessagesForTurn.length === 1) {
         const titleParts = [message.content];
         if (message.workflow)
           titleParts.push(`Workflow: ${message.workflow.title}`);
@@ -265,15 +326,19 @@ export function useAssistantChat({
         finalizeStreamingReasoning();
         eventsRef.current = appendCancellationEvent(eventsRef.current);
         setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === "assistant") {
-            const updated = [...prev];
+          const assistantIndex = [...prev]
+            .map((message, index) => ({ message, index }))
+            .reverse()
+            .find(({ message }) => message.role === "assistant")?.index;
+          if (assistantIndex !== undefined) {
+            const assistantMessage = prev[assistantIndex];
             const events = appendCancellationEvent(
-              last.events ?? eventsRef.current,
+              assistantMessage.events ?? eventsRef.current,
             );
             eventsRef.current = events;
-            updated[updated.length - 1] = {
-              ...last,
+            const updated = [...prev];
+            updated[assistantIndex] = {
+              ...assistantMessage,
               events,
             };
             return updated;
@@ -295,11 +360,14 @@ export function useAssistantChat({
             ? error.message
             : "Sorry, something went wrong.";
         setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === "assistant") {
+          const assistantIndex = [...prev]
+            .map((message, index) => ({ message, index }))
+            .reverse()
+            .find(({ message }) => message.role === "assistant")?.index;
+          if (assistantIndex !== undefined) {
             const updated = [...prev];
-            updated[updated.length - 1] = {
-              ...last,
+            updated[assistantIndex] = {
+              ...updated[assistantIndex],
               error: errorMessage,
             };
             return updated;

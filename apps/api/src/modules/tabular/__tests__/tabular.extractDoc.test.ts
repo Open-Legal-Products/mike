@@ -8,8 +8,7 @@ vi.mock("../../../lib/storage", () => ({
 const queryTabularAllColumns = vi.fn();
 vi.mock("../tabular.extract", () => ({
     queryTabularAllColumns: (...a: unknown[]) => queryTabularAllColumns(...a),
-    extractPdfMarkdown: vi.fn(async () => "pdf text"),
-    extractDocxMarkdown: vi.fn(async () => "docx text"),
+    extractDocumentMarkdown: vi.fn(async () => "pdf text"),
 }));
 
 import { extractDocumentColumns } from "../tabular.extractDoc";

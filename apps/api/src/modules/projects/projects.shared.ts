@@ -16,7 +16,11 @@ export type Db = ReturnType<typeof createServerSupabase>;
 // Structural slice of pino's Logger — service functions only ever .error().
 export type Log = Pick<typeof logger, "error">;
 
-export const ALLOWED_TYPES = new Set(["pdf", "docx", "doc"]);
+export function normalizeOptionalString(value: unknown) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
 
 export function normalizeDocumentFilename(
   nextName: unknown,

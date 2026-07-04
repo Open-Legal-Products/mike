@@ -7,7 +7,7 @@ import { useUserProfile } from "@/contexts/UserProfileContext";
 import {
     MfaVerificationPopup,
     needsMfaVerification,
-} from "@/app/components/shared/MfaVerificationPopup";
+} from "@/app/components/popups/MfaVerificationPopup";
 import { isMfaRequiredError } from "@/app/lib/mikeApi";
 import {
     accountGlassIconButtonClassName,
