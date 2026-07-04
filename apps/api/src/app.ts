@@ -21,6 +21,11 @@ import { checkStorageReady } from "./lib/storage";
 import { env } from "./lib/env";
 import { sendError } from "./lib/http";
 import { setupSentryErrorHandler } from "./lib/observability/sentry";
+import {
+    metricsEnabled,
+    httpMetricsMiddleware,
+    metricsHandler,
+} from "./lib/observability/metrics";
 
 const isProduction = env.NODE_ENV === "production";
 
@@ -144,6 +149,15 @@ app.use(
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     }),
 );
+
+// Metrics (opt-in via METRICS_ENABLED). Registered BEFORE the general rate
+// limiter so a Prometheus scraper is never throttled, and the timing middleware
+// wraps all routes so it can read the matched route pattern on `finish`. When
+// the flag is off nothing is mounted, so GET /metrics simply 404s.
+if (metricsEnabled()) {
+    app.use(httpMetricsMiddleware);
+    app.get("/metrics", metricsHandler);
+}
 
 app.use(generalLimiter);
 

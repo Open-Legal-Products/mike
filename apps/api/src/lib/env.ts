@@ -165,6 +165,13 @@ const envSchema = z.object({
     // entries exist for validation + documentation.
     OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
     OTEL_ENVIRONMENT: z.string().optional(),
+
+    // Prometheus metrics (optional). Off by default — the safe state: with
+    // METRICS_ENABLED unset/"false", GET /metrics is a 404 and no prom-client
+    // collectors (default process metrics, HTTP histogram, queue gauges) are
+    // registered, so there is zero overhead and no unauthenticated surface.
+    // Set "true" to expose GET /metrics for a Prometheus scraper.
+    METRICS_ENABLED: z.enum(["true", "false"]).default("false"),
 });
 
 const result = envSchema.safeParse(process.env);
