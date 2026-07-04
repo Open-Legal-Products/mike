@@ -116,8 +116,7 @@ export async function streamClaude(
   const maxIter = params.maxIterations ?? 10;
   const anthropic = client(apiKeys?.claude);
   const claudeTools = toClaudeTools(tools);
-  // Honor both the fork's `signal` and upstream's `abortSignal` field.
-  const abortSignal = params.abortSignal ?? params.signal;
+  const abortSignal = params.abortSignal;
 
   const messages: NativeMessage[] = toNativeMessages(params.messages);
   let fullText = "";

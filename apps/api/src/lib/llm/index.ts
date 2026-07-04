@@ -190,6 +190,52 @@ export function assertModelAvailable(
 // HTTP status codes that are safe to retry (provider temporarily overloaded
 // or unavailable; the request itself is valid and has not been processed yet).
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+// Backoff bounds for the retry helper. The cap keeps a deep retry from sleeping
+// absurdly long; jitter (see backoffDelayMs) keeps concurrent clients from
+// retrying in lockstep.
+const RETRY_BASE_MS = 1000;
+const RETRY_CAP_MS = 8000;
+
+/**
+ * Delay before a given retry attempt: capped exponential backoff WITH jitter.
+ *
+ * WHY JITTER: without it, N clients that all hit the same transient provider
+ * error at the same instant compute the SAME exponential delay and retry in
+ * lockstep — a synchronized "thundering herd" that re-hammers the recovering
+ * provider in waves and can keep it pinned down. Multiplying by a random factor
+ * spreads the retries across the interval so recovery load is smooth.
+ *
+ * Jitter is applied AFTER the cap, so the result stays in [base/2, base] and
+ * never exceeds RETRY_CAP_MS. `random` is injectable so tests can pin the delay
+ * deterministically; production uses Math.random.
+ */
+export function backoffDelayMs(
+    attempt: number,
+    random: () => number = Math.random,
+): number {
+    const base = Math.min(RETRY_BASE_MS * 2 ** (attempt - 1), RETRY_CAP_MS);
+    return Math.round(base * (0.5 + random() * 0.5));
+}
+
+// ---------------------------------------------------------------------------
+// Circuit breaker — per provider+operation, keyed by `label`.
+//
+// After CIRCUIT_FAILURE_THRESHOLD transient failures within CIRCUIT_WINDOW_MS we
+// stop calling the provider for CIRCUIT_OPEN_MS, so a struggling upstream gets
+// room to recover instead of being hammered by retries.
+//
+// ACCEPTED TRADE-OFFS (deliberate, not oversights):
+//  - State lives in this in-process Map, so with N replicas the breaker is
+//    PER-INSTANCE: each process trips on its own failures, not a shared count.
+//    That's fine — the breaker is a local load-shedding valve, not cluster-wide
+//    consensus; a shared store (Redis) would put a network hop on every LLM call
+//    for little benefit.
+//  - There is NO half-open probe: once CIRCUIT_OPEN_MS elapses the next call is
+//    allowed straight through and a single success fully resets the breaker (see
+//    recordSuccess). The "probe" is just that first real request after the
+//    window — simpler, at the cost of possibly reopening on one unlucky call.
+// ---------------------------------------------------------------------------
 const CIRCUIT_FAILURE_THRESHOLD = 5;
 const CIRCUIT_WINDOW_MS = 60_000;
 const CIRCUIT_OPEN_MS = 30_000;
@@ -276,7 +322,7 @@ async function withRetry<T>(
             recordRetryableFailure(label, err);
             assertCircuitClosed(label);
             if (attempt === maxAttempts) throw err;
-            const delayMs = Math.min(1000 * 2 ** (attempt - 1), 8000);
+            const delayMs = backoffDelayMs(attempt);
             logger.warn(
                 { attempt, maxAttempts, delayMs, label, err },
                 "[llm] transient error — retrying after backoff",

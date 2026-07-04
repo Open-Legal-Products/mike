@@ -218,8 +218,7 @@ export async function streamOpenAI(
   } = params;
   const maxIter = params.maxIterations ?? 10;
   const key = apiKey(apiKeys?.openai);
-  // Honor both the fork's `signal` and upstream's `abortSignal` field.
-  const abortSignal = params.abortSignal ?? params.signal;
+  const abortSignal = params.abortSignal;
   const responseTools = toResponseTools(tools);
   let input = toResponseInput(params.messages);
   let previousResponseId: string | undefined;

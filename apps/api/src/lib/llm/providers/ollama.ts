@@ -41,8 +41,6 @@ const DEFAULT_MODELS = [
 export interface OllamaSetupOptions {
     /** Model IDs to register (merged with defaults). */
     models?: string[];
-    /** Override the registered provider id (default: "ollama"). */
-    providerId?: string;
 }
 
 /**
@@ -69,7 +67,7 @@ export function setupOllamaFromEnv(
 }
 
 export function setupOllama(options: OllamaSetupOptions = {}): void {
-    const id = options.providerId ?? "ollama";
+    const id = "ollama";
     const allModels = [...new Set([...DEFAULT_MODELS, ...(options.models ?? [])])];
     const modelSet = new Set(allModels);
 

@@ -179,8 +179,7 @@ export async function streamGemini(
   const maxIter = params.maxIterations ?? 10;
   const ai = await client(apiKeys?.gemini);
   const functionDeclarations = toGeminiTools(tools);
-  // Honor both the fork's `signal` and upstream's `abortSignal` field.
-  const abortSignal = params.abortSignal ?? params.signal;
+  const abortSignal = params.abortSignal;
 
   const contents: GeminiContent[] = toNativeContents(params.messages);
   let fullText = "";

@@ -125,7 +125,7 @@ async function streamVertexGemini(params: StreamChatParams): Promise<StreamChatR
     let fullText = "";
 
     for (let iter = 0; iter < maxIter; iter++) {
-        throwIfAborted(params.signal);
+        throwIfAborted(params.abortSignal);
         const stream = await ai.models.generateContentStream({
             model,
             contents: contents as never,
@@ -146,7 +146,7 @@ async function streamVertexGemini(params: StreamChatParams): Promise<StreamChatR
         let sawThinking = false;
 
         for await (const chunk of stream) {
-            throwIfAborted(params.signal);
+            throwIfAborted(params.abortSignal);
             const parts =
                 (chunk as { candidates?: { content?: { parts?: GeminiPart[] } }[] })
                     .candidates?.[0]?.content?.parts ?? [];

@@ -104,7 +104,7 @@ async function streamDemoText(
     text: string,
     params: StreamChatParams,
 ): Promise<StreamChatResult> {
-    const signal = params.signal ?? params.abortSignal;
+    const signal = params.abortSignal;
     const onDelta = params.callbacks?.onContentDelta;
     if (!onDelta) return { fullText: text };
 
