@@ -64,5 +64,34 @@ export default defineConfig({
         // Generous timeouts to absorb cold-start jsdom + transform latency on CI.
         testTimeout: 20000,
         hookTimeout: 20000,
+        coverage: {
+            provider: "v8",
+            reporter: ["text", "lcov"],
+            // Scope to product source; tests, generated Cloudflare types, and
+            // the Playwright e2e tree are not the thing being measured.
+            include: ["src/**"],
+            exclude: [
+                "src/**/*.test.{ts,tsx}",
+                "src/**/*.spec.ts",
+                "**/*.d.ts",
+            ],
+            // No-regression RATCHET floor, not a target — mirrors apps/api. The
+            // floors sit just below current coverage so CI fails on a *drop*,
+            // and get raised as the web test backlog gets covered.
+            //
+            // SEEDED AT 0: the @vitest/coverage-v8 provider is not installed in
+            // this workspace yet (apps/api declares it too but it is likewise
+            // absent), so the real numbers could not be measured here without
+            // adding a dependency. Install `@vitest/coverage-v8`, run
+            // `vitest run --coverage`, then raise these to just below the
+            // reported statements/branches/functions/lines. See the phase-1
+            // summary's follow-up note.
+            thresholds: {
+                statements: 0,
+                branches: 0,
+                functions: 0,
+                lines: 0,
+            },
+        },
     },
 });
