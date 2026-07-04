@@ -87,25 +87,37 @@ export async function deleteProjectDocumentsAndVersionFiles(
   return error ?? null;
 }
 
-export async function attachDocumentOwnerLabels(
+/**
+ * Resolve a set of user ids to their trimmed, non-empty display names.
+ *
+ * The two attach* helpers below label different row shapes (documents vs chats)
+ * but shared ONE copy of this collect-ids → query user_profiles → build-map
+ * logic. Duplicated code invites drift: a fix to one copy (e.g. how a blank
+ * display_name is treated) silently skips the other. Keeping the single source
+ * here means both labellers stay in step by construction.
+ *
+ * A missing/blank profile is simply absent from the map, so callers default to
+ * null. `context` names the caller in the warn log if the profile query fails.
+ */
+export async function loadDisplayNames(
   db: Db,
-  docs: { user_id?: string | null }[],
-) {
-  const ownerIds = docs
-    .map((doc) => doc.user_id)
+  userIds: string[],
+  context: string,
+): Promise<Map<string, string>> {
+  const distinctIds = userIds
     .filter((id): id is string => typeof id === "string" && id.length > 0)
     .filter((id, index, arr) => arr.indexOf(id) === index);
-  if (ownerIds.length === 0) return;
-
   const displayNameByUserId = new Map<string, string>();
+  if (distinctIds.length === 0) return displayNameByUserId;
+
   const { data: profiles, error: profilesError } = await db
     .from("user_profiles")
     .select("user_id, display_name")
-    .in("user_id", ownerIds);
+    .in("user_id", distinctIds);
   if (profilesError) {
     logger.warn(
       { err: profilesError },
-      "[projects] failed to load document owner profiles",
+      `[projects] failed to load ${context} profiles`,
     );
   }
   for (const profile of profiles ?? []) {
@@ -117,6 +129,18 @@ export async function attachDocumentOwnerLabels(
       displayNameByUserId.set(profile.user_id as string, displayName);
     }
   }
+  return displayNameByUserId;
+}
+
+export async function attachDocumentOwnerLabels(
+  db: Db,
+  docs: { user_id?: string | null }[],
+) {
+  const displayNameByUserId = await loadDisplayNames(
+    db,
+    docs.map((doc) => doc.user_id ?? ""),
+    "document owner",
+  );
 
   for (const doc of docs as ({
     user_id?: string | null;
@@ -133,32 +157,11 @@ export async function attachChatCreatorLabels(
   db: Db,
   chats: { user_id?: string | null }[],
 ) {
-  const creatorIds = chats
-    .map((chat) => chat.user_id)
-    .filter((id): id is string => typeof id === "string" && id.length > 0)
-    .filter((id, index, arr) => arr.indexOf(id) === index);
-  if (creatorIds.length === 0) return;
-
-  const displayNameByUserId = new Map<string, string>();
-  const { data: profiles, error: profilesError } = await db
-    .from("user_profiles")
-    .select("user_id, display_name")
-    .in("user_id", creatorIds);
-  if (profilesError) {
-    logger.warn(
-      { err: profilesError },
-      "[projects] failed to load chat creator profiles",
-    );
-  }
-  for (const profile of profiles ?? []) {
-    const displayName =
-      typeof profile.display_name === "string"
-        ? profile.display_name.trim()
-        : "";
-    if (displayName) {
-      displayNameByUserId.set(profile.user_id as string, displayName);
-    }
-  }
+  const displayNameByUserId = await loadDisplayNames(
+    db,
+    chats.map((chat) => chat.user_id ?? ""),
+    "chat creator",
+  );
 
   for (const chat of chats as ({
     user_id?: string | null;
