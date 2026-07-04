@@ -4,6 +4,7 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { httpLogger } from "./middleware/httpLogger";
+import { requestContext } from "./middleware/requestContext";
 import { chatRouter } from "./modules/chat/chat.routes";
 import { projectsRouter } from "./modules/projects/projects.routes";
 import { orgsRouter } from "./modules/orgs/orgs.routes";
@@ -95,6 +96,9 @@ app.disable("x-powered-by");
 app.set("trust proxy", env.TRUST_PROXY_HOPS);
 
 app.use(httpLogger);
+// Immediately after httpLogger so the request id it just minted (and echoed on
+// x-request-id) is bound into AsyncLocalStorage for every downstream log line.
+app.use(requestContext);
 
 app.use(
     helmet({
