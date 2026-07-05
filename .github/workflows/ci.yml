@@ -17,8 +17,10 @@ jobs:
       # Dummy values so env.ts validation passes at test time
       SUPABASE_URL: http://localhost:54321
       SUPABASE_SECRET_KEY: test-secret-key
-      DOWNLOAD_SIGNING_SECRET: test-download-secret-32bytes!!
-      USER_API_KEYS_ENCRYPTION_SECRET: test-encryption-secret-32bytes!
+      # env.ts enforces a >=32-char minimum on these; keep the dummies above it
+      # so the test suite AND the built-app smoke import both pass env validation.
+      DOWNLOAD_SIGNING_SECRET: ci-download-signing-secret-32bytes-min!
+      USER_API_KEYS_ENCRYPTION_SECRET: ci-user-api-keys-encryption-secret-32bytes-min!
     steps:
       - uses: actions/checkout@v4
 
