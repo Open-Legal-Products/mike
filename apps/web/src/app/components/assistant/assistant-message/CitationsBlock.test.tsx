@@ -82,7 +82,9 @@ describe("CitationsBlock", () => {
             cluster_id: 99,
             case_name: "Roe v. Doe",
             citation: "123 U.S. 456",
-            quotes: [{ quote: "the court held" }],
+            quotes: [
+                { opinionId: null, type: null, author: null, quote: "the court held" },
+            ],
         };
         render(<CitationsBlock citationsList={[caseCitation]} />);
         expect(
