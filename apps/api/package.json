@@ -12,7 +12,8 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint .",
     "test:stack": "bash scripts/test-stack.sh",
-    "migrate": "node scripts/migrate.mjs"
+    "migrate": "node scripts/migrate.mjs",
+    "generate:workflow-schema": "tsx scripts/generate-workflow-schema.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",

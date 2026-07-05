@@ -356,7 +356,7 @@ Details: [docs/safe-local-testing.md](docs/safe-local-testing.md)
 
 ## Extending Mike
 
-Mike is built around three extension points. Each is a one-file, one-call operation — no edits to core files required.
+Mike is built around registry-based extension points — LLM providers, storage backends, embedding providers, LLM tools, law libraries, and API-key providers. Each is a one-file, one-call operation — no edits to core files required. The sections below cover the common cases; **[docs/EXTENDING.md](docs/EXTENDING.md)** is the complete catalog, with worked examples and the ground rules for contributing an extension.
 
 ### Custom LLM provider
 
@@ -551,8 +551,8 @@ sdks/python/           Python client SDK (MIT)
 airgapped/             Turnkey air-gapped self-hosting (compose profile + operator scripts)
 evals/                 Offline LLM eval harness (exit-code gated)
 supabase/migrations/   Incremental database migrations
-schemas/               JSON Schemas for portable formats (workflows, etc.)
-docs/                  Architecture, API, workflow, and safe-local-testing guides
+schemas/               JSON Schemas for portable formats — generated, do not edit (see docs/EXTENDING.md)
+docs/                  Architecture, API, workflow, extending, and safe-local-testing guides
 ```
 
 ---

@@ -120,6 +120,9 @@ module.exports = async (_env, options) => {
         REACT_APP_SUPABASE_URL: "",
         REACT_APP_SUPABASE_ANON_KEY: "",
         REACT_APP_DEFAULT_MODEL: "claude-sonnet-4-6",
+        // The Mike web app origin — the task pane links here (e.g. the
+        // account/api-keys page); it never fetches from it.
+        REACT_APP_WEB_APP_URL: "http://localhost:3000",
         NODE_ENV: isDev ? "development" : "production",
       }),
     ],

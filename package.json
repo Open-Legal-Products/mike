@@ -18,8 +18,9 @@
     "test:e2e:ui": "playwright test --ui",
     "build:word-addin": "npm run build --prefix word-addin",
     "test:word-addin": "npm run build --prefix word-addin",
-    "test:python-sdk": "echo 'Python SDK (not an npm workspace): cd sdks/python && pip install -e .[dev] && pytest'",
-    "test:all": "npm run test --workspaces --if-present && npm run test:word-addin && npm run test:python-sdk",
+    "test:python-sdk": "cd sdks/python && python3 -m pytest",
+    "test:evals": "node evals/run.mjs --threshold 1.0",
+    "test:all": "npm run test --workspaces --if-present && npm run test:evals && npm run test:word-addin && npm run test:python-sdk",
     "verify:all": "npm run lint --workspaces --if-present && npm run typecheck --workspaces --if-present && npm run build --workspaces --if-present && npm run build:word-addin && npm run test:all"
   },
   "devDependencies": {

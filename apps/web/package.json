@@ -5,6 +5,7 @@
     "scripts": {
         "dev": "next dev",
         "test": "vitest run",
+        "test:coverage": "vitest run --coverage",
         "test:watch": "vitest",
         "build": "NEXT_IGNORE_INCORRECT_LOCKFILE=1 next build --webpack",
         "start": "next start",
@@ -72,6 +73,7 @@
         "@types/react-dom": "^19",
         "@types/uuid": "^10.0.0",
         "@vitejs/plugin-react": "^4.7.0",
+        "@vitest/coverage-v8": "^4.1.9",
         "babel-plugin-react-compiler": "1.0.0",
         "baseline-browser-mapping": "^2.9.11",
         "eslint": "^9",

@@ -17,12 +17,11 @@
       href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <!-- No universal reset here: un-layered CSS outranks every @layer rule,
+         so a `* { margin: 0; padding: 0 }` in this file overrides ALL Tailwind
+         margin/padding utilities. Tailwind's preflight (in @layer base)
+         already provides the reset, at the right cascade priority. -->
     <style>
-      * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
       html,
       body,
       #root {

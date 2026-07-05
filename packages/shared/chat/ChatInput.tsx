@@ -73,7 +73,7 @@ export function ChatInput({
                 disabled={disabled}
                 className="block w-full resize-none bg-transparent px-3.5 pt-3 pb-1.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground outline-none disabled:opacity-60"
             />
-            <div className="flex items-center justify-between gap-2 px-2 pb-2 pl-3">
+            <div className="flex items-center justify-between gap-2 pb-2 pl-3.5 pr-2">
                 <div className="flex min-w-0 items-center gap-2">{leftSlot}</div>
                 {isLoading ? (
                     <button

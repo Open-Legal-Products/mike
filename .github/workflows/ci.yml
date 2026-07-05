@@ -49,7 +49,7 @@ jobs:
         run: node -e "require('./dist/apps/api/src/app.js'); console.log('api app import ok')"
 
   packages:
-    name: Package typecheck
+    name: Package typecheck and tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,6 +66,54 @@ jobs:
       - run: ./node_modules/.bin/tsc -p packages/core/tsconfig.json --noEmit
       - run: ./node_modules/.bin/tsc -p packages/api-client/tsconfig.json --noEmit
       - run: ./node_modules/.bin/tsc -p packages/sdk-js/tsconfig.json --noEmit
+      # packages/shared is consumed as raw TSX by apps/web (transpilePackages)
+      # and word-addin (webpack alias), so neither consumer typechecks it as a
+      # unit — this is the only gate that does.
+      - run: ./node_modules/.bin/tsc -p packages/shared/tsconfig.json --noEmit
+      # Run the package test suites, not just the compiler: api-client pins the
+      # server→client field remapping and sdk-js pins the public SDK surface.
+      # Typechecking alone would miss a behavioral regression in either.
+      - run: npm test --workspace packages/api-client
+      - run: npm test --workspace packages/sdk-js
+
+  # -----------------------------------------------------------------------
+  # Offline eval harness: deterministic scorecard for citation accuracy,
+  # prompt-injection resistance, and privilege/PII leakage. Runs against
+  # committed fixtures (no network, no LLM calls, no secrets), so it is cheap
+  # enough to gate every PR. --threshold 1.0 = every case must pass.
+  # -----------------------------------------------------------------------
+  evals:
+    name: Eval harness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: node evals/run.mjs --threshold 1.0
+
+  # -----------------------------------------------------------------------
+  # Python SDK: installed and tested on the oldest supported Python (3.9,
+  # per pyproject requires-python) so compatibility claims stay honest.
+  # Tests are offline (respx-mocked httpx), so no secrets are needed.
+  # -----------------------------------------------------------------------
+  python-sdk:
+    name: Python SDK tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdks/python
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - run: pip install -e .[dev]
+      - run: python -m pytest
 
   web:
     name: Web lint and build
@@ -85,7 +133,9 @@ jobs:
       - run: npm ci
         working-directory: .
       - run: npm run lint
-      - run: npm test
+      # Coverage mode so the no-regression thresholds in vitest.config.mts are
+      # enforced (same ratchet pattern as apps/api).
+      - run: npm run test:coverage
       - run: npm run build
 
   # -----------------------------------------------------------------------
@@ -119,7 +169,7 @@ jobs:
   deploy-migrations:
     name: Deploy migrations
     runs-on: ubuntu-latest
-    needs: [api, packages, web, migrations]
+    needs: [api, packages, web, migrations, evals, python-sdk]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4

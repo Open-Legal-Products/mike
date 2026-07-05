@@ -31,5 +31,8 @@
   "dependencies": {
     "@mike/core": "0.1.0"
   },
+  "devDependencies": {
+    "vitest": "^4.1.7"
+  },
   "license": "AGPL-3.0-only"
 }

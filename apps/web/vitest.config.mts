@@ -79,18 +79,17 @@ export default defineConfig({
             // floors sit just below current coverage so CI fails on a *drop*,
             // and get raised as the web test backlog gets covered.
             //
-            // SEEDED AT 0: the @vitest/coverage-v8 provider is not installed in
-            // this workspace yet (apps/api declares it too but it is likewise
-            // absent), so the real numbers could not be measured here without
-            // adding a dependency. Install `@vitest/coverage-v8`, run
-            // `vitest run --coverage`, then raise these to just below the
-            // reported statements/branches/functions/lines. See the phase-1
-            // summary's follow-up note.
+            // Measured 2026-07-05 (16 test files, 54 tests): statements 2.11,
+            // branches 1.97, functions 1.76, lines 2.18. The number is low
+            // because src/** spans the whole app while tests currently focus
+            // on hooks/parsers; the floor's job is only to catch a drop.
+            // When you add web tests, re-run `npm run test:coverage` and raise
+            // these to just below the new numbers.
             thresholds: {
-                statements: 0,
-                branches: 0,
-                functions: 0,
-                lines: 0,
+                statements: 2,
+                branches: 1.8,
+                functions: 1.6,
+                lines: 2,
             },
         },
     },

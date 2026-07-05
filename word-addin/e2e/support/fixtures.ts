@@ -140,6 +140,34 @@ export const test = base.extend<{ addin: Addin }>({
       })
     );
 
+    // Default the API-key status probe (fired on every authed mount by
+    // ApiKeyBanner) to "claude configured" so the banner stays out of
+    // unrelated specs — and so the request never escapes to a real backend,
+    // where a 401 would clear the seeded session mid-test. Playwright matches
+    // routes newest-first, so a spec's own mockApiJson/mockApiError for this
+    // URL overrides it.
+    await page.route("**/user/api-keys", (route, request) => {
+      if (request.method() !== "GET") return route.fallback();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          claude: true,
+          gemini: false,
+          openai: false,
+          openrouter: false,
+          courtlistener: false,
+          sources: {
+            claude: "env",
+            gemini: null,
+            openai: null,
+            openrouter: null,
+            courtlistener: null,
+          },
+        }),
+      });
+    });
+
     let seed: OfficeSeed = {};
 
     /** Add a method-scoped JSON route; falls through to other routes on mismatch. */

@@ -1,26 +1,20 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/willchen96/mike/schemas/workflow.schema.json",
-  "title": "Mike Workflow Pack",
-  "description": "Schema for .mikeworkflow.json files exported from and imported into Mike. See docs/workflows.md for a full explanation of each field.",
   "type": "object",
-  "required": ["formatVersion", "workflow"],
-  "additionalProperties": false,
   "properties": {
     "formatVersion": {
-      "type": "integer",
+      "type": "number",
       "const": 1,
       "description": "Schema version. Always 1 for files produced by the current export endpoint. Future breaking changes will increment this value."
     },
     "exportedAt": {
+      "description": "ISO 8601 timestamp of when the file was exported. Informational only — not used during import.",
       "type": "string",
       "format": "date-time",
-      "description": "ISO 8601 timestamp of when the file was exported. Informational only — not used during import."
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
     },
     "workflow": {
       "type": "object",
-      "required": ["title", "type"],
-      "additionalProperties": false,
       "properties": {
         "title": {
           "type": "string",
@@ -30,22 +24,30 @@
         },
         "type": {
           "type": "string",
-          "enum": ["assistant", "tabular"],
+          "enum": [
+            "assistant",
+            "tabular"
+          ],
           "description": "Determines where the workflow appears. 'assistant' workflows appear in the chat sidebar; 'tabular' workflows appear in the tabular review column picker."
         },
         "prompt_md": {
-          "type": ["string", "null"],
-          "description": "The full workflow prompt in Markdown. For 'assistant' workflows, this is injected into the system prompt when the workflow is activated. For 'tabular' workflows, this describes the analysis task for each cell."
+          "description": "The full workflow prompt in Markdown. For 'assistant' workflows, this is injected into the system prompt when the workflow is activated. For 'tabular' workflows, this describes the analysis task for each cell.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "columns_config": {
-          "oneOf": [
-            { "type": "null" },
+          "description": "Column definitions for 'tabular' workflows. Each entry defines one column in the review table. Null for 'assistant' workflows.",
+          "anyOf": [
             {
               "type": "array",
-              "description": "Column definitions for 'tabular' workflows. Each entry defines one column in the review table.",
               "items": {
                 "type": "object",
-                "required": ["name", "prompt"],
                 "properties": {
                   "name": {
                     "type": "string",
@@ -56,23 +58,55 @@
                     "description": "The prompt sent to the LLM for each cell in this column."
                   },
                   "type": {
+                    "description": "Optional cell rendering hint. 'flag' renders a coloured badge; 'yesno' renders Yes/No; 'text' (default) renders plain text.",
                     "type": "string",
-                    "enum": ["text", "flag", "yesno"],
-                    "description": "Optional cell rendering hint. 'flag' renders a coloured badge; 'yesno' renders Yes/No; 'text' (default) renders plain text."
+                    "enum": [
+                      "text",
+                      "flag",
+                      "yesno"
+                    ]
                   }
                 },
-                "additionalProperties": true
+                "required": [
+                  "name",
+                  "prompt"
+                ],
+                "additionalProperties": {},
+                "description": "One column definition in a 'tabular' workflow's review table. Extra keys are allowed so newer exports keep importing into older deployments."
               }
+            },
+            {
+              "type": "null"
             }
           ]
         },
         "practice": {
-          "type": ["string", "null"],
-          "description": "Optional legal practice area tag (e.g. 'corporate', 'ip', 'employment'). Used for filtering in the workflow picker."
+          "description": "Optional legal practice area tag (e.g. 'corporate', 'ip', 'employment'). Used for filtering in the workflow picker.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
-      }
+      },
+      "required": [
+        "title",
+        "type"
+      ],
+      "additionalProperties": false
     }
   },
+  "required": [
+    "formatVersion",
+    "workflow"
+  ],
+  "additionalProperties": false,
+  "$id": "https://github.com/willchen96/mike/schemas/workflow.schema.json",
+  "title": "Mike Workflow Pack",
+  "description": "Schema for .mikeworkflow.json files exported from and imported into Mike. GENERATED from apps/api/src/modules/workflows/workflowFormat.ts by `npm run generate:workflow-schema` — do not edit by hand. See docs/workflows.md for a full explanation of each field.",
   "examples": [
     {
       "formatVersion": 1,

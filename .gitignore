@@ -30,3 +30,6 @@ supabase/.branches/
 test-results/
 playwright-report/
 e2e/.auth/
+
+# local walkthrough/demo screenshots (not source)
+.walkthrough-shots/

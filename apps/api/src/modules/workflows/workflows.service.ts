@@ -8,6 +8,11 @@
 
 import { createServerSupabase } from "../../lib/supabase";
 import { getOrgRole, getPersonalOrgId } from "../../lib/access";
+import {
+  describeWorkflowPackIssues,
+  workflowPackSchema,
+  WORKFLOW_PACK_FORMAT_VERSION,
+} from "./workflowFormat";
 
 type Db = ReturnType<typeof createServerSupabase>;
 
@@ -402,7 +407,7 @@ export async function exportWorkflow(
   if (!wf) return { ok: false };
 
   const payload = {
-    formatVersion: 1,
+    formatVersion: WORKFLOW_PACK_FORMAT_VERSION,
     exportedAt: new Date().toISOString(),
     workflow: {
       title: wf.title,
@@ -434,44 +439,31 @@ export async function importWorkflow(
 ): Promise<ImportWorkflowResult> {
   const { userId, body } = params;
 
-  // Validate the shape of the import payload.
-  if (!body || typeof body !== "object" || body.formatVersion !== 1) {
+  // Validate against the same schema we publish as
+  // schemas/workflow.schema.json — one definition of the format, so the API
+  // can never accept a file the published schema rejects (or vice versa).
+  const parsed = workflowPackSchema.safeParse(body);
+  if (!parsed.success) {
     return {
       ok: false,
       kind: "validation",
-      detail: "Invalid workflow file format. Expected formatVersion: 1.",
+      detail: `Invalid workflow file: ${describeWorkflowPackIssues(parsed.error)}`,
     };
   }
-  const wf = body.workflow as Record<string, unknown> | undefined;
-  if (!wf || typeof wf !== "object") {
-    return {
-      ok: false,
-      kind: "validation",
-      detail: "Missing workflow object in import payload.",
-    };
-  }
-  const title = typeof wf.title === "string" ? wf.title.trim() : "";
+  const wf = parsed.data.workflow;
+  const title = wf.title.trim();
   if (!title)
     return { ok: false, kind: "validation", detail: "workflow.title is required." };
-
-  const type = wf.type;
-  if (type !== "assistant" && type !== "tabular") {
-    return {
-      ok: false,
-      kind: "validation",
-      detail: "workflow.type must be 'assistant' or 'tabular'.",
-    };
-  }
 
   const { data, error } = await db
     .from("workflows")
     .insert({
       user_id: userId,
       title,
-      type,
-      prompt_md: typeof wf.prompt_md === "string" ? wf.prompt_md : null,
+      type: wf.type,
+      prompt_md: wf.prompt_md ?? null,
       columns_config: wf.columns_config ?? null,
-      practice: typeof wf.practice === "string" ? wf.practice : null,
+      practice: wf.practice ?? null,
       is_system: false,
     })
     .select("*")

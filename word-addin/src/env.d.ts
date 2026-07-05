@@ -10,6 +10,7 @@ declare const process: {
     readonly REACT_APP_SUPABASE_URL: string | undefined;
     readonly REACT_APP_SUPABASE_ANON_KEY: string | undefined;
     readonly REACT_APP_DEFAULT_MODEL: string | undefined;
+    readonly REACT_APP_WEB_APP_URL: string | undefined;
     readonly NODE_ENV: string;
   };
 };

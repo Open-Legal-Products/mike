@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useAuth } from "./auth/useAuth";
 import { LoginPage } from "./auth/LoginPage";
+import { ApiKeyBanner } from "./components/ApiKeyBanner";
 import { ChatPanel } from "./components/ChatPanel";
 import { DocumentActions } from "./components/DocumentActions";
 import { WorkflowPicker } from "./components/WorkflowPicker";
@@ -52,7 +53,7 @@ export default function App(): React.ReactElement {
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
       {/* Header */}
-      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border/70 px-3 py-2.5 @sm:px-4">
+      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border/70 px-3 py-3 @sm:px-4">
         <div className="flex items-center gap-2">
           <MikeIcon size={22} />
           <span className="text-[15px] font-semibold tracking-tight text-foreground">
@@ -68,6 +69,9 @@ export default function App(): React.ReactElement {
           Sign out
         </Button>
       </header>
+
+      {/* Setup nudge when no AI provider key is configured */}
+      <ApiKeyBanner />
 
       {/* Tab bar */}
       <nav
