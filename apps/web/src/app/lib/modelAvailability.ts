@@ -32,6 +32,35 @@ export function isProviderAvailable(
     return !!apiKeys[provider]?.configured;
 }
 
+// Mid-tier model to run tabular extractions on per provider. Mirrors the API's
+// resolveTabularModel (apps/api/src/lib/userSettings.ts) so the client's gate
+// and the server's actual choice agree. Gemini is preferred when available.
+const TABULAR_FALLBACK_BY_PROVIDER: Record<ModelProvider, string> = {
+    gemini: "gemini-3-flash-preview",
+    claude: "claude-sonnet-4-6",
+    openai: "gpt-5.4",
+};
+
+/**
+ * The model a tabular review will actually run on. If the user's configured
+ * tabular model has a key, use it; otherwise fall back to a mid-tier model of
+ * whichever provider the user *does* have a key for. Falls back to the original
+ * (unavailable) model only when the user has no keyed provider at all, so the
+ * caller can still surface the "add a key" prompt.
+ */
+export function resolveEffectiveTabularModel(
+    preferredModelId: string,
+    apiKeys: ApiKeyState,
+): string {
+    if (isModelAvailable(preferredModelId, apiKeys)) return preferredModelId;
+    for (const provider of ["gemini", "claude", "openai"] as ModelProvider[]) {
+        if (isProviderAvailable(provider, apiKeys)) {
+            return TABULAR_FALLBACK_BY_PROVIDER[provider];
+        }
+    }
+    return preferredModelId;
+}
+
 export function providerLabel(provider: ModelProvider): string {
     if (provider === "claude") return "Anthropic (Claude)";
     if (provider === "openai") return "OpenAI";

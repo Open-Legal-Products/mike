@@ -51,6 +51,7 @@ import { useUserProfile } from "@/contexts/UserProfileContext";
 import {
     getModelProvider,
     isModelAvailable,
+    resolveEffectiveTabularModel,
     type ModelProvider,
 } from "@/app/lib/modelAvailability";
 import { TRSidePanel } from "./TRSidePanel";
@@ -119,7 +120,16 @@ export function TRView({ reviewId, projectId }: Props) {
     const router = useRouter();
     const { profile } = useUserProfile();
     const apiKeys = profile?.apiKeys;
-    const tabularModel = profile?.tabularModel ?? "gemini-3-flash-preview";
+    const preferredTabularModel =
+        profile?.tabularModel ?? "gemini-3-flash-preview";
+    // The model the review will actually run on: the user's configured choice if
+    // it has a key, otherwise a mid-tier model of a provider they do have a key
+    // for. Mirrors the API so the gate below doesn't block a run the server can
+    // service. Falls back to the configured model when no keyed provider exists,
+    // so the "add a key" prompt still fires for a truly keyless user.
+    const tabularModel = apiKeys
+        ? resolveEffectiveTabularModel(preferredTabularModel, apiKeys)
+        : preferredTabularModel;
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);

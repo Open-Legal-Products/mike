@@ -17,6 +17,7 @@ import { useUserProfile } from "@/contexts/UserProfileContext";
 import {
     getModelProvider,
     isModelAvailable,
+    resolveEffectiveTabularModel,
     type ModelProvider,
 } from "@/app/lib/modelAvailability";
 import { cn } from "@/lib/utils";
@@ -411,8 +412,15 @@ export function TRChatPanel({
 
     async function handleSubmit(trimmed: string) {
         if (!trimmed || isLoading) return;
-        if (apiKeys && !isModelAvailable(currentModel, apiKeys)) {
-            setApiKeyModalProvider(getModelProvider(currentModel));
+        // Gate on the model the review will actually run on: if the user's
+        // configured tabular model has no key, the server falls back to a
+        // provider they do have a key for, so only block when no keyed provider
+        // exists at all. `currentModel` still drives the visible selector below.
+        const effectiveModel = apiKeys
+            ? resolveEffectiveTabularModel(currentModel, apiKeys)
+            : currentModel;
+        if (apiKeys && !isModelAvailable(effectiveModel, apiKeys)) {
+            setApiKeyModalProvider(getModelProvider(effectiveModel));
             return;
         }
 
