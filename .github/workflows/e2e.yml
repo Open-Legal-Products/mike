@@ -66,6 +66,10 @@ jobs:
             echo "SUPABASE_SECRET_KEY=$SERVICE_KEY"
             echo "FRONTEND_URL=http://localhost:3000"
             echo "DOWNLOAD_SIGNING_SECRET=ci-download-signing-secret-32bytes!"
+            # env.ts requires this at >=32 chars; the .env.example placeholder
+            # ("your-long-random-secret", 23 chars) FAILS that check, so the API
+            # aborts at boot and /health never comes up. Supply a CI dummy.
+            echo "USER_API_KEYS_ENCRYPTION_SECRET=ci-user-api-keys-encryption-secret-32bytes-min!"
             echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}"
           } >> apps/api/.env
           {
