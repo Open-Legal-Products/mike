@@ -40,6 +40,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # npm ci intermittently skips lightningcss's Linux native optional dep
+      # (npm/cli#4828); without it `next dev` can't compile Tailwind CSS and the
+      # web server never boots, so wait-on times out and every spec fails.
+      - name: Ensure lightningcss native binary
+        run: npm install --no-save lightningcss
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
