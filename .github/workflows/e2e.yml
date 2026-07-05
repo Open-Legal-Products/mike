@@ -70,6 +70,16 @@ jobs:
             # ("your-long-random-secret", 23 chars) FAILS that check, so the API
             # aborts at boot and /health never comes up. Supply a CI dummy.
             echo "USER_API_KEYS_ENCRYPTION_SECRET=ci-user-api-keys-encryption-secret-32bytes-min!"
+            # The e2e suite drives many write operations back-to-back (create
+            # folder/workflow/review, add document, update profile, login), which
+            # trips the default per-window rate limits (429s surface as
+            # "never returned 2xx after retries" / waitForResponse timeouts).
+            # e2e isn't testing throttling, so raise the tunable caps well above
+            # what one serial run needs.
+            echo "RATE_LIMIT_GENERAL_MAX=100000"
+            echo "RATE_LIMIT_CHAT_MAX=100000"
+            echo "RATE_LIMIT_CHAT_CREATE_MAX=100000"
+            echo "RATE_LIMIT_UPLOAD_MAX=100000"
             echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}"
           } >> apps/api/.env
           {
