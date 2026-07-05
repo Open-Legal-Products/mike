@@ -9,6 +9,7 @@ import { SidebarContext } from "@/app/contexts/SidebarContext";
 import { PageChromeContext } from "@/app/contexts/PageChromeContext";
 import { AppSidebar } from "@/app/components/shared/AppSidebar";
 import { ApiKeyBanner } from "@/app/components/shared/ApiKeyBanner";
+import { FullScreenLoader } from "@/app/components/shared/FullScreenLoader";
 
 export default function MikeLayout({
     children,
@@ -76,11 +77,7 @@ export default function MikeLayout({
     }, [authLoading, isAuthenticated, router]);
 
     if (authLoading) {
-        return (
-            <div className="flex h-screen items-center justify-center">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-gray-700" />
-            </div>
-        );
+        return <FullScreenLoader />;
     }
 
     if (!isAuthenticated) return null;
