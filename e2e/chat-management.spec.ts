@@ -31,19 +31,23 @@ async function ensureSidebarOpen(page: Page) {
 }
 
 /**
- * Select an Anthropic model in the chat input's ModelToggle so the first submit
- * actually creates a chat instead of opening the ApiKeyMissingModal.
+ * Select the built-in keyless "demo" model in the chat input's ModelToggle so
+ * the first submit actually creates a chat instead of opening the
+ * ApiKeyMissingModal.
  *
  * The default model is "gemini-3-flash-preview" (ModelToggle.DEFAULT_MODEL_ID),
  * for which no key is configured; ChatInput.handleSubmit (ChatInput.tsx:116-119)
- * then refuses to send.  The server has ANTHROPIC_API_KEY set, so "Claude Sonnet
- * 4.6" (id claude-sonnet-4-6) is available.  ModelToggle renders a Radix
- * DropdownMenu: the trigger is a button whose title is "Choose model" (current
- * model available) or "API key missing for selected model" (current model not
- * available — the default-Gemini case).  We open it, pick the Claude item, and
- * confirm the trigger now shows "Claude Sonnet 4.6".
+ * then refuses to send. The suite runs WITHOUT any provider key (the CI stack
+ * leaves ANTHROPIC_API_KEY empty), so no Anthropic/Gemini/OpenAI model is
+ * available — only the demo model (DEMO_MODEL_ID "mike-demo", label "Demo (no
+ * key needed)") is always available and streams a canned response via
+ * providers/demo.ts. ModelToggle renders a Radix DropdownMenu: the trigger is a
+ * button whose title is "Choose model" (current model available) or "API key
+ * missing for selected model" (current model not available — the default-Gemini
+ * case). We open it, pick the Demo item, and confirm the trigger now shows
+ * "Demo (no key needed)".
  */
-async function selectClaudeModel(page: Page) {
+async function selectDemoModel(page: Page) {
     const trigger = page
         .locator(
             'button[title="Choose model"], button[title="API key missing for selected model"]',
@@ -51,10 +55,12 @@ async function selectClaudeModel(page: Page) {
         .first();
     await expect(trigger).toBeVisible({ timeout: 10_000 });
     await trigger.click();
-    await page.getByRole("menuitem", { name: "Claude Sonnet 4.6" }).click();
+    await page
+        .getByRole("menuitem", { name: "Demo (no key needed)" })
+        .click();
     // After selection the trigger label reflects the chosen model.
     await expect(
-        page.getByRole("button", { name: /Claude Sonnet 4\.6/ }),
+        page.getByRole("button", { name: /Demo \(no key needed\)/ }),
     ).toBeVisible({ timeout: 5_000 });
 }
 
@@ -120,9 +126,9 @@ test("rename chat: sidebar rename interaction updates the title", async ({ page 
     await page.goto("/assistant");
     const textarea = page.getByPlaceholder("Ask a question about your documents...");
     await expect(textarea).toBeVisible({ timeout: 10_000 });
-    // Pick an available (Anthropic) model so the submit isn't blocked by the
-    // ApiKeyMissingModal (the default Gemini model has no key configured).
-    await selectClaudeModel(page);
+    // Pick the keyless demo model so the submit isn't blocked by the
+    // ApiKeyMissingModal (no provider key is configured in this run).
+    await selectDemoModel(page);
     await textarea.fill(message);
 
     // Sending the first message triggers auto title-generation
@@ -225,10 +231,10 @@ test("delete chat: sidebar delete action removes the chat from history", async (
     const CREATE_ATTEMPTS = 4;
     for (let attempt = 0; attempt < CREATE_ATTEMPTS; attempt++) {
         if (newChatUrl.test(page.url())) break;
-        // Re-assert Claude as the active (available) model in case a remount reset
-        // it to the default Gemini (which the ApiKeyMissingModal would block on),
-        // then re-fill and re-submit.
-        await selectClaudeModel(page);
+        // Re-assert the demo model as the active (available) model in case a
+        // remount reset it to the default Gemini (which the ApiKeyMissingModal
+        // would block on), then re-fill and re-submit.
+        await selectDemoModel(page);
         await textarea.fill(message);
         await textarea.press("Enter");
         try {
@@ -432,12 +438,12 @@ test("project assistant: create a new chat and submit a question", async ({ page
     // prior response is in flight; otherwise it returns early. Two transient gates
     // exist under load:
     //   • useSelectedModel (useSelectedModel.ts:16-20) seeds DEFAULT (Gemini) for
-    //     one render before its localStorage-read effect restores Claude, so a
-    //     submit racing a ChatInput remount can momentarily see Gemini → the
+    //     one render before its localStorage-read effect restores the demo model,
+    //     so a submit racing a ChatInput remount can momentarily see Gemini → the
     //     ApiKeyMissingModal ("API key required") pops and the submit no-ops.
     //   • A transient in-flight response (isResponseLoading) also no-ops the submit.
-    // Re-select Claude and re-submit until the textarea clears. A genuinely broken
-    // send never clears on ANY attempt, so a real regression is still caught.
+    // Re-select the demo model and re-submit until the textarea clears. A genuinely
+    // broken send never clears on ANY attempt, so a real regression is still caught.
     const question = "What is in this project?";
     const apiKeyModalHeading = page.getByRole("heading", {
         name: "API key required",
@@ -453,8 +459,8 @@ test("project assistant: create a new chat and submit a question", async ({ page
                 .click()
                 .catch(() => {});
         }
-        // Re-assert Claude as the active (available) model after any remount.
-        await selectClaudeModel(page);
+        // Re-assert the demo model as the active (available) model after any remount.
+        await selectDemoModel(page);
         await chatInput.fill(question);
         // ChatInput.handleKeyDown: Enter (no Shift) → handleSubmit().
         await chatInput.press("Enter");

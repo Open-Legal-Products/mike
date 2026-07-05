@@ -13,10 +13,18 @@ function readApiEnv(key: string): string | undefined {
     const envPath = path.join(__dirname, "..", "apps", "api", ".env");
     try {
         const contents = fs.readFileSync(envPath, "utf8");
+        // dotenv semantics: a later assignment wins over an earlier one. CI
+        // does `cp .env.example .env` (which ships a PLACEHOLDER SUPABASE_URL)
+        // and then APPENDS the real values, so returning the FIRST match would
+        // hand back the placeholder (getaddrinfo ENOTFOUND your-project...).
+        // Iterate every line and keep the LAST matching value, mirroring how
+        // the API's dotenv loader resolves the file.
+        let value: string | undefined;
         for (const line of contents.split("\n")) {
             const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-            if (m && m[1] === key) return m[2].trim();
+            if (m && m[1] === key) value = m[2].trim();
         }
+        return value;
     } catch {
         /* .env not present — fall through to undefined */
     }
