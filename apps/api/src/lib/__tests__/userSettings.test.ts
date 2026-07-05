@@ -3,9 +3,18 @@ import { describe, it, expect, vi } from "vitest";
 // resolveTabularModel value-imports the llm barrel, whose import graph reaches
 // lib/env and runs the real zod validation. Populate the two required secrets
 // before that graph loads (vi.hoisted runs before imports) so validation passes.
+//
+// The two *_SECRET vars are assigned UNCONDITIONALLY (not `??=`): the CI "API
+// tests" job pre-exports them at *under* the 32-char minimum the env schema
+// enforces (DOWNLOAD_SIGNING_SECRET=30, USER_API_KEYS_ENCRYPTION_SECRET=31), so
+// a nullish-guard would leave those too-short values in place and env validation
+// would throw at import — failing this file only in CI. Overwriting matches the
+// convention used elsewhere (see downloadTokens.test.ts, dms/fakeEnv.ts) and
+// keeps this a network-free unit test. SUPABASE_* have no length rule, so we
+// only fill them when unset.
 vi.hoisted(() => {
-    process.env.DOWNLOAD_SIGNING_SECRET ??= "x".repeat(32);
-    process.env.USER_API_KEYS_ENCRYPTION_SECRET ??= "y".repeat(32);
+    process.env.DOWNLOAD_SIGNING_SECRET = "x".repeat(32);
+    process.env.USER_API_KEYS_ENCRYPTION_SECRET = "y".repeat(32);
     process.env.SUPABASE_URL ??= "http://localhost:54321";
     process.env.SUPABASE_SECRET_KEY ??= "test-secret-key";
 });
