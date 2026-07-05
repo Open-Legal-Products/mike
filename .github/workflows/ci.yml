@@ -132,6 +132,13 @@ jobs:
 
       - run: npm ci
         working-directory: .
+      # `npm ci` intermittently skips lightningcss's platform-native optional
+      # dependency on Linux (npm/cli#4828), which breaks `next build` with
+      # "Cannot find module '../lightningcss.linux-x64-gnu.node'". Reinstalling
+      # lightningcss (without touching the lockfile) fetches the runner's
+      # matching native binary.
+      - run: npm install --no-save lightningcss
+        working-directory: .
       - run: npm run lint
       # Coverage mode so the no-regression thresholds in vitest.config.mts are
       # enforced (same ratchet pattern as apps/api).
