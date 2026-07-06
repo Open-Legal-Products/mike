@@ -49,6 +49,43 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      # Object storage. Three specs upload a document (tabular-review row,
+      # project-folder fixture) and assert the result renders; those uploads go
+      # through apps/api/src/lib/storage/r2.ts, which is an S3-compatible client
+      # that only ENABLES when R2_ENDPOINT_URL + R2_ACCESS_KEY_ID +
+      # R2_SECRET_ACCESS_KEY are set. With no storage the upload endpoint 5xxs
+      # and the row never appears. MinIO is the same S3-compatible server the
+      # repo's docker-compose already uses for local dev, so we boot it here and
+      # point the API at it. A `docker run` (not a `services:` container) is used
+      # because the minio image needs the `server /data` argument, which the
+      # services block can't supply, and because we must create the bucket after
+      # the server is healthy.
+      - name: Start MinIO (object storage)
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+          # Wait for the health endpoint before creating the bucket.
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/ready >/dev/null; then
+              echo "MinIO ready"; break
+            fi
+            echo "waiting for minio ($i)…"; sleep 2
+          done
+          # Create the "mike" bucket via the AWS CLI (preinstalled on
+          # ubuntu-latest). --endpoint-url + path-style talks to MinIO; the
+          # region is irrelevant to MinIO but the CLI insists on one.
+          AWS_ACCESS_KEY_ID=minioadmin \
+          AWS_SECRET_ACCESS_KEY=minioadmin \
+          AWS_DEFAULT_REGION=us-east-1 \
+            aws --endpoint-url http://localhost:9000 s3 mb s3://mike
+          # Verify the bucket exists before any spec runs.
+          AWS_ACCESS_KEY_ID=minioadmin \
+          AWS_SECRET_ACCESS_KEY=minioadmin \
+          AWS_DEFAULT_REGION=us-east-1 \
+            aws --endpoint-url http://localhost:9000 s3 ls s3://mike
+
       - name: Start local Supabase
         uses: supabase/setup-cli@v1
         with:
@@ -80,6 +117,14 @@ jobs:
             echo "RATE_LIMIT_CHAT_MAX=100000"
             echo "RATE_LIMIT_CHAT_CREATE_MAX=100000"
             echo "RATE_LIMIT_UPLOAD_MAX=100000"
+            # Point the S3-compatible storage adapter at the MinIO container
+            # started above. r2.ts enables only when all three of endpoint/key/
+            # secret are present; the bucket ("mike") was created in that step.
+            echo "R2_ENDPOINT_URL=http://localhost:9000"
+            echo "R2_ACCESS_KEY_ID=minioadmin"
+            echo "R2_SECRET_ACCESS_KEY=minioadmin"
+            echo "R2_BUCKET_NAME=mike"
+            echo "R2_REGION=auto"
             echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}"
           } >> apps/api/.env
           {

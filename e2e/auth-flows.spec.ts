@@ -52,11 +52,22 @@ test.describe("unauthenticated", () => {
     test("login with valid credentials redirects to /assistant", async ({
         page,
     }) => {
+        /* Use the SAME credentials auth.setup.ts bootstrapped the shared user
+           with. Both read process.env.E2E_EMAIL / E2E_PASSWORD (falling back to
+           the local defaults). CI overrides E2E_PASSWORD to a value DIFFERENT
+           from the old hardcoded "E2eTestPass1!", so hardcoding it here typed a
+           password the user was never created with → signInWithPassword failed,
+           the error banner rendered, and the /assistant redirect never fired.
+           Reading the env keeps the typed password in lock-step with the
+           bootstrapped one in every environment. */
+        const email = process.env.E2E_EMAIL ?? "e2e@mike.local";
+        const password = process.env.E2E_PASSWORD ?? "E2eTestPass1!";
+
         await page.goto("/login");
         await expect(page).toHaveURL(/\/login/);
 
-        await page.fill("#email", "e2e@mike.local");
-        await page.fill("#password", "E2eTestPass1!");
+        await page.fill("#email", email);
+        await page.fill("#password", password);
         await page.click('button[type="submit"]');
 
         /* REGRESSION: fails if `router.push("/assistant")` is removed from
