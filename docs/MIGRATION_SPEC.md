@@ -229,7 +229,7 @@ Day-3 model-comparison run: full eval suite with provider = Claude, Gemini, loca
 1. **"E-Discovery Review" template** — rename to "Disclosure Review" (CPR 31 / PD 57AD framing) or keep both? UK term of art is *disclosure*; the column set also needs review (e.g. "Privileged?" → legal professional privilege categories). *Not guessing per CLAUDE.md.*
 2. **`OPENAI_BASE_URL` semantics** (§5.2): dedicated `LOCAL_LLM_*` vars with `OPENAI_BASE_URL` as alias (recommended), or literally repoint the OpenAI provider?
 3. **Companies House gating**: expose CH tools whenever a key exists (recommended), or add a per-user feature toggle replacing the deleted `legal_research_us`?
-4. **Migrations for excision and for the `companies_house` key provider** need your explicit instruction naming the files (hard rule 1). Proposed SQL is in §2 step 6.
+4. **Migrations** — ~~needs instruction~~ **AUTHORISED (6 July 2026)**: `20260706_remove_courtlistener.sql` and `20260706_add_companies_house_user_api_key_provider.sql`, recorded in the human-maintained allowlist `.claude/hooks/authorized-migrations.json` which the PreToolUse guard enforces. Proposed SQL is in §2 step 6; the files land in the excision and WS1 PRs respectively.
 5. **Per-user local base URLs** are excluded from v1 (SSRF surface — a user-supplied URL fetched by the backend). Confirm.
 6. **Persisted US-event history** (§2 step 7): confirm "render nothing for unknown event types" is acceptable for pre-fork chats rather than data migration.
 7. **Terminology sweep judgment calls** will be reported by the terminology-auditor agent as a diff-less report for your sign-off before WS4 applies legal-term changes.

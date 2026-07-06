@@ -1,0 +1,7 @@
+{
+  "_comment": "CLAUDE.md hard rule 1: migrations may only be created/edited on an explicit human instruction naming the file. This allowlist IS that instruction — only a human adds entries. The pretool-guard hook permits agent writes to exactly these basenames under backend/migrations/.",
+  "authorized": [
+    "20260706_remove_courtlistener.sql",
+    "20260706_add_companies_house_user_api_key_provider.sql"
+  ]
+}
