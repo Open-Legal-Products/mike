@@ -10,6 +10,11 @@ module.exports = async (_env, options) => {
   const devServerConfig = {
     port: 3000,
     hot: true,
+    // compress defaults to true, and the gzip middleware buffers
+    // text/event-stream bodies until the response ends — which turns the /chat
+    // SSE proxy into one giant blob delivered only when generation finishes.
+    // Disable it so streamed tokens reach the task pane as they arrive.
+    compress: false,
     headers: {
       "Access-Control-Allow-Origin": "*",
     },
