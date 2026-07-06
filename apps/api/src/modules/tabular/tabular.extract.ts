@@ -3,6 +3,10 @@
 
 import { logger } from "../../lib/logger";
 import { normalizeDocxZipPaths } from "../../lib/convert";
+import {
+    extractDocxRedlines,
+    formatRedlineSummary,
+} from "../../lib/docxTrackedChanges";
 import { type TabularCellStore } from "../../lib/chatTools";
 import {
     completeText,
@@ -278,7 +282,7 @@ export async function extractDocxMarkdown(buf: ArrayBuffer): Promise<string> {
         const { value: html } = await mammoth.convertToHtml({
             buffer: normalized,
         });
-        return html
+        const markdown = html
             .replace(
                 /<h([1-6])[^>]*>(.*?)<\/h\1>/gi,
                 (_, l, t) => "#".repeat(Number(l)) + " " + t + "\n\n",
@@ -293,6 +297,23 @@ export async function extractDocxMarkdown(buf: ArrayBuffer): Promise<string> {
             .replace(/&gt;/g, ">")
             .replace(/\n{3,}/g, "\n\n")
             .trim();
+        // mammoth renders an accepted view — pre-existing insertions read as
+        // plain text and deletions vanish entirely. Append a summary so RAG
+        // search and tabular-review extraction aren't blind to redlines
+        // already in the file. Best-effort: a parse failure here shouldn't
+        // blank out an otherwise-successful markdown extraction.
+        let redlineSummary = "";
+        try {
+            redlineSummary = formatRedlineSummary(
+                await extractDocxRedlines(normalized),
+            );
+        } catch (err) {
+            logger.warn(
+                { err: safeErrorLog(err) },
+                "[extractDocxMarkdown] redline extraction failed",
+            );
+        }
+        return markdown + redlineSummary;
     } catch {
         return "";
     }

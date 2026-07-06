@@ -1,6 +1,10 @@
 import { downloadFile } from "../storage";
 import { createServerSupabase } from "../supabase";
-import { extractDocxBodyText } from "../docxTrackedChanges";
+import {
+    extractDocxBodyText,
+    extractDocxRedlines,
+    formatRedlineSummary,
+} from "../docxTrackedChanges";
 import { logger } from "../logger";
 import type { DocStore, DocIndex } from "../chatToolDefs";
 import { extractPdfText } from "./pdfText";
@@ -136,6 +140,20 @@ export async function readDocumentContent(
                 logger.debug(
                     { length: text.length, filename: docInfo.filename },
                     "[read_document] docx mammoth fallback",
+                );
+            }
+            // extractDocxBodyText (and the mammoth fallback above) both
+            // present an accepted view — pre-existing insertions read as
+            // plain text and deletions vanish entirely. Append a summary so
+            // the model isn't blind to redlines another party already
+            // proposed in the file.
+            try {
+                const redlines = await extractDocxRedlines(Buffer.from(raw));
+                text += formatRedlineSummary(redlines);
+            } catch (err) {
+                logger.warn(
+                    { err, filename: docInfo.filename },
+                    "[read_document] redline extraction failed",
                 );
             }
         } else {

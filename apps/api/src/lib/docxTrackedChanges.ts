@@ -784,6 +784,126 @@ export async function extractTrackedChangeIds(
     return out;
 }
 
+export interface RedlineEntry {
+    kind: "ins" | "del";
+    author?: string;
+    date?: string;
+    text: string;
+}
+
+const MAX_REDLINE_ENTRIES = 200;
+const MAX_REDLINE_ENTRY_CHARS = 500;
+
+/**
+ * Collect every pre-existing w:ins / w:del in document order, with the text
+ * that was inserted or deleted (and author/date when Word recorded them).
+ *
+ * extractDocxBodyText and extractDocxMarkdown both intentionally present an
+ * "accepted view" of the document (insertions silently kept, deletions
+ * silently dropped) so the edit-anchor matcher and the RAG chunker have one
+ * consistent string to work against. That flattening also means a reader
+ * never sees redlines another party already proposed in the file. This
+ * function recovers exactly that — callers append `formatRedlineSummary`'s
+ * output alongside the flattened text rather than substituting it, so the
+ * anchor-matching contract is unaffected.
+ */
+export async function extractDocxRedlines(
+    bytes: Buffer,
+): Promise<RedlineEntry[]> {
+    const zip = await JSZip.loadAsync(bytes);
+    const docXmlFile = getZipEntry(zip, "word/document.xml");
+    if (!docXmlFile) return [];
+    const docXmlRaw = await docXmlFile.async("string");
+    const parser = createParser();
+    const tree = parser.parse(docXmlRaw) as XNode[];
+    const bodyChildren = findBody(tree);
+    if (!bodyChildren) return [];
+
+    const out: RedlineEntry[] = [];
+
+    const collectRunText = (n: unknown, tag: "w:t" | "w:delText"): string => {
+        const name = elName(n);
+        let acc = "";
+        if (name === tag) acc += getTextContent(n as XNode);
+        else if (name === "w:tab") acc += "\t";
+        else if (name === "w:br" || name === "w:cr") acc += "\n";
+        for (const c of elChildren(n as XNode)) acc += collectRunText(c, tag);
+        return acc;
+    };
+
+    const visitParagraph = (paraChildren: XNode[]) => {
+        for (const child of paraChildren) {
+            const name = elName(child);
+            if (name !== "w:ins" && name !== "w:del") continue;
+            const a = elAttrs(child);
+            const text = collectRunText(
+                child,
+                name === "w:ins" ? "w:t" : "w:delText",
+            );
+            if (!text.trim()) continue;
+            out.push({
+                kind: name === "w:ins" ? "ins" : "del",
+                author:
+                    a["@_w:author"] != null ? String(a["@_w:author"]) : undefined,
+                date: a["@_w:date"] != null ? String(a["@_w:date"]) : undefined,
+                text,
+            });
+        }
+    };
+
+    const collect = (nodes: XNode[]) => {
+        for (const n of nodes) {
+            const name = elName(n);
+            if (!name) continue;
+            if (name === "w:p") {
+                visitParagraph(elChildren(n));
+            } else if (
+                name === "w:tbl" ||
+                name === "w:tr" ||
+                name === "w:tc" ||
+                name === "w:sdt" ||
+                name === "w:sdtContent"
+            ) {
+                collect(elChildren(n));
+            }
+        }
+    };
+    collect(bodyChildren);
+    return out;
+}
+
+/**
+ * Render redline entries as a plain-text block to append after a document's
+ * extracted body text, so a reader (chat, RAG ingestion) isn't blind to
+ * changes already proposed in the file. Returns "" when there's nothing to
+ * report, so callers can unconditionally concatenate the result.
+ */
+export function formatRedlineSummary(entries: RedlineEntry[]): string {
+    if (entries.length === 0) return "";
+    const shown = entries.slice(0, MAX_REDLINE_ENTRIES);
+    const lines = shown.map((e) => {
+        const who = e.author ? ` by ${e.author}` : "";
+        const when = e.date ? ` on ${e.date}` : "";
+        const verb = e.kind === "ins" ? "Inserted" : "Deleted";
+        const text =
+            e.text.length > MAX_REDLINE_ENTRY_CHARS
+                ? e.text.slice(0, MAX_REDLINE_ENTRY_CHARS) + "…"
+                : e.text;
+        return `- ${verb}${who}${when}: "${text.trim()}"`;
+    });
+    const omitted = entries.length - shown.length;
+    const footer =
+        omitted > 0
+            ? `\n… and ${omitted} more tracked change(s), omitted for length.`
+            : "";
+    return (
+        "\n\n---\n" +
+        "Existing tracked changes already in this document (not yet accepted or rejected):\n" +
+        lines.join("\n") +
+        footer
+    );
+}
+
 export async function applyTrackedEdits(
     bytes: Buffer,
     edits: EditInput[],
