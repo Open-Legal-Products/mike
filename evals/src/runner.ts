@@ -14,8 +14,10 @@ import yaml from "js-yaml";
 import type { CaseResult, EvalCase } from "./types.js";
 import { resolveCitations } from "./citations.js";
 import { judge } from "./judge.js";
+import { loadLocalEnv } from "./env.js";
 
 const EVALS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
+loadLocalEnv(join(EVALS_DIR, ".."));
 const CASES_DIR = join(EVALS_DIR, "cases");
 const BASELINE_PATH = join(EVALS_DIR, "baseline.json");
 const SMOKE_LIMIT = 5;
