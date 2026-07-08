@@ -15,6 +15,8 @@ Naming rationale: Mike worked for Harvey. They both worked for Jessica.
 
 ## UK data integrations
 
+> Landing across the current UK workstreams (Companies House and legislation.gov.uk are in review at the time of writing); see the [roadmap](#roadmap) for what is deliberately deferred.
+
 - **Companies House** — live company search, company profiles, officers, persons with significant control (PSCs), and filing history. Requires a free API key (see [Self-hosting](#self-hosting)).
 - **legislation.gov.uk** — statute and statutory instrument lookup, revised text, and citation resolution. No API key required; reuse is permitted under the Open Government Licence. Where legislation.gov.uk has not yet applied an amendment to the text it holds, JessicaOS surfaces the outstanding-effects flag rather than presenting revised text as settled — revision lag is never hidden.
 - **Citation verification** — the assistant is instructed to verify every statutory citation against the live legislation.gov.uk API using its verification tools before finalising an answer, and the eval suite resolves every statutory reference in workflow output against the live API. An unverifiable citation is treated as a bug and fails the eval citation gate.
@@ -115,7 +117,7 @@ Open `http://localhost:3000`.
 | `SUPABASE_SECRET_KEY` | yes | Supabase service-role key (backend only) |
 | `R2_ENDPOINT_URL`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | yes for document uploads | Cloudflare R2 / S3-compatible storage |
 | `R2_BUCKET_NAME` | optional (default `mike`) | storage bucket name |
-| `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` | optional | instance-wide model provider fallback keys (users can also add their own in **Account → API Keys**) |
+| `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY` | optional | instance-wide model provider fallback keys (users can also add their own in **Account → API Keys**) |
 | `RESEND_API_KEY` | optional | email sending (SDK installed; not yet wired into `src/`) |
 | `USER_API_KEYS_ENCRYPTION_SECRET` | yes | encrypts each user's own API keys at rest |
 | `COMPANIES_HOUSE_API_KEY` | optional, recommended | powers the Companies House integration above (lands with that workstream) |
