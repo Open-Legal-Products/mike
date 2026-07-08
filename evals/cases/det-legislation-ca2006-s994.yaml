@@ -1,0 +1,13 @@
+id: det-legislation-ca2006-s994
+type: deterministic
+smoke: true
+description: >
+  legislation.gov.uk must serve s.994 Companies Act 2006 (unfair prejudice) and the
+  fetched text must match the statutory wording exactly. Also proves the citation
+  gate's target API is reachable from CI.
+request:
+  url: https://www.legislation.gov.uk/ukpga/2006/46/section/994/data.xml
+  status: 200
+  contains:
+    - "unfairly prejudicial"
+    - "Petition by company member"

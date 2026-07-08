@@ -1,0 +1,13 @@
+id: jud-due-diligence-snapshot
+type: judged
+pending: >
+  Requires the Companies House due-diligence workflow (WS1/WS4) so input.text can
+  be produced by running the workflow on a fixture; golden-set inputs to be
+  finalised with an AGL associate. Judge wiring itself is live (see judge.ts).
+description: >
+  Opus-judged case: corporate due-diligence snapshot output scored 1–5 against the
+  rubric (issue-spotting completeness, correct law, UK terminology, no invented facts).
+rubric: rubrics/due-diligence-snapshot.md
+min_score: 3
+input:
+  text: ""

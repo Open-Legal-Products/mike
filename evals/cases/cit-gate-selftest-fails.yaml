@@ -1,0 +1,11 @@
+id: cit-gate-selftest-fails
+type: citation
+smoke: true
+expect_failure: true
+description: >
+  Harness self-test proving the hard gate actually rejects: a fabricated section
+  number and an (unverifiable) neutral case citation must both FAIL resolution.
+  The runner inverts the result, so this case passing means the gate works.
+input:
+  text: >
+    Reliance is placed on s.9999 Companies Act 2006 and on Smith v Jones [2024] UKSC 999.

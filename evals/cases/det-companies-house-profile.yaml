@@ -1,0 +1,15 @@
+id: det-companies-house-profile
+type: deterministic
+pending: >
+  Template for the golden set: needs a human-confirmed company number and expected
+  fields (officers, incorporation date), plus COMPANIES_HOUSE_API_KEY in the
+  environment. Remove `pending` once confirmed.
+description: >
+  Companies House profile lookup with known answers. Auth is HTTP Basic with the
+  API key as username (handled by the runner via auth: companies_house).
+request:
+  url: https://api.company-information.service.gov.uk/company/00000006
+  auth: companies_house
+  status: 200
+  contains:
+    - "company_number"

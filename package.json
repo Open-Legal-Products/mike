@@ -1,0 +1,10 @@
+{
+  "name": "jessicaoss",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "description": "Root scripts only — backend/ and frontend/ are independent npm projects. See CLAUDE.md.",
+  "scripts": {
+    "evals": "npm --prefix evals run evals",
+    "evals:smoke": "npm --prefix evals run evals:smoke"
+  }
+}

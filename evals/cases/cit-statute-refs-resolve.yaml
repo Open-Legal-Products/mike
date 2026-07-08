@@ -1,0 +1,12 @@
+id: cit-statute-refs-resolve
+type: citation
+smoke: true
+description: >
+  Hard-gate happy path: statutory references in several common citation styles
+  (section-first, act-first, SI number) must all resolve via the live
+  legislation.gov.uk API. Once workflows exist, citation cases will run a
+  workflow on a fixture document and gate its real output instead of fixed text.
+input:
+  text: >
+    The claimant petitions under s.994 Companies Act 2006. Employment Rights Act 1996, s 98
+    governs unfair dismissal, and the transfer falls within SI 2006/246.
