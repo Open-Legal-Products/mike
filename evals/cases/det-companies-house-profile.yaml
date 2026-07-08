@@ -1,15 +1,20 @@
 id: det-companies-house-profile
 type: deterministic
-pending: >
-  Template for the golden set: needs a human-confirmed company number and expected
-  fields (officers, incorporation date), plus COMPANIES_HOUSE_API_KEY in the
-  environment. Remove `pending` once confirmed.
+smoke: true
 description: >
-  Companies House profile lookup with known answers. Auth is HTTP Basic with the
-  API key as username (handled by the runner via auth: companies_house).
+  Companies House profile lookup with known answers: ARIA GRACE LAW CIC
+  (company number 13927967, incorporated 21/02/2022, SIC 69102 solicitors,
+  England & Wales) — the pilot firm, verified against the live API on
+  08/07/2026. Auth is HTTP Basic with the API key as username (handled by the
+  runner via auth: companies_house; skipped when COMPANIES_HOUSE_API_KEY is
+  unset, e.g. keyless CI until the secret is added).
 request:
-  url: https://api.company-information.service.gov.uk/company/00000006
+  url: https://api.company-information.service.gov.uk/company/13927967
   auth: companies_house
   status: 200
   contains:
-    - "company_number"
+    - "13927967"
+    - "ARIA GRACE LAW CIC"
+    - "2022-02-21"
+    - "69102"
+    - "england-wales"

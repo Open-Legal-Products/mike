@@ -30,7 +30,6 @@ interface UserProfile {
     titleModel: string;
     tabularModel: string;
     mfaOnLogin: boolean;
-    legalResearchUs: boolean;
     apiKeys: ApiKeyState;
 }
 
@@ -44,7 +43,6 @@ interface UserProfileContextType {
         value: string,
     ) => Promise<boolean>;
     updateMfaOnLogin: (enabled: boolean) => Promise<boolean>;
-    updateLegalResearchUs: (enabled: boolean) => Promise<boolean>;
     updateApiKey: (
         provider: ApiKeyProvider,
         value: string | null,
@@ -62,7 +60,6 @@ const API_KEY_PROVIDERS: ApiKeyProvider[] = [
     "gemini",
     "openai",
     "openrouter",
-    "courtlistener",
 ];
 
 function emptyApiKeys(): ApiKeyState {
@@ -71,7 +68,6 @@ function emptyApiKeys(): ApiKeyState {
         gemini: { configured: false, source: null },
         openai: { configured: false, source: null },
         openrouter: { configured: false, source: null },
-        courtlistener: { configured: false, source: null },
     };
 }
 
@@ -120,7 +116,6 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 titleModel: "gemini-3.1-flash-lite-preview",
                 tabularModel: "gemini-3-flash-preview",
                 mfaOnLogin: false,
-                legalResearchUs: true,
                 apiKeys: emptyApiKeys(),
             });
         } finally {
@@ -212,24 +207,6 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
         [user],
     );
 
-    const updateLegalResearchUs = useCallback(
-        async (enabled: boolean): Promise<boolean> => {
-            if (!user) return false;
-            try {
-                const updated = await updateUserProfile({
-                    legalResearchUs: enabled,
-                });
-                setProfile((prev) =>
-                    prev ? { ...prev, ...toProfile(updated) } : null,
-                );
-                return true;
-            } catch {
-                return false;
-            }
-        },
-        [user],
-    );
-
     const updateApiKey = useCallback(
         async (
             provider: ApiKeyProvider,
@@ -290,7 +267,6 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 updateOrganisation,
                 updateModelPreference,
                 updateMfaOnLogin,
-                updateLegalResearchUs,
                 updateApiKey,
                 reloadProfile,
                 incrementMessageCredits,

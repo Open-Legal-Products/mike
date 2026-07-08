@@ -21,7 +21,6 @@ create table if not exists public.user_profiles (
   tabular_model text not null default 'gemini-3-flash-preview',
   quote_model text,
   mfa_on_login boolean not null default false,
-  legal_research_us boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -54,7 +53,7 @@ create trigger on_auth_user_created
 create table if not exists public.user_api_keys (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  provider text not null check (provider in ('claude', 'gemini', 'openai', 'openrouter', 'courtlistener')),
+  provider text not null check (provider in ('claude', 'gemini', 'openai', 'openrouter')),
   encrypted_key text not null,
   iv text not null,
   auth_tag text not null,
@@ -750,45 +749,6 @@ create index if not exists tabular_review_chat_messages_chat_idx
   on public.tabular_review_chat_messages(chat_id, created_at);
 
 -- ---------------------------------------------------------------------------
--- CourtListener bulk-data indexes
--- ---------------------------------------------------------------------------
-
-create table if not exists public.courtlistener_citation_index (
-  id bigint primary key,
-  volume text not null,
-  reporter text not null,
-  page text not null,
-  type integer,
-  cluster_id bigint not null,
-  date_created timestamptz,
-  date_modified timestamptz
-);
-
-create index if not exists courtlistener_citation_lookup_idx
-  on public.courtlistener_citation_index(volume, reporter, page);
-
-create index if not exists courtlistener_citation_cluster_idx
-  on public.courtlistener_citation_index(cluster_id);
-
-alter table public.courtlistener_citation_index enable row level security;
-
-create table if not exists public.courtlistener_opinion_cluster_index (
-  id bigint primary key,
-  case_name text,
-  case_name_short text,
-  case_name_full text,
-  slug text,
-  date_filed date,
-  citation_count integer,
-  precedential_status text,
-  filepath_pdf_harvard text,
-  filepath_json_harvard text,
-  docket_id bigint
-);
-
-alter table public.courtlistener_opinion_cluster_index enable row level security;
-
--- ---------------------------------------------------------------------------
 -- Direct client grant hardening
 -- ---------------------------------------------------------------------------
 --
@@ -818,5 +778,3 @@ revoke all on public.user_mcp_oauth_tokens from anon, authenticated;
 revoke all on public.user_mcp_oauth_states from anon, authenticated;
 revoke all on public.user_mcp_connector_tools from anon, authenticated;
 revoke all on public.user_mcp_tool_audit_logs from anon, authenticated;
-revoke all on public.courtlistener_citation_index from anon, authenticated;
-revoke all on public.courtlistener_opinion_cluster_index from anon, authenticated;

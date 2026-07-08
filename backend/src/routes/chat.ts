@@ -535,16 +535,15 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         db,
         docIndex,
     );
-    const {
-        api_keys: apiKeys,
-        legal_research_us: legalResearchUs,
-    } = await getUserModelSettings(userId, db);
+    const { api_keys: apiKeys } = await getUserModelSettings(userId, db);
+    // Research tools disabled until UK legal sources land (WS1/WS2 — see
+    // docs/MIGRATION_SPEC.md); the seam in buildMessages/runLLMStream remains.
     const apiMessages = buildMessages(
         enrichedMessages,
         docAvailability,
         undefined,
         undefined,
-        legalResearchUs,
+        false,
     );
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
@@ -579,7 +578,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             db,
             write,
             workflowStore,
-            includeResearchTools: legalResearchUs,
+            includeResearchTools: false,
             model,
             apiKeys,
             signal: streamAbort.signal,

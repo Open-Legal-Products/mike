@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, useEffect, useState } from "react";
-import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
 import remarkGfm from "remark-gfm";
 import rehypeKatex from "rehype-katex";
@@ -14,7 +14,6 @@ import {
     File,
     FileText,
     Loader2,
-    Scale,
 } from "lucide-react";
 import { MikeIcon } from "@/components/chat/mike-icon";
 import { displayCitationQuote, formatCitationPage } from "../shared/types";
@@ -42,13 +41,6 @@ function toolCallLabel(name: string): string {
     if (name === "read_workflow") return "Loading workflow...";
     if (name === "list_workflows") return "Loading workflows...";
     if (name === "list_documents") return "Loading documents...";
-    if (name === "courtlistener_search_case_law")
-        return "Searching case law...";
-    if (name === "courtlistener_get_cases") return "Fetching cases...";
-    if (name === "courtlistener_find_in_case") return "Searching case...";
-    if (name === "courtlistener_read_case") return "Reading case...";
-    if (name === "courtlistener_verify_citations")
-        return "Verifying citations...";
     if (name.startsWith("mcp_")) return "Using connector...";
     return name ? `Running ${name}...` : "Working...";
 }
@@ -865,118 +857,6 @@ function WorkflowAppliedBlock({
     );
 }
 
-type CourtListenerBlockItem = {
-    caseName: string | null;
-    citation: string | null;
-    dateFiled?: string | null;
-    url?: string | null;
-    query?: string;
-    totalMatches?: number;
-    hasError?: boolean;
-};
-
-function CourtListenerBlock({
-    label,
-    detail,
-    isStreaming,
-    hasError,
-    showConnector,
-    items,
-}: {
-    label: string;
-    detail?: string;
-    isStreaming?: boolean;
-    hasError?: boolean;
-    showConnector?: boolean;
-    items?: CourtListenerBlockItem[];
-}) {
-    const [isOpen, setIsOpen] = useState(false);
-    const hasItems = !!items && items.length > 0;
-    return (
-        <div className="relative">
-            {showConnector && (
-                <div className="absolute bottom-0 w-[1px] bg-gray-300 top-[13px] left-[2.5px] h-[calc(100%+11px)]" />
-            )}
-            <div className="flex items-start text-sm font-serif text-gray-500">
-                {isStreaming ? (
-                    <div className="mt-2 w-1.5 h-1.5 rounded-full border border-gray-400 border-t-transparent animate-spin shrink-0" />
-                ) : (
-                    <div
-                        className={`mt-2 w-1.5 h-1.5 rounded-full shrink-0 ${hasError ? "bg-red-500" : "bg-green-400"}`}
-                    />
-                )}
-                <div className="ml-2 min-w-0 flex-1 whitespace-normal break-words">
-                    {hasItems ? (
-                        <button
-                            onClick={() => setIsOpen((v) => !v)}
-                            className="text-left hover:text-gray-700 transition-colors inline-flex items-center"
-                        >
-                            <span className="font-medium">{label}</span>
-                            {detail ? <span>&nbsp;{detail}</span> : null}
-                            {isStreaming ? <span>...</span> : null}
-                            <ChevronDown
-                                size={10}
-                                className={`relative top-px ml-1 transition-transform duration-200 ${isOpen ? "" : "-rotate-90"}`}
-                            />
-                        </button>
-                    ) : (
-                        <>
-                            <span className="font-medium">{label}</span>
-                            {detail ? <span> {detail}</span> : null}
-                            {isStreaming ? <span>...</span> : null}
-                        </>
-                    )}
-                </div>
-            </div>
-            {isOpen && hasItems && (
-                <ul className="mt-2 ml-[14px] flex flex-col gap-1 text-sm font-serif text-gray-500">
-                    {items!.map((item, idx) => {
-                        const label = [item.caseName, item.citation]
-                            .filter(Boolean)
-                            .join(", ");
-                        const primary = label || item.url || "Unknown case";
-                        const searchText = item.query
-                            ? `Searched for "${item.query}" in ${primary}${
-                                  typeof item.totalMatches === "number"
-                                      ? ` (${item.totalMatches} ${
-                                            item.totalMatches === 1
-                                                ? "match"
-                                                : "matches"
-                                        })`
-                                      : ""
-                              }`
-                            : null;
-                        return (
-                            <li key={idx}>
-                                <div
-                                    className={
-                                        item.hasError ? "text-red-500" : ""
-                                    }
-                                >
-                                    {item.url ? (
-                                        <a
-                                            href={item.url}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="hover:text-gray-700 hover:underline underline-offset-2"
-                                        >
-                                            {searchText ?? primary}
-                                        </a>
-                                    ) : searchText ? (
-                                        <span>{searchText}</span>
-                                    ) : (
-                                        <span>{primary}</span>
-                                    )}
-                                </div>
-                            </li>
-                        );
-                    })}
-                </ul>
-            )}
-        </div>
-    );
-}
-
 function DocEditedBlock({
     filename,
     showConnector,
@@ -1043,44 +923,17 @@ function preprocessCitations(
 // Markdown renderer (shared config)
 // ---------------------------------------------------------------------------
 
-function internalCaseHref(
-    value: string | number | null | undefined,
-): string | null {
-    if (typeof value === "number") return `us-case-${value}`;
-    if (!value) return null;
-    const match = value.match(/^us-case-(\d+)$/);
-    return match ? `us-case-${match[1]}` : null;
-}
-
 function MarkdownContent({
     text,
     citationsList,
-    caseCitations,
-    caseOpinions,
     onCitationClick,
-    onCaseClick,
     divRef,
 }: {
     text: string;
     citationsList: CitationAnnotation[];
-    caseCitations: Map<
-        string,
-        Extract<AssistantEvent, { type: "case_citation" }>
-    >;
-    caseOpinions: Map<
-        number,
-        Extract<AssistantEvent, { type: "case_opinions" }>["case"]
-    >;
     onCitationClick?: (c: CitationAnnotation) => void;
-    onCaseClick?: (
-        c: Extract<AssistantEvent, { type: "case_citation" }>,
-    ) => void;
     divRef?: React.RefObject<HTMLDivElement | null>;
 }) {
-    function findCaseCitation(href: string) {
-        return caseCitations.get(internalCaseHref(href) ?? "");
-    }
-
     return (
         <div
             ref={divRef}
@@ -1092,9 +945,6 @@ function MarkdownContent({
                     remarkGfm,
                 ]}
                 rehypePlugins={[rehypeKatex]}
-                urlTransform={(url) =>
-                    /^us-case-\d+$/.test(url) ? url : defaultUrlTransform(url)
-                }
                 components={{
                     table: ({ node, ...props }) => (
                         <div className="overflow-x-auto my-4 rounded-lg">
@@ -1221,61 +1071,6 @@ function MarkdownContent({
                         />
                     ),
                     a: ({ node, href, children, ...props }) => {
-                        if (href) {
-                            const isInternalCaseHref = !!internalCaseHref(href);
-                            const citation = findCaseCitation(href);
-                            if (citation && onCaseClick) {
-                                return (
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            onCaseClick({
-                                                ...citation,
-                                                case:
-                                                    citation.cluster_id !== null
-                                                        ? caseOpinions.get(
-                                                              citation.cluster_id,
-                                                          )
-                                                        : undefined,
-                                            })
-                                        }
-                                        className="text-left text-blue-600 hover:text-blue-700 underline"
-                                    >
-                                        {children}
-                                    </button>
-                                );
-                            }
-                            if (citation) {
-                                return (
-                                    <a
-                                        href={citation.url}
-                                        className="text-blue-600 hover:text-blue-700 underline"
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                    >
-                                        {children}
-                                    </a>
-                                );
-                            }
-                            if (isInternalCaseHref) {
-                                return (
-                                    <span className="text-blue-600 underline">
-                                        {children}
-                                    </span>
-                                );
-                            }
-                            return (
-                                <a
-                                    href={href}
-                                    className="text-blue-600 hover:text-blue-700 underline"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    {...props}
-                                >
-                                    {children}
-                                </a>
-                            );
-                        }
                         return (
                             <a
                                 href={href}
@@ -1311,19 +1106,10 @@ type CitationSourceRow = {
 };
 
 function citationSourceKey(annotation: CitationAnnotation): string {
-    if (annotation.kind === "case") {
-        return `case:${annotation.cluster_id}`;
-    }
     return `document:${annotation.document_id}`;
 }
 
 function citationSourceLabel(annotation: CitationAnnotation): string {
-    if (annotation.kind === "case") {
-        const caseName = annotation.case_name?.trim();
-        const citation = annotation.citation?.trim();
-        if (caseName && citation) return `${caseName}, ${citation}`;
-        return caseName || citation || `Case ${annotation.cluster_id}`;
-    }
     return annotation.filename;
 }
 
@@ -1336,9 +1122,6 @@ function CitationSourceIcon({
 }: {
     annotation: CitationAnnotation;
 }) {
-    if (annotation.kind === "case") {
-        return <Scale className="h-3.5 w-3.5 text-slate-600" />;
-    }
     const ext = documentExtension(annotation.filename);
     if (ext === "pdf") return <File className="h-3.5 w-3.5 text-red-500" />;
     return <FileText className="h-3.5 w-3.5 text-blue-500" />;
@@ -1578,9 +1361,6 @@ interface Props {
     citationStatus?: "started" | "partial" | "final";
     onCitationClick?: (citation: CitationAnnotation) => void;
     onOpenCitationSource?: (citation: CitationAnnotation) => void;
-    onCaseClick?: (
-        citation: Extract<AssistantEvent, { type: "case_citation" }>,
-    ) => void;
     minHeight?: string;
     onWorkflowClick?: (workflowId: string) => void;
     onEditViewClick?: (ann: EditAnnotation, filename: string) => void;
@@ -1645,7 +1425,6 @@ export function AssistantMessage({
     citationStatus,
     onCitationClick,
     onOpenCitationSource,
-    onCaseClick,
     minHeight = "0px",
     onWorkflowClick,
     onEditViewClick,
@@ -1702,10 +1481,18 @@ export function AssistantMessage({
           ? "active"
           : null;
 
-    const isRenderableEvent = (event: AssistantEvent) =>
-        event.type !== "error" &&
-        event.type !== "case_citation" &&
-        event.type !== "case_opinions";
+    // Skip error events plus any event types this build no longer renders —
+    // e.g. US case-law events persisted in chats created before the
+    // CourtListener excision (docs/MIGRATION_SPEC.md §2 step 7).
+    const isRenderableEvent = (event: AssistantEvent) => {
+        const type = event.type as string;
+        return (
+            type !== "error" &&
+            type !== "case_citation" &&
+            type !== "case_opinions" &&
+            !type.startsWith("courtlistener_")
+        );
+    };
 
     // Find the last content event so its raw text can be smoothed before
     // citation preprocessing — slicing already-preprocessed text would risk
@@ -1745,24 +1532,10 @@ export function AssistantMessage({
     // to exactly one annotation (models are instructed to use shared refs
     // only for cross-page continuations via the [[PAGE_BREAK]] sentinel).
     const citationsList: CitationAnnotation[] = [];
-    const caseCitations = new Map<
-        string,
-        Extract<AssistantEvent, { type: "case_citation" }>
-    >();
-    const caseOpinions = new Map<
-        number,
-        Extract<AssistantEvent, { type: "case_opinions" }>["case"]
-    >();
     const processedTexts: string[] = [];
     if (events) {
         for (let i = 0; i < events.length; i++) {
             const event = events[i];
-            if (event.type === "case_citation") {
-                const hrefKey = internalCaseHref(event.cluster_id);
-                if (hrefKey) caseCitations.set(hrefKey, event);
-            } else if (event.type === "case_opinions") {
-                caseOpinions.set(event.cluster_id, event.case);
-            }
             processedTexts.push(
                 event.type === "content"
                     ? preprocessCitations(
@@ -1779,7 +1552,7 @@ export function AssistantMessage({
             onOpenCitationSource(citation);
             return;
         }
-        if (citation.kind === "case" || !onOpenDocument) return;
+        if (!onOpenDocument) return;
         onOpenDocument({
             documentId: citation.document_id,
             filename: citation.filename,
@@ -1787,9 +1560,8 @@ export function AssistantMessage({
             versionNumber: citation.version_number ?? null,
         });
     };
-    const canOpenCitationSource = (citation: CitationAnnotation) =>
-        !!onOpenCitationSource ||
-        (citation.kind !== "case" && !!onOpenDocument);
+    const canOpenCitationSource = () =>
+        !!onOpenCitationSource || !!onOpenDocument;
     const citationBlockList = citationStatus ? annotations : citationsList;
     const showCitationBlock =
         !!citationStatus || (!isStreaming && citationsList.length > 0);
@@ -1885,10 +1657,7 @@ export function AssistantMessage({
                     <MarkdownContent
                         text={processed}
                         citationsList={citationsList}
-                        caseCitations={caseCitations}
-                        caseOpinions={caseOpinions}
                         onCitationClick={onCitationClick}
-                        onCaseClick={onCaseClick}
                         divRef={isLastContent ? contentDivRef : undefined}
                     />
                 </div>
@@ -1971,7 +1740,7 @@ export function AssistantMessage({
         }
         if (event.type === "doc_read") {
             const ann = annotations.find(
-                (a) => a.kind !== "case" && a.filename === event.filename,
+                (a) => a.filename === event.filename,
             );
             return (
                 <DocReadBlock
@@ -2049,226 +1818,6 @@ export function AssistantMessage({
                 />
             );
         }
-        if (event.type === "courtlistener_search_case_law") {
-            const count = event.result_count ?? 0;
-            const detail = event.isStreaming
-                ? event.query
-                    ? `for "${event.query}"`
-                    : undefined
-                : event.error
-                  ? event.error
-                  : `${count} ${count === 1 ? "result" : "results"}${event.query ? ` for "${event.query}"` : ""}`;
-            return (
-                <CourtListenerBlock
-                    key={globalIdx}
-                    label={
-                        event.isStreaming
-                            ? "Searching case law"
-                            : event.error
-                              ? "Case law search failed"
-                              : "Searched case law"
-                    }
-                    detail={detail}
-                    isStreaming={!!event.isStreaming}
-                    hasError={!!event.error}
-                    showConnector={showConnector}
-                />
-            );
-        }
-        if (event.type === "courtlistener_get_cases") {
-            const caseCount = event.case_count ?? event.cluster_ids.length;
-            const displayLabel = `${caseCount} ${
-                caseCount === 1 ? "case" : "cases"
-            }`;
-            const detail = event.error ? event.error : undefined;
-            const items: CourtListenerBlockItem[] =
-                event.cases?.map((caseItem) => ({
-                    caseName: caseItem.case_name,
-                    citation: caseItem.citation,
-                    url: caseItem.url ?? null,
-                })) ??
-                event.cluster_ids.map((clusterId) => {
-                    const citation = caseCitations.get(`us-case-${clusterId}`);
-                    return {
-                        caseName: citation?.case_name ?? null,
-                        citation: citation?.citation ?? `Cluster ${clusterId}`,
-                        url: citation?.url ?? null,
-                    };
-                });
-            return (
-                <CourtListenerBlock
-                    key={globalIdx}
-                    label={
-                        event.isStreaming
-                            ? `Fetching ${displayLabel}`
-                            : event.error
-                              ? "Case fetch failed"
-                              : `Fetched ${displayLabel}`
-                    }
-                    detail={detail}
-                    isStreaming={!!event.isStreaming}
-                    hasError={!!event.error}
-                    showConnector={showConnector}
-                    items={items.length > 0 ? items : undefined}
-                />
-            );
-        }
-        if (event.type === "courtlistener_find_in_case") {
-            const searches = event.searches ?? [];
-            if (searches.length > 0) {
-                const matches =
-                    event.total_matches ??
-                    searches.reduce(
-                        (sum, search) => sum + (search.total_matches ?? 0),
-                        0,
-                    );
-                const caseIds = new Set(
-                    searches.map(
-                        (search) =>
-                            search.cluster_id ??
-                            `${search.case_name ?? ""}|${search.citation ?? ""}`,
-                    ),
-                );
-                const caseCount = caseIds.size || searches.length;
-                const searchLabel = `${searches.length} ${
-                    searches.length === 1 ? "search" : "searches"
-                } in ${caseCount} ${caseCount === 1 ? "case" : "cases"}`;
-                const detail = event.isStreaming
-                    ? undefined
-                    : event.error
-                      ? event.error
-                      : `(${matches} ${matches === 1 ? "match" : "matches"})`;
-                const items: CourtListenerBlockItem[] = searches.map(
-                    (search) => ({
-                        caseName: search.case_name ?? null,
-                        citation:
-                            search.citation ??
-                            (search.cluster_id
-                                ? `Cluster ${search.cluster_id}`
-                                : null),
-                        url: null,
-                        query: search.query,
-                        totalMatches: search.total_matches ?? 0,
-                        hasError: !!search.error,
-                    }),
-                );
-                return (
-                    <CourtListenerBlock
-                        key={globalIdx}
-                        label={
-                            event.isStreaming
-                                ? `Running ${searchLabel}`
-                                : event.error
-                                  ? "Case searches failed"
-                                  : `Ran ${searchLabel}`
-                        }
-                        detail={detail}
-                        isStreaming={!!event.isStreaming}
-                        hasError={!!event.error}
-                        showConnector={showConnector}
-                        items={items.length > 0 ? items : undefined}
-                    />
-                );
-            }
-            const matches = event.total_matches ?? 0;
-            const caseLabel =
-                [event.case_name, event.citation].filter(Boolean).join(", ") ||
-                (event.cluster_id ? `cluster ${event.cluster_id}` : "case");
-            const detail = event.isStreaming
-                ? event.query
-                    ? `for "${event.query}" in ${caseLabel}`
-                    : caseLabel
-                : event.error
-                  ? event.error
-                  : `${matches} ${matches === 1 ? "match" : "matches"}${event.query ? ` for "${event.query}"` : ""} in ${caseLabel}`;
-            return (
-                <CourtListenerBlock
-                    key={globalIdx}
-                    label={
-                        event.isStreaming
-                            ? "Searching case"
-                            : event.error
-                              ? "Case search failed"
-                              : "Searched case"
-                    }
-                    detail={detail}
-                    isStreaming={!!event.isStreaming}
-                    hasError={!!event.error}
-                    showConnector={showConnector}
-                />
-            );
-        }
-        if (event.type === "courtlistener_read_case") {
-            const count = event.opinion_count ?? 0;
-            const caseLabel =
-                [event.case_name, event.citation].filter(Boolean).join(", ") ||
-                "case";
-            const detail = event.isStreaming
-                ? undefined
-                : event.error
-                  ? event.error
-                  : count > 0
-                    ? `(${count} ${count === 1 ? "opinion" : "opinions"})`
-                    : undefined;
-            return (
-                <CourtListenerBlock
-                    key={globalIdx}
-                    label={
-                        event.isStreaming
-                            ? `Reading case ${caseLabel}`
-                            : event.error
-                              ? `Case read failed ${caseLabel}`
-                              : `Read case ${caseLabel}`
-                    }
-                    detail={detail}
-                    isStreaming={!!event.isStreaming}
-                    hasError={!!event.error}
-                    showConnector={showConnector}
-                />
-            );
-        }
-        if (event.type === "courtlistener_verify_citations") {
-            const citations = event.citation_count ?? 0;
-            const matches = event.match_count ?? 0;
-            const citationLabel = `${citations} ${citations === 1 ? "citation" : "citations"}`;
-            const detail = event.isStreaming
-                ? undefined
-                : event.error
-                  ? event.error
-                  : `(${matches} ${matches === 1 ? "match" : "matches"})`;
-            // Adjacent `case_citation` events are emitted between the start
-            // and final verify_citations events (one per matched citation) —
-            // collect them so the user can expand to see resolved cases.
-            const items: CourtListenerBlockItem[] = [];
-            if (events) {
-                for (let j = globalIdx + 1; j < events.length; j++) {
-                    const e = events[j];
-                    if (e.type !== "case_citation") break;
-                    items.push({
-                        caseName: e.case_name,
-                        citation: e.citation,
-                        url: e.url || null,
-                    });
-                }
-            }
-            return (
-                <CourtListenerBlock
-                    key={globalIdx}
-                    label={
-                        event.isStreaming
-                            ? `Verifying ${citationLabel}`
-                            : event.error
-                              ? "Citation verification failed"
-                              : `Verified ${citationLabel}`
-                    }
-                    detail={detail}
-                    isStreaming={!!event.isStreaming}
-                    hasError={!!event.error}
-                    showConnector={showConnector}
-                    items={items.length > 0 ? items : undefined}
-                />
-            );
-        }
         return null;
     };
 
@@ -2287,10 +1836,7 @@ export function AssistantMessage({
                                         <MarkdownContent
                                             text={processedTexts[g.index]}
                                             citationsList={citationsList}
-                                            caseCitations={caseCitations}
-                                            caseOpinions={caseOpinions}
                                             onCitationClick={onCitationClick}
-                                            onCaseClick={onCaseClick}
                                             divRef={
                                                 isLastContent
                                                     ? contentDivRef

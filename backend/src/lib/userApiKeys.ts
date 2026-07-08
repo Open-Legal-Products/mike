@@ -3,12 +3,7 @@ import { createServerSupabase } from "./supabase";
 import type { UserApiKeys } from "./llm";
 
 type Db = ReturnType<typeof createServerSupabase>;
-export type ApiKeyProvider =
-    | "claude"
-    | "gemini"
-    | "openai"
-    | "openrouter"
-    | "courtlistener";
+export type ApiKeyProvider = "claude" | "gemini" | "openai" | "openrouter";
 export type ApiKeySource = "user" | "env" | null;
 export type ApiKeyStatus = Record<ApiKeyProvider, boolean> & {
     sources: Record<ApiKeyProvider, ApiKeySource>;
@@ -26,7 +21,6 @@ const PROVIDERS: ApiKeyProvider[] = [
     "gemini",
     "openai",
     "openrouter",
-    "courtlistener",
 ];
 
 function envApiKey(provider: ApiKeyProvider): string | null {
@@ -43,8 +37,6 @@ function envApiKey(provider: ApiKeyProvider): string | null {
             return process.env.OPENAI_API_KEY?.trim() || null;
         case "openrouter":
             return process.env.OPENROUTER_API_KEY?.trim() || null;
-        case "courtlistener":
-            return process.env.COURTLISTENER_API_TOKEN?.trim() || null;
         default:
             return null;
     }
@@ -115,13 +107,11 @@ export async function getUserApiKeyStatus(
         gemini: false,
         openai: false,
         openrouter: false,
-        courtlistener: false,
         sources: {
             claude: null,
             gemini: null,
             openai: null,
             openrouter: null,
-            courtlistener: null,
         },
     };
 
@@ -158,7 +148,6 @@ export async function getUserApiKeys(
         gemini: envApiKey("gemini"),
         openai: envApiKey("openai"),
         openrouter: envApiKey("openrouter"),
-        courtlistener: envApiKey("courtlistener"),
     };
 
     const { data, error } = await db

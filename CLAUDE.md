@@ -122,6 +122,7 @@ All user-facing copy, prompts, and workflow templates use UK English and UK lega
 - UK terminology table respected in all user-facing strings
 - PR description: what/why/how-tested, screenshots for UI
 - CLAUDE.md and `/docs` updated if behaviour or env vars changed
+- Entry appended to `docs/BUILD_LOG.md` (scope, key changes, verification evidence, decisions)
 
 ## Commands
 

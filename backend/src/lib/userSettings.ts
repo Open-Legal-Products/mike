@@ -11,7 +11,6 @@ import { getUserApiKeys as getStoredUserApiKeys } from "./userApiKeys";
 export type UserModelSettings = {
     title_model: string;
     tabular_model: string;
-    legal_research_us: boolean;
     api_keys: UserApiKeys;
 };
 
@@ -33,7 +32,7 @@ export async function getUserModelSettings(
     const client = db ?? createServerSupabase();
     const { data } = await client
         .from("user_profiles")
-        .select("title_model, tabular_model, legal_research_us")
+        .select("title_model, tabular_model")
         .eq("user_id", userId)
         .single();
     const api_keys = await getStoredUserApiKeys(userId, client);
@@ -41,9 +40,6 @@ export async function getUserModelSettings(
     return {
         title_model: resolveModel(data?.title_model, resolveTitleModel(api_keys)),
         tabular_model: resolveModel(data?.tabular_model, DEFAULT_TABULAR_MODEL),
-        legal_research_us:
-            (data as { legal_research_us?: boolean | null } | null)
-                ?.legal_research_us !== false,
         api_keys,
     };
 }

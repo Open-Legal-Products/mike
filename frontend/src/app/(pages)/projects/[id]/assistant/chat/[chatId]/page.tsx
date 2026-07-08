@@ -490,7 +490,6 @@ export default function ProjectAssistantChatPage({ params }: Props) {
     };
 
     const handleCitationClick = (citation: CitationAnnotation) => {
-        if (citation.kind === "case") return;
         openTab(
             citation.document_id,
             citation.filename,

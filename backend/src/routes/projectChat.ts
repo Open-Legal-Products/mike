@@ -143,16 +143,15 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         systemPromptExtra += `\n\nUSER-ATTACHED DOCUMENTS FOR THIS TURN:\nThe user has attached the following document(s) directly to their latest message. Treat these as the primary focus of the request unless their message clearly says otherwise.\n${lines.join("\n")}`;
     }
 
-    const {
-        api_keys: apiKeys,
-        legal_research_us: legalResearchUs,
-    } = await getUserModelSettings(userId, db);
+    const { api_keys: apiKeys } = await getUserModelSettings(userId, db);
+    // Research tools disabled until UK legal sources land (WS1/WS2 — see
+    // docs/MIGRATION_SPEC.md); the seam in buildMessages/runLLMStream remains.
     const apiMessages = buildMessages(
         messagesForLLM,
         docAvailability,
         systemPromptExtra,
         undefined,
-        legalResearchUs,
+        false,
     );
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
@@ -182,7 +181,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             write,
             extraTools: PROJECT_EXTRA_TOOLS,
             workflowStore,
-            includeResearchTools: legalResearchUs,
+            includeResearchTools: false,
             model,
             apiKeys,
             signal: streamAbort.signal,

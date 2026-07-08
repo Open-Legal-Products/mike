@@ -18,19 +18,6 @@ import {
   loadActiveVersion,
 } from "./documentVersions";
 import {
-  getCourtlistenerCaseOpinions,
-  getCourtlistenerCases,
-  searchCourtlistenerCaseLaw,
-  verifyCourtlistenerCitations,
-} from "./courtlistener";
-import {
-  COURTLISTENER_SYSTEM_PROMPT,
-  COURTLISTENER_TOOL_NAMES,
-  COURTLISTENER_TOOLS,
-  type CaseCitationEvent,
-  type CourtlistenerToolEvent,
-} from "./legalSourcesTools/courtlistenerTools";
-import {
   buildUserMcpTools,
   executeMcpToolCall,
   type McpToolEvent,
@@ -164,15 +151,15 @@ GENERAL GUIDANCE:
 `;
 
 /**
- * Assemble the chat system prompt. When `includeResearchTools` is true the
- * CourtListener (US case-law) research instructions are spliced in; when
- * false they are omitted entirely so the model is not told about tools it
- * does not have. Gated per-user by the Legal Research > US feature toggle.
+ * Assemble the chat system prompt. `includeResearchTools` is the seam for
+ * legal research sources: when UK sources land (Companies House /
+ * legislation.gov.uk — WS1/WS2, docs/MIGRATION_SPEC.md) their instructions
+ * are spliced between the two prompt halves, so the model is only told about
+ * tools it actually has.
  */
 export function buildSystemPrompt(includeResearchTools = true): string {
-  return includeResearchTools
-    ? `${SYSTEM_PROMPT_BEFORE_RESEARCH}\n\n${COURTLISTENER_SYSTEM_PROMPT}\n${SYSTEM_PROMPT_AFTER_RESEARCH}`
-    : `${SYSTEM_PROMPT_BEFORE_RESEARCH}\n\n${SYSTEM_PROMPT_AFTER_RESEARCH}`;
+  void includeResearchTools;
+  return `${SYSTEM_PROMPT_BEFORE_RESEARCH}\n\n${SYSTEM_PROMPT_AFTER_RESEARCH}`;
 }
 
 export const SYSTEM_PROMPT = buildSystemPrompt(true);
@@ -487,19 +474,7 @@ type ParsedDocumentCitation = {
   }[];
 };
 
-type ParsedCaseCitation = {
-  kind: "case";
-  ref: number;
-  cluster_id: number;
-  quotes: {
-    opinionId: number | null;
-    type: string | null;
-    author: string | null;
-    quote: string;
-  }[];
-};
-
-type ParsedCitation = ParsedDocumentCitation | ParsedCaseCitation;
+type ParsedCitation = ParsedDocumentCitation;
 
 function normalizeCitation(raw: unknown): ParsedCitation | null {
   if (!raw || typeof raw !== "object") return null;
@@ -516,35 +491,6 @@ function normalizeCitation(raw: unknown): ParsedCitation | null {
         : null;
   if (typeof ref !== "number") return null;
   const quote = typeof c.quote === "string" ? c.quote : c.text;
-
-  const rawClusterId =
-    typeof c.cluster_id === "number"
-      ? c.cluster_id
-      : typeof c.clusterId === "number"
-        ? c.clusterId
-        : typeof c.cluster_id === "string"
-          ? Number.parseInt(c.cluster_id, 10)
-          : typeof c.clusterId === "string"
-            ? Number.parseInt(c.clusterId, 10)
-            : NaN;
-  if (Number.isFinite(rawClusterId) && rawClusterId > 0) {
-    const quotes = normalizeCaseCitationQuotes(c);
-    if (!quotes.length) {
-      if (typeof quote !== "string" || !quote) return null;
-      quotes.push({
-        opinionId: null,
-        type: null,
-        author: null,
-        quote,
-      });
-    }
-    return {
-      kind: "case",
-      ref,
-      cluster_id: Math.floor(rawClusterId),
-      quotes,
-    };
-  }
 
   if (typeof c.doc_id !== "string") return null;
   const quotes = normalizeDocumentCitationQuotes(c);
@@ -592,40 +538,6 @@ function normalizeDocumentCitationQuotes(c: Record<string, unknown>) {
     })
     .filter(
       (quote): quote is { page: number | string; quote: string } => !!quote,
-    );
-}
-
-function normalizeCaseCitationQuotes(c: Record<string, unknown>) {
-  if (!Array.isArray(c.quotes)) return [];
-  return c.quotes
-    .slice(0, 3)
-    .map((raw) => {
-      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return null;
-      }
-      const row = raw as Record<string, unknown>;
-      const text = typeof row.quote === "string" ? row.quote : row.text;
-      if (typeof text !== "string" || !text.trim()) return null;
-      const opinionId =
-        typeof row.opinion_id === "number" && Number.isFinite(row.opinion_id)
-          ? Math.floor(row.opinion_id)
-          : typeof row.opinionId === "number" && Number.isFinite(row.opinionId)
-            ? Math.floor(row.opinionId)
-            : null;
-      return {
-        opinionId,
-        type: typeof row.type === "string" ? row.type : null,
-        author: typeof row.author === "string" ? row.author : null,
-        quote: text,
-      };
-    })
-    .filter(
-      (quote): quote is {
-        opinionId: number | null;
-        type: string | null;
-        author: string | null;
-        quote: string;
-      } => !!quote,
     );
 }
 
@@ -1985,305 +1897,6 @@ export type DocReplicatedResult = {
   }[];
 };
 
-type CourtlistenerCaseRecord = {
-  clusterId: number;
-  caseName: string | null;
-  citations: string[];
-  url: string | null;
-  pdfUrl: string | null;
-  dateFiled: string | null;
-  opinions?: unknown[];
-};
-
-type CourtlistenerCaseInput = {
-  clusterId?: number | null;
-  caseName?: string | null;
-  citation?: string | null;
-  citations?: string[];
-  url?: string | null;
-  pdfUrl?: string | null;
-  dateFiled?: string | null;
-  opinions?: unknown[];
-};
-
-type CourtlistenerTurnState = {
-  casesByClusterId: Map<number, CourtlistenerCaseRecord>;
-};
-
-function nonEmpty(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function upsertCourtlistenerCases(
-  state: CourtlistenerTurnState,
-  inputs: CourtlistenerCaseInput[],
-): CourtlistenerCaseRecord[] {
-  const records: CourtlistenerCaseRecord[] = [];
-  for (const input of inputs) {
-    if (typeof input.clusterId !== "number" || !Number.isFinite(input.clusterId)) {
-      continue;
-    }
-    const clusterId = Math.floor(input.clusterId);
-    const current =
-      state.casesByClusterId.get(clusterId) ??
-      {
-        clusterId,
-        caseName: null,
-        citations: [],
-        url: null,
-        pdfUrl: null,
-        dateFiled: null,
-      };
-    const nextCitations = [
-      ...current.citations,
-      ...(input.citation ? [input.citation] : []),
-      ...(input.citations ?? []),
-    ]
-      .map(nonEmpty)
-      .filter((value): value is string => !!value);
-    const record: CourtlistenerCaseRecord = {
-      ...current,
-      caseName: current.caseName ?? nonEmpty(input.caseName),
-      citations: Array.from(new Set(nextCitations)),
-      url: current.url ?? nonEmpty(input.url),
-      pdfUrl: current.pdfUrl ?? nonEmpty(input.pdfUrl),
-      dateFiled: current.dateFiled ?? nonEmpty(input.dateFiled),
-      opinions: current.opinions ?? input.opinions,
-    };
-    state.casesByClusterId.set(clusterId, record);
-    records.push(record);
-  }
-  return records;
-}
-
-function caseCitationEventFromRecord(
-  record: CourtlistenerCaseRecord,
-): CaseCitationEvent | null {
-  if (!record.url) return null;
-  return {
-    type: "case_citation",
-    cluster_id: record.clusterId,
-    case_name: record.caseName,
-    citation: record.citations[0] ?? null,
-    url: record.url,
-    pdfUrl: record.pdfUrl,
-    dateFiled: record.dateFiled,
-  };
-}
-
-function recordFromUnknown(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function stringField(
-  record: Record<string, unknown> | null,
-  key: string,
-): string | null {
-  const value = record?.[key];
-  return typeof value === "string" ? value : null;
-}
-
-function numberField(
-  record: Record<string, unknown> | null,
-  key: string,
-): number | null {
-  const value = record?.[key];
-  return typeof value === "number" && Number.isFinite(value)
-    ? Math.floor(value)
-    : null;
-}
-
-function stringArrayField(
-  record: Record<string, unknown> | null,
-  key: string,
-): string[] {
-  const value = record?.[key];
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
-}
-
-function courtlistenerCaseInputFromFetchedCase(
-  fallbackClusterId: number,
-  fetchedCase: unknown,
-): CourtlistenerCaseInput {
-  const record = recordFromUnknown(fetchedCase);
-  const clusterId =
-    numberField(record, "clusterId") ?? numberField(record, "id") ?? fallbackClusterId;
-  return {
-    clusterId,
-    caseName: stringField(record, "caseName"),
-    citations: stringArrayField(record, "citations"),
-    url: stringField(record, "url"),
-    pdfUrl: stringField(record, "pdfUrl"),
-    dateFiled: stringField(record, "dateFiled"),
-    opinions: Array.isArray(record?.opinions) ? record.opinions : undefined,
-  };
-}
-
-function courtlistenerOpinionCount(fetchedCase: unknown): number {
-  const record = recordFromUnknown(fetchedCase);
-  return Array.isArray(record?.opinions) ? record.opinions.length : 0;
-}
-
-function courtlistenerOpinionMetadata(raw: unknown) {
-  const opinion = recordFromUnknown(raw);
-  if (!opinion) return null;
-  const text =
-    stringField(opinion, "text") ??
-    (stringField(opinion, "html")
-      ? stripCaseOpinionHtml(stringField(opinion, "html")!)
-      : null);
-  return {
-    opinion_id:
-      numberField(opinion, "opinionId") ?? numberField(opinion, "id"),
-    type: stringField(opinion, "type"),
-    author: stringField(opinion, "author"),
-    per_curiam: stringField(opinion, "per_curiam"),
-    joined_by_str: stringField(opinion, "joined_by_str"),
-    url: stringField(opinion, "url"),
-    char_count: text?.length ?? 0,
-  };
-}
-
-function courtlistenerFetchedCaseMetadata(
-  record: CourtlistenerCaseRecord,
-  opinionCount: number,
-) {
-  return {
-    cluster_id: record.clusterId,
-    case_name: record.caseName,
-    citation: record.citations[0] ?? null,
-    citations: record.citations,
-    dateFiled: record.dateFiled,
-    url: record.url,
-    pdfUrl: record.pdfUrl,
-    opinion_count: opinionCount,
-    opinions: (record.opinions ?? [])
-      .map(courtlistenerOpinionMetadata)
-      .filter((opinion): opinion is NonNullable<typeof opinion> => !!opinion),
-  };
-}
-
-function stripCaseOpinionHtml(value: string): string {
-  return value
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-type CachedCaseOpinionText = {
-  opinion_id: number | null;
-  type: string | null;
-  author: string | null;
-  url: string | null;
-  text: string;
-};
-
-function cachedCaseOpinionTexts(
-  record: CourtlistenerCaseRecord,
-): CachedCaseOpinionText[] {
-  return (record.opinions ?? [])
-    .map((raw) => {
-      const opinion = recordFromUnknown(raw);
-      if (!opinion) return null;
-      const text =
-        stringField(opinion, "text") ??
-        (stringField(opinion, "html")
-          ? stripCaseOpinionHtml(stringField(opinion, "html")!)
-          : null);
-      if (!text) return null;
-      return {
-        opinion_id:
-          numberField(opinion, "opinionId") ?? numberField(opinion, "id"),
-        type: stringField(opinion, "type"),
-        author: stringField(opinion, "author"),
-        url: stringField(opinion, "url"),
-        text,
-      };
-    })
-    .filter((opinion): opinion is CachedCaseOpinionText => !!opinion);
-}
-
-function requestedCourtlistenerOpinionIds(args: Record<string, unknown>) {
-  const rawIds = Array.isArray(args.opinionIds)
-    ? args.opinionIds
-    : Array.isArray(args.opinion_ids)
-      ? args.opinion_ids
-      : typeof args.opinionId === "number"
-        ? [args.opinionId]
-        : typeof args.opinion_id === "number"
-          ? [args.opinion_id]
-          : [];
-  return Array.from(
-    new Set(
-      rawIds
-        .filter((value): value is number => typeof value === "number")
-        .filter((value) => Number.isFinite(value) && value > 0)
-        .map((value) => Math.floor(value)),
-    ),
-  );
-}
-
-type FindInCaseArgs = {
-  clusterId: number | null;
-  query: string;
-  maxResults: number;
-  contextChars: number;
-};
-
-function parseFindInCaseArgs(args: Record<string, unknown>): FindInCaseArgs {
-  return {
-    clusterId:
-      typeof args.clusterId === "number" && Number.isFinite(args.clusterId)
-        ? Math.floor(args.clusterId)
-        : typeof args.cluster_id === "number" && Number.isFinite(args.cluster_id)
-          ? Math.floor(args.cluster_id)
-          : null,
-    query: typeof args.query === "string" ? args.query : "",
-    maxResults:
-      typeof args.max_results === "number"
-        ? Math.max(0, Math.floor(args.max_results))
-        : 20,
-    contextChars:
-      typeof args.context_chars === "number"
-        ? Math.max(0, Math.floor(args.context_chars))
-        : 160,
-  };
-}
-
-function findInCaseSearchSummary(
-  event: Extract<CourtlistenerToolEvent, { type: "courtlistener_find_in_case" }>,
-) {
-  return {
-    cluster_id: event.cluster_id,
-    query: event.query,
-    total_matches: event.total_matches,
-    case_name: event.case_name,
-    citation: event.citation,
-    error: event.error,
-  };
-}
-
-function cachedCaseNotFetchedResult(clusterId: number | null) {
-  return {
-    ok: false,
-    cluster_id: clusterId,
-    error:
-      "Case has not been fetched in this turn. Call courtlistener_get_cases first.",
-  };
-}
-
 export async function runToolCalls(
   toolCalls: ToolCall[],
   docStore: DocStore,
@@ -2295,8 +1908,6 @@ export async function runToolCalls(
   docIndex?: DocIndex,
   turnEditState?: TurnEditState,
   projectId?: string | null,
-  courtlistenerState?: CourtlistenerTurnState,
-  apiKeys?: import("./llm").UserApiKeys,
 ): Promise<{
   toolResults: unknown[];
   docsRead: { filename: string; document_id?: string }[];
@@ -2305,8 +1916,6 @@ export async function runToolCalls(
   docsReplicated: DocReplicatedResult[];
   workflowsApplied: { workflow_id: string; title: string }[];
   docsEdited: DocEditedResult[];
-  courtlistenerEvents: CourtlistenerToolEvent[];
-  caseCitationEvents: CaseCitationEvent[];
   mcpEvents: McpToolEvent[];
 }> {
   const toolResults: unknown[] = [];
@@ -2320,37 +1929,7 @@ export async function runToolCalls(
   const docsReplicated: DocReplicatedResult[] = [];
   const workflowsApplied: { workflow_id: string; title: string }[] = [];
   const docsEdited: DocEditedResult[] = [];
-  const courtlistenerEvents: CourtlistenerToolEvent[] = [];
-  const caseCitationEvents: CaseCitationEvent[] = [];
   const mcpEvents: McpToolEvent[] = [];
-  const courtState: CourtlistenerTurnState =
-    courtlistenerState ??
-    {
-      casesByClusterId: new Map(),
-    };
-  const groupedFindInCaseSearches = toolCalls
-    .filter((tc) => tc.function.name === COURTLISTENER_TOOL_NAMES.findInCase)
-    .map((tc) => {
-      let rawArgs: Record<string, unknown> = {};
-      try {
-        rawArgs = JSON.parse(tc.function.arguments || "{}");
-      } catch {
-        /* ignore */
-      }
-      const parsed = parseFindInCaseArgs(rawArgs);
-      return {
-        cluster_id: parsed.clusterId,
-        query: parsed.query,
-        total_matches: 0,
-      };
-    });
-  const shouldGroupFindInCase = groupedFindInCaseSearches.length > 1;
-  let groupedFindInCaseStarted = false;
-  const groupedFindInCaseEvents: Extract<
-    CourtlistenerToolEvent,
-    { type: "courtlistener_find_in_case" }
-  >[] = [];
-
   for (const tc of toolCalls) {
     let args: Record<string, unknown> = {};
     try {
@@ -2561,553 +2140,6 @@ export async function runToolCalls(
         tool_call_id: tc.id,
         content: lines.join("\n") || "No cells found.",
       });
-    } else if (tc.function.name === COURTLISTENER_TOOL_NAMES.searchCaseLaw) {
-      const query = typeof args.query === "string" ? args.query : "";
-      write(
-        `data: ${JSON.stringify({ type: "courtlistener_search_case_law_start", query })}\n\n`,
-      );
-      try {
-        const result = await searchCourtlistenerCaseLaw({
-          query: query || undefined,
-          court: typeof args.court === "string" ? args.court : undefined,
-          filedAfter:
-            typeof args.filedAfter === "string" ? args.filedAfter : undefined,
-          filedBefore:
-            typeof args.filedBefore === "string" ? args.filedBefore : undefined,
-          limit: typeof args.limit === "number" ? args.limit : undefined,
-          apiToken: apiKeys?.courtlistener,
-        });
-        const resultCount =
-          result &&
-          typeof result === "object" &&
-          Array.isArray((result as { results?: unknown }).results)
-            ? (result as { results: unknown[] }).results.length
-            : 0;
-        const error =
-          result &&
-          typeof result === "object" &&
-          typeof (result as { error?: unknown }).error === "string"
-            ? (result as { error: string }).error
-            : undefined;
-        const event: CourtlistenerToolEvent = {
-          type: "courtlistener_search_case_law",
-          query,
-          result_count: resultCount,
-          ...(error ? { error } : {}),
-        };
-        write(`data: ${JSON.stringify(event)}\n\n`);
-        courtlistenerEvents.push(event);
-        toolResults.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: JSON.stringify(result),
-        });
-      } catch (err) {
-        const event: CourtlistenerToolEvent = {
-          type: "courtlistener_search_case_law",
-          query,
-          result_count: 0,
-          error:
-            err instanceof Error ? err.message : "CourtListener search failed.",
-        };
-        write(`data: ${JSON.stringify(event)}\n\n`);
-        courtlistenerEvents.push(event);
-        toolResults.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: JSON.stringify({
-            error:
-              err instanceof Error
-                ? err.message
-                : "CourtListener search failed.",
-          }),
-        });
-      }
-    } else if (tc.function.name === COURTLISTENER_TOOL_NAMES.getCases) {
-      const rawClusterIds = Array.isArray(args.clusterIds)
-        ? args.clusterIds
-        : Array.isArray(args.cluster_ids)
-          ? args.cluster_ids
-          : typeof args.clusterId === "number"
-            ? [args.clusterId]
-            : [];
-      const clusterIds = Array.from(
-        new Set(
-          rawClusterIds
-            .filter((value): value is number => typeof value === "number")
-            .filter((value) => Number.isFinite(value) && value > 0)
-            .map((value) => Math.floor(value)),
-        ),
-      );
-      write(
-        `data: ${JSON.stringify({ type: "courtlistener_get_cases_start", cluster_ids: clusterIds })}\n\n`,
-      );
-      try {
-        const result = await getCourtlistenerCases({
-          clusterIds,
-          db,
-          apiToken: apiKeys?.courtlistener,
-        });
-        const fetchedCases =
-          result &&
-          typeof result === "object" &&
-          Array.isArray((result as { cases?: unknown }).cases)
-            ? (result as { cases: unknown[] }).cases
-            : [];
-        fetchedCases.forEach((fetchedCase, index) => {
-          const clusterId =
-            courtlistenerCaseInputFromFetchedCase(
-              clusterIds[index] ?? 0,
-              fetchedCase,
-            ).clusterId ?? 0;
-          if (clusterId) {
-            write(
-              `data: ${JSON.stringify({ type: "case_opinions", cluster_id: clusterId, case: fetchedCase })}\n\n`,
-            );
-          }
-        });
-        const caseRecords = upsertCourtlistenerCases(
-          courtState,
-          fetchedCases.map((fetchedCase, index) =>
-            courtlistenerCaseInputFromFetchedCase(
-              clusterIds[index] ?? 0,
-              fetchedCase,
-            ),
-          ),
-        );
-        const opinionCount = fetchedCases.reduce<number>(
-          (sum, fetchedCase) => sum + courtlistenerOpinionCount(fetchedCase),
-          0,
-        );
-        const caseOpinionCountByClusterId = new Map<number, number>();
-        fetchedCases.forEach((fetchedCase, index) => {
-          const clusterId =
-            courtlistenerCaseInputFromFetchedCase(
-              clusterIds[index] ?? 0,
-              fetchedCase,
-            ).clusterId ?? 0;
-          if (clusterId) {
-            caseOpinionCountByClusterId.set(
-              clusterId,
-              courtlistenerOpinionCount(fetchedCase),
-            );
-          }
-        });
-        const errors = fetchedCases
-          .map((fetchedCase) =>
-            stringField(recordFromUnknown(fetchedCase), "error"),
-          )
-          .filter((error): error is string => !!error);
-        const resultError =
-          result &&
-          typeof result === "object" &&
-          typeof (result as { error?: unknown }).error === "string"
-            ? (result as { error: string }).error
-            : undefined;
-        const hasMultipleOpinionCase = caseRecords.some(
-          (record) =>
-            (caseOpinionCountByClusterId.get(record.clusterId) ?? 0) > 1,
-        );
-        const event: CourtlistenerToolEvent = {
-          type: "courtlistener_get_cases",
-          cluster_ids: clusterIds,
-          case_count: fetchedCases.length,
-          opinion_count: opinionCount,
-          cases: caseRecords.map((record) => ({
-            cluster_id: record.clusterId,
-            case_name: record.caseName,
-            citation: record.citations[0] ?? null,
-            dateFiled: record.dateFiled,
-            url: record.url,
-          })),
-          ...(resultError || errors.length
-            ? { error: resultError ?? errors.join("; ") }
-            : {}),
-        };
-        write(`data: ${JSON.stringify(event)}\n\n`);
-        courtlistenerEvents.push(event);
-        toolResults.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: JSON.stringify({
-            ok: !resultError && errors.length === 0,
-            cluster_ids: clusterIds,
-            case_count: fetchedCases.length,
-            opinion_count: opinionCount,
-            cases: caseRecords.map((record) =>
-              courtlistenerFetchedCaseMetadata(
-                record,
-                caseOpinionCountByClusterId.get(record.clusterId) ?? 0,
-              ),
-            ),
-            ...(resultError || errors.length
-              ? { error: resultError ?? errors.join("; ") }
-              : {}),
-            next_required_action: hasMultipleOpinionCase
-              ? "Opinion text is cached server-side only. Use courtlistener_find_in_case with short 1-3 word keyword probes for relevant passages. At least one fetched case has multiple opinions; if snippets are insufficient, choose the needed opinion_id(s) from the text-free opinion metadata and call courtlistener_read_case with only those IDs. Do not read all opinions unless the question requires it."
-              : "Opinion text is cached server-side only. Use courtlistener_find_in_case with short 1-3 word keyword probes for relevant passages, or courtlistener_read_case if snippets are insufficient.",
-          }),
-        });
-      } catch (err) {
-        const event: CourtlistenerToolEvent = {
-          type: "courtlistener_get_cases",
-          cluster_ids: clusterIds,
-          case_count: 0,
-          opinion_count: 0,
-          error:
-            err instanceof Error
-              ? err.message
-              : "CourtListener case fetch failed.",
-        };
-        write(`data: ${JSON.stringify(event)}\n\n`);
-        courtlistenerEvents.push(event);
-        toolResults.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: JSON.stringify({
-            error:
-              err instanceof Error
-                ? err.message
-                : "CourtListener case fetch failed.",
-          }),
-        });
-      }
-    } else if (tc.function.name === COURTLISTENER_TOOL_NAMES.findInCase) {
-      const { clusterId, query, maxResults, contextChars } =
-        parseFindInCaseArgs(args);
-      if (shouldGroupFindInCase) {
-        if (!groupedFindInCaseStarted) {
-          write(
-            `data: ${JSON.stringify({
-              type: "courtlistener_find_in_case_start",
-              cluster_id: null,
-              query: "",
-              searches: groupedFindInCaseSearches,
-            })}\n\n`,
-          );
-          groupedFindInCaseStarted = true;
-        }
-      } else {
-        write(
-          `data: ${JSON.stringify({ type: "courtlistener_find_in_case_start", cluster_id: clusterId, query })}\n\n`,
-        );
-      }
-
-      const record =
-        typeof clusterId === "number" ? courtState.casesByClusterId.get(clusterId) : undefined;
-      if (!record) {
-        const payload = cachedCaseNotFetchedResult(clusterId);
-        const event: CourtlistenerToolEvent = {
-          type: "courtlistener_find_in_case",
-          cluster_id: clusterId,
-          query,
-          total_matches: 0,
-          error: payload.error,
-        };
-        if (shouldGroupFindInCase) {
-          groupedFindInCaseEvents.push(event);
-        } else {
-          write(`data: ${JSON.stringify(event)}\n\n`);
-          courtlistenerEvents.push(event);
-        }
-        toolResults.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: JSON.stringify(payload),
-        });
-        continue;
-      }
-
-      const opinions = cachedCaseOpinionTexts(record);
-      const hits: Array<
-        TextMatch & {
-          opinion_id: number | null;
-          type: string | null;
-          author: string | null;
-          url: string | null;
-        }
-      > = [];
-      let totalMatches = 0;
-      for (const opinion of opinions) {
-        const remaining = Math.max(0, maxResults - hits.length);
-        const result = findTextMatches({
-          text: opinion.text,
-          query,
-          maxResults: remaining,
-          contextChars,
-          startIndex: hits.length,
-        });
-        totalMatches += result.totalMatches;
-        hits.push(
-          ...result.hits.map((hit) => ({
-            ...hit,
-            opinion_id: opinion.opinion_id,
-            type: opinion.type,
-            author: opinion.author,
-            url: opinion.url,
-          })),
-        );
-      }
-
-      const event: CourtlistenerToolEvent = {
-        type: "courtlistener_find_in_case",
-        cluster_id: record.clusterId,
-        query,
-        total_matches: totalMatches,
-        case_name: record.caseName,
-        citation: record.citations[0] ?? null,
-      };
-      if (shouldGroupFindInCase) {
-        groupedFindInCaseEvents.push(event);
-      } else {
-        write(`data: ${JSON.stringify(event)}\n\n`);
-        courtlistenerEvents.push(event);
-      }
-      toolResults.push({
-        role: "tool",
-        tool_call_id: tc.id,
-        content: JSON.stringify({
-          ok: true,
-          cluster_id: record.clusterId,
-          case_name: record.caseName,
-          citation: record.citations[0] ?? null,
-          query,
-          total_matches: totalMatches,
-          returned: hits.length,
-          truncated: totalMatches > hits.length,
-          hits,
-        }),
-      });
-    } else if (tc.function.name === COURTLISTENER_TOOL_NAMES.readCase) {
-      const clusterId =
-        typeof args.clusterId === "number" && Number.isFinite(args.clusterId)
-          ? Math.floor(args.clusterId)
-          : typeof args.cluster_id === "number" &&
-              Number.isFinite(args.cluster_id)
-            ? Math.floor(args.cluster_id)
-            : null;
-      write(
-        `data: ${JSON.stringify({ type: "courtlistener_read_case_start", cluster_id: clusterId })}\n\n`,
-      );
-
-      const record =
-        typeof clusterId === "number" ? courtState.casesByClusterId.get(clusterId) : undefined;
-      if (!record) {
-        const payload = cachedCaseNotFetchedResult(clusterId);
-        const event: CourtlistenerToolEvent = {
-          type: "courtlistener_read_case",
-          cluster_id: clusterId,
-          opinion_count: 0,
-          error: payload.error,
-        };
-        write(`data: ${JSON.stringify(event)}\n\n`);
-        courtlistenerEvents.push(event);
-        toolResults.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: JSON.stringify(payload),
-        });
-        continue;
-      }
-
-      const opinions = cachedCaseOpinionTexts(record);
-      const requestedOpinionIds = requestedCourtlistenerOpinionIds(args);
-      const selectedOpinions =
-        requestedOpinionIds.length > 0
-          ? opinions.filter(
-              (opinion) =>
-                typeof opinion.opinion_id === "number" &&
-                requestedOpinionIds.includes(opinion.opinion_id),
-            )
-          : opinions.length === 1
-            ? opinions
-            : [];
-      if (!selectedOpinions.length) {
-        const multipleOpinions = opinions.length > 1;
-        const payload = {
-          ok: false,
-          cluster_id: record.clusterId,
-          case_name: record.caseName,
-          citations: record.citations,
-          url: record.url,
-          dateFiled: record.dateFiled,
-          opinion_count: opinions.length,
-          opinions: (record.opinions ?? [])
-            .map(courtlistenerOpinionMetadata)
-            .filter(
-              (opinion): opinion is NonNullable<typeof opinion> =>
-                !!opinion,
-            ),
-          error: multipleOpinions
-            ? "Multiple opinions are available. Call courtlistener_read_case again with the opinionId or opinionIds needed."
-            : "No matching opinion_id was found for this fetched case.",
-        };
-        const event: CourtlistenerToolEvent = {
-          type: "courtlistener_read_case",
-          cluster_id: record.clusterId,
-          case_name: record.caseName,
-          citation: record.citations[0] ?? null,
-          opinion_count: 0,
-          error: payload.error,
-        };
-        write(`data: ${JSON.stringify(event)}\n\n`);
-        courtlistenerEvents.push(event);
-        toolResults.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: JSON.stringify(payload),
-        });
-        continue;
-      }
-
-      const event: CourtlistenerToolEvent = {
-        type: "courtlistener_read_case",
-        cluster_id: record.clusterId,
-        case_name: record.caseName,
-        citation: record.citations[0] ?? null,
-        opinion_count: selectedOpinions.length,
-      };
-      write(`data: ${JSON.stringify(event)}\n\n`);
-      courtlistenerEvents.push(event);
-      toolResults.push({
-        role: "tool",
-        tool_call_id: tc.id,
-        content: JSON.stringify({
-          ok: true,
-          cluster_id: record.clusterId,
-          case_name: record.caseName,
-          citations: record.citations,
-          url: record.url,
-          dateFiled: record.dateFiled,
-          opinion_count: opinions.length,
-          returned_opinion_count: selectedOpinions.length,
-          opinions: selectedOpinions,
-        }),
-      });
-    } else if (tc.function.name === COURTLISTENER_TOOL_NAMES.verifyCitations) {
-      const citations = Array.isArray(args.citations)
-        ? args.citations.filter(
-            (value): value is string => typeof value === "string",
-          )
-        : [];
-      const citationCount = citations.length;
-      write(
-        `data: ${JSON.stringify({ type: "courtlistener_verify_citations_start", citation_count: citationCount })}\n\n`,
-      );
-      try {
-        const result = (await verifyCourtlistenerCitations({
-          citations,
-          db,
-          apiToken: apiKeys?.courtlistener,
-        })) as {
-          citationLinks?: {
-            clusterId?: number | null;
-            citation?: string | null;
-            caseName?: string | null;
-            dateFiled?: string | null;
-            pdfUrl?: string | null;
-            url?: string | null;
-            markdown?: string;
-          }[];
-          results?: unknown[];
-          error?: string;
-          source?: string;
-          [key: string]: unknown;
-        };
-        if (Array.isArray(result.citationLinks)) {
-          const caseRecords = upsertCourtlistenerCases(
-            courtState,
-            result.citationLinks.map((link) => ({
-              clusterId: link.clusterId,
-              caseName: link.caseName,
-              citation: link.citation,
-              url: link.url,
-              pdfUrl: link.pdfUrl,
-              dateFiled: link.dateFiled,
-            })),
-          );
-          const recordsByClusterId = new Map(
-            caseRecords.map((record) => [record.clusterId, record]),
-          );
-          result.citationLinks = result.citationLinks.map((link) => {
-            if (!link.url) return link;
-            const href =
-              typeof link.clusterId === "number"
-                ? `us-case-${link.clusterId}`
-                : link.url;
-            const label = [link.caseName, link.citation]
-              .filter(Boolean)
-              .join(", ");
-            const record =
-              typeof link.clusterId === "number"
-                ? recordsByClusterId.get(link.clusterId)
-                : undefined;
-            if (record) {
-              const event = caseCitationEventFromRecord(record);
-              if (event) {
-                caseCitationEvents.push(event);
-                write(`data: ${JSON.stringify(event)}\n\n`);
-              }
-            }
-            return {
-              ...link,
-              markdown: `[${label || link.url}](${href})`,
-            };
-          });
-        }
-        const rows =
-          result &&
-          typeof result === "object" &&
-          Array.isArray((result as { results?: unknown }).results)
-            ? (result as { results: unknown[] }).results
-            : [];
-        const matchCount = rows.reduce<number>((count, row) => {
-          if (!row || typeof row !== "object") return count;
-          const clusters = (row as { clusters?: unknown }).clusters;
-          return count + (Array.isArray(clusters) ? clusters.length : 0);
-        }, 0);
-        const error =
-          result &&
-          typeof result === "object" &&
-          typeof (result as { error?: unknown }).error === "string"
-            ? (result as { error: string }).error
-            : undefined;
-        const event: CourtlistenerToolEvent = {
-          type: "courtlistener_verify_citations",
-          citation_count: citationCount,
-          match_count: matchCount,
-          ...(error ? { error } : {}),
-        };
-        write(`data: ${JSON.stringify(event)}\n\n`);
-        courtlistenerEvents.push(event);
-        toolResults.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: JSON.stringify(result),
-        });
-      } catch (err) {
-        const event: CourtlistenerToolEvent = {
-          type: "courtlistener_verify_citations",
-          citation_count: citationCount,
-          match_count: 0,
-          error:
-            err instanceof Error
-              ? err.message
-              : "CourtListener citation lookup failed.",
-        };
-        write(`data: ${JSON.stringify(event)}\n\n`);
-        courtlistenerEvents.push(event);
-        toolResults.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: JSON.stringify({
-            error:
-              err instanceof Error
-                ? err.message
-                : "CourtListener citation lookup failed.",
-          }),
-        });
-      }
     } else if (tc.function.name === "edit_document" && docIndex) {
       const rawDocId = args.doc_id as string;
       const editsRaw = args.edits as unknown[] | undefined;
@@ -3629,25 +2661,6 @@ export async function runToolCalls(
     }
   }
 
-  if (shouldGroupFindInCase && groupedFindInCaseEvents.length > 0) {
-    const errors = groupedFindInCaseEvents
-      .map((event) => event.error)
-      .filter((error): error is string => !!error);
-    const groupEvent: CourtlistenerToolEvent = {
-      type: "courtlistener_find_in_case",
-      cluster_id: null,
-      query: "",
-      total_matches: groupedFindInCaseEvents.reduce(
-        (sum, event) => sum + event.total_matches,
-        0,
-      ),
-      searches: groupedFindInCaseEvents.map(findInCaseSearchSummary),
-      ...(errors.length ? { error: errors.join("; ") } : {}),
-    };
-    write(`data: ${JSON.stringify(groupEvent)}\n\n`);
-    courtlistenerEvents.push(groupEvent);
-  }
-
   return {
     toolResults,
     docsRead,
@@ -3656,8 +2669,6 @@ export async function runToolCalls(
     docsReplicated,
     workflowsApplied,
     docsEdited,
-    courtlistenerEvents,
-    caseCitationEvents,
     mcpEvents,
   };
 }
@@ -3783,27 +2794,7 @@ function parsePartialCitationObjects(text: string): ParsedCitation[] {
   return parsed;
 }
 
-function createCitationAnnotation(
-  citation: ParsedCitation,
-  docIndex: DocIndex,
-  casesByClusterId?: CourtlistenerTurnState["casesByClusterId"],
-) {
-  if (citation.kind === "case") {
-    const caseRecord = casesByClusterId?.get(citation.cluster_id);
-    return {
-      type: "citation_data",
-      kind: "case",
-      ref: citation.ref,
-      cluster_id: citation.cluster_id,
-      case_name: caseRecord?.caseName ?? null,
-      citation: caseRecord?.citations[0] ?? null,
-      url: caseRecord?.url ?? null,
-      pdfUrl: caseRecord?.pdfUrl ?? null,
-      dateFiled: caseRecord?.dateFiled ?? null,
-      quotes: citation.quotes,
-    };
-  }
-
+function createCitationAnnotation(citation: ParsedCitation, docIndex: DocIndex) {
   const docInfo = resolveDoc(citation.doc_id, docIndex);
   return {
     type: "citation_data",
@@ -3881,10 +2872,7 @@ type AssistantEvent =
       download_url: string;
       annotations: EditAnnotation[];
     }
-  | CaseCitationEvent
-  | CourtlistenerToolEvent
   | McpToolEvent
-  | { type: "case_opinions"; cluster_id: number; case: unknown }
   | { type: "content"; text: string }
   | { type: "error"; message: string };
 
@@ -3965,7 +2953,10 @@ export async function runLLMStream(params: {
     signal,
     projectId,
   } = params;
-  const researchTools = includeResearchTools ? COURTLISTENER_TOOLS : [];
+  // Seam for UK legal research tools (Companies House / legislation.gov.uk —
+  // WS1/WS2, docs/MIGRATION_SPEC.md). Empty until those integrations land.
+  const researchTools: OpenAIToolSchema[] = [];
+  void includeResearchTools;
   const mcpTools = await buildUserMcpTools(userId, db);
   const baseTools = [...TOOLS, ...researchTools, ...WORKFLOW_TOOLS];
   const activeTools = extraTools?.length
@@ -3991,9 +2982,6 @@ export async function runLLMStream(params: {
   // across batches to let subsequent edit_document calls overwrite the
   // turn's existing version instead of creating a new one.
   const turnEditState: TurnEditState = new Map();
-  const courtlistenerTurnState: CourtlistenerTurnState = {
-      casesByClusterId: new Map(),
-    };
   let fullText = "";
   let iterText = "";
   let iterVisibleText = "";
@@ -4017,13 +3005,7 @@ export async function runLLMStream(params: {
     const partial = parsePartialCitationObjects(streamingCitationsBuffer);
     if (partial.length <= streamedCitationCount) return;
     streamedCitationCount = partial.length;
-    const citations = partial.map((c) =>
-      createCitationAnnotation(
-        c,
-        docIndex,
-        courtlistenerTurnState.casesByClusterId,
-      ),
-    );
+    const citations = partial.map((c) => createCitationAnnotation(c, docIndex));
     emitCitationStreamSnapshot("partial", citations);
   };
 
@@ -4171,8 +3153,6 @@ export async function runLLMStream(params: {
           docsReplicated,
           workflowsApplied,
           docsEdited,
-          courtlistenerEvents,
-          caseCitationEvents,
           mcpEvents,
         } = await runToolCalls(
           toolCalls,
@@ -4185,9 +3165,7 @@ export async function runLLMStream(params: {
           docIndex,
           turnEditState,
           projectId,
-        courtlistenerTurnState,
-        apiKeys,
-      );
+        );
         throwIfAborted(signal);
         for (const r of docsRead) {
           events.push({
@@ -4240,13 +3218,7 @@ export async function runLLMStream(params: {
             annotations: e.annotations,
           });
         }
-        for (const event of courtlistenerEvents) {
-          events.push(event);
-        }
         for (const event of mcpEvents) {
-          events.push(event);
-        }
-        for (const event of caseCitationEvents) {
           events.push(event);
         }
 
@@ -4289,13 +3261,7 @@ export async function runLLMStream(params: {
     parseCitationsWithDiagnostics(fullText);
   const citations = buildCitations
     ? buildCitations(fullText)
-    : parsedCitations.map((c) =>
-        createCitationAnnotation(
-          c,
-          docIndex,
-          courtlistenerTurnState.casesByClusterId,
-        ),
-      );
+    : parsedCitations.map((c) => createCitationAnnotation(c, docIndex));
   devLog("[chat/stream] final citation annotations", {
     hasCitationsBlock: citationDiagnostics.hasBlock,
     citationsBlockLength: citationDiagnostics.rawLength,
@@ -4327,7 +3293,9 @@ export function extractAnnotations(
 }
 
 export function stripTransientAssistantEvents(events: AssistantEvent[]) {
-  return events.filter((event) => event.type !== "case_opinions");
+  // No transient event types remain after the US case-law excision; seam kept for
+  // future sidepanel-only events that must not be persisted.
+  return events;
 }
 
 export function appendCancelledAssistantEvent(events: AssistantEvent[]) {

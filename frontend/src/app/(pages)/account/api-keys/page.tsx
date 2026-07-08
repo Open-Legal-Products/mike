@@ -38,16 +38,6 @@ const MODEL_API_KEY_FIELDS = [
     },
 ] as const;
 
-const OTHER_API_KEY_FIELDS = [
-    {
-        provider: "courtlistener",
-        label: "CourtListener API Key",
-        placeholder: "Token...",
-        description:
-            "Add a CourtListener API key if you want the latest CourtListener data. Otherwise, Mike will use the bulk data hosted by us.",
-    },
-] as const;
-
 export default function ApiKeysPage() {
     const { profile, updateApiKey } = useUserProfile();
 
@@ -86,27 +76,6 @@ export default function ApiKeysPage() {
                             <div className="mx-4 h-px bg-gray-200" />
                         )}
                     </div>
-                ))}
-            </AccountSection>
-
-            <AccountSection className="mt-8">
-                {OTHER_API_KEY_FIELDS.map((field) => (
-                    <ApiKeyField
-                        key={field.provider}
-                        label={field.label}
-                        description={field.description}
-                        placeholder={field.placeholder}
-                        hasSavedKey={
-                            !!profile?.apiKeys[field.provider].configured
-                        }
-                        isServerConfigured={
-                            profile?.apiKeys[field.provider].source === "env"
-                        }
-                        onSave={(value) =>
-                            updateApiKey(field.provider, value.trim() || null)
-                        }
-                        onRemove={() => updateApiKey(field.provider, null)}
-                    />
                 ))}
             </AccountSection>
         </div>

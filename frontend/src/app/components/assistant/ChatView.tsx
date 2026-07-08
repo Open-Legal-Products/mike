@@ -12,7 +12,6 @@ import {
 } from "./AssistantSidePanel";
 import { AssistantWorkflowModal } from "./AssistantWorkflowModal";
 import type {
-    AssistantEvent,
     CitationAnnotation,
     EditAnnotation,
     Message,
@@ -40,7 +39,6 @@ function isSmallScreen() {
 }
 
 export function ChatView({
-    chatId,
     messages,
     isResponseLoading,
     handleChat,
@@ -167,23 +165,18 @@ export function ChatView({
     const upsertTab = useCallback(
         (tab: AssistantSidePanelTab) => {
             setTabs((prev) => {
-                const idx = prev.findIndex((t) =>
-                    tab.kind === "case"
-                        ? t.kind === "case" && t.id === tab.id
-                        : t.kind !== "case" && t.documentId === tab.documentId,
+                const idx = prev.findIndex(
+                    (t) => t.documentId === tab.documentId,
                 );
                 if (idx >= 0) {
                     const existing = prev[idx];
                     const copy = prev.slice();
-                    copy[idx] =
-                        tab.kind === "case" || existing.kind === "case"
-                            ? tab
-                            : {
-                                  ...tab,
-                                  id: existing.id,
-                                  warning: existing.warning,
-                                  initialScrollTop: existing.initialScrollTop,
-                              };
+                    copy[idx] = {
+                        ...tab,
+                        id: existing.id,
+                        warning: existing.warning,
+                        initialScrollTop: existing.initialScrollTop,
+                    };
                     return copy;
                 }
                 return [...prev, tab];
@@ -201,24 +194,6 @@ export function ChatView({
     const openCitation = useCallback(
         (citation: CitationAnnotation, options?: { showQuotes?: boolean }) => {
             const showQuotes = options?.showQuotes ?? true;
-            if (citation.kind === "case") {
-                if (!chatId) return;
-                upsertTab({
-                    kind: "case",
-                    id: `case:${citation.cluster_id}`,
-                    chatId,
-                    clusterId: citation.cluster_id,
-                    citationRef: citation.ref,
-                    caseName: citation.case_name ?? null,
-                    citation: citation.citation ?? null,
-                    url: citation.url ?? null,
-                    dateFiled: citation.dateFiled ?? null,
-                    pdfUrl: citation.pdfUrl ?? null,
-                    quotes: showQuotes ? citation.quotes : undefined,
-                    opinions: undefined,
-                });
-                return;
-            }
             if (!showQuotes) {
                 upsertTab({
                     kind: "document",
@@ -240,29 +215,7 @@ export function ChatView({
                 citation,
             });
         },
-        [chatId, upsertTab],
-    );
-
-    const openCase = useCallback(
-        (citation: Extract<AssistantEvent, { type: "case_citation" }>) => {
-            if (!citation.cluster_id) return;
-            if (!chatId) return;
-            upsertTab({
-                kind: "case",
-                id: `case:${citation.cluster_id}`,
-                chatId,
-                clusterId: citation.cluster_id,
-                citationRef: undefined,
-                caseName: citation.case_name,
-                citation: citation.citation,
-                url: citation.url,
-                dateFiled: citation.dateFiled ?? null,
-                pdfUrl: citation.pdfUrl ?? null,
-                quotes: undefined,
-                opinions: citation.case?.opinions,
-            });
-        },
-        [chatId, upsertTab],
+        [upsertTab],
     );
 
     /**
@@ -391,7 +344,6 @@ export function ChatView({
             setTabs((prev) => {
                 const idx = prev.findIndex((t) => t.id === tabId);
                 if (idx < 0) return prev;
-                if (prev[idx].kind === "case") return prev;
                 const copy = prev.slice();
                 copy[idx] = { ...copy[idx], ...patch };
                 return copy;
@@ -410,7 +362,7 @@ export function ChatView({
             // Surface the warning on every tab tied to this document.
             setTabs((prev) =>
                 prev.map((t) =>
-                    t.kind !== "case" && t.documentId === args.documentId
+                    t.documentId === args.documentId
                         ? { ...t, warning: args.message }
                         : t,
                 ),
@@ -655,9 +607,6 @@ export function ChatView({
                                                     openCitation(citation, {
                                                         showQuotes: false,
                                                     })
-                                                }
-                                                onCaseClick={(citation) =>
-                                                    openCase(citation)
                                                 }
                                                 minHeight={
                                                     i === lastAssistantIndex

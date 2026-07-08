@@ -158,101 +158,7 @@ export type AssistantEvent =
       error?: string;
       isStreaming?: boolean;
     }
-  | {
-      type: "courtlistener_search_case_law";
-      query: string;
-      result_count?: number;
-      error?: string;
-      isStreaming?: boolean;
-    }
-  | {
-      type: "courtlistener_get_cases";
-      cluster_ids: number[];
-      case_count?: number;
-      opinion_count?: number;
-      cases?: {
-        cluster_id: number;
-        case_name: string | null;
-        citation: string | null;
-        dateFiled?: string | null;
-        url?: string | null;
-      }[];
-      error?: string;
-      isStreaming?: boolean;
-    }
-  | {
-      type: "courtlistener_find_in_case";
-      cluster_id: number | null;
-      query: string;
-      total_matches?: number;
-      case_name?: string | null;
-      citation?: string | null;
-      searches?: {
-        cluster_id: number | null;
-        query: string;
-        total_matches?: number;
-        case_name?: string | null;
-        citation?: string | null;
-        error?: string;
-      }[];
-      error?: string;
-      isStreaming?: boolean;
-    }
-  | {
-      type: "courtlistener_read_case";
-      cluster_id: number | null;
-      case_name?: string | null;
-      citation?: string | null;
-      opinion_count?: number;
-      error?: string;
-      isStreaming?: boolean;
-    }
-  | {
-      type: "courtlistener_verify_citations";
-      citation_count?: number;
-      match_count?: number;
-      error?: string;
-      isStreaming?: boolean;
-    }
-  | {
-      type: "case_citation";
-      cluster_id: number | null;
-      case_name: string | null;
-      citation: string | null;
-      url: string;
-      pdfUrl?: string | null;
-      dateFiled?: string | null;
-      case?: Extract<AssistantEvent, { type: "case_opinions" }>["case"];
-    }
-  | {
-      type: "case_opinions";
-      cluster_id: number;
-      case: {
-        id: number | null;
-        caseName?: string | null;
-        dateFiled?: string | null;
-        citations?: string[];
-        url?: string | null;
-        pdfUrl?: string | null;
-        opinions: {
-          opinionId: number | null;
-          apiUrl?: string | null;
-          type: string | null;
-          author: string | null;
-          url: string | null;
-          text?: string | null;
-          html?: string | null;
-        }[];
-      };
-    }
   | { type: "content"; text: string; isStreaming?: boolean };
-
-export type CaseCitationQuote = {
-  opinionId: number | null;
-  type: string | null;
-  author: string | null;
-  quote: string;
-};
 
 export interface Message {
   role: "user" | "assistant";
@@ -292,27 +198,10 @@ export type DocumentCitationAnnotation = {
   quotes?: DocumentCitationQuote[];
 };
 
-export type CaseCitationAnnotation = {
-  type: "citation_data";
-  kind: "case";
-  ref: number;
-  cluster_id: number;
-  case_name?: string | null;
-  citation?: string | null;
-  url?: string | null;
-  pdfUrl?: string | null;
-  dateFiled?: string | null;
-  quotes: CaseCitationQuote[];
-};
-
 /**
- * A citation emitted by the assistant. Document citations have doc/page
- * anchors. Case citations anchor to a CourtListener cluster and include a
- * quoted opinion passage.
+ * A citation emitted by the assistant, anchored to a document and page.
  */
-export type CitationAnnotation =
-  | DocumentCitationAnnotation
-  | CaseCitationAnnotation;
+export type CitationAnnotation = DocumentCitationAnnotation;
 
 const PAGE_BREAK_SENTINEL = "[[PAGE_BREAK]]";
 
@@ -341,7 +230,6 @@ function expandDocumentQuoteEntry(entry: DocumentCitationQuote): CitationQuote[]
 export function getDocumentCitationQuotes(
   a: CitationAnnotation,
 ): DocumentCitationQuote[] {
-  if (a.kind === "case") return [];
   if (Array.isArray(a.quotes) && a.quotes.length) {
     return a.quotes.filter((entry) => entry.quote.trim().length > 0);
   }
@@ -356,15 +244,11 @@ export function getDocumentCitationQuotes(
 export function expandCitationToEntries(
   a: CitationAnnotation,
 ): CitationQuote[] {
-  if (a.kind === "case") return [];
   return getDocumentCitationQuotes(a).flatMap(expandDocumentQuoteEntry);
 }
 
 /** Format the page(s) of a citation for display, e.g. "Page 3" or "Page 41-42". */
 export function formatCitationPage(a: CitationAnnotation): string {
-  if (a.kind === "case") {
-    return a.citation || a.case_name || `Case ${a.cluster_id}`;
-  }
   const quotes = getDocumentCitationQuotes(a);
   const pages = Array.from(
     new Set(quotes.map((q) => String(q.page)).filter(Boolean)),
@@ -377,11 +261,6 @@ export function formatCitationPage(a: CitationAnnotation): string {
 
 /** Produce a reader-friendly version of the quote (replaces [[PAGE_BREAK]] with "..."). */
 export function displayCitationQuote(a: CitationAnnotation): string {
-  if (a.kind === "case") {
-    return a.quotes
-      .map((q) => q.quote.replaceAll(PAGE_BREAK_SENTINEL, "..."))
-      .join(" / ");
-  }
   return getDocumentCitationQuotes(a)
     .map((q) => q.quote.replaceAll(PAGE_BREAK_SENTINEL, "..."))
     .join(" / ");

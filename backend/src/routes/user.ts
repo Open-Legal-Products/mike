@@ -54,7 +54,6 @@ type UserProfileRow = {
     title_model: string | null;
     tabular_model: string;
     mfa_on_login: boolean | null;
-    legal_research_us: boolean | null;
 };
 
 function errorMessage(error: unknown): string {
@@ -160,8 +159,6 @@ function mcpOAuthPopupCsp(nonce: string) {
 }
 
 const PROFILE_SELECT =
-    "display_name, organisation, message_credits_used, credits_reset_date, tier, title_model, tabular_model, mfa_on_login, legal_research_us";
-const PROFILE_SELECT_NO_LEGAL =
     "display_name, organisation, message_credits_used, credits_reset_date, tier, title_model, tabular_model, mfa_on_login";
 const LEGACY_PROFILE_SELECT =
     "display_name, organisation, message_credits_used, credits_reset_date, tier, tabular_model";
@@ -177,43 +174,16 @@ function isMissingProfileColumn(error: unknown, column: string): boolean {
     return record.code === "42703" && message.includes(column);
 }
 
-// Loads a profile while tolerating older databases that lack the
-// legal_research_us column. Tries the full select first, then falls back to
-// the legacy cascade (which also handles missing title_model / mfa_on_login)
-// and defaults the feature flag to enabled.
+// Loads a profile while tolerating older databases via the legacy cascade
+// (handles missing title_model / mfa_on_login columns).
 async function selectProfile(
-    db: ReturnType<typeof createServerSupabase>,
-    userId: string,
-    mode: "maybe" | "single",
-) {
-    const fullQuery = db
-        .from("user_profiles")
-        .select(PROFILE_SELECT)
-        .eq("user_id", userId);
-    const full =
-        mode === "single"
-            ? await fullQuery.single()
-            : await fullQuery.maybeSingle();
-    if (!full.error) return full;
-
-    const legacy = await selectProfileLegacy(db, userId, mode);
-    if (legacy.data && typeof legacy.data === "object") {
-        const row = legacy.data as Record<string, unknown>;
-        if (!("legal_research_us" in row)) {
-            Object.assign(row, { legal_research_us: true });
-        }
-    }
-    return legacy;
-}
-
-async function selectProfileLegacy(
     db: ReturnType<typeof createServerSupabase>,
     userId: string,
     mode: "maybe" | "single",
 ) {
     const query = db
         .from("user_profiles")
-        .select(PROFILE_SELECT_NO_LEGAL)
+        .select(PROFILE_SELECT)
         .eq("user_id", userId);
     const result =
         mode === "single" ? await query.single() : await query.maybeSingle();
@@ -292,7 +262,6 @@ function serializeProfile(row: UserProfileRow, apiKeyStatus?: ApiKeyStatus) {
         titleModel: resolveModel(row.title_model, titleFallback),
         tabularModel: resolveModel(row.tabular_model, DEFAULT_TABULAR_MODEL),
         mfaOnLogin: row.mfa_on_login === true,
-        legalResearchUs: row.legal_research_us !== false,
         ...(apiKeyStatus ? { apiKeyStatus } : {}),
     };
 }
@@ -305,7 +274,6 @@ function validateProfilePayload(body: unknown):
               organisation?: string | null;
               title_model?: string;
               tabular_model?: string;
-              legal_research_us?: boolean;
               updated_at: string;
           };
       }
@@ -320,7 +288,6 @@ function validateProfilePayload(body: unknown):
         "organisation",
         "titleModel",
         "tabularModel",
-        "legalResearchUs",
     ]);
     const invalidField = Object.keys(raw).find(
         (key) => !allowedFields.has(key),
@@ -337,7 +304,6 @@ function validateProfilePayload(body: unknown):
         organisation?: string | null;
         title_model?: string;
         tabular_model?: string;
-        legal_research_us?: boolean;
         updated_at: string;
     } = { updated_at: new Date().toISOString() };
 
@@ -381,16 +347,6 @@ function validateProfilePayload(body: unknown):
             return { ok: false, detail: "Unsupported titleModel" };
         }
         update.title_model = resolved;
-    }
-
-    if ("legalResearchUs" in raw) {
-        if (typeof raw.legalResearchUs !== "boolean") {
-            return {
-                ok: false,
-                detail: "legalResearchUs must be a boolean",
-            };
-        }
-        update.legal_research_us = raw.legalResearchUs;
     }
 
     return { ok: true, update };

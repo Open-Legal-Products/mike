@@ -13,10 +13,6 @@ import type {
     CitationAnnotation,
     EditAnnotation,
 } from "../shared/types";
-import {
-    CaseLawPanel,
-    type CaseTab,
-} from "./CaseLawPanel";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -53,11 +49,7 @@ export type EditTab = CommonTab & {
     edit: EditAnnotation;
 };
 
-export type AssistantSidePanelTab =
-    | DocumentTab
-    | CitationTab
-    | EditTab
-    | CaseTab;
+export type AssistantSidePanelTab = DocumentTab | CitationTab | EditTab;
 
 interface Props {
     tabs: AssistantSidePanelTab[];
@@ -112,9 +104,6 @@ function maxPanelWidth() {
 }
 
 function tabTitle(tab: AssistantSidePanelTab): string {
-    if (tab.kind === "case") {
-        return tab.caseName || tab.citation || "Case";
-    }
     return tab.filename;
 }
 
@@ -222,7 +211,6 @@ export function AssistantSidePanel({
                     {tabs.map((tab) => {
                         const isActive = tab.id === active.id;
                         const showVersionBadge =
-                            tab.kind !== "case" &&
                             typeof tab.versionNumber === "number" &&
                             Number.isFinite(tab.versionNumber) &&
                             tab.versionNumber > 1;
@@ -283,20 +271,6 @@ export function AssistantSidePanel({
             <div className="flex-1 min-h-0 relative">
                 {tabs.map((tab) => {
                     const isActive = tab.id === active.id;
-                    if (tab.kind === "case") {
-                        return (
-                            <div
-                                key={tab.id}
-                                className={`absolute inset-0 flex flex-col ${isActive ? "" : "invisible pointer-events-none"}`}
-                                aria-hidden={!isActive}
-                            >
-                                <CaseLawPanel
-                                    tab={tab}
-                                    compactActions={panelWidth < 600}
-                                />
-                            </div>
-                        );
-                    }
                     const mode: DocPanelMode =
                         tab.kind === "citation"
                             ? {
