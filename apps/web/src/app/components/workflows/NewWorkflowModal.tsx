@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageSquare, Table2 } from "lucide-react";
+import { MessageSquare, Table2, Upload } from "lucide-react";
 import { createWorkflow, updateWorkflow } from "@/app/lib/mikeApi";
 import type { Workflow } from "../shared/types";
 import { PRACTICE_OPTIONS } from "./practices";
@@ -188,9 +188,15 @@ export function NewWorkflowModal({
     >(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [importedSkillMd, setImportedSkillMd] = useState("");
+    const [importedSkillName, setImportedSkillName] = useState<string | null>(
+        null,
+    );
+    const [markdownImportError, setMarkdownImportError] = useState("");
     const customLanguageInputRef = useRef<HTMLInputElement>(null);
     const customInputRef = useRef<HTMLInputElement>(null);
     const customJurisdictionInputRef = useRef<HTMLInputElement>(null);
+    const markdownInputRef = useRef<HTMLInputElement>(null);
 
     const isEditing = !!editWorkflow;
     const isOtherLanguage = language === "Other";
@@ -237,13 +243,20 @@ export function NewWorkflowModal({
         setCustomJurisdiction("");
         setOpenDropdown(null);
         setError("");
+        setImportedSkillMd("");
+        setImportedSkillName(null);
+        setMarkdownImportError("");
+        if (markdownInputRef.current) {
+            markdownInputRef.current.value = "";
+        }
     }, []);
 
     useEffect(() => {
         if (open && editWorkflow) {
-            setTitle(editWorkflow.title);
-            setType(editWorkflow.type);
-            const savedLanguage = editWorkflow.language ?? DEFAULT_LANGUAGE;
+            setTitle(editWorkflow.metadata.title);
+            setType(editWorkflow.metadata.type);
+            const savedLanguage =
+                editWorkflow.metadata.language ?? DEFAULT_LANGUAGE;
             const isKnownLanguage = (LANGUAGE_OPTIONS as readonly string[]).includes(savedLanguage);
             if (!isKnownLanguage && savedLanguage) {
                 setLanguage("Other");
@@ -252,8 +265,8 @@ export function NewWorkflowModal({
                 setLanguage(savedLanguage);
                 setCustomLanguage("");
             }
-            const savedJurisdiction = editWorkflow.jurisdictions?.length
-                ? editWorkflow.jurisdictions.join(", ")
+            const savedJurisdiction = editWorkflow.metadata.jurisdictions?.length
+                ? editWorkflow.metadata.jurisdictions.join(", ")
                 : DEFAULT_JURISDICTION;
             const isKnownJurisdiction =
                 (JURISDICTION_OPTIONS as readonly string[]).includes(savedJurisdiction);
@@ -282,7 +295,7 @@ export function NewWorkflowModal({
                 setJurisdictionRegion("");
                 setCustomJurisdiction("");
             }
-            const saved = editWorkflow.practice ?? DEFAULT_PRACTICE;
+            const saved = editWorkflow.metadata.practice ?? DEFAULT_PRACTICE;
             const isKnown = (PRACTICE_OPTIONS as readonly string[]).includes(saved);
             if (!isKnown && saved) {
                 setPractice("Other");
@@ -325,24 +338,32 @@ export function NewWorkflowModal({
         try {
             if (isEditing && editWorkflow) {
                 const updated = await updateWorkflow(editWorkflow.id, {
-                    title: title.trim(),
-                    language: effectiveLanguage || null,
-                    practice: effectivePractice,
-                    jurisdictions: effectiveJurisdictions.length
-                        ? effectiveJurisdictions
-                        : null,
+                    metadata: {
+                        title: title.trim(),
+                        language: effectiveLanguage || null,
+                        practice: effectivePractice,
+                        jurisdictions: effectiveJurisdictions.length
+                            ? effectiveJurisdictions
+                            : null,
+                    },
                 });
                 onUpdated?.(updated);
             } else {
-                const workflow = await createWorkflow({
-                    title: title.trim(),
-                    type,
-                    language: effectiveLanguage || null,
-                    practice: effectivePractice,
-                    jurisdictions: effectiveJurisdictions.length
-                        ? effectiveJurisdictions
-                        : null,
-                });
+                const createPayload: Parameters<typeof createWorkflow>[0] = {
+                    metadata: {
+                        title: title.trim(),
+                        type,
+                        language: effectiveLanguage || null,
+                        practice: effectivePractice,
+                        jurisdictions: effectiveJurisdictions.length
+                            ? effectiveJurisdictions
+                            : null,
+                    },
+                };
+                if (type === "assistant" && importedSkillMd) {
+                    createPayload.skill_md = importedSkillMd;
+                }
+                const workflow = await createWorkflow(createPayload);
                 onCreated(workflow);
             }
             resetForm();
@@ -357,6 +378,37 @@ export function NewWorkflowModal({
     function handleClose() {
         resetForm();
         onClose();
+    }
+
+    async function handleMarkdownImport(
+        e: React.ChangeEvent<HTMLInputElement>,
+    ) {
+        const file = e.target.files?.[0];
+        setMarkdownImportError("");
+        if (!file) return;
+
+        const normalizedName = file.name.toLowerCase();
+        if (
+            !normalizedName.endsWith(".md") &&
+            !normalizedName.endsWith(".markdown")
+        ) {
+            setImportedSkillMd("");
+            setImportedSkillName(null);
+            setMarkdownImportError("Choose a .md or .markdown file.");
+            e.target.value = "";
+            return;
+        }
+
+        try {
+            const text = await file.text();
+            setImportedSkillMd(text);
+            setImportedSkillName(file.name);
+        } catch {
+            setImportedSkillMd("");
+            setImportedSkillName(null);
+            setMarkdownImportError("Could not read that markdown file.");
+            e.target.value = "";
+        }
     }
 
     return (
@@ -379,6 +431,16 @@ export function NewWorkflowModal({
                 form: formId,
                 disabled: !title.trim() || loading,
             }}
+            secondaryAction={
+                !isEditing && type === "assistant"
+                    ? {
+                          label: importedSkillName ?? "Upload markdown",
+                          icon: <Upload className="h-3.5 w-3.5" />,
+                          onClick: () => markdownInputRef.current?.click(),
+                          disabled: loading,
+                      }
+                    : undefined
+            }
         >
             <form
                 id={formId}
@@ -573,8 +635,19 @@ export function NewWorkflowModal({
                         )}
                     </div>
 
-                    {error && <p className="text-sm text-red-500">{error}</p>}
+                    {(error || markdownImportError) && (
+                        <p className="text-sm text-red-500">
+                            {error || markdownImportError}
+                        </p>
+                    )}
                 </div>
+                <input
+                    ref={markdownInputRef}
+                    type="file"
+                    className="hidden"
+                    accept=".md,.markdown,text/markdown,text/x-markdown,text/plain"
+                    onChange={handleMarkdownImport}
+                />
             </form>
         </Modal>
     );

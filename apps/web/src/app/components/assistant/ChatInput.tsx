@@ -22,10 +22,10 @@ import { AddDocumentsModal } from "../modals/AddDocumentsModal";
 import { AssistantWorkflowModal } from "./AssistantWorkflowModal";
 import { ModelToggle, DEMO_MODEL_ID } from "./ModelToggle";
 import { useSelectedModel } from "@/app/hooks/useSelectedModel";
-import { useUserProfile } from "@/contexts/UserProfileContext";
+import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import { isModelAvailable } from "@/app/lib/modelAvailability";
 import type { Document, Message } from "../shared/types";
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 
 export interface ChatInputHandle {
     addDoc: (doc: Document) => void;
@@ -87,13 +87,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
         const observer = new ResizeObserver(update);
         observer.observe(el);
         return () => observer.disconnect();
-    }, []);
-
-    const handleAddDocFromProject = useCallback((doc: Document) => {
-        setAttachedDocs((prev) => {
-            if (prev.some((d) => d.id === doc.id)) return prev;
-            return [...prev, doc];
-        });
     }, []);
 
     const handleAddDocsFromSelector = useCallback(
@@ -238,7 +231,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                         <div className="flex items-center gap-1">
                             {!hideAddDocButton && (
                                 <AddDocButton
-                                    onSelectDoc={handleAddDocFromProject}
                                     onBrowseAll={() => setDocSelectorOpen(true)}
                                     selectedDocIds={attachedDocs.map(
                                         (d) => d.id,
@@ -332,7 +324,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                 open={workflowModalOpen}
                 onClose={() => setWorkflowModalOpen(false)}
                 onSelect={(wf) => {
-                    setSelectedWorkflow({ id: wf.id, title: wf.title });
+                    setSelectedWorkflow({
+                        id: wf.id,
+                        title: wf.metadata.title,
+                    });
                     setWorkflowModalOpen(false);
                 }}
                 projectName={projectName}

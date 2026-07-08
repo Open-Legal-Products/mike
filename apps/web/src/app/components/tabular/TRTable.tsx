@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useImperativeHandle, useRef } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { Loader2, Plus, Table2, Upload } from "lucide-react";
 import type {
     ColumnConfig,
@@ -75,18 +75,31 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
     const stickyCellBg = "bg-[#fafbfc]";
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const headerRef = useRef<HTMLDivElement>(null);
+    const lastScrollLeftRef = useRef(0);
+    const [scrollCloseSignal, setScrollCloseSignal] = useState(0);
 
     function syncHeader() {
         if (headerRef.current && scrollContainerRef.current) {
             headerRef.current.scrollLeft = scrollContainerRef.current.scrollLeft;
         }
     }
+
+    function handleRowsScroll() {
+        syncHeader();
+        const container = scrollContainerRef.current;
+        if (!container) return;
+
+        if (container.scrollLeft !== lastScrollLeftRef.current) {
+            lastScrollLeftRef.current = container.scrollLeft;
+            setScrollCloseSignal((signal) => signal + 1);
+        }
+    }
+
     const sortedColumns = [...columns].sort((a, b) => a.index - b.index);
     const totalContentWidth =
         DOC_COL_W_PX + sortedColumns.length * DATA_COL_W_PX + 32;
     const skeletonContentWidth =
         DOC_COL_W_PX + SKELETON_COLS * DATA_COL_W_PX + 32;
-
     useImperativeHandle(ref, () => ({
         scrollToCell(colIdx: number, rowIdx: number) {
             const container = scrollContainerRef.current;
@@ -276,12 +289,14 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                         <div
                             key={col.index}
                             role="columnheader"
+                            data-tr-col-header
                             className={`${COL_W} border-b border-r border-gray-200 p-2 text-left text-xs font-medium text-gray-500 select-none`}
                         >
                             <div className="flex items-center justify-between gap-3">
                                 <span className="truncate">{col.name}</span>
                                 <TREditColumnMenu
                                     column={col}
+                                    closeSignal={scrollCloseSignal}
                                     disabled={savingColumn || savingColumnsConfig}
                                     onSave={onUpdateColumn}
                                     onDelete={onDeleteColumn}
@@ -308,7 +323,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
             <div
                 className="flex flex-1 flex-col overflow-auto min-h-0"
                 ref={scrollContainerRef}
-                onScroll={syncHeader}
+                onScroll={handleRowsScroll}
             >
             <div role="rowgroup" className="relative min-h-0 flex-1">
                 {dragOverFiles && (
@@ -398,6 +413,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                                             <TabularCellComponent
                                                 cell={cell}
                                                 column={col}
+                                                closeSignal={scrollCloseSignal}
                                                 onExpand={() => onExpand(cell)}
                                                 onCitationClick={(
                                                     page,

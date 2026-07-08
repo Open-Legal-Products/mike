@@ -438,8 +438,10 @@
 }
 
 .workflow-editor-content table {
+    width: 100%;
     min-width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
     text-align: left;
     font-size: 0.75rem;
 }
@@ -454,6 +456,7 @@
     border-bottom: 1px solid #f3f4f6;
     padding: 0.5rem 0.75rem;
     vertical-align: top;
+    word-break: break-word;
 }
 
 .workflow-editor-content th:last-child,
@@ -476,6 +479,7 @@
 
 .workflow-editor-content th p,
 .workflow-editor-content td p {
+    min-height: 1.25rem;
     margin-bottom: 0;
 }
 

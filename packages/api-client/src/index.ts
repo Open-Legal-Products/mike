@@ -1384,7 +1384,7 @@ export async function clearTabularCells(
 // Workflows
 // ---------------------------------------------------------------------------
 
-type WorkflowType = Workflow["type"];
+type WorkflowType = Workflow["metadata"]["type"];
 
 export async function listWorkflows(
     type: WorkflowType,
@@ -1397,13 +1397,15 @@ export async function getWorkflow(workflowId: string): Promise<Workflow> {
 }
 
 export async function createWorkflow(payload: {
-    title: string;
-    type: "assistant" | "tabular";
-    prompt_md?: string;
+    metadata: {
+        title: string;
+        type: "assistant" | "tabular";
+        language?: string | null;
+        practice?: string | null;
+        jurisdictions?: string[] | null;
+    };
+    skill_md?: string;
     columns_config?: { index: number; name: string; prompt: string }[];
-    language?: string | null;
-    practice?: string | null;
-    jurisdictions?: string[] | null;
 }): Promise<Workflow> {
     return apiRequest<Workflow>("/workflows", {
         method: "POST",
@@ -1415,12 +1417,14 @@ export async function createWorkflow(payload: {
 export async function updateWorkflow(
     workflowId: string,
     payload: {
-        title?: string;
-        prompt_md?: string;
+        metadata?: {
+            title?: string;
+            language?: string | null;
+            practice?: string | null;
+            jurisdictions?: string[] | null;
+        };
+        skill_md?: string;
         columns_config?: { index: number; name: string; prompt: string }[];
-        language?: string | null;
-        practice?: string | null;
-        jurisdictions?: string[] | null;
     },
 ): Promise<Workflow> {
     return apiRequest<Workflow>(`/workflows/${workflowId}`, {

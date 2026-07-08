@@ -12,7 +12,7 @@ import { FileDirectory } from "../shared/FileDirectory";
 import { AddUserInput } from "../shared/AddUserInput";
 import type { Project } from "../shared/types";
 import type { UserLookupResult } from "@/app/lib/mikeApi";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/app/contexts/AuthContext";
 import { Modal } from "../modals/Modal";
 import { ModalFieldLabel } from "../modals/ModalFieldLabel";
 import { ModalTextInput } from "../modals/ModalTextInput";
@@ -167,12 +167,12 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
             breadcrumbs={[
                 "Projects",
                 "New project",
-                step === "details" ? "Details" : "Documents",
+                step === "details" ? "Details" : "Add Documents",
             ]}
             secondaryAction={
                 step === "documents"
                     ? {
-                          label: `Upload documents${pendingFiles.length > 0 ? ` (${pendingFiles.length})` : ""}`,
+                          label: `Upload${pendingFiles.length > 0 ? ` (${pendingFiles.length})` : ""}`,
                           icon: <Upload className="h-3.5 w-3.5" />,
                           onClick: () => fileInputRef.current?.click(),
                           disabled: loading,
@@ -325,7 +325,7 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
                         </div>
                     </div>
                 ) : (
-                    <div className="min-h-0 flex-1">
+                    <div className="flex min-h-0 flex-1 flex-col">
                         <FileDirectory
                             standaloneDocs={standaloneDocuments}
                             directoryProjects={dirProjects}
@@ -335,6 +335,7 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
                             emptyMessage="No existing documents"
                             searchable
                             searchAutoFocus
+                            showProjectTabs
                         />
                     </div>
                 )}

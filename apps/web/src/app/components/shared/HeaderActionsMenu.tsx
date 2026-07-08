@@ -6,8 +6,8 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
+} from "@/app/components/ui/dropdown-menu";
+import { cn } from "@/app/lib/utils";
 
 export type HeaderActionsMenuItem = {
     label: string;

@@ -9,7 +9,7 @@ import {
     Upload,
     X,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 import type { AssistantEvent, Document } from "../shared/types";
 import { FileTypeIcon } from "../shared/FileTypeIcon";
 import {

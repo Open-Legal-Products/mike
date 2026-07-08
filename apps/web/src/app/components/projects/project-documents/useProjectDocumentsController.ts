@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/app/contexts/AuthContext";
 import { type ProjectContextMenu } from "../ProjectPageParts";
 import { useProjectWorkspace } from "../ProjectWorkspace";
 import { useDocumentVersions } from "./useDocumentVersions";

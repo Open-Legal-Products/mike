@@ -14,7 +14,7 @@ import {
     useProjectWorkspace,
 } from "@/app/components/projects/ProjectWorkspace";
 import type { TabularReview } from "@/app/components/shared/types";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/app/contexts/AuthContext";
 import { toastError } from "@/lib/toast";
 
 interface Props {

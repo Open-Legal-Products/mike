@@ -32,6 +32,7 @@ Citation rules:
 - Keep quotes short, ideally 25 words or fewer, and tightly matched to the claim.
 - "page" means the sequential [Page N] marker in the provided text, not printed page numbers inside the document. Non-spreadsheet unpaginated files may have no [Page N] markers; omit "page" (or use 1) when none is present.
 - For spreadsheet sources (content shown as "## Sheet: <name>" markdown tables with a "Row" column and column-letter headers), cite by cell instead of page: set "sheet" to the sheet name and "cell" to the A1 address or range you are quoting (e.g. "B7" or "B7:C9", combining the column-letter header with the "Row" number). Put the plain cell value in "quote" with no "Row"/column-letter labels or "|" separators. Omit "page" for spreadsheet citations.
+- A cell tagged "⟨merged A1:C1⟩" spans that whole range: its value belongs to the anchor cell and the other covered cells are shown blank. When citing anything in a merged range, set "cell" to the full range from the tag (e.g. "A1:C1"), not a covered cell like "B1". Do not include the "⟨merged ...⟩" tag text in "quote".
 - For a continuous quote crossing two pages, set "page" to "N-M" and include [[PAGE_BREAK]] at the page break. Otherwise, use separate quote objects.
 - For legacy compatibility, you may also include top-level "page" and "quote" matching the first quote.
 - Omit the <CITATIONS> block when there are no citations.

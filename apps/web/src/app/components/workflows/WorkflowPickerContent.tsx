@@ -2,11 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, MessageSquare, Table2, X } from "lucide-react";
-import { SearchBar } from "@/components/ui/search-bar";
+import { SearchBar } from "@/app/components/ui/search-bar";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ColumnConfig, Workflow } from "../shared/types";
-import { formatIcon, formatLabel } from "../tabular/columnFormat";
+import {
+    formatIcon,
+    formatIconClassName,
+    formatLabel,
+} from "../tabular/columnFormat";
 import { TAG_COLORS } from "../tabular/pillUtils";
 
 type WorkflowPreviewMode = "auto" | "prompt" | "columns";
@@ -19,7 +23,7 @@ interface WorkflowPickerContentProps {
     search: string;
     onSearchChange: (value: string) => void;
     loading?: boolean;
-    workflowType?: Workflow["type"] | "all";
+    workflowType?: Workflow["metadata"]["type"] | "all";
     emptyMessage?: string;
     previewMode?: WorkflowPreviewMode;
     disabledWorkflow?: (workflow: Workflow) => boolean;
@@ -70,8 +74,8 @@ export function WorkflowPickerContent({
     const filteredWorkflows = normalizedSearch
         ? workflows.filter((workflow) =>
               [
-                  workflow.title,
-                  workflow.practice ?? "",
+                  workflow.metadata.title,
+                  workflow.metadata.practice ?? "",
                   workflow.is_system ? "System" : "Custom",
               ]
                   .join(" ")
@@ -108,7 +112,7 @@ export function WorkflowPickerContent({
                     placeholder="Search workflows..."
                 />
 
-                <div className="min-h-0 min-w-0 flex-1 rounded-sm pt-2">
+                <div className="min-h-0 min-w-0 flex-1 overflow-y-auto rounded-sm pt-2">
                     {loading ? (
                         <div className="space-y-px">
                             {[60, 45, 75, 50, 65, 40, 55].map(
@@ -137,7 +141,7 @@ export function WorkflowPickerContent({
                                     disabledWorkflow?.(workflow) ?? false;
                                 const isSelected = selected?.id === workflow.id;
                                 const TypeIcon =
-                                    workflow.type === "tabular"
+                                    workflow.metadata.type === "tabular"
                                         ? Table2
                                         : MessageSquare;
                                 return (
@@ -164,7 +168,7 @@ export function WorkflowPickerContent({
                                                     : "text-gray-700"
                                             }`}
                                         >
-                                            {workflow.title}
+                                            {workflow.metadata.title}
                                         </span>
                                         {showTypeIcon ? (
                                             <TypeIcon className="h-3.5 w-3.5 shrink-0 text-gray-400" />
@@ -213,7 +217,7 @@ function WorkflowPreview({
 }) {
     const resolvedMode =
         mode === "auto"
-            ? workflow.type === "tabular"
+            ? workflow.metadata.type === "tabular"
                 ? "columns"
                 : "prompt"
             : mode;
@@ -221,10 +225,10 @@ function WorkflowPreview({
         <div
             className={`${className} min-h-0 min-w-0 flex-1 flex-col overflow-visible`}
         >
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-white/70 bg-white/55 shadow-[0_3px_9px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.86),inset_0_-1px_0_rgba(255,255,255,0.58)] backdrop-blur-xl">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-white/70 bg-white/55 p-1 shadow-[0_3px_9px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.86),inset_0_-1px_0_rgba(255,255,255,0.58)] backdrop-blur-xl">
                 <div className="flex h-9 shrink-0 items-center justify-between px-3">
                     <p className="min-w-0 flex-1 truncate text-xs font-medium text-gray-700">
-                        {workflow.title}
+                        {workflow.metadata.title}
                     </p>
                     {allowClear ? (
                         <button
@@ -236,7 +240,7 @@ function WorkflowPreview({
                         </button>
                     ) : null}
                 </div>
-                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
                     {resolvedMode === "columns" ? (
                         <WorkflowColumnPreview
                             columns={workflow.columns_config ?? []}
@@ -244,7 +248,7 @@ function WorkflowPreview({
                     ) : (
                         <WorkflowPromptPreview
                             content={
-                                workflow.prompt_md ?? "_No prompt defined._"
+                                workflow.skill_md ?? "_No prompt defined._"
                             }
                         />
                     )}
@@ -372,7 +376,9 @@ function WorkflowColumnPreview({ columns }: { columns: ColumnConfig[] }) {
                                         : "hover:bg-gray-100/70"
                                 }`}
                             >
-                                <FormatIcon className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                                <FormatIcon
+                                    className={`h-3.5 w-3.5 shrink-0 ${formatIconClassName(column.format ?? "text")}`}
+                                />
                                 <span className="min-w-0 flex-1 truncate text-gray-800">
                                     {column.name}
                                 </span>

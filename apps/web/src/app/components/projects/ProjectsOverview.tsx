@@ -10,7 +10,7 @@ import {
     useProjectsQuery,
 } from "@/app/hooks/useProjectsQuery";
 import { OwnerOnlyPopup } from "@/app/components/popups/OwnerOnlyPopup";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/app/contexts/AuthContext";
 import type { Project } from "@/app/components/shared/types";
 import { NewProjectModal } from "./NewProjectModal";
 import { ProjectDetailsModal } from "./ProjectDetailsModal";

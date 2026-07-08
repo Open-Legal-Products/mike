@@ -3,7 +3,7 @@
 import { Download, Loader2, Trash2, Upload } from "lucide-react";
 import type { Document } from "@/app/components/shared/types";
 import type { DocumentVersion } from "@/app/lib/mikeApi";
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 import {
     fileTypeForVersion,
     versionFilenameFor,

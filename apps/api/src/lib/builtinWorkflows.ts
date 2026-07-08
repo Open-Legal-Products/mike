@@ -14,4 +14,8 @@ export const BUILTIN_WORKFLOWS: {
     id: string;
     title: string;
     prompt_md: string;
-}[] = SYSTEM_ASSISTANT_WORKFLOWS;
+}[] = SYSTEM_ASSISTANT_WORKFLOWS.map(({ id, title, skill_md }) => ({
+    id,
+    title,
+    prompt_md: skill_md,
+}));

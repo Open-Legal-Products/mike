@@ -44,11 +44,24 @@ export type WorkflowRecord = {
   [key: string]: unknown;
 };
 
+export type WorkflowType = "assistant" | "tabular";
+
 export type WorkflowContributor = {
   name: string;
   organisation: string | null;
   role: string | null;
   linkedin: string | null;
+};
+
+export type WorkflowMetadata = {
+  title: string;
+  description: string | null;
+  type: WorkflowType;
+  contributors: WorkflowContributor[];
+  language: string;
+  version: string | null;
+  practice: string | null;
+  jurisdictions: string[] | null;
 };
 export type OpenSourceSubmissionStatus = "pending" | "approved" | "rejected";
 
@@ -64,7 +77,6 @@ export type OpenSourceSubmissionRow = {
   submitted_at: string;
   updated_at: string;
   reviewed_at?: string | null;
-  reviewed_by_user_id?: string | null;
   review_notes?: string | null;
 };
 
@@ -130,9 +142,42 @@ export function findSystemWorkflow(
   return SYSTEM_WORKFLOWS.find((workflow) => workflow.id === workflowId);
 }
 
-function withDatabaseWorkflow<T extends object>(workflow: T) {
+function workflowTypeFrom(value: unknown): WorkflowType {
+  return value === "tabular" ? "tabular" : "assistant";
+}
+
+function metadataFromWorkflowRecord(workflow: WorkflowRecord): WorkflowMetadata {
   return {
-    ...workflow,
+    title: workflow.title ?? "",
+    description: null,
+    type: workflowTypeFrom(workflow.type),
+    contributors:
+      normalizeContributors(workflow.contributors) ?? [
+        DEFAULT_WORKFLOW_CONTRIBUTOR,
+      ],
+    language: workflow.language ?? DEFAULT_WORKFLOW_LANGUAGE,
+    version: workflow.version ?? null,
+    practice: workflow.practice ?? DEFAULT_WORKFLOW_PRACTICE,
+    jurisdictions: workflow.jurisdictions ?? DEFAULT_WORKFLOW_JURISDICTIONS,
+  };
+}
+
+function withDatabaseWorkflow(workflow: WorkflowRecord) {
+  const {
+    title: _title,
+    type: _type,
+    contributors: _contributors,
+    language: _language,
+    version: _version,
+    practice: _practice,
+    jurisdictions: _jurisdictions,
+    prompt_md,
+    ...rest
+  } = workflow;
+  return {
+    ...rest,
+    metadata: metadataFromWorkflowRecord(workflow),
+    skill_md: prompt_md ?? null,
     is_system: false,
   };
 }
@@ -189,7 +234,7 @@ async function resolveWorkflowAccess(
     .eq("id", workflowId)
     .single();
   if (!workflow) return null;
-  const workflowRecord = withDatabaseWorkflow(workflow as WorkflowRecord);
+  const workflowRecord = workflow as WorkflowRecord;
   if (workflowRecord.user_id === userId) {
     return { workflow: workflowRecord, allowEdit: true, isOwner: true };
   }
@@ -244,11 +289,11 @@ export async function listWorkflows(
   // workflow repository) rather than as DB rows; surface them ahead of the
   // user's own workflows and drop any legacy DB rows that shadow them.
   const systemWorkflows = SYSTEM_WORKFLOWS.filter(
-    (workflow) => !type || workflow.type === type,
+    (workflow) => !type || workflow.metadata.type === type,
   ).map(withSystemWorkflowAccess);
   const databaseWorkflows = ((data ?? []) as WorkflowRecord[]).filter(
     (workflow) => !SYSTEM_WORKFLOW_IDS.has(workflow.id),
-  );
+  ).map(withDatabaseWorkflow);
 
   return { ok: true, data: [...systemWorkflows, ...databaseWorkflows] };
 }
@@ -258,39 +303,30 @@ export async function createWorkflow(
   params: {
     userId: string;
     title: string;
-    type: string;
-    prompt_md?: string;
+    type: WorkflowType;
+    skill_md?: string;
     columns_config?: unknown;
-    language?: unknown;
-    practice?: string | null;
-    jurisdictions?: unknown;
+    metadata?: Partial<WorkflowMetadata>;
   },
 ): Promise<
   | { ok: true; workflow: Record<string, unknown> }
   | { ok: false; detail: string }
 > {
-  const {
-    userId,
-    title,
-    type,
-    prompt_md,
-    columns_config,
-    language,
-    practice,
-    jurisdictions,
-  } = params;
+  const { userId, title, type, skill_md, columns_config, metadata } = params;
   const orgId = await getPersonalOrgId(userId, db);
   devLog(
     {
       userId,
       title: title.trim(),
       type,
-      hasPrompt: typeof prompt_md === "string" && prompt_md.length > 0,
+      hasSkill: typeof skill_md === "string" && skill_md.length > 0,
       columnCount: Array.isArray(columns_config) ? columns_config.length : null,
-      language: normalizeOptionalString(language) ?? DEFAULT_WORKFLOW_LANGUAGE,
-      practice: practice ?? null,
+      language:
+        normalizeOptionalString(metadata?.language) ?? DEFAULT_WORKFLOW_LANGUAGE,
+      practice: metadata?.practice ?? null,
       jurisdictions:
-        normalizeJurisdictions(jurisdictions) ?? DEFAULT_WORKFLOW_JURISDICTIONS,
+        normalizeJurisdictions(metadata?.jurisdictions) ??
+        DEFAULT_WORKFLOW_JURISDICTIONS,
     },
     "[workflows/create] request",
   );
@@ -300,13 +336,15 @@ export async function createWorkflow(
       user_id: userId,
       title: title.trim(),
       type,
-      prompt_md: prompt_md ?? null,
+      prompt_md: skill_md ?? null,
       columns_config: columns_config ?? null,
-      language: normalizeOptionalString(language) ?? DEFAULT_WORKFLOW_LANGUAGE,
+      language:
+        normalizeOptionalString(metadata?.language) ?? DEFAULT_WORKFLOW_LANGUAGE,
       practice:
-        normalizeOptionalString(practice) ?? DEFAULT_WORKFLOW_PRACTICE,
+        normalizeOptionalString(metadata?.practice) ?? DEFAULT_WORKFLOW_PRACTICE,
       jurisdictions:
-        normalizeJurisdictions(jurisdictions) ?? DEFAULT_WORKFLOW_JURISDICTIONS,
+        normalizeJurisdictions(metadata?.jurisdictions) ??
+        DEFAULT_WORKFLOW_JURISDICTIONS,
       org_id: orgId,
     })
     .select("*")
@@ -335,7 +373,7 @@ export async function createWorkflow(
     },
     "[workflows/create] inserted",
   );
-  return { ok: true, workflow: withDatabaseWorkflow(data) };
+  return { ok: true, workflow: withDatabaseWorkflow(data as WorkflowRecord) };
 }
 
 export type UpdateWorkflowResult =
@@ -349,25 +387,24 @@ export async function updateWorkflow(
     userId: string;
     userEmail: string | undefined;
     body: {
-      title?: unknown;
-      prompt_md?: unknown;
+      metadata?: Partial<WorkflowMetadata>;
+      skill_md?: unknown;
       columns_config?: unknown;
-      language?: unknown;
-      practice?: unknown;
-      jurisdictions?: unknown;
     };
   },
 ): Promise<UpdateWorkflowResult> {
   const { workflowId, userId, userEmail, body } = params;
   const updates: Record<string, unknown> = {};
-  if (body.title != null) updates.title = body.title;
-  if (body.prompt_md != null) updates.prompt_md = body.prompt_md;
+  const metadata = body.metadata;
+  if (metadata?.title != null) updates.title = metadata.title;
+  if (body.skill_md != null) updates.prompt_md = body.skill_md;
   if (body.columns_config != null) updates.columns_config = body.columns_config;
-  if ("language" in body)
-    updates.language = normalizeOptionalString(body.language);
-  if ("practice" in body) updates.practice = body.practice ?? null;
-  if ("jurisdictions" in body)
-    updates.jurisdictions = normalizeJurisdictions(body.jurisdictions);
+  if (metadata && "language" in metadata)
+    updates.language = normalizeOptionalString(metadata.language);
+  if (metadata && "practice" in metadata)
+    updates.practice = metadata.practice ?? null;
+  if (metadata && "jurisdictions" in metadata)
+    updates.jurisdictions = normalizeJurisdictions(metadata.jurisdictions);
 
   const access = await resolveWorkflowAccess(db, workflowId, userId, userEmail);
   if (!access || !access.allowEdit) {
@@ -382,7 +419,7 @@ export async function updateWorkflow(
   if (error || !data) return { ok: false, kind: "not_editable" };
   return {
     ok: true,
-    body: withWorkflowAccess(withDatabaseWorkflow(data), {
+    body: withWorkflowAccess(withDatabaseWorkflow(data as WorkflowRecord), {
       allowEdit: access.allowEdit,
       isOwner: access.isOwner,
     }),
@@ -416,7 +453,7 @@ export async function getWorkflowDetail(
   return {
     ok: true,
     body: withOpenSourceSubmission(
-      withWorkflowAccess(access.workflow, {
+      withWorkflowAccess(withDatabaseWorkflow(access.workflow), {
         allowEdit: access.allowEdit,
         isOwner: access.isOwner,
       }),
@@ -467,16 +504,13 @@ function buildOpenSourceSnapshot(
 ) {
   return {
     workflow_id: workflow.id,
-    title: workflow.title ?? "",
-    type: workflow.type ?? "",
-    prompt_md: workflow.prompt_md ?? null,
+    metadata: {
+      ...metadataFromWorkflowRecord(workflow),
+      contributors,
+    },
+    skill_md: workflow.prompt_md ?? null,
     columns_config: workflow.columns_config ?? null,
-    contributors,
     contributor_mode: contributorMode,
-    language: workflow.language ?? DEFAULT_WORKFLOW_LANGUAGE,
-    version: workflow.version ?? null,
-    practice: workflow.practice ?? DEFAULT_WORKFLOW_PRACTICE,
-    jurisdictions: workflow.jurisdictions ?? DEFAULT_WORKFLOW_JURISDICTIONS,
     created_at: workflow.created_at ?? null,
   };
 }
@@ -532,7 +566,7 @@ export async function submitOpenSourceWorkflow(
     return { ok: false, kind: "not_found" };
   }
 
-  const workflowRecord = withDatabaseWorkflow(workflow as WorkflowRecord);
+  const workflowRecord = workflow as WorkflowRecord;
   const validationError = validateOpenSourceWorkflow(workflowRecord);
   if (validationError) {
     return { ok: false, kind: "validation", detail: validationError };
@@ -905,5 +939,5 @@ export async function importWorkflow(
     };
   }
 
-  return { ok: true, workflow: withDatabaseWorkflow(data) };
+  return { ok: true, workflow: withDatabaseWorkflow(data as WorkflowRecord) };
 }

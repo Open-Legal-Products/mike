@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MikeIcon } from "@/components/chat/mike-icon";
+import { MikeIcon } from "@/app/components/chat/mike-icon";
 
 export function TRResponseStatus({ isActive }: { isActive: boolean }) {
     const [showDone, setShowDone] = useState(false);

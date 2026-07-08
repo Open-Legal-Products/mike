@@ -13,7 +13,7 @@ import {
     Download,
     ExternalLink,
 } from "lucide-react";
-import { MikeIcon } from "@/components/chat/mike-icon";
+import { MikeIcon } from "@/app/components/chat/mike-icon";
 import type { CaseCitationQuote } from "../shared/types";
 import {
     clearDocxQuoteHighlights,
@@ -27,7 +27,7 @@ import {
     getCourtlistenerOpinions,
     type CaseLawOpinion,
 } from "@/app/lib/mikeApi";
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 
 export type CaseTab = {
     kind: "case";

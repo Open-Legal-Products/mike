@@ -1,6 +1,6 @@
 import { File, FileChartPie, FileSpreadsheet, FileText } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 
 export type FileTypeKind = "pdf" | "word" | "excel" | "ppt" | "other";
 

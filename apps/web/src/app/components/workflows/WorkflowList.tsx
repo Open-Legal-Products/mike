@@ -25,7 +25,7 @@ import { UseWorkflowModal } from "./UseWorkflowModal";
 import { NewWorkflowModal } from "./NewWorkflowModal";
 import { TableToolbar } from "../shared/TableToolbar";
 import { RowActionMenuItems, RowActions } from "../shared/RowActions";
-import { MikeIcon } from "@/components/chat/mike-icon";
+import { MikeIcon } from "@/app/components/chat/mike-icon";
 import { PageHeader } from "@/app/components/shared/PageHeader";
 import { workflowDetailPath } from "./workflowRoutes";
 import { toastError } from "@/lib/toast";
@@ -76,7 +76,7 @@ export function WorkflowList() {
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [actionsOpen, setActionsOpen] = useState(false);
     const [practiceFilter, setPracticeFilter] = useState<string | null>(null);
-    const [typeFilter, setTypeFilter] = useState<Workflow["type"] | null>(
+    const [typeFilter, setTypeFilter] = useState<Workflow["metadata"]["type"] | null>(
         null,
     );
     const [search, setSearch] = useState("");
@@ -155,8 +155,8 @@ export function WorkflowList() {
         (wf) => !hiddenSystemIds.includes(wf.id),
     );
     const systemRows = [...visibleSystem, ...hiddenSystem];
-    const activeRows = [...visibleSystem, ...userWorkflows, ...sharedWorkflows];
-    const allRows = [...systemRows, ...userWorkflows, ...sharedWorkflows];
+    const activeRows = [...userWorkflows, ...sharedWorkflows, ...visibleSystem];
+    const allRows = [...userWorkflows, ...sharedWorkflows, ...systemRows];
     const byScope =
         activeScope === "all"
             ? activeRows
@@ -167,14 +167,14 @@ export function WorkflowList() {
               : sharedWorkflows;
     const practices = Array.from(
         new Set(
-            byScope.map((wf) => wf.practice).filter((p): p is string => !!p),
+            byScope.map((wf) => wf.metadata.practice).filter((p): p is string => !!p),
         ),
     ).sort();
     const q = search.toLowerCase();
     const filtered = byScope
-        .filter((wf) => !practiceFilter || wf.practice === practiceFilter)
-        .filter((wf) => !typeFilter || wf.type === typeFilter)
-        .filter((wf) => !q || wf.title.toLowerCase().includes(q));
+        .filter((wf) => !practiceFilter || wf.metadata.practice === practiceFilter)
+        .filter((wf) => !typeFilter || wf.metadata.type === typeFilter)
+        .filter((wf) => !q || wf.metadata.title.toLowerCase().includes(q));
 
     const allSelected =
         filtered.length > 0 &&
@@ -203,7 +203,7 @@ export function WorkflowList() {
         clearSelection();
     }
 
-    function handleTypeFilterChange(value: Workflow["type"] | null) {
+    function handleTypeFilterChange(value: Workflow["metadata"]["type"] | null) {
         setTypeFilter(value);
         clearSelection();
     }
@@ -290,7 +290,7 @@ export function WorkflowList() {
         }
     }
 
-    const getTypeMeta = (type: Workflow["type"]) =>
+    const getTypeMeta = (type: Workflow["metadata"]["type"]) =>
         type === "tabular"
             ? { label: "Tabular", Icon: Table2, className: "text-violet-700" }
             : {
@@ -440,6 +440,8 @@ export function WorkflowList() {
                                 {practiceFilterButton}
                             </div>
                         </TableHeaderCell>
+                        <TableHeaderCell className="w-40">Jurisdiction</TableHeaderCell>
+                        <TableHeaderCell className="w-28">Language</TableHeaderCell>
                         <TableHeaderCell className="w-44">Source</TableHeaderCell>
                         <TableHeaderCell className="w-8" />
                     </TableHeaderRow>
@@ -465,7 +467,16 @@ export function WorkflowList() {
                                         <SkeletonLine className="w-16" />
                                     </TableCell>
                                     <TableCell className="w-40">
+                                        <div className="flex items-center gap-1.5">
+                                            <SkeletonDot className="rounded-full" />
+                                            <SkeletonLine className="w-24" />
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="w-40">
                                         <SkeletonLine className="w-24" />
+                                    </TableCell>
+                                    <TableCell className="w-28">
+                                        <SkeletonLine className="w-16" />
                                     </TableCell>
                                     <TableCell className="w-44">
                                         <SkeletonLine className="w-14" />
@@ -581,26 +592,54 @@ export function WorkflowList() {
                                     bgClassName={rowBg}
                                     selected={selectedIds.includes(wf.id)}
                                     onSelectionChange={() => toggleOne(wf.id)}
-                                    label={wf.title}
+                                    label={wf.metadata.title}
                                 />
                                 <TableCell className="ml-auto w-28">
                                     {(() => {
                                         const { label, Icon, className } =
-                                            getTypeMeta(wf.type);
+                                            getTypeMeta(wf.metadata.type);
                                         return (
-                                            <span
-                                                className={`inline-flex items-center gap-1.5 text-xs font-medium ${className}`}
-                                            >
-                                                <Icon className="h-3.5 w-3.5" />
+                                            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700">
+                                                <Icon
+                                                    className={`h-3.5 w-3.5 ${className}`}
+                                                />
                                                 {label}
                                             </span>
                                         );
                                     })()}
                                 </TableCell>
                                 <TableCell className="w-40">
-                                    {wf.practice ? (
+                                    {wf.metadata.practice ? (
+                                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600">
+                                            <span
+                                                className={`${GLASS_DOT} ${practiceDotColor(
+                                                    wf.metadata.practice,
+                                                )}`}
+                                            />
+                                            {wf.metadata.practice}
+                                        </span>
+                                    ) : (
+                                        <span className="text-xs text-gray-300">
+                                            —
+                                        </span>
+                                    )}
+                                </TableCell>
+                                <TableCell className="w-40">
+                                    {wf.metadata.jurisdictions &&
+                                    wf.metadata.jurisdictions.length > 0 ? (
+                                        <span className="truncate max-w-full text-xs font-medium text-gray-600">
+                                            {wf.metadata.jurisdictions.join(", ")}
+                                        </span>
+                                    ) : (
+                                        <span className="text-xs text-gray-300">
+                                            —
+                                        </span>
+                                    )}
+                                </TableCell>
+                                <TableCell className="w-28">
+                                    {wf.metadata.language ? (
                                         <span className="text-xs font-medium text-gray-600">
-                                            {wf.practice}
+                                            {wf.metadata.language}
                                         </span>
                                     ) : (
                                         <span className="text-xs text-gray-300">
@@ -616,12 +655,12 @@ export function WorkflowList() {
                                         </span>
                                     ) : wf.is_owner !== false ? (
                                         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600">
-                                            <User className="h-3.5 w-3.5 text-gray-500" />
+                                            <User className="h-3.5 w-3.5 text-blue-600" />
                                             User
                                         </span>
                                     ) : (
                                         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 truncate max-w-full">
-                                            <User className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                                            <User className="h-3.5 w-3.5 shrink-0 text-blue-600" />
                                             <span className="truncate">
                                                 {getSharedByLabel(wf)}
                                             </span>
@@ -708,4 +747,33 @@ export function WorkflowList() {
 
 function getSharedByLabel(workflow: Workflow) {
     return workflow.shared_by_name?.trim() || "Shared";
+}
+
+// Liquid-glass treatment shared by every practice dot: a top inset highlight
+// and bottom inset shadow give it depth, plus a slight drop shadow so the bead
+// lifts off the row. The color class is appended per practice.
+const GLASS_DOT =
+    "h-2 w-2 shrink-0 rounded-full shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.65),inset_0_-1px_1px_rgba(15,23,42,0.28),0_1px_1.5px_rgba(15,23,42,0.2)]";
+
+// Full literal class names so Tailwind's scanner keeps them (no dynamic strings).
+const PRACTICE_DOT_COLORS = [
+    "bg-blue-500",
+    "bg-violet-500",
+    "bg-emerald-500",
+    "bg-amber-500",
+    "bg-rose-500",
+    "bg-cyan-500",
+    "bg-fuchsia-500",
+    "bg-lime-500",
+    "bg-orange-500",
+    "bg-teal-500",
+];
+
+/** Deterministic dot color per practice name, so each practice reads consistently. */
+function practiceDotColor(practice: string): string {
+    let hash = 0;
+    for (let i = 0; i < practice.length; i++) {
+        hash = (hash * 31 + practice.charCodeAt(i)) >>> 0;
+    }
+    return PRACTICE_DOT_COLORS[hash % PRACTICE_DOT_COLORS.length];
 }

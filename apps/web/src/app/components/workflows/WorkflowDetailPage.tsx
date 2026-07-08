@@ -6,8 +6,10 @@ import dynamic from "next/dynamic";
 import {
     Check,
     ChevronDown,
+    Download,
     Globe,
     Pencil,
+    Play,
     Plus,
     Trash2,
     Users,
@@ -31,15 +33,23 @@ import type {
     ColumnConfig,
     Workflow,
 } from "@/app/components/shared/types";
-import { formatIcon, formatLabel } from "@/app/components/tabular/columnFormat";
+import {
+    formatIcon,
+    formatIconClassName,
+    formatLabel,
+} from "@/app/components/tabular/columnFormat";
 import { ConfirmPopup } from "@/app/components/popups/ConfirmPopup";
-import { HeaderActionsMenu } from "@/app/components/shared/HeaderActionsMenu";
+import {
+    HeaderActionsMenu,
+    type HeaderActionsMenuItem,
+} from "@/app/components/shared/HeaderActionsMenu";
 import { PeopleModal } from "@/app/components/modals/PeopleModal";
 import { OpenSourceWorkflowModal } from "@/app/components/workflows/OpenSourceWorkflowModal";
 import { PageHeader } from "@/app/components/shared/PageHeader";
 import { NewWorkflowModal } from "@/app/components/workflows/NewWorkflowModal";
-import { useAuth } from "@/contexts/AuthContext";
-import { useUserProfile } from "@/contexts/UserProfileContext";
+import { useAuth } from "@/app/contexts/AuthContext";
+import { useUserProfile } from "@/app/contexts/UserProfileContext";
+import { downloadWorkflowZip } from "./workflowZipExport";
 // dynamic import keeps Tiptap (browser-only) out of the SSR bundle
 const WorkflowPromptEditor = dynamic(
     () =>
@@ -51,7 +61,7 @@ const WorkflowPromptEditor = dynamic(
 
 interface Props {
     id: string;
-    workflowType: Workflow["type"];
+    workflowType: Workflow["metadata"]["type"];
 }
 
 type SaveStatus = "idle" | "saving" | "saved";
@@ -59,6 +69,7 @@ type DeleteStatus = "idle" | "loading" | "complete";
 type WorkflowShare = Awaited<ReturnType<typeof listWorkflowShares>>[number];
 
 const NAME_COL_W = "w-[332px] shrink-0";
+const CHECKBOX_GUTTER = "h-2.5 w-2.5 shrink-0";
 const WORKFLOW_CONTRIBUTIONS_ENABLED =
     process.env.NEXT_PUBLIC_WORKFLOW_CONTRIBUTIONS_ENABLED === "true";
 
@@ -129,12 +140,12 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
     useEffect(() => {
         getWorkflow(id)
             .then((wf) => {
-                if (wf.type !== workflowType) {
+                if (wf.metadata.type !== workflowType) {
                     setNotFound(true);
                     return;
                 }
                 setWorkflow(wf);
-                setPromptMd(wf.prompt_md ?? "");
+                setPromptMd(wf.skill_md ?? "");
                 setColumns(
                     (wf.columns_config ?? [])
                         .slice()
@@ -231,7 +242,7 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
             setSaveStatus("saving");
             debounceRef.current = setTimeout(async () => {
                 try {
-                    await updateWorkflow(id, { prompt_md: newPromptMd });
+                    await updateWorkflow(id, { skill_md: newPromptMd });
                     setSaveStatus("saved");
                     setTimeout(() => setSaveStatus("idle"), 2000);
                 } catch {
@@ -342,6 +353,40 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
         profile?.displayName?.trim() || user?.email || "your account name";
     const openSourcePending =
         workflow.open_source_submission?.status === "pending";
+    const workflowActionItems: HeaderActionsMenuItem[] = [
+        {
+            label: "Download workflow",
+            icon: Download,
+            onSelect: () => downloadWorkflowZip(workflow, promptMd, columns),
+        },
+    ];
+
+    if (!readOnly) {
+        workflowActionItems.push({
+            label: "Edit details",
+            icon: Pencil,
+            onSelect: () => setDetailsOpen(true),
+        });
+
+        if (canOpenSource) {
+            workflowActionItems.push({
+                label: "Open source this",
+                icon: Globe,
+                onSelect: () => setOpenSourceOpen(true),
+            });
+        }
+
+        workflowActionItems.push({
+            label: "Delete",
+            icon: Trash2,
+            variant: "danger",
+            disabled: workflow.is_owner === false,
+            onSelect: () => {
+                setDeleteStatus("idle");
+                setDeleteOpen(true);
+            },
+        });
+    }
 
     return (
         <div className="flex flex-col h-full">
@@ -357,81 +402,55 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                     {
                         label: (
                             <span className="text-gray-900 truncate max-w-xs">
-                                {workflow.title}
+                                {workflow.metadata.title}
                             </span>
                         ),
                     },
                 ]}
-                actions={[
-                    {
-                        label: "Use",
-                        onClick: () => setUseOpen(true),
-                    },
+                actionGroups={[
                     saveStatus !== "idle"
-                        ? {
-                              type: "custom",
-                              render: (
-                                  <span className="inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-sm text-gray-500">
-                                      {saveStatus === "saved" ? (
-                                          <Check className="h-3.5 w-3.5 text-green-600" />
-                                      ) : null}
-                                      {saveStatus === "saving"
-                                          ? "Saving…"
-                                          : "Saved"}
-                                  </span>
-                              ),
-                          }
-                        : null,
-                    canShare
-                        ? {
-                              onClick: () => setShareOpen(true),
-                              title: "Open workflow people",
-                              iconOnly: true,
-                              icon: <Users className="h-4 w-4" />,
-                          }
-                        : null,
-                    !readOnly
-                        ? {
-                              type: "custom",
-                              render: (
-                                  <HeaderActionsMenu
-                                      title="Workflow actions"
-                                      items={[
-                                          {
-                                              label: "Edit details",
-                                              icon: Pencil,
-                                              onSelect: () =>
-                                                  setDetailsOpen(true),
-                                          },
-                                          ...(canOpenSource
-                                              ? [
-                                                    {
-                                                        label:
-                                                            "Open source this",
-                                                        icon: Globe,
-                                                        onSelect: () =>
-                                                            setOpenSourceOpen(
-                                                                true,
-                                                            ),
-                                                    },
-                                                ]
-                                              : []),
-                                          {
-                                              label: "Delete",
-                                              icon: Trash2,
-                                              variant: "danger",
-                                              disabled:
-                                                  workflow.is_owner === false,
-                                              onSelect: () => {
-                                                  setDeleteStatus("idle");
-                                                  setDeleteOpen(true);
-                                              },
-                                          },
-                                      ]}
-                                  />
-                              ),
-                          }
-                        : null,
+                        ? [
+                              {
+                                  type: "custom",
+                                  render: (
+                                      <span className="inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-sm text-gray-500">
+                                          {saveStatus === "saved" ? (
+                                              <Check className="h-3.5 w-3.5 text-green-600" />
+                                          ) : null}
+                                          {saveStatus === "saving"
+                                              ? "Saving…"
+                                              : "Saved"}
+                                      </span>
+                                  ),
+                              },
+                          ]
+                        : [],
+                    [
+                        canShare
+                            ? {
+                                  onClick: () => setShareOpen(true),
+                                  title: "Open workflow people",
+                                  iconOnly: true,
+                                  icon: <Users className="h-4 w-4" />,
+                              }
+                            : null,
+                        {
+                            type: "custom",
+                            render: (
+                                <HeaderActionsMenu
+                                    title="Workflow actions"
+                                    items={workflowActionItems}
+                                />
+                            ),
+                        },
+                    ],
+                    [
+                        {
+                            label: "Use",
+                            icon: <Play className="h-3.5 w-3.5" />,
+                            onClick: () => setUseOpen(true),
+                        },
+                    ],
                 ]}
             />
             <UseWorkflowModal
@@ -474,7 +493,7 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                     currentUserEmail={user?.email ?? null}
                     breadcrumb={[
                         "Workflows",
-                        workflow.title,
+                        workflow.metadata.title,
                         "People",
                     ]}
                     onSharedWithChange={handleWorkflowSharedWithChange}
@@ -516,9 +535,9 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                 {/* Metadata */}
                 <WorkflowMetadata workflow={workflow} />
 
-                {workflow.type === "assistant" ? (
+                {workflow.metadata.type === "assistant" ? (
                     /* ── Assistant: WYSIWYG editor ── */
-                    <div className="flex-1 min-h-0 px-4 pb-2 pt-0 md:px-10 md:pb-3">
+                    <div className="flex-1 min-h-0 px-4 pb-2 pt-4 md:px-10 md:pb-3">
                         <WorkflowPromptEditor
                             value={promptMd}
                             onChange={readOnly ? undefined : handlePromptChange}
@@ -527,17 +546,10 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                     </div>
                 ) : (
                     /* ── Tabular: Column table ── */
-                    <div className="flex flex-col flex-1 min-h-0">
+                    <div className="flex flex-col flex-1 min-h-0 pt-2">
                         {/* Toolbar */}
                         {!readOnly && (
-                            <div className="flex items-center justify-between px-4 md:px-10 h-10 border-b border-gray-200 shrink-0">
-                                <button
-                                    onClick={() => setAddColumnOpen(true)}
-                                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
-                                >
-                                    <Plus className="h-3.5 w-3.5" />
-                                    Add Column
-                                </button>
+                            <div className="flex items-center justify-between h-10 shrink-0 border-b border-gray-200 px-4 md:px-10">
                                 {selectedColIndices.length > 0 && (
                                     <div ref={colActionsRef} className="relative">
                                         <button
@@ -567,6 +579,16 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                                         )}
                                     </div>
                                 )}
+                                {selectedColIndices.length === 0 && (
+                                    <span aria-hidden="true" />
+                                )}
+                                <button
+                                    onClick={() => setAddColumnOpen(true)}
+                                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                                >
+                                    <Plus className="h-3.5 w-3.5" />
+                                    Add Column
+                                </button>
                             </div>
                         )}
                         {readOnly && (
@@ -582,13 +604,18 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                         {/* Table header */}
                         <div className={`flex items-center h-8 pr-3 md:pr-10 border-b border-gray-200 text-xs text-gray-500 font-medium shrink-0 select-none ${readOnly ? "border-t" : ""}`}>
                             <div className={`sticky left-0 z-[60] ${NAME_COL_W} ${stickyCellBg} flex items-center gap-4 self-stretch pl-4 pr-2 text-left`}>
-                                {columns.length > 0 && (
+                                {columns.length > 0 ? (
                                     <input
                                         type="checkbox"
                                         checked={columns.length > 0 && selectedColIndices.length === columns.length}
                                         ref={(el) => { if (el) el.indeterminate = selectedColIndices.length > 0 && selectedColIndices.length < columns.length; }}
                                         onChange={() => setSelectedColIndices(selectedColIndices.length === columns.length ? [] : columns.map((c) => c.index))}
-                                        className="h-2.5 w-2.5 rounded border-gray-200 cursor-pointer accent-black"
+                                        className={`${CHECKBOX_GUTTER} rounded border-gray-200 cursor-pointer accent-black`}
+                                    />
+                                ) : (
+                                    <span
+                                        className={CHECKBOX_GUTTER}
+                                        aria-hidden="true"
                                     />
                                 )}
                                 <span>Column Title</span>
@@ -635,7 +662,7 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                                                         checked={isChecked}
                                                         onChange={() => setSelectedColIndices((prev) => prev.includes(col.index) ? prev.filter((i) => i !== col.index) : [...prev, col.index])}
                                                         onClick={(e) => e.stopPropagation()}
-                                                        className="h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-pointer accent-black"
+                                                        className={`${CHECKBOX_GUTTER} rounded border-gray-200 cursor-pointer accent-black`}
                                                     />
                                                     <span className="min-w-0 flex-1 truncate text-sm text-gray-800">
                                                         {col.name}
@@ -644,7 +671,9 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                                             </div>
                                             <div className="ml-auto w-36 shrink-0">
                                                 <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
-                                                    <FormatIcon className="h-3.5 w-3.5 text-gray-400" />
+                                                    <FormatIcon
+                                                        className={`h-3.5 w-3.5 ${formatIconClassName(col.format ?? "text")}`}
+                                                    />
                                                     {formatLabel(col.format ?? "text")}
                                                 </span>
                                             </div>
@@ -716,14 +745,14 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
 
 function WorkflowMetadata({ workflow }: { workflow: Workflow }) {
     const fields: { label: string; value: string }[] = [
-        { label: "Type", value: workflow.type === "tabular" ? "Tabular" : "Assistant" },
+        { label: "Type", value: workflow.metadata.type === "tabular" ? "Tabular" : "Assistant" },
         { label: "Source", value: getWorkflowSourceLabel(workflow) },
     ];
-    if (workflow.language) fields.push({ label: "Language", value: workflow.language });
-    if (workflow.version) fields.push({ label: "Version", value: workflow.version });
-    if (workflow.practice) fields.push({ label: "Practice", value: workflow.practice });
-    if (workflow.jurisdictions?.length) {
-        fields.push({ label: "Jurisdiction", value: workflow.jurisdictions.join(", ") });
+    if (workflow.metadata.language) fields.push({ label: "Language", value: workflow.metadata.language });
+    if (workflow.metadata.version) fields.push({ label: "Version", value: workflow.metadata.version });
+    if (workflow.metadata.practice) fields.push({ label: "Practice", value: workflow.metadata.practice });
+    if (workflow.metadata.jurisdictions?.length) {
+        fields.push({ label: "Jurisdiction", value: workflow.metadata.jurisdictions.join(", ") });
     }
     if (workflow.open_source_submission) {
         const statusLabels: Record<
@@ -741,7 +770,7 @@ function WorkflowMetadata({ workflow }: { workflow: Workflow }) {
     }
 
     return (
-        <div className="flex flex-wrap gap-x-8 gap-y-3 px-4 py-3 text-xs shrink-0 md:px-10">
+        <div className="flex flex-wrap gap-x-8 gap-y-3 px-4 pb-3 pt-1 text-xs shrink-0 md:px-10">
             {fields.map(({ label, value }) => (
                 <div key={label} className="flex flex-col gap-0.5">
                     <span className="text-gray-400">{label}</span>
@@ -762,14 +791,14 @@ function WorkflowMetadataSkeleton() {
     ];
 
     return (
-        <div className="flex shrink-0 flex-wrap gap-x-8 gap-y-3 px-4 py-3 md:px-10">
+        <div className="flex shrink-0 flex-wrap gap-x-8 gap-y-3 px-4 pb-3 pt-1 md:px-10">
             {fields.map((field, index) => (
-                <div key={index} className="flex flex-col gap-1">
+                <div key={index} className="flex flex-col gap-0.5">
                     <div
-                        className={`h-2.5 ${field.labelWidth} animate-pulse rounded bg-gray-100`}
+                        className={`h-4 ${field.labelWidth} animate-pulse rounded bg-gray-100`}
                     />
                     <div
-                        className={`h-3 ${field.valueWidth} animate-pulse rounded bg-gray-100`}
+                        className={`h-4 ${field.valueWidth} animate-pulse rounded bg-gray-100`}
                     />
                 </div>
             ))}
@@ -787,7 +816,7 @@ function getWorkflowSourceLabel(workflow: Workflow) {
 
 function AssistantWorkflowEditorSkeleton() {
     return (
-        <div className="min-h-0 flex-1 px-4 pb-2 pt-0 md:px-10 md:pb-3">
+        <div className="min-h-0 flex-1 px-4 pb-2 pt-4 md:px-10 md:pb-3">
             <div className="h-full rounded-md border border-gray-200 bg-gray-50 px-5 py-4">
                 <div className="space-y-3">
                     <div className="h-3 w-24 animate-pulse rounded bg-gray-100" />
@@ -813,8 +842,8 @@ function AssistantWorkflowEditorSkeleton() {
 
 function TabularWorkflowEditorSkeleton() {
     return (
-        <>
-            <div className="flex h-10 shrink-0 items-center border-b border-gray-200 px-4 md:px-10">
+        <div className="flex min-h-0 flex-1 flex-col pt-2">
+            <div className="flex h-10 shrink-0 items-center justify-end border-b border-gray-200 px-4 md:px-10">
                 <div className="h-3 w-20 animate-pulse rounded bg-gray-100" />
             </div>
 
@@ -822,7 +851,9 @@ function TabularWorkflowEditorSkeleton() {
                 <div
                     className={`${NAME_COL_W} flex shrink-0 items-center gap-4 self-stretch pl-4 pr-2`}
                 >
-                    <div className="h-2.5 w-2.5 animate-pulse rounded bg-gray-100" />
+                    <div
+                        className={`${CHECKBOX_GUTTER} animate-pulse rounded bg-gray-100`}
+                    />
                     <div className="h-2.5 w-20 animate-pulse rounded bg-gray-100" />
                 </div>
                 <div className="w-36 shrink-0">
@@ -843,7 +874,9 @@ function TabularWorkflowEditorSkeleton() {
                         <div
                             className={`${NAME_COL_W} flex shrink-0 items-center gap-4 pl-4 pr-2`}
                         >
-                            <div className="h-2.5 w-2.5 shrink-0 animate-pulse rounded bg-gray-100" />
+                            <div
+                                className={`${CHECKBOX_GUTTER} animate-pulse rounded bg-gray-100`}
+                            />
                             <div
                                 className="h-3 animate-pulse rounded bg-gray-100"
                                 style={{ width: `${40 + (i * 13) % 35}%` }}
@@ -862,6 +895,6 @@ function TabularWorkflowEditorSkeleton() {
                     </div>
                 ))}
             </div>
-        </>
+        </div>
     );
 }

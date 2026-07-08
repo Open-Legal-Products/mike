@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 
 export const accountGlassInputClassName = cn(
     "rounded-lg px-3 text-gray-900 placeholder:text-gray-400",

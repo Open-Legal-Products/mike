@@ -20,6 +20,7 @@ import {
   shareWorkflow,
   exportWorkflow,
   importWorkflow,
+  type WorkflowMetadata,
 } from "./workflows.service";
 
 export const workflowsRouter = Router();
@@ -53,39 +54,31 @@ workflowsRouter.get("/", requireAuth, asyncRoute(async (req, res) => {
 workflowsRouter.post("/", requireAuth, asyncRoute(async (req, res) => {
   const userId = res.locals.userId as string;
   const {
-    title,
-    type,
-    prompt_md,
+    metadata,
+    skill_md,
     columns_config,
-    language,
-    practice,
-    jurisdictions,
   } = req.body as {
-    title: string;
-    type: string;
-    prompt_md?: string;
+    metadata?: Partial<WorkflowMetadata>;
+    skill_md?: string;
     columns_config?: unknown;
-    language?: unknown;
-    practice?: string | null;
-    jurisdictions?: unknown;
   };
+  const title = metadata?.title;
+  const type = metadata?.type;
   if (!title?.trim())
-    return void res.status(400).json({ detail: "title is required" });
-  if (!["assistant", "tabular"].includes(type))
+    return void res.status(400).json({ detail: "metadata.title is required" });
+  if (type !== "assistant" && type !== "tabular")
     return void res
       .status(400)
-      .json({ detail: "type must be 'assistant' or 'tabular'" });
+      .json({ detail: "metadata.type must be 'assistant' or 'tabular'" });
 
   const db = createServerSupabase();
   const result = await createWorkflow(db, {
     userId,
     title,
     type,
-    prompt_md,
+    skill_md,
     columns_config,
-    language,
-    practice,
-    jurisdictions,
+    metadata,
   });
   if (!result.ok) return void res.status(500).json({ detail: result.detail });
   res.status(201).json(result.workflow);

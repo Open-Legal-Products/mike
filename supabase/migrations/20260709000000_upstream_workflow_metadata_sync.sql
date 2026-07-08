@@ -1,10 +1,11 @@
 -- Upstream sync (a5fe6d6 "Sync workflow, asst extra input, excel + ppt support
--- and modal updates"): ports upstream's backend/migrations
+-- and modal updates" + 82dcaef follow-up): ports upstream's backend/migrations
 -- 20260613_05 (get_workflows_overview update), 20260625_01 (workflow
--- metadata), 20260629_01 (open-source submission queue) plus the schema.sql
--- deltas that back this release (user_profiles.email mirror,
--- projects.practice, chat_messages.citations) onto the fork's uuid/org-aware
--- definitions from 20260701000002_org_overview_rpcs.sql.
+-- metadata), 20260629_01 (open-source submission queue, incl. the 82dcaef
+-- removal of reviewed_by_user_id), 20260703_01 (user_profiles.email mirror),
+-- 20260703_02 (projects.practice) and 20260704_01 (chat_messages.citations)
+-- onto the fork's uuid/org-aware definitions from
+-- 20260701000002_org_overview_rpcs.sql.
 
 -- ---------------------------------------------------------------------------
 -- 1. user_profiles.email mirror (sharing checks stop scanning auth.users)
@@ -20,13 +21,14 @@ create unique index if not exists user_profiles_email_lower_unique
 create index if not exists idx_user_profiles_email
   on public.user_profiles(email);
 
--- Backfill emails for existing users from auth.users.
+-- Backfill emails for existing users from auth.users (also re-syncs stale
+-- values so the mirror always matches auth.users).
 update public.user_profiles up
 set email = lower(u.email)
 from auth.users u
 where u.id = up.user_id
   and u.email is not null
-  and (up.email is null or btrim(up.email) = '');
+  and (up.email is null or up.email <> lower(u.email));
 
 -- Keep the fork's personal-org provisioning while adopting upstream's email
 -- mirroring on signup.
@@ -363,13 +365,18 @@ create table if not exists public.workflow_open_source_submissions (
   submitted_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   reviewed_at timestamptz,
-  reviewed_by_user_id uuid,
   review_notes text,
   constraint workflow_open_source_submissions_status_check
     check (status in ('pending', 'approved', 'rejected')),
   constraint workflow_open_source_submissions_contributor_mode_check
     check (contributor_mode in ('named', 'anonymous'))
 );
+
+-- 82dcaef dropped reviewed_by_user_id from the submissions table; also remove
+-- it from databases where an earlier revision of this migration already
+-- created the table (create table if not exists won't touch them).
+alter table public.workflow_open_source_submissions
+  drop column if exists reviewed_by_user_id;
 
 create unique index if not exists idx_workflow_open_source_submissions_pending
   on public.workflow_open_source_submissions(workflow_id, submitted_by_user_id)

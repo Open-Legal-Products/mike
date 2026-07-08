@@ -15,7 +15,7 @@ interface WorkflowPickerModalProps {
     open: boolean;
     onClose: () => void;
     onSelect: (workflow: Workflow) => Promise<void> | void;
-    workflowType: Workflow["type"];
+    workflowType: Workflow["metadata"]["type"];
     breadcrumbs: ReactNode[];
     primaryLabel?: string;
     selectingLabel?: string;
@@ -64,8 +64,8 @@ export function WorkflowPickerModal({
                         .length,
                     sample: workflows.slice(0, 5).map((workflow) => ({
                         id: workflow.id,
-                        title: workflow.title,
-                        type: workflow.type,
+                        title: workflow.metadata.title,
+                        type: workflow.metadata.type,
                         user_id: workflow.user_id,
                         is_system: workflow.is_system,
                         is_owner: workflow.is_owner,

@@ -17,7 +17,7 @@ import {
     CaseLawPanel,
     type CaseTab,
 } from "./CaseLawPanel";
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Tab data

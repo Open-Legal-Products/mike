@@ -18,7 +18,7 @@ import { WarningPopup } from "@/app/components/popups/WarningPopup";
 import type { Document } from "@/app/components/shared/types";
 import { isSpreadsheetFilename } from "@/app/components/shared/types";
 import type { DocumentVersion } from "@/app/lib/mikeApi";
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 import { formatBytes } from "./ProjectPageParts";
 import { DataRow } from "./document-side-panel/DataRow";
 import { VersionRow } from "./document-side-panel/VersionRow";
@@ -496,7 +496,6 @@ export function DocumentSidePanel({
                                 documentId={doc.id}
                                 versionId={selectedVersionId}
                                 rounded={false}
-                                bordered={false}
                             />
                         ) : (
                             <PdfView
@@ -506,7 +505,6 @@ export function DocumentSidePanel({
                                     version_id: selectedVersionId,
                                 }}
                                 rounded={false}
-                                bordered={false}
                             />
                         )}
                     </div>

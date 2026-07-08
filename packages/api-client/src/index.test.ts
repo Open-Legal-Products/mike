@@ -60,6 +60,7 @@ describe("getChat message mapping", () => {
         expect(chat.id).toBe("chat-1");
         expect(messages).toHaveLength(1);
         expect(messages[0]).toEqual({
+            id: "m1",
             role: "user",
             content: "summarise this",
             files: [{ filename: "nda.pdf", document_id: "doc-1" }],
@@ -67,7 +68,7 @@ describe("getChat message mapping", () => {
         });
     });
 
-    it("flattens an assistant message's content events into text and keeps annotations", async () => {
+    it("flattens an assistant message's content events into text and keeps citations", async () => {
         const client = createMikeApiClient({
             fetchImpl: jsonFetch({
                 chat: {
@@ -89,7 +90,7 @@ describe("getChat message mapping", () => {
                             { type: "reasoning", text: "(thinking)" },
                             { type: "content", text: "world" },
                         ],
-                        annotations: [
+                        citations: [
                             {
                                 type: "citation_data",
                                 kind: "document",
@@ -107,7 +108,7 @@ describe("getChat message mapping", () => {
         const msg = messages[0];
         expect(msg.role).toBe("assistant");
         expect(msg.content).toBe("Hello world");
-        expect(msg.annotations).toHaveLength(1);
+        expect(msg.citations).toHaveLength(1);
         // The raw event array is preserved on `events` for re-rendering.
         expect(msg.events).toHaveLength(3);
     });
@@ -139,7 +140,7 @@ describe("getChat message mapping", () => {
                         role: "assistant",
                         // Non-array assistant content -> "" and no events.
                         content: null,
-                        annotations: null,
+                        citations: null,
                         created_at: "2026-01-01T00:00:04Z",
                     },
                 ],
@@ -148,15 +149,17 @@ describe("getChat message mapping", () => {
 
         const { messages } = await client.chats.get("chat-3");
         expect(messages[0]).toEqual({
+            id: "m3",
             role: "user",
             content: "",
             files: undefined,
             workflow: undefined,
         });
         expect(messages[1]).toEqual({
+            id: "m4",
             role: "assistant",
             content: "",
-            annotations: undefined,
+            citations: undefined,
             events: undefined,
         });
     });

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Square } from "lucide-react";
 import { ModelToggle } from "../../assistant/ModelToggle";
 import type { ApiKeyState } from "@/app/lib/mikeApi";
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 
 export function TRChatInput({
     isLoading,

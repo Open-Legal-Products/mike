@@ -636,16 +636,20 @@ export interface WorkflowContributor {
 export interface Workflow {
   id: string;
   user_id: string | null;
-  title: string;
-  type: "assistant" | "tabular";
-  prompt_md: string | null;
+  metadata: {
+    title: string;
+    description: string | null;
+    type: "assistant" | "tabular";
+    contributors: WorkflowContributor[];
+    language: string;
+    version: string | null;
+    practice: string | null;
+    jurisdictions: string[] | null;
+  };
+  skill_md: string | null;
   columns_config: ColumnConfig[] | null;
   is_system: boolean;
   created_at: string;
-  language?: string | null;
-  version?: string | null;
-  practice?: string | null;
-  jurisdictions?: string[] | null;
   shared_by_name?: string | null;
   allow_edit?: boolean;
   is_owner?: boolean;

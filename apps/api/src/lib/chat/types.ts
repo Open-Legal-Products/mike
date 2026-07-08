@@ -23,7 +23,7 @@ export type DocStore = Map<
   { storage_path: string; file_type: string; filename: string }
 >;
 
-export type WorkflowStore = Map<string, { title: string; prompt_md: string }>;
+export type WorkflowStore = Map<string, { title: string; skill_md: string }>;
 
 export type DocIndex = Record<
   string,

@@ -539,7 +539,7 @@ export async function buildWorkflowStore(
 
   // Seed system workflows first.
   for (const wf of SYSTEM_ASSISTANT_WORKFLOWS) {
-    store.set(wf.id, { title: wf.title, prompt_md: wf.prompt_md });
+    store.set(wf.id, { title: wf.title, skill_md: wf.skill_md });
   }
 
   // Then overlay user-owned assistant workflows.
@@ -550,7 +550,7 @@ export async function buildWorkflowStore(
     .eq("type", "assistant");
   for (const wf of workflows ?? []) {
     if (wf.prompt_md) {
-      store.set(wf.id, { title: wf.title, prompt_md: wf.prompt_md });
+      store.set(wf.id, { title: wf.title, skill_md: wf.prompt_md });
     }
   }
 
@@ -577,7 +577,7 @@ export async function buildWorkflowStore(
         if (wf.prompt_md) {
           store.set(wf.id, {
             title: wf.title,
-            prompt_md: wf.prompt_md,
+            skill_md: wf.prompt_md,
           });
         }
       }

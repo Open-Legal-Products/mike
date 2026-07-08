@@ -23,7 +23,7 @@ import { getPillClass } from "./pillUtils";
 import { PdfView } from "../shared/views/PdfView";
 import { SpreadsheetView } from "../shared/views/SpreadsheetView";
 import { DocxView } from "../shared/views/DocxView";
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 
 function isDocxDocument(d: {
     file_type?: string | null;

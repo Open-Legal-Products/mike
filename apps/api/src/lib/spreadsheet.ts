@@ -33,6 +33,16 @@ function renderSheet(sheetName: string, ws: XLSX.WorkSheet): string | null {
   if (!ref) return null;
   const range = XLSX.utils.decode_range(ref);
 
+  // Map each merged range's top-left (anchor) address to its encoded range so we
+  // can tag the anchor inline (e.g. `Amount ⟨merged B2:C2⟩`). The covered cells
+  // stay blank, so the model never reads a covered address (e.g. B1 inside
+  // A1:C1) as its own value; the tag tells it the anchor spans that range, and
+  // to cite the whole range for anything in it.
+  const mergeAnchors = new Map<string, string>();
+  for (const m of ws["!merges"] ?? []) {
+    mergeAnchors.set(XLSX.utils.encode_cell(m.s), XLSX.utils.encode_range(m));
+  }
+
   // Build a trimmed grid: capture formatted text for every cell in the used
   // range, then drop trailing empty columns and fully empty rows so we don't
   // emit oceans of blank cells.
@@ -44,7 +54,13 @@ function renderSheet(sheetName: string, ws: XLSX.WorkSheet): string | null {
     let rowHasContent = false;
     for (let c = range.s.c; c <= range.e.c; c++) {
       const addr = XLSX.utils.encode_cell({ r, c });
-      const text = sanitizeCellText(cellDisplayText(ws[addr]));
+      let text = sanitizeCellText(cellDisplayText(ws[addr]));
+      const mergeRange = mergeAnchors.get(addr);
+      if (mergeRange) {
+        text = text
+          ? `${text} ⟨merged ${mergeRange}⟩`
+          : `⟨merged ${mergeRange}⟩`;
+      }
       cells[c - range.s.c] = text;
       if (text) {
         rowHasContent = true;
@@ -71,13 +87,6 @@ function renderSheet(sheetName: string, ws: XLSX.WorkSheet): string | null {
   });
 
   const lines = [`## Sheet: ${sheetName}`, "", headerRow, separator, ...bodyRows];
-
-  // Note merged ranges once so the model understands spanned headers/labels.
-  const merges = ws["!merges"];
-  if (merges && merges.length > 0) {
-    const encoded = merges.map((m) => XLSX.utils.encode_range(m));
-    lines.push("", `Merged ranges: ${encoded.join(", ")}`);
-  }
 
   return lines.join("\n");
 }

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, Eye, EyeOff, Loader2 } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/app/components/ui/input";
 import { type McpConnectorSummary } from "@/app/lib/mikeApi";
 import {
     accountGlassIconButtonClassName,

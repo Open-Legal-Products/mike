@@ -43,9 +43,9 @@ import { PdfView } from "@/app/components/shared/views/PdfView";
 import { SpreadsheetView } from "@/app/components/shared/views/SpreadsheetView";
 import { OwnerOnlyPopup } from "@/app/components/popups/OwnerOnlyPopup";
 import { DocxView } from "@/app/components/shared/views/DocxView";
-import { MikeIcon } from "@/components/chat/mike-icon";
-import { useAuth } from "@/contexts/AuthContext";
-import { useUserProfile } from "@/contexts/UserProfileContext";
+import { MikeIcon } from "@/app/components/chat/mike-icon";
+import { useAuth } from "@/app/contexts/AuthContext";
+import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import { useSidebar } from "@/app/contexts/SidebarContext";
 import { PageHeader } from "@/app/components/shared/PageHeader";
 import { HeaderActionsMenu } from "@/app/components/shared/HeaderActionsMenu";
@@ -1126,7 +1126,6 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                                         )
                                     }
                                     rounded={false}
-                                    bordered={false}
                                 />
                             ) : isSpreadsheetFilename(activeTab.filename) ? (
                                 <SpreadsheetView
@@ -1134,7 +1133,6 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                                     documentId={activeTab.documentId}
                                     versionId={activeTab.versionId}
                                     rounded={false}
-                                    bordered={false}
                                 />
                             ) : (
                                 <PdfView
@@ -1142,7 +1140,6 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                                     doc={{ document_id: activeTab.documentId }}
                                     quotes={activeQuotes ?? undefined}
                                     rounded={false}
-                                    bordered={false}
                                 />
                             )
                         ) : (

@@ -777,7 +777,7 @@ export async function runToolCalls(
       toolResults.push({
         role: "tool",
         tool_call_id: tc.id,
-        content: wf ? wf.prompt_md : `Workflow '${wfId}' not found.`,
+        content: wf ? wf.skill_md : `Workflow '${wfId}' not found.`,
       });
     } else if (tc.function.name === "read_table_cells" && tabularStore) {
       const colIndices = args.col_indices as number[] | undefined;

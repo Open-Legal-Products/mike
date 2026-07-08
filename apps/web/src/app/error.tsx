@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
-import { PillButton } from "@/components/ui/pill-button";
+import { PillButton } from "@/app/components/ui/pill-button";
 
 export default function Error({
     error,

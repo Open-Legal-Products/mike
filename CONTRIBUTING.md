@@ -263,10 +263,9 @@ route test that feeds a crafted document.
 
 ## System Workflows
 
-System workflows live in `workflows/`. Update `metadata.json` for structured
-metadata like author, language, version, practice area, or jurisdictions,
-update `SKILL.md` for workflow instructions, and use `table-config.json` for
-tabular review columns.
+System workflows live in `mike-workflows/system/`. Put structured metadata in
+the YAML frontmatter at the top of `SKILL.md`, put workflow instructions in the
+body of `SKILL.md`, and use `table-config.yaml` for tabular review columns.
 
 After changing system workflows, regenerate the app files:
 

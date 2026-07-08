@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Download, Loader2 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/app/lib/supabase";
 import { RESPONSE_GLASS_SURFACE } from "./constants";
 
 export function DocDownloadBlock({

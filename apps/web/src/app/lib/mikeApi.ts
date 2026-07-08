@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/app/lib/supabase";
 import { configureMikeApiClient } from "@mike/api-client";
 
 configureMikeApiClient({

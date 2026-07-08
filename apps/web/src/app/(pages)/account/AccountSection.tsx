@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 import { accountGlassSectionClassName } from "./accountStyles";
 
 export function AccountSection({

@@ -2,11 +2,11 @@
 
 import { Suspense } from "react";
 import { Toaster } from "sonner";
-import { AuthProvider } from "@/contexts/AuthContext";
-import { UserProfileProvider } from "@/contexts/UserProfileContext";
+import { AuthProvider } from "@/app/contexts/AuthContext";
+import { UserProfileProvider } from "@/app/contexts/UserProfileContext";
 import { MfaLoginGate } from "@/app/components/shared/MfaLoginGate";
 import { FullScreenLoader } from "@/app/components/shared/FullScreenLoader";
-import { QueryClientProvider } from "@/components/query-client-provider";
+import { QueryClientProvider } from "@/app/components/query-client-provider";
 
 export function Providers({ children }: { children: React.ReactNode }) {
     return (

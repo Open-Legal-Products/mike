@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "@/lib/supabase";
-import { PillButton } from "@/components/ui/pill-button";
+import { supabase } from "@/app/lib/supabase";
+import { PillButton } from "@/app/components/ui/pill-button";
 import type { EditAnnotation } from "../shared/types";
 
 function normalizeText(s: string) {
