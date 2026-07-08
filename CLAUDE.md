@@ -24,9 +24,9 @@ Two independent npm projects, no shared workspace. Frontend calls backend over H
 
 | Area | Files |
 |---|---|
-| Routes | `src/routes/`: `chat.ts` (main SSE chat), `projectChat.ts`, `projects.ts`, `documents.ts`, `tabular.ts`, `workflows.ts`, `user.ts` (profile, API keys, MCP connectors, export/delete), `downloads.ts`, `caseLaw.ts` (**CourtListener — to be excised**) |
-| Chat engine | `src/lib/chatTools.ts` (~4.6k lines: system prompts, doc context, tool execution loop `runLLMStream`, citation annotation extraction) |
-| Legal sources | `src/lib/legalSourcesTools/courtlistenerTools.ts` + `src/lib/courtlistener.ts` (**to be excised**; UK sources land in `legalSourcesTools/` per `docs/MIGRATION_SPEC.md`) |
+| Routes | `src/routes/`: `chat.ts` (main SSE chat), `projectChat.ts`, `projects.ts`, `documents.ts`, `tabular.ts`, `workflows.ts`, `user.ts` (profile, API keys, MCP connectors, export/delete), `downloads.ts` |
+| Chat engine | `src/lib/chatTools.ts` (~3.7k lines: system prompts, doc context, tool execution loop `runLLMStream`, citation annotation extraction, research-tools seam) |
+| Legal sources | `src/lib/legalSourcesTools/` (CourtListener excised 07/07/2026; UK sources — Companies House WS1, legislation.gov.uk WS2 — land here per `docs/MIGRATION_SPEC.md`) |
 | Documents | `storage.ts`, `documentVersions.ts`, `docxTrackedChanges.ts`, `convert.ts`, `upload.ts`, `downloadTokens.ts` |
 | Users | `userSettings.ts`, `userApiKeys.ts`, `userDataExport.ts`, `userDataCleanup.ts`, `access.ts`, `middleware/auth.ts` |
 | MCP | `src/lib/mcp/` (client, oauth, servers) + `mcpConnectors.ts` |
@@ -35,7 +35,7 @@ Two independent npm projects, no shared workspace. Frontend calls backend over H
 ### Module map (frontend)
 
 - `src/app/(pages)/` — routes: assistant, projects, tabular-reviews, workflows, account (models / features / api-keys / connectors / security / privacy-data); `login`, `signup`, `verify-mfa` at app root.
-- `src/app/components/` — `assistant/` (ChatView, AssistantMessage, CaseLawPanel — **CourtListener UI**), `projects/`, `tabular/`, `workflows/`, `shared/`, `modals/`.
+- `src/app/components/` — `assistant/` (ChatView, AssistantMessage, AssistantSidePanel), `projects/`, `tabular/`, `workflows/`, `shared/`, `modals/`.
 - `src/app/lib/mikeApi.ts` — the only backend client (~1.2k lines; base URL `NEXT_PUBLIC_API_BASE_URL`, Supabase JWT bearer auth).
 - `src/app/hooks/useAssistantChat.ts` — SSE event parser/state machine for streaming chat.
 - Contexts: `AuthContext`, `UserProfileContext` (profile, feature flags, API-key status), `ChatHistoryContext`.
@@ -43,8 +43,8 @@ Two independent npm projects, no shared workspace. Frontend calls backend over H
 ### Request flow (chat)
 
 1. `ChatInput` → `useAssistantChat` → `mikeApi.streamChat()` → `POST /chat` (SSE).
-2. `requireAuth` middleware validates Supabase JWT → `chat.ts` builds doc context (`buildDocContext`), loads user model settings + decrypted API keys, assembles system prompt (`buildSystemPrompt` — appends CourtListener research prompt when `legal_research_us` is on).
-3. `runLLMStream` (chatTools.ts) → `streamChatWithTools` (llm/index.ts) → provider stream; tool calls (document read/edit, generate_docx, workflow, MCP, legal research) executed server-side, results fed back; every step emitted as an SSE event (`text_delta`, `doc_edited`, `case_citation`, `courtlistener_*`, `mcp_tool_*`…).
+2. `requireAuth` middleware validates Supabase JWT → `chat.ts` builds doc context (`buildDocContext`), loads user model settings + decrypted API keys, assembles system prompt (`buildSystemPrompt(includeResearchTools)` — the seam where UK research prompts splice in).
+3. `runLLMStream` (chatTools.ts) → `streamChatWithTools` (llm/index.ts) → provider stream; tool calls (document read/edit, generate_docx, workflow, MCP, legal research) executed server-side, results fed back; every step emitted as an SSE event (`text_delta`, `doc_edited`, `mcp_tool_*`…).
 4. Assistant message + citation annotations persisted to `chat_messages`; frontend renders events incrementally.
 
 ### Env var registry
@@ -64,7 +64,6 @@ Backend (`backend/.env.example` documents the core set):
 | `RATE_LIMIT_*` (11 vars, `src/index.ts:54-83`) | optional | rate-limit tuning |
 | `LOG_RAW_LLM_STREAM`, `RAW_LLM_STREAM_LOG_DIR` | optional | dev-only stream logging |
 | `RESEND_API_KEY` | optional | in `.env.example`; SDK installed, currently unused in `src/` |
-| `COURTLISTENER_API_TOKEN`, `COURTLISTENER_BULK_DATA_ENABLED` | optional | **US — to be excised** |
 | `COMPANIES_HOUSE_API_KEY` | planned | WS1 (see MIGRATION_SPEC) |
 | `OPENAI_BASE_URL` (+ local model config) | planned | WS3 local models (see MIGRATION_SPEC) |
 

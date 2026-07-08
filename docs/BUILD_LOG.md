@@ -7,6 +7,35 @@
 
 ---
 
+## 2026-07-08 — README + landing docs (branch `ws5-readme-landing`, WS5)
+
+**Scope:** Docs-only. Full rewrite of `README.md` per `docs/BUILD_PLAN.md` §3 WS5 and `docs/MIGRATION_SPEC.md` §1.4/§6 item 7 framing. No code changes.
+
+**Structure decisions**
+- Fork lineage + AGPL-3.0 attribution placed immediately after the opening paragraph (not buried near the licence section) — matches CLAUDE.md's "celebrated, not hidden" instruction.
+- Two-line "find your path" pointer at the top (solicitor vs self-hoster) so either reader orients in under a minute, per the brief's skimmability requirement.
+- UK integrations, model providers (incl. local/on-premises mode), eval-table placeholder, and the transparent roadmap (Find Case Law pending TNA licence; HMLR deferred; BAILII never) each got their own heading, in that order, ahead of the self-hosting mechanics.
+- Self-hosting section keeps all still-accurate detail from the prior "Mike" README (prerequisites, DB setup, troubleshooting, useful checks) rather than dropping it, updated for JessicaOS naming and folded under one `## Self-hosting` heading with subsections.
+- Env var table mirrors `backend/.env.example` on this branch, plus `COMPANIES_HOUSE_API_KEY` (WS1) and the `LOCAL_LLM_BASE_URL` / `LOCAL_LLM_MODELS` / `LOCAL_LLM_API_KEY` block (WS3, with `OPENAI_BASE_URL` documented as the fallback alias) — both flagged as landing with their respective parallel workstreams rather than presented as already merged.
+- `docs/local-models.md` is referenced, not created (WS3 owns it); this is called out explicitly in the README text.
+- Eval comparison table left as a "—" placeholder (Claude / Gemini / local Qwen via Ollama × deterministic pass rate / citation gate / judged mean) with a pointer to `evals/README.md`, per the brief — no invented numbers.
+
+**Verification**
+- Read `README.md`, `CLAUDE.md`, `docs/MIGRATION_SPEC.md`, `docs/safe-local-testing.md`, `docs/BUILD_PLAN.md`, `backend/.env.example`, `evals/README.md`, `CONTRIBUTING.md`, `LICENSE`, `package.json`, and `.git/config` (remotes) before writing.
+- Every path/link referenced exists on this branch (`backend/schema.sql`, `backend/migrations/`, `evals/`, `evals/README.md`, `docs/safe-local-testing.md`, `LICENSE`, `CONTRIBUTING.md`) except `docs/local-models.md`, which is explicitly marked as landing with the local-model workstream (WS3) rather than linked as if already present.
+- Commands in the README match the verified command set in `CLAUDE.md` (`cd backend && npx tsc --noEmit`, etc.) rather than inventing flags.
+- No US spellings introduced; DD/MM/YYYY convention n/a (no dates in the new copy); "solicitor" used throughout, no "attorney"/"lawyer".
+- No marketing language ("supercharge"/"unlock"/"seamless") or exclamation marks.
+
+**Controller additions (same branch, post-copywriter review)**
+- README accuracy fixes: citation-verification wording no longer implies a runtime blocking pipeline (assistant is instructed to verify via tools; the eval gate enforces); "Account > Models & API Keys" corrected to the real nav labels (**Account → API Keys** / Model Preferences).
+- `CONTRIBUTING.md`: rebranded greeting; removed the upstream "no local-LLM refactors" guideline (contradicted the shipped local-model mode); security reports now route to this repo's private vulnerability reporting, with a request to also report upstream-affecting issues to Mike; added minimal-diff and UK-English guidelines.
+- `CLAUDE.md`: removed stale CourtListener references left after the 07/07 excision (routes/module map/request flow/env registry); did not touch the `COMPANIES_HOUSE_API_KEY` / local-model rows (owned by WS1/WS3 branches).
+
+**Note for reviewers:** this entry is expected to produce a trivial merge conflict against other same-day workstream entries at the top of this file (WS1/WS3/WS4 land in parallel branches) — resolve by keeping both entries, newest first.
+
+---
+
 ## 2026-07-07 — CourtListener excision (branch `excise-courtlistener`, PR #2)
 
 **Scope:** Clean removal of the US CourtListener integration per `docs/MIGRATION_SPEC.md` §2 — code, tools, prompts, UI, DB surface, env vars, docs. No UK features yet; the research-tools seam is kept for WS1/WS2.

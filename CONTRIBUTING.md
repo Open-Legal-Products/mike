@@ -1,14 +1,15 @@
 # Contributing
 
-Thanks for helping improve Mike. Please keep contributions small, focused, and easy to review.
+Thanks for helping improve JessicaOS. Please keep contributions small, focused, and easy to review.
 
 ## Guidelines
 
 - Prefer targeted edits over broad refactors.
 - Keep each PR focused on one bug, feature, or cleanup.
-- Update docs or env examples when changing setup, config, or user-facing behavior.
-- Please do not propose local-hosting refactors for the main app, such as local LLMs, local databases, or local filesystem storage. Those ideas are better suited to a future fully local version of the project.
+- Update docs or env examples when changing setup, config, or user-facing behaviour.
+- Keep diffs against upstream [Mike](https://github.com/willchen96/mike) minimal where possible, so upstream rebases stay cheap.
 - Do not commit secrets, API keys, private documents, or local `.env` files.
+- All user-facing copy uses UK English and UK legal terminology (see the table in `CLAUDE.md`).
 
 ## Before Opening a PR
 
@@ -22,7 +23,7 @@ Thanks for helping improve Mike. Please keep contributions small, focused, and e
 
 ## Security
 
-Do not open a public issue for security vulnerabilities. Use [GitHub's private vulnerability reporting](https://github.com/willchen96/mike/security/advisories/new) instead.
+Do not open a public issue for security vulnerabilities. Use [GitHub's private vulnerability reporting](https://github.com/Sloth-ninja/JessicaOSS/security/advisories/new) instead. If the issue also affects upstream Mike, please report it there as well via [their private reporting](https://github.com/willchen96/mike/security/advisories/new).
 
 We will aim to respond promptly and coordinate a disclosure timeline with you.
 
