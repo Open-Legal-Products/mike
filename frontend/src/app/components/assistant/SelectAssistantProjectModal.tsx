@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useChatHistoryContext } from "@/app/contexts/ChatHistoryContext";
 import { useDirectoryData } from "../shared/useDirectoryData";
-import { ProjectPicker } from "../shared/ProjectPicker";
-import { Modal } from "../shared/Modal";
+import { ProjectPickerModal } from "../modals/ProjectPickerModal";
 
 interface Props {
     open: boolean;
@@ -40,22 +39,19 @@ export function SelectAssistantProjectModal({ open, onClose }: Props) {
     }
 
     return (
-        <Modal
+        <ProjectPickerModal
             open={open}
             onClose={onClose}
             breadcrumbs={["Assistant", "Start Chat in a Project"]}
+            projects={projects}
+            loading={loading}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
             primaryAction={{
                 label: creating ? "Creating…" : "Continue",
                 onClick: handleContinue,
                 disabled: !selectedId || creating,
             }}
-        >
-            <ProjectPicker
-                projects={projects}
-                loading={loading}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-            />
-        </Modal>
+        />
     );
 }

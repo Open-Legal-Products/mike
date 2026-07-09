@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
-import { useUserProfile } from "@/contexts/UserProfileContext";
+import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import { AccountSection } from "../AccountSection";
 
 export default function FeaturesPage() {

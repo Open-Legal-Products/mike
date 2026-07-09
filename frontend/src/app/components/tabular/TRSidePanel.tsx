@@ -17,11 +17,13 @@ import type {
     Document,
     TabularCell,
 } from "../shared/types";
+import { isSpreadsheetFilename } from "../shared/types";
 import { preprocessCitations, type ParsedCitation } from "./citation-utils";
 import { getPillClass } from "./pillUtils";
-import { DocView } from "../shared/DocView";
-import { DocxView } from "../shared/DocxView";
-import { cn } from "@/lib/utils";
+import { PdfView } from "../shared/views/PdfView";
+import { SpreadsheetView } from "../shared/views/SpreadsheetView";
+import { DocxView } from "../shared/views/DocxView";
+import { cn } from "@/app/lib/utils";
 
 function isDocxDocument(d: {
     file_type?: string | null;
@@ -176,8 +178,10 @@ export function TRSidePanel({
                                 },
                             ]}
                         />
+                    ) : isSpreadsheetFilename(doc.filename ?? "") ? (
+                        <SpreadsheetView documentId={doc.id} />
                     ) : (
-                        <DocView
+                        <PdfView
                             doc={{ document_id: doc.id }}
                             quote={docCitation.quote}
                             fallbackPage={docCitation.page}

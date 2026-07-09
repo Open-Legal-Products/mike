@@ -16,9 +16,10 @@ import {
 } from "@/app/lib/mikeApi";
 import type { TabularReview, Project } from "@/app/components/shared/types";
 import { TableToolbar } from "@/app/components/shared/TableToolbar";
-import { AddNewTRModal } from "@/app/components/tabular/AddNewTRModal";
-import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
-import { useAuth } from "@/contexts/AuthContext";
+import { NewTRModal } from "@/app/components/tabular/NewTRModal";
+import { TabularReviewDetailsModal } from "@/app/components/tabular/TabularReviewDetailsModal";
+import { OwnerOnlyPopup } from "@/app/components/popups/OwnerOnlyPopup";
+import { useAuth } from "@/app/contexts/AuthContext";
 import { PageHeader } from "@/app/components/shared/PageHeader";
 import {
     GLASS_DROPDOWN,
@@ -62,9 +63,10 @@ export default function TabularReviewsPage() {
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [newTROpen, setNewTROpen] = useState(false);
+    const [detailsReview, setDetailsReview] = useState<TabularReview | null>(
+        null,
+    );
     const [activeScope, setActiveScope] = useState<ReviewScope>("all");
-    const [renamingId, setRenamingId] = useState<string | null>(null);
-    const [renameValue, setRenameValue] = useState("");
     const [projectFilter, setProjectFilter] = useState<string | null>(null);
     const [search, setSearch] = useState("");
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -156,23 +158,35 @@ export default function TabularReviewsPage() {
         }
     };
 
-    async function handleRenameSubmit(reviewId: string) {
-        const trimmed = renameValue.trim();
-        if (!trimmed) {
-            setRenamingId(null);
+    function requestReviewDetails(review: TabularReview) {
+        if (user?.id && review.user_id !== user.id) {
+            setOwnerOnlyAction("edit tabular review details");
             return;
         }
-        const review = reviews.find((r) => r.id === reviewId);
-        if (review && user?.id && review.user_id !== user.id) {
-            setRenamingId(null);
-            setOwnerOnlyAction("rename this tabular review");
+        setDetailsReview(review);
+    }
+
+    async function handleDetailsSave(values: {
+        title: string;
+        projectId?: string | null;
+    }) {
+        if (!detailsReview) return;
+        if (user?.id && detailsReview.user_id !== user.id) {
+            setOwnerOnlyAction("edit tabular review details");
             return;
         }
+        const updated = await updateTabularReview(detailsReview.id, {
+            title: values.title,
+            project_id: values.projectId ?? null,
+        });
         setReviews((prev) =>
-            prev.map((r) => (r.id === reviewId ? { ...r, title: trimmed } : r)),
+            prev.map((review) =>
+                review.id === updated.id ? { ...review, ...updated } : review,
+            ),
         );
-        setRenamingId(null);
-        await updateTabularReview(reviewId, { title: trimmed });
+        setDetailsReview((current) =>
+            current?.id === updated.id ? { ...current, ...updated } : current,
+        );
     }
 
     async function handleDeleteSelected() {
@@ -264,37 +278,40 @@ export default function TabularReviewsPage() {
             />
 
             {/* Table */}
-            <TableScrollArea>
-                <TableHeaderRow>
-                    <TableStickyCell header>
-                        {loading ? (
-                            <SkeletonDot />
-                        ) : (
-                            <input
-                                type="checkbox"
-                                checked={allSelected}
-                                ref={(el) => {
-                                    if (el) el.indeterminate = someSelected;
-                                }}
-                                onChange={toggleAll}
-                                className={TABLE_CHECKBOX_CLASS}
-                            />
-                        )}
-                        <span>Name</span>
-                    </TableStickyCell>
-                    <TableHeaderCell className="ml-auto w-24">
-                        Columns
-                    </TableHeaderCell>
-                    <TableHeaderCell className="w-24">Documents</TableHeaderCell>
-                    <TableHeaderCell className="w-40">
-                        <div className="flex items-center gap-1">
-                            <span>Project</span>
-                            {projectFilterButton}
-                        </div>
-                    </TableHeaderCell>
-                    <TableHeaderCell className="w-32">Created</TableHeaderCell>
-                    <TableHeaderCell className="w-8" />
-                </TableHeaderRow>
+            <TableScrollArea
+                header={
+                    <TableHeaderRow>
+                        <TableStickyCell header>
+                            {loading ? (
+                                <SkeletonDot />
+                            ) : (
+                                <input
+                                    type="checkbox"
+                                    checked={allSelected}
+                                    ref={(el) => {
+                                        if (el) el.indeterminate = someSelected;
+                                    }}
+                                    onChange={toggleAll}
+                                    className={TABLE_CHECKBOX_CLASS}
+                                />
+                            )}
+                            <span>Name</span>
+                        </TableStickyCell>
+                        <TableHeaderCell className="ml-auto w-24">
+                            Columns
+                        </TableHeaderCell>
+                        <TableHeaderCell className="w-24">Documents</TableHeaderCell>
+                        <TableHeaderCell className="w-40">
+                            <div className="flex items-center gap-1">
+                                <span>Project</span>
+                                {projectFilterButton}
+                            </div>
+                        </TableHeaderCell>
+                        <TableHeaderCell className="w-32">Created</TableHeaderCell>
+                        <TableHeaderCell className="w-8" />
+                    </TableHeaderRow>
+                }
+            >
 
                 {loading ? (
                     <TableBody>
@@ -367,21 +384,8 @@ export default function TabularReviewsPage() {
                                     rightClickDropdown={(close) => (
                                         <RowActionMenuItems
                                             onClose={close}
-                                            onRename={() => {
-                                                if (
-                                                    user?.id &&
-                                                    review.user_id !== user.id
-                                                ) {
-                                                    setOwnerOnlyAction(
-                                                        "rename this tabular review",
-                                                    );
-                                                    return;
-                                                }
-                                                setRenameValue(
-                                                    review.title ??
-                                                        "Untitled Review",
-                                                );
-                                                setRenamingId(review.id);
+                                            onEditDetails={() => {
+                                                requestReviewDetails(review);
                                             }}
                                             onDelete={async () => {
                                                 if (
@@ -406,7 +410,6 @@ export default function TabularReviewsPage() {
                                         />
                                     )}
                                     onClick={() => {
-                                        if (renamingId === review.id) return;
                                         router.push(
                                             review.project_id
                                                 ? `/projects/${review.project_id}/tabular-reviews/${review.id}`
@@ -425,13 +428,6 @@ export default function TabularReviewsPage() {
                                         label={
                                             review.title ?? "Untitled Review"
                                         }
-                                        editing={renamingId === review.id}
-                                        editValue={renameValue}
-                                        onEditValueChange={setRenameValue}
-                                        onEditCommit={() =>
-                                            handleRenameSubmit(review.id)
-                                        }
-                                        onEditCancel={() => setRenamingId(null)}
                                     />
                                     <TableCell className="ml-auto w-24">
                                         {review.columns_config?.length ?? 0}
@@ -462,21 +458,8 @@ export default function TabularReviewsPage() {
                                         onClick={(e) => e.stopPropagation()}
                                     >
                                         <RowActions
-                                            onRename={() => {
-                                                if (
-                                                    user?.id &&
-                                                    review.user_id !== user.id
-                                                ) {
-                                                    setOwnerOnlyAction(
-                                                        "rename this tabular review",
-                                                    );
-                                                    return;
-                                                }
-                                                setRenameValue(
-                                                    review.title ??
-                                                        "Untitled Review",
-                                                );
-                                                setRenamingId(review.id);
+                                            onEditDetails={() => {
+                                                requestReviewDetails(review);
                                             }}
                                             onDelete={async () => {
                                                 if (
@@ -507,14 +490,26 @@ export default function TabularReviewsPage() {
                 )}
             </TableScrollArea>
 
-            <AddNewTRModal
+            <NewTRModal
                 open={newTROpen}
                 onClose={() => setNewTROpen(false)}
                 onAdd={handleNewReview}
                 projects={projects}
             />
 
-            <OwnerOnlyModal
+            <TabularReviewDetailsModal
+                open={!!detailsReview}
+                review={detailsReview}
+                projects={projects}
+                canEdit={
+                    !!detailsReview &&
+                    (!user?.id || detailsReview.user_id === user.id)
+                }
+                onClose={() => setDetailsReview(null)}
+                onSave={handleDetailsSave}
+            />
+
+            <OwnerOnlyPopup
                 open={!!ownerOnlyAction}
                 action={ownerOnlyAction ?? undefined}
                 onClose={() => setOwnerOnlyAction(null)}

@@ -8,15 +8,15 @@ import {
     type KeyboardEvent,
 } from "react";
 import { Copy, Loader2 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
-import { Button } from "@/components/ui/button";
-import { useUserProfile } from "@/contexts/UserProfileContext";
+import { supabase } from "@/app/lib/supabase";
+import { Button } from "@/app/components/ui/button";
+import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import { isMfaRequiredError } from "@/app/lib/mikeApi";
-import { Modal } from "@/app/components/shared/Modal";
+import { Modal } from "@/app/components/modals/Modal";
 import {
     MfaVerificationPopup,
     needsMfaVerification,
-} from "@/app/components/shared/MfaVerificationPopup";
+} from "@/app/components/popups/MfaVerificationPopup";
 import {
     accountGlassPrimaryButtonClassName,
 } from "../accountStyles";
@@ -578,7 +578,7 @@ export default function SecurityPage() {
             <Modal
                 open={setupModalOpen}
                 onClose={() => void closeSetupModal()}
-                title="Set up authenticator app"
+                breadcrumbs={["Security", "Set up authenticator app"]}
                 cancelAction={{
                     label: enrollment ? "Back" : "Cancel",
                     onClick: enrollment
@@ -601,7 +601,13 @@ export default function SecurityPage() {
                           }
                 }
             >
-                <div className={enrollment ? "space-y-3 pt-2" : "space-y-5 pt-3"}>
+                <div
+                    className={
+                        enrollment
+                            ? "min-h-0 flex-1 space-y-3 overflow-y-auto pt-2"
+                            : "min-h-0 flex-1 space-y-5 overflow-y-auto pt-3"
+                    }
+                >
                     {!enrollment ? (
                         <>
                             <p className="text-xs font-medium uppercase tracking-wide text-gray-400">

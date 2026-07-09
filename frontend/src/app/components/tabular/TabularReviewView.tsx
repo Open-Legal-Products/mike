@@ -23,6 +23,7 @@ import {
     getTabularReview,
     getProject,
     getTabularReviewPeople,
+    listProjects,
     regenerateTabularCell,
     streamTabularGeneration,
     updateTabularReview,
@@ -38,15 +39,15 @@ import type {
 } from "../shared/types";
 import { AddColumnModal } from "./AddColumnModal";
 import { TRWorkflowModal } from "./TRWorkflowModal";
-import { AddDocumentsModal } from "../shared/AddDocumentsModal";
-import { AddProjectDocsModal } from "../shared/AddProjectDocsModal";
-import { PeopleModal } from "../shared/PeopleModal";
-import { OwnerOnlyModal } from "../shared/OwnerOnlyModal";
-import { ApiKeyMissingModal } from "../shared/ApiKeyMissingModal";
-import { ConfirmPopup } from "../shared/ConfirmPopup";
+import { AddDocumentsModal } from "../modals/AddDocumentsModal";
+import { AddProjectDocsModal } from "../modals/AddProjectDocsModal";
+import { PeopleModal } from "../modals/PeopleModal";
+import { OwnerOnlyPopup } from "../popups/OwnerOnlyPopup";
+import { ApiKeyMissingPopup } from "../popups/ApiKeyMissingPopup";
+import { ConfirmPopup } from "../popups/ConfirmPopup";
 import { HeaderActionsMenu } from "../shared/HeaderActionsMenu";
-import { useAuth } from "@/contexts/AuthContext";
-import { useUserProfile } from "@/contexts/UserProfileContext";
+import { useAuth } from "@/app/contexts/AuthContext";
+import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import {
     getModelProvider,
     isModelAvailable,
@@ -56,6 +57,7 @@ import { TRSidePanel } from "./TRSidePanel";
 import { TRTable } from "./TRTable";
 import type { TRTableHandle } from "./TRTable";
 import { TRChatPanel } from "./TRChatPanel";
+import { TabularReviewDetailsModal } from "./TabularReviewDetailsModal";
 import { exportTabularReviewToExcel } from "./exportToExcel";
 import { useSidebar } from "@/app/contexts/SidebarContext";
 import { PageHeader } from "../shared/PageHeader";
@@ -79,6 +81,8 @@ export function TRView({ reviewId, projectId }: Props) {
     const [savingColumnsConfig, setSavingColumnsConfig] = useState(false);
     const [addColOpen, setAddColOpen] = useState(false);
     const [addDocsOpen, setAddDocsOpen] = useState(false);
+    const [detailsOpen, setDetailsOpen] = useState(false);
+    const [availableProjects, setAvailableProjects] = useState<Project[]>([]);
     const [peopleModalOpen, setPeopleModalOpen] = useState(false);
     const [workflowModalOpen, setWorkflowModalOpen] = useState(false);
     const [applyingWorkflow, setApplyingWorkflow] = useState(false);
@@ -160,6 +164,12 @@ export function TRView({ reviewId, projectId }: Props) {
                 getProject(projectId)
                     .then(setProject)
                     .catch(() => {}),
+            );
+        } else {
+            fetches.push(
+                listProjects()
+                    .then(setAvailableProjects)
+                    .catch(() => setAvailableProjects([])),
             );
         }
         Promise.all(fetches).finally(() => setLoading(false));
@@ -546,28 +556,40 @@ export function TRView({ reviewId, projectId }: Props) {
         await clearResultsForDocuments(documents.map((document) => document.id));
     }
 
-    async function handleTitleCommit(newTitle: string) {
-        if (!newTitle || newTitle === review?.title) return;
+    function requestReviewDetails() {
         if (review?.is_owner === false) {
-            setOwnerOnlyAction("rename this tabular review");
+            setOwnerOnlyAction("edit tabular review details");
             return;
         }
-        setReview((prev) => (prev ? { ...prev, title: newTitle } : prev));
-        await updateTabularReview(reviewId, { title: newTitle });
+        setDetailsOpen(true);
     }
 
-    function requestReviewRename() {
-        if (review?.is_owner === false) {
-            setOwnerOnlyAction("rename this tabular review");
+    async function handleDetailsSave(values: {
+        title: string;
+        projectId?: string | null;
+    }) {
+        if (!review || review.is_owner === false) {
+            setOwnerOnlyAction("edit tabular review details");
             return;
         }
-        const nextTitle = window.prompt(
-            "Rename tabular review",
-            review?.title ?? "Untitled Review",
+        const updated = await updateTabularReview(reviewId, {
+            title: values.title,
+            project_id: values.projectId ?? null,
+        });
+        setReview((prev) =>
+            prev
+                ? {
+                      ...prev,
+                      ...updated,
+                  }
+                : updated,
         );
-        const trimmed = nextTitle?.trim();
-        if (!trimmed) return;
-        void handleTitleCommit(trimmed);
+        if (!projectId && updated.project_id) {
+            setDetailsOpen(false);
+            router.push(
+                `/projects/${updated.project_id}/tabular-reviews/${reviewId}`,
+            );
+        }
     }
 
     function requestReviewDelete() {
@@ -716,9 +738,9 @@ export function TRView({ reviewId, projectId }: Props) {
                                     <HeaderActionsMenu
                                         items={[
                                             {
-                                                label: "Rename",
+                                                label: "Edit details",
                                                 icon: Pencil,
-                                                onSelect: requestReviewRename,
+                                                onSelect: requestReviewDetails,
                                             },
                                             {
                                                 label: "Apply workflow",
@@ -1046,6 +1068,16 @@ export function TRView({ reviewId, projectId }: Props) {
                 />
             )}
 
+            <TabularReviewDetailsModal
+                open={detailsOpen}
+                review={review}
+                projects={project ? [project] : availableProjects}
+                canEdit={review?.is_owner !== false}
+                lockProject={Boolean(projectId)}
+                onClose={() => setDetailsOpen(false)}
+                onSave={handleDetailsSave}
+            />
+
             <PeopleModal
                 open={peopleModalOpen}
                 onClose={() => setPeopleModalOpen(false)}
@@ -1124,13 +1156,13 @@ export function TRView({ reviewId, projectId }: Props) {
                 onConfirm={() => void confirmReviewDelete()}
             />
 
-            <OwnerOnlyModal
+            <OwnerOnlyPopup
                 open={!!ownerOnlyAction}
                 action={ownerOnlyAction ?? undefined}
                 onClose={() => setOwnerOnlyAction(null)}
             />
 
-            <ApiKeyMissingModal
+            <ApiKeyMissingPopup
                 open={apiKeyModalProvider !== null}
                 provider={apiKeyModalProvider}
                 onClose={() => setApiKeyModalProvider(null)}

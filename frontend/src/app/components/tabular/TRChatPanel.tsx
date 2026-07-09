@@ -13,7 +13,7 @@ import {
     ChevronLeft,
     Trash2,
 } from "lucide-react";
-import { MikeIcon } from "@/components/chat/mike-icon";
+import { MikeIcon } from "@/app/components/chat/mike-icon";
 import {
     streamTabularChat,
     getTabularChats,
@@ -25,16 +25,16 @@ import {
 } from "@/app/lib/mikeApi";
 import type { AssistantEvent, ColumnConfig, Document } from "../shared/types";
 import { ModelToggle } from "../assistant/ModelToggle";
-import { ApiKeyMissingModal } from "../shared/ApiKeyMissingModal";
-import { PreResponseWrapper } from "../shared/PreResponseWrapper";
-import { useUserProfile } from "@/contexts/UserProfileContext";
+import { ApiKeyMissingPopup } from "../popups/ApiKeyMissingPopup";
+import { PreResponseWrapper } from "../assistant/PreResponseWrapper";
+import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import {
     getModelProvider,
     isModelAvailable,
     type ModelProvider,
 } from "@/app/lib/modelAvailability";
 import type { ApiKeyState } from "@/app/lib/mikeApi";
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1444,9 +1444,7 @@ export function TRChatPanel({
                             continue;
                         }
 
-                        if (
-                            data.type === "courtlistener_find_in_case_start"
-                        ) {
+                        if (data.type === "courtlistener_find_in_case_start") {
                             const searches = parseCourtlistenerCaseSearches(
                                 data.searches,
                             );
@@ -1472,8 +1470,7 @@ export function TRChatPanel({
                             );
                             updateMatchingEvent(
                                 (e) =>
-                                    e.type ===
-                                        "courtlistener_find_in_case" &&
+                                    e.type === "courtlistener_find_in_case" &&
                                     (searches?.length
                                         ? Array.isArray(e.searches)
                                         : e.cluster_id ===
@@ -1481,8 +1478,7 @@ export function TRChatPanel({
                                               "number"
                                                   ? (data.cluster_id as number)
                                                   : null) &&
-                                          e.query ===
-                                              (data.query as string)) &&
+                                          e.query === (data.query as string)) &&
                                     !!e.isStreaming,
                                 () => ({
                                     type: "courtlistener_find_in_case",
@@ -1917,7 +1913,7 @@ export function TRChatPanel({
                 onHeightChange={setInputHeight}
             />
 
-            <ApiKeyMissingModal
+            <ApiKeyMissingPopup
                 open={apiKeyModalProvider !== null}
                 provider={apiKeyModalProvider}
                 onClose={() => setApiKeyModalProvider(null)}

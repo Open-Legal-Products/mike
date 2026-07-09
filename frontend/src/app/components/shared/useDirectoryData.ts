@@ -42,13 +42,23 @@ export function useDirectoryData(enabled: boolean) {
                 );
                 return Promise.all(ps.map((p) => getProject(p.id))).then(
                     (fullProjects) => {
+                        const projectCounts = new Map(
+                            ps.map((p) => [p.id, p.document_count ?? 0]),
+                        );
+                        const projectsWithCounts = fullProjects.map((project) => ({
+                            ...project,
+                            document_count:
+                                project.documents?.length ??
+                                projectCounts.get(project.id) ??
+                                0,
+                        }));
                         cache = {
                             standaloneDocuments: sorted,
-                            projects: fullProjects,
+                            projects: projectsWithCounts,
                             fetchedAt: Date.now(),
                         };
                         setStandaloneDocuments(sorted);
-                        setProjects(fullProjects);
+                        setProjects(projectsWithCounts);
                     },
                 );
             })

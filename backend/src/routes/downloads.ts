@@ -4,17 +4,15 @@ import { createServerSupabase } from "../lib/supabase";
 import { buildContentDisposition, downloadFile } from "../lib/storage";
 import { verifyDownload } from "../lib/downloadTokens";
 import { ensureDocAccess } from "../lib/access";
+import { contentTypeForDocumentType } from "../lib/documentTypes";
 
 export const downloadsRouter = Router();
 
 function contentTypeFor(filename: string): string {
-    const lower = filename.toLowerCase();
-    if (lower.endsWith(".docx"))
-        return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    if (lower.endsWith(".pdf")) return "application/pdf";
-    if (lower.endsWith(".xlsx"))
-        return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    return "application/octet-stream";
+    const suffix = filename.includes(".")
+        ? filename.split(".").pop()?.toLowerCase()
+        : "";
+    return contentTypeForDocumentType(suffix);
 }
 
 // GET /download/:token

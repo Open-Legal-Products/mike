@@ -11,27 +11,26 @@ import {
 import {
     ArrowRight,
     Check,
-    File,
-    FileText,
     FolderOpen,
     Library,
     Square,
     X,
 } from "lucide-react";
 import { AddDocButton } from "./AddDocButton";
-import { AddDocumentsModal } from "../shared/AddDocumentsModal";
+import { FileTypeIcon } from "../shared/FileTypeIcon";
+import { AddDocumentsModal } from "../modals/AddDocumentsModal";
 import { AssistantWorkflowModal } from "./AssistantWorkflowModal";
-import { ApiKeyMissingModal } from "../shared/ApiKeyMissingModal";
+import { ApiKeyMissingPopup } from "../popups/ApiKeyMissingPopup";
 import { ModelToggle } from "./ModelToggle";
 import { useSelectedModel } from "@/app/hooks/useSelectedModel";
-import { useUserProfile } from "@/contexts/UserProfileContext";
+import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import {
     getModelProvider,
     isModelAvailable,
     type ModelProvider,
 } from "@/app/lib/modelAvailability";
 import type { Document, Message } from "../shared/types";
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 
 export interface ChatInputHandle {
     addDoc: (doc: Document) => void;
@@ -95,13 +94,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
         const observer = new ResizeObserver(update);
         observer.observe(el);
         return () => observer.disconnect();
-    }, []);
-
-    const handleAddDocFromProject = useCallback((doc: Document) => {
-        setAttachedDocs((prev) => {
-            if (prev.some((d) => d.id === doc.id)) return prev;
-            return [...prev, doc];
-        });
     }, []);
 
     const handleAddDocsFromSelector = useCallback(
@@ -193,18 +185,15 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                                 </div>
                             )}
                             {attachedDocs.map((doc) => {
-                                const ft = doc.file_type?.toLowerCase();
-                                const isPdf = ft === "pdf";
                                 return (
                                     <div
                                         key={doc.id}
                                         className="inline-flex items-center gap-1 rounded-[10px] border border-white/70 bg-white py-0.5 pl-2 pr-1 text-xs text-gray-800 shadow-[0_2px_6px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-xl"
                                     >
-                                        {isPdf ? (
-                                            <FileText className="h-2.5 w-2.5 shrink-0 text-red-500" />
-                                        ) : (
-                                            <File className="h-2.5 w-2.5 shrink-0 text-blue-500" />
-                                        )}
+                                        <FileTypeIcon
+                                            fileType={doc.file_type}
+                                            className="h-2.5 w-2.5"
+                                        />
                                         <span className="max-w-[140px] truncate">
                                             {doc.filename}
                                         </span>
@@ -248,7 +237,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                         <div className="flex items-center gap-1">
                             {!hideAddDocButton && (
                                 <AddDocButton
-                                    onSelectDoc={handleAddDocFromProject}
                                     onBrowseAll={() => setDocSelectorOpen(true)}
                                     selectedDocIds={attachedDocs.map(
                                         (d) => d.id,
@@ -342,13 +330,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                 open={workflowModalOpen}
                 onClose={() => setWorkflowModalOpen(false)}
                 onSelect={(wf) => {
-                    setSelectedWorkflow({ id: wf.id, title: wf.title });
+                    setSelectedWorkflow({
+                        id: wf.id,
+                        title: wf.metadata.title,
+                    });
                     setWorkflowModalOpen(false);
                 }}
                 projectName={projectName}
                 projectCmNumber={projectCmNumber}
             />
-            <ApiKeyMissingModal
+            <ApiKeyMissingPopup
                 open={apiKeyModalProvider !== null}
                 provider={apiKeyModalProvider}
                 onClose={() => setApiKeyModalProvider(null)}

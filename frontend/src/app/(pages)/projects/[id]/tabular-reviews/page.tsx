@@ -8,12 +8,13 @@ import {
     updateTabularReview,
 } from "@/app/lib/mikeApi";
 import { ProjectReviewsTable } from "@/app/components/projects/ProjectReviewsTable";
+import { TabularReviewDetailsModal } from "@/app/components/tabular/TabularReviewDetailsModal";
 import {
     ProjectSectionToolbar,
     useProjectWorkspace,
 } from "@/app/components/projects/ProjectWorkspace";
 import type { TabularReview } from "@/app/components/shared/types";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/app/contexts/AuthContext";
 
 interface Props {
     params: Promise<{ id: string }>;
@@ -70,10 +71,9 @@ export default function ProjectTabularReviewsPage({ params }: Props) {
         setProjectReviews,
     } = workspace;
     const [selectedReviewIds, setSelectedReviewIds] = useState<string[]>([]);
-    const [renamingReviewId, setRenamingReviewId] = useState<string | null>(
+    const [detailsReview, setDetailsReview] = useState<TabularReview | null>(
         null,
     );
-    const [renameReviewValue, setRenameReviewValue] = useState("");
     const [actionsOpen, setActionsOpen] = useState(false);
     const docs = project?.documents ?? [];
     const reviews = useMemo(() => projectReviews ?? [], [projectReviews]);
@@ -94,15 +94,34 @@ export default function ProjectTabularReviewsPage({ params }: Props) {
         !allReviewsSelected &&
         filteredReviews.some((r) => selectedReviewIds.includes(r.id));
 
-    async function submitReviewRename(reviewId: string) {
-        const trimmed = renameReviewValue.trim();
-        setRenamingReviewId(null);
-        if (!trimmed) return;
-        await updateTabularReview(reviewId, { title: trimmed });
+    function handleOpenDetails(review: TabularReview) {
+        if (user?.id && review.user_id !== user.id) {
+            setOwnerOnlyAction("edit tabular review details");
+            return;
+        }
+        setDetailsReview(review);
+    }
+
+    async function handleDetailsSave(values: {
+        title: string;
+        projectId?: string | null;
+    }) {
+        if (!detailsReview) return;
+        if (user?.id && detailsReview.user_id !== user.id) {
+            setOwnerOnlyAction("edit tabular review details");
+            return;
+        }
+        const updated = await updateTabularReview(detailsReview.id, {
+            title: values.title,
+            project_id: projectId,
+        });
         setProjectReviews((prev) =>
             (prev ?? []).map((review) =>
-                review.id === reviewId ? { ...review, title: trimmed } : review,
+                review.id === updated.id ? { ...review, ...updated } : review,
             ),
+        );
+        setDetailsReview((current) =>
+            current?.id === updated.id ? { ...current, ...updated } : current,
         );
     }
 
@@ -164,8 +183,6 @@ export default function ProjectTabularReviewsPage({ params }: Props) {
                 selectedReviewIds={selectedReviewIds}
                 allReviewsSelected={allReviewsSelected}
                 someReviewsSelected={someReviewsSelected}
-                renamingReviewId={renamingReviewId}
-                renameReviewValue={renameReviewValue}
                 creatingReview={workspace.creatingReview}
                 currentUserId={user?.id}
                 loading={loading}
@@ -175,12 +192,22 @@ export default function ProjectTabularReviewsPage({ params }: Props) {
                         `/projects/${projectId}/tabular-reviews/${reviewId}`,
                     )
                 }
+                onOpenDetails={handleOpenDetails}
                 onDeleteReview={handleDeleteReviewRow}
                 onOwnerOnlyAction={setOwnerOnlyAction}
-                submitReviewRename={submitReviewRename}
                 setSelectedReviewIds={setSelectedReviewIds}
-                setRenamingReviewId={setRenamingReviewId}
-                setRenameReviewValue={setRenameReviewValue}
+            />
+            <TabularReviewDetailsModal
+                open={!!detailsReview}
+                review={detailsReview}
+                projects={project ? [project] : []}
+                canEdit={
+                    !!detailsReview &&
+                    (!user?.id || detailsReview.user_id === user.id)
+                }
+                lockProject
+                onClose={() => setDetailsReview(null)}
+                onSave={handleDetailsSave}
             />
         </>
     );

@@ -13,21 +13,21 @@ import {
     Download,
     ExternalLink,
 } from "lucide-react";
-import { MikeIcon } from "@/components/chat/mike-icon";
+import { MikeIcon } from "@/app/components/chat/mike-icon";
 import type { CaseCitationQuote } from "../shared/types";
 import {
     clearDocxQuoteHighlights,
     highlightDocxQuote,
-} from "../shared/highlightDocxQuote";
+} from "../shared/views/highlightDocxQuote";
 import {
-    RelevantQuotes,
-    type RelevantQuoteItem,
-} from "../shared/RelevantQuotes";
+    CitationQuotesHeader,
+    type CitationQuoteHeaderItem,
+} from "./CitationQuotesHeader";
 import {
     getCourtlistenerOpinions,
     type CaseLawOpinion,
 } from "@/app/lib/mikeApi";
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 
 export type CaseTab = {
     kind: "case";
@@ -292,7 +292,7 @@ export function CaseLawPanel({
                   Math.max(relevantQuotes.length - 1, 0),
               )
             : 0;
-    const relevantQuoteItems: RelevantQuoteItem[] = relevantQuotes.map(
+    const relevantQuoteItems: CitationQuoteHeaderItem[] = relevantQuotes.map(
         (quote, index) => ({
             id: relevantQuoteKey(quote, index),
             quote: quote.quote,
@@ -432,7 +432,7 @@ export function CaseLawPanel({
                 </div>
             </div>
             {relevantQuoteItems.length > 0 && (
-                <RelevantQuotes
+                <CitationQuotesHeader
                     quotes={relevantQuoteItems}
                     activeQuoteId={activeQuoteKey}
                     currentIndex={currentQuoteIndex}

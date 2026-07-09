@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { supabase } from "@/app/lib/supabase";
+import { Button } from "@/app/components/ui/button";
+import { Input } from "@/app/components/ui/input";
 import Link from "next/link";
-import { SiteLogo } from "@/components/site-logo";
-import { useAuth } from "@/contexts/AuthContext";
+import { SiteLogo } from "@/app/components/site-logo";
+import { useAuth } from "@/app/contexts/AuthContext";
 
 const authGlassCardClassName =
     "rounded-2xl border border-white/70 bg-white/72 p-8 shadow-[0_4px_14px_rgba(15,23,42,0.045),inset_0_1px_0_rgba(255,255,255,0.86),inset_0_-8px_18px_rgba(255,255,255,0.12)] backdrop-blur-2xl";
@@ -40,7 +40,7 @@ export default function LoginPage() {
         setError(null);
 
         try {
-            const { data, error } = await supabase.auth.signInWithPassword({
+            const { error } = await supabase.auth.signInWithPassword({
                 email,
                 password,
             });
@@ -48,8 +48,12 @@ export default function LoginPage() {
             if (error) throw error;
 
             router.push("/assistant");
-        } catch (error: any) {
-            setError(error.message || "An error occurred during login");
+        } catch (error: unknown) {
+            setError(
+                error instanceof Error
+                    ? error.message
+                    : "An error occurred during login",
+            );
         } finally {
             setLoading(false);
         }

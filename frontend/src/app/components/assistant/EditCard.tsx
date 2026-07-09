@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/app/lib/supabase";
+import { PillButton } from "@/app/components/ui/pill-button";
 import type { EditAnnotation } from "../shared/types";
 
 function normalizeText(s: string) {
@@ -131,6 +132,7 @@ export function applyOptimisticResolution(
 
 interface Props {
     annotation: EditAnnotation;
+    changeNumber?: number;
     /**
      * External override for this edit's status. When set, takes
      * precedence over the annotation's DB status and the card's own
@@ -183,6 +185,7 @@ interface Props {
  */
 export function EditCard({
     annotation,
+    changeNumber,
     resolvedStatus,
     isReloading,
     onViewClick,
@@ -275,13 +278,16 @@ export function EditCard({
     };
 
     return (
-        <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+        <div className="rounded-xl bg-white shadow-[0_3px_9px_rgba(15,23,42,0.1),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-4px_9px_rgba(255,255,255,0.05)] backdrop-blur-2xl p-3">
+            {changeNumber !== undefined && (
+                <p className="text-xs text-gray-400 mb-1.5">{changeNumber}</p>
+            )}
             {annotation.reason && (
                 <p className="text-xs text-gray-500 mb-2">
                     {annotation.reason}
                 </p>
             )}
-            <div className="text-sm leading-relaxed font-serif bg-white border border-gray-200 rounded-md px-2 py-2">
+            <div className="text-sm leading-relaxed font-serif bg-gray-100/70 rounded-lg px-2 py-2">
                 {annotation.inserted_text && (
                     <span className="text-green-700">
                         {annotation.inserted_text}
@@ -294,22 +300,26 @@ export function EditCard({
                 )}
             </div>
             <div className="flex gap-2 mt-3">
-                <button
+                <PillButton
+                    tone="black"
+                    size="sm"
                     onClick={() => handle("accept")}
                     disabled={inFlight || resolved}
-                    className="px-2 py-1 text-xs rounded border border-gray-900 bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50"
                 >
                     {status === "accepted" ? "Accepted" : "Accept"}
-                </button>
-                <button
+                </PillButton>
+                <PillButton
+                    tone="white"
+                    size="sm"
                     onClick={() => handle("reject")}
                     disabled={inFlight || resolved}
-                    className="px-2 py-1 text-xs rounded border border-gray-200 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50"
                 >
                     {status === "rejected" ? "Rejected" : "Reject"}
-                </button>
+                </PillButton>
                 {onViewClick && (
-                    <button
+                    <PillButton
+                        tone="blue"
+                        size="sm"
                         onClick={() => onViewClick(annotation)}
                         disabled={resolved}
                         title={
@@ -317,10 +327,10 @@ export function EditCard({
                                 ? "This change has been resolved and is no longer in the document."
                                 : undefined
                         }
-                        className="ml-auto px-2 py-1 text-xs rounded border border-gray-200 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
+                        className="ml-auto"
                     >
                         View
-                    </button>
+                    </PillButton>
                 )}
             </div>
         </div>

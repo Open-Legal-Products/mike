@@ -67,34 +67,37 @@ export function ProjectAssistantTable({
     loading?: boolean;
 }) {
     return (
-        <TableScrollArea>
-            <TableHeaderRow className="pr-8 md:pr-8">
-                <TableStickyCell header>
-                    {loading ? (
-                        <SkeletonDot />
-                    ) : (
-                        <input
-                            type="checkbox"
-                            checked={allChatsSelected}
-                            ref={(el) => {
-                                if (el) el.indeterminate = someChatsSelected;
-                            }}
-                            onChange={() => {
-                                if (allChatsSelected) setSelectedChatIds([]);
-                                else
-                                    setSelectedChatIds(
-                                        filteredChats.map((c) => c.id),
-                                    );
-                            }}
-                            className={TABLE_CHECKBOX_CLASS}
-                        />
-                    )}
-                    <span>Chats</span>
-                </TableStickyCell>
-                <TableHeaderCell className="ml-auto w-32">Creator</TableHeaderCell>
-                <TableHeaderCell className="w-32">Created</TableHeaderCell>
-                <TableHeaderCell className="w-8" />
-            </TableHeaderRow>
+        <TableScrollArea
+            header={
+                <TableHeaderRow className="pr-8 md:pr-8">
+                    <TableStickyCell header>
+                        {loading ? (
+                            <SkeletonDot />
+                        ) : (
+                            <input
+                                type="checkbox"
+                                checked={allChatsSelected}
+                                ref={(el) => {
+                                    if (el) el.indeterminate = someChatsSelected;
+                                }}
+                                onChange={() => {
+                                    if (allChatsSelected) setSelectedChatIds([]);
+                                    else
+                                        setSelectedChatIds(
+                                            filteredChats.map((c) => c.id),
+                                        );
+                                }}
+                                className={TABLE_CHECKBOX_CLASS}
+                            />
+                        )}
+                        <span>Chats</span>
+                    </TableStickyCell>
+                    <TableHeaderCell className="ml-auto w-32">Creator</TableHeaderCell>
+                    <TableHeaderCell className="w-32">Created</TableHeaderCell>
+                    <TableHeaderCell className="w-8" />
+                </TableHeaderRow>
+            }
+        >
             {loading ? (
                 <ProjectAssistantLoadingRows />
             ) : chats.length === 0 ? (

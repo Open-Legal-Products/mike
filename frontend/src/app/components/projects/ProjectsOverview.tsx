@@ -3,11 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FolderOpen, ChevronDown } from "lucide-react";
-import { listProjects, updateProject, deleteProject } from "@/app/lib/mikeApi";
-import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
-import { useAuth } from "@/contexts/AuthContext";
+import {
+    listProjects,
+    updateProject,
+    deleteProject,
+} from "@/app/lib/mikeApi";
+import { OwnerOnlyPopup } from "@/app/components/popups/OwnerOnlyPopup";
+import { useAuth } from "@/app/contexts/AuthContext";
 import type { Project } from "@/app/components/shared/types";
 import { NewProjectModal } from "./NewProjectModal";
+import { ProjectDetailsModal } from "./ProjectDetailsModal";
 import { TableToolbar } from "@/app/components/shared/TableToolbar";
 import {
     RowActionMenuItems,
@@ -54,11 +59,8 @@ export function ProjectsOverview() {
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [modalOpen, setModalOpen] = useState(false);
+    const [detailsProject, setDetailsProject] = useState<Project | null>(null);
     const [activeFilter, setActiveFilter] = useState<ProjectFilter>("all");
-    const [renamingId, setRenamingId] = useState<string | null>(null);
-    const [renameValue, setRenameValue] = useState("");
-    const [cmEditingId, setCmEditingId] = useState<string | null>(null);
-    const [cmValue, setCmValue] = useState("");
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [actionsOpen, setActionsOpen] = useState(false);
     const [search, setSearch] = useState("");
@@ -68,43 +70,44 @@ export function ProjectsOverview() {
     const { user, isAuthenticated, authLoading } = useAuth();
 
     useEffect(() => {
-        if (authLoading) {
-            setLoading(true);
-            return;
-        }
-        if (!isAuthenticated) {
-            setProjects([]);
-            setLoadError(null);
-            setLoading(false);
-            return;
-        }
-
         let cancelled = false;
-        setLoading(true);
-        setLoadError(null);
-        listProjects()
-            .then((loaded) => {
+
+        async function loadProjects() {
+            await Promise.resolve();
+            if (cancelled) return;
+            if (authLoading) {
+                setLoading(true);
+                return;
+            }
+            if (!isAuthenticated) {
+                setProjects([]);
+                setLoadError(null);
+                setLoading(false);
+                return;
+            }
+
+            setLoading(true);
+            setLoadError(null);
+            try {
+                const loaded = await listProjects();
                 if (!cancelled) setProjects(loaded);
-            })
-            .catch((err) => {
+            } catch (err) {
                 console.error("[projects] failed to load projects", err);
                 if (!cancelled) {
                     setProjects([]);
                     setLoadError("Could not load projects.");
                 }
-            })
-            .finally(() => {
+            } finally {
                 if (!cancelled) setLoading(false);
-            });
+            }
+        }
+
+        void loadProjects();
 
         return () => {
             cancelled = true;
         };
     }, [authLoading, isAuthenticated, user?.id]);
-
-    useEffect(() => {
-        setSelectedIds([]);
-    }, [activeFilter]);
 
     useEffect(() => {
         function handleClick(e: MouseEvent) {
@@ -129,7 +132,8 @@ export function ProjectsOverview() {
         (p) =>
             !q ||
             p.name.toLowerCase().includes(q) ||
-            (p.cm_number ?? "").toLowerCase().includes(q),
+            (p.cm_number ?? "").toLowerCase().includes(q) ||
+            (p.practice ?? "").toLowerCase().includes(q),
     );
 
     const allSelected =
@@ -158,25 +162,36 @@ export function ProjectsOverview() {
         { id: "shared-with-me", label: "Shared with me" },
     ];
 
-    async function handleRenameSubmit(projectId: string) {
-        const trimmed = renameValue.trim();
-        setRenamingId(null);
-        if (!trimmed) return;
+    async function handleProjectDetailsSave(values: {
+        name: string;
+        cmNumber: string;
+        practice: string;
+    }) {
+        if (!detailsProject) return;
+        if (
+            detailsProject.is_owner === false ||
+            (user?.id && detailsProject.user_id !== user.id)
+        ) {
+            setOwnerOnlyAction("edit project details");
+            return;
+        }
+        const name = values.name.trim();
+        const cmNumber = values.cmNumber.trim();
+        const practice = values.practice.trim();
+        if (!name) return;
+        const updated = await updateProject(detailsProject.id, {
+            name,
+            cm_number: cmNumber,
+            practice: practice || null,
+        });
         setProjects((prev) =>
-            prev.map((p) => (p.id === projectId ? { ...p, name: trimmed } : p)),
-        );
-        await updateProject(projectId, { name: trimmed });
-    }
-
-    async function handleCmSubmit(projectId: string) {
-        const trimmed = cmValue.trim();
-        setCmEditingId(null);
-        setProjects((prev) =>
-            prev.map((p) =>
-                p.id === projectId ? { ...p, cm_number: trimmed || null } : p,
+            prev.map((project) =>
+                project.id === updated.id ? { ...project, ...updated } : project,
             ),
         );
-        await updateProject(projectId, { cm_number: trimmed || undefined });
+        setDetailsProject((current) =>
+            current?.id === updated.id ? { ...current, ...updated } : current,
+        );
     }
 
     async function handleDeleteSelected() {
@@ -253,40 +268,46 @@ export function ProjectsOverview() {
             <TableToolbar
                 items={filters}
                 active={activeFilter}
-                onChange={setActiveFilter}
+                onChange={(nextFilter) => {
+                    setActiveFilter(nextFilter);
+                    setSelectedIds([]);
+                }}
                 actions={toolbarActions}
             />
 
             {/* Table */}
-            <TableScrollArea>
-                {/* Column headers */}
-                <TableHeaderRow>
-                    <TableStickyCell header>
-                        {loading ? (
-                            <SkeletonDot />
-                        ) : (
-                            <input
-                                type="checkbox"
-                                checked={allSelected}
-                                ref={(el) => {
-                                    if (el) el.indeterminate = someSelected;
-                                }}
-                                onChange={toggleAll}
-                                className={TABLE_CHECKBOX_CLASS}
-                            />
-                        )}
-                        <span>Name</span>
-                    </TableStickyCell>
-                    <TableHeaderCell className="ml-auto w-32">CM</TableHeaderCell>
-                    <TableHeaderCell className="w-32">Owner</TableHeaderCell>
-                    <TableHeaderCell className="w-24">Files</TableHeaderCell>
-                    <TableHeaderCell className="w-24">Chats</TableHeaderCell>
-                    <TableHeaderCell className="w-36">
-                        Tabular Reviews
-                    </TableHeaderCell>
-                    <TableHeaderCell className="w-32">Created</TableHeaderCell>
-                    <TableHeaderCell className="w-8" />
-                </TableHeaderRow>
+            <TableScrollArea
+                header={
+                    <TableHeaderRow>
+                        <TableStickyCell header>
+                            {loading ? (
+                                <SkeletonDot />
+                            ) : (
+                                <input
+                                    type="checkbox"
+                                    checked={allSelected}
+                                    ref={(el) => {
+                                        if (el) el.indeterminate = someSelected;
+                                    }}
+                                    onChange={toggleAll}
+                                    className={TABLE_CHECKBOX_CLASS}
+                                />
+                            )}
+                            <span>Name</span>
+                        </TableStickyCell>
+                        <TableHeaderCell className="ml-auto w-32">CM</TableHeaderCell>
+                        <TableHeaderCell className="w-36">Practice</TableHeaderCell>
+                        <TableHeaderCell className="w-32">Owner</TableHeaderCell>
+                        <TableHeaderCell className="w-24">Files</TableHeaderCell>
+                        <TableHeaderCell className="w-24">Chats</TableHeaderCell>
+                        <TableHeaderCell className="w-36">
+                            Tabular Reviews
+                        </TableHeaderCell>
+                        <TableHeaderCell className="w-32">Created</TableHeaderCell>
+                        <TableHeaderCell className="w-8" />
+                    </TableHeaderRow>
+                }
+            >
 
                 {loading ? (
                     <TableBody>
@@ -303,6 +324,9 @@ export function ProjectsOverview() {
                                     <SkeletonLine className="h-3.5 w-48" />
                                 </TableStickyCell>
                                 <TableCell className="ml-auto w-32">
+                                    <SkeletonLine className="w-20" />
+                                </TableCell>
+                                <TableCell className="w-36">
                                     <SkeletonLine className="w-20" />
                                 </TableCell>
                                 <TableCell className="w-32">
@@ -375,20 +399,8 @@ export function ProjectsOverview() {
                                         ? (close) => (
                                               <RowActionMenuItems
                                                   onClose={close}
-                                                  onRename={() => {
-                                                      setRenameValue(
-                                                          project.name,
-                                                      );
-                                                      setRenamingId(project.id);
-                                                  }}
-                                                  onUpdateCmNumber={() => {
-                                                      setCmValue(
-                                                          project.cm_number ??
-                                                              "",
-                                                      );
-                                                      setCmEditingId(
-                                                          project.id,
-                                                      );
+                                                  onEditDetails={() => {
+                                                      setDetailsProject(project);
                                                   }}
                                                   onDelete={async () => {
                                                       await deleteProject(
@@ -407,7 +419,6 @@ export function ProjectsOverview() {
                                         : undefined
                                 }
                                 onClick={() => {
-                                    if (renamingId === project.id) return;
                                     router.push(`/projects/${project.id}`);
                                 }}
                             >
@@ -419,44 +430,20 @@ export function ProjectsOverview() {
                                         toggleOne(project.id)
                                     }
                                     label={project.name}
-                                    editing={renamingId === project.id}
-                                    editValue={renameValue}
-                                    onEditValueChange={setRenameValue}
-                                    onEditCommit={() =>
-                                        handleRenameSubmit(project.id)
-                                    }
-                                    onEditCancel={() => setRenamingId(null)}
                                 />
 
-                                <TableCell
-                                    className="ml-auto w-32"
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    {cmEditingId === project.id ? (
-                                        <input
-                                            autoFocus
-                                            value={cmValue}
-                                            onChange={(e) =>
-                                                setCmValue(e.target.value)
-                                            }
-                                            onKeyDown={(e) => {
-                                                if (e.key === "Enter")
-                                                    handleCmSubmit(project.id);
-                                                if (e.key === "Escape")
-                                                    setCmEditingId(null);
-                                            }}
-                                            onBlur={() =>
-                                                handleCmSubmit(project.id)
-                                            }
-                                            placeholder="CM #"
-                                            className="w-full text-sm text-gray-800 bg-transparent outline-none"
-                                        />
-                                    ) : (
-                                        (project.cm_number ?? (
-                                            <span className="text-gray-300">
-                                                —
-                                            </span>
-                                        ))
+                                <TableCell className="ml-auto w-32">
+                                    {project.cm_number ?? (
+                                        <span className="text-gray-300">
+                                            —
+                                        </span>
+                                    )}
+                                </TableCell>
+                                <TableCell className="w-36">
+                                    {project.practice ?? (
+                                        <span className="text-gray-300">
+                                            —
+                                        </span>
                                     )}
                                 </TableCell>
                                 <TableCell className="w-32">
@@ -482,15 +469,8 @@ export function ProjectsOverview() {
                                     {(project.is_owner ??
                                         project.user_id === user?.id) && (
                                         <RowActions
-                                            onRename={() => {
-                                                setRenameValue(project.name);
-                                                setRenamingId(project.id);
-                                            }}
-                                            onUpdateCmNumber={() => {
-                                                setCmValue(
-                                                    project.cm_number ?? "",
-                                                );
-                                                setCmEditingId(project.id);
+                                            onEditDetails={() => {
+                                                setDetailsProject(project);
                                             }}
                                             onDelete={async () => {
                                                 await deleteProject(project.id);
@@ -520,7 +500,19 @@ export function ProjectsOverview() {
                 }}
             />
 
-            <OwnerOnlyModal
+            <ProjectDetailsModal
+                open={!!detailsProject}
+                project={detailsProject}
+                canEdit={
+                    !!detailsProject &&
+                    detailsProject.is_owner !== false &&
+                    (!user?.id || detailsProject.user_id === user.id)
+                }
+                onClose={() => setDetailsProject(null)}
+                onSave={handleProjectDetailsSave}
+            />
+
+            <OwnerOnlyPopup
                 open={!!ownerOnlyAction}
                 action={ownerOnlyAction ?? undefined}
                 onClose={() => setOwnerOnlyAction(null)}

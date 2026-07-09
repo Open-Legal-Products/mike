@@ -16,9 +16,24 @@ import { docxToPdf, convertedPdfKey } from "../lib/convert";
 import { checkProjectAccess } from "../lib/access";
 import { singleFileUpload } from "../lib/upload";
 import { deleteUserProjects } from "../lib/userDataCleanup";
+import {
+  ALLOWED_DOCUMENT_TYPES,
+  ALLOWED_DOCUMENT_TYPES_LABEL,
+  contentTypeForDocumentType,
+  shouldConvertToPdf,
+} from "../lib/documentTypes";
+import {
+  findMissingUserEmails,
+  loadProfileUsersByEmail,
+} from "../lib/userLookup";
 
 export const projectsRouter = Router();
-const ALLOWED_TYPES = new Set(["pdf", "docx", "doc"]);
+
+function normalizeOptionalString(value: unknown) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
 
 function normalizeDocumentFilename(nextName: unknown, currentName: string) {
   if (typeof nextName !== "string") return null;
@@ -155,9 +170,10 @@ projectsRouter.get("/", requireAuth, async (req, res) => {
 projectsRouter.post("/", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
   const userEmail = res.locals.userEmail as string | undefined;
-  const { name, cm_number, shared_with } = req.body as {
+  const { name, cm_number, practice, shared_with } = req.body as {
     name: string;
     cm_number?: string;
+    practice?: string;
     shared_with?: string[];
   };
   if (!name?.trim())
@@ -181,12 +197,20 @@ projectsRouter.post("/", requireAuth, async (req, res) => {
   }
 
   const db = createServerSupabase();
+  const missingSharedUsers = await findMissingUserEmails(db, cleanedSharedWith);
+  if (missingSharedUsers.length > 0) {
+    return void res.status(400).json({
+      detail: `${missingSharedUsers[0]} does not belong to a Mike user.`,
+    });
+  }
+
   const { data, error } = await db
     .from("projects")
     .insert({
       user_id: userId,
       name: name.trim(),
-      cm_number: cm_number ?? null,
+      cm_number: normalizeOptionalString(cm_number),
+      practice: normalizeOptionalString(practice),
       shared_with: cleanedSharedWith,
     })
     .select("*")
@@ -266,60 +290,18 @@ projectsRouter.get("/:projectId/people", requireAuth, async (req, res) => {
   if (!isOwner && !isShared)
     return void res.status(404).json({ detail: "Project not found" });
 
-  // Pull every auth user (matching the lookup endpoint's pattern). For
-  // larger deployments this should page or be replaced with a bulk-by-id
-  // RPC, but it keeps things simple while user counts are modest.
-  const { data: usersData } = await db.auth.admin.listUsers({ perPage: 1000 });
-  const allUsers = usersData?.users ?? [];
-  const userByEmail = new Map<string, { id: string; email: string }>();
-  const userById = new Map<string, { id: string; email: string }>();
-  for (const u of allUsers) {
-    if (!u.email) continue;
-    const lower = u.email.toLowerCase();
-    userByEmail.set(lower, { id: u.id, email: u.email });
-    userById.set(u.id, { id: u.id, email: u.email });
-  }
-
-  const memberUserIds: string[] = [];
-  for (const email of sharedWith) {
-    const u = userByEmail.get(email);
-    if (u) memberUserIds.push(u.id);
-  }
-
-  const profileIds = [
-    project.user_id as string,
-    ...memberUserIds,
-  ].filter((x, i, arr) => arr.indexOf(x) === i);
-
-  const profileByUserId = new Map<
-    string,
-    { display_name: string | null; organisation: string | null }
-  >();
-  if (profileIds.length > 0) {
-    const { data: profiles } = await db
-      .from("user_profiles")
-      .select("user_id, display_name, organisation")
-      .in("user_id", profileIds);
-    for (const p of profiles ?? []) {
-      profileByUserId.set(p.user_id as string, {
-        display_name: (p.display_name as string | null) ?? null,
-        organisation: (p.organisation as string | null) ?? null,
-      });
-    }
-  }
+  // Use the mirrored profile email so sharing checks do not scan auth.users.
+  const { userByEmail, userById } = await loadProfileUsersByEmail(db);
 
   const ownerInfo = userById.get(project.user_id as string);
   const owner = {
     user_id: project.user_id,
     email: ownerInfo?.email ?? null,
-    display_name:
-      profileByUserId.get(project.user_id as string)?.display_name ?? null,
+    display_name: ownerInfo?.display_name ?? null,
   };
   const members = sharedWith.map((email) => {
     const u = userByEmail.get(email);
-    const display_name = u
-      ? profileByUserId.get(u.id)?.display_name ?? null
-      : null;
+    const display_name = u?.display_name ?? null;
     return { email, display_name };
   });
 
@@ -334,6 +316,9 @@ projectsRouter.patch("/:projectId", requireAuth, async (req, res) => {
   const updates: Record<string, unknown> = {};
   if (req.body.name != null) updates.name = req.body.name;
   if (req.body.cm_number != null) updates.cm_number = req.body.cm_number;
+  if ("practice" in req.body) {
+    updates.practice = normalizeOptionalString(req.body.practice);
+  }
   if (Array.isArray(req.body.shared_with)) {
     // Normalise: lowercase + dedupe + drop empties.
     const normalizedUserEmail = userEmail?.trim().toLowerCase();
@@ -355,6 +340,18 @@ projectsRouter.patch("/:projectId", requireAuth, async (req, res) => {
   }
 
   const db = createServerSupabase();
+  if (Array.isArray(updates.shared_with)) {
+    const missingSharedUsers = await findMissingUserEmails(
+      db,
+      updates.shared_with as string[],
+    );
+    if (missingSharedUsers.length > 0) {
+      return void res.status(400).json({
+        detail: `${missingSharedUsers[0]} does not belong to a Mike user.`,
+      });
+    }
+  }
+
   const { data, error } = await db
     .from("projects")
     .update({ ...updates, updated_at: new Date().toISOString() })
@@ -519,10 +516,9 @@ projectsRouter.post(
       );
       let newPdfPath: string | null = null;
       try {
-        const contentType =
-          ((srcV.file_type as string | null) ?? doc.file_type) === "pdf"
-            ? "application/pdf"
-            : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        const contentType = contentTypeForDocumentType(
+          (srcV.file_type as string | null) ?? doc.file_type,
+        );
         await uploadFile(newKey, srcBytes, contentType);
 
         // PDFs share one object for source + display rendition. DOCX
@@ -885,11 +881,11 @@ export async function handleDocumentUpload(
   const suffix = filename.includes(".")
     ? filename.split(".").pop()!.toLowerCase()
     : "";
-  if (!ALLOWED_TYPES.has(suffix))
+  if (!ALLOWED_DOCUMENT_TYPES.has(suffix))
     return void res
       .status(400)
       .json({
-        detail: `Unsupported file type: ${suffix}. Allowed: pdf, docx, doc`,
+        detail: `Unsupported file type: ${suffix}. Allowed: ${ALLOWED_DOCUMENT_TYPES_LABEL}`,
       });
 
   const content = file.buffer;
@@ -911,10 +907,7 @@ export async function handleDocumentUpload(
   try {
     const docId = doc.id as string;
     const key = storageKey(userId, docId, filename);
-    const contentType =
-      suffix === "pdf"
-        ? "application/pdf"
-        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    const contentType = contentTypeForDocumentType(suffix);
     await uploadFile(
       key,
       content.buffer.slice(
@@ -930,9 +923,9 @@ export async function handleDocumentUpload(
     ) as ArrayBuffer;
     const pageCount = suffix === "pdf" ? await countPdfPages(rawBuf) : null;
 
-    // Convert DOCX/DOC → PDF for display. PDFs are their own rendition.
+    // Convert Office files → PDF for display. PDFs are their own rendition.
     let pdfStoragePath: string | null = null;
-    if (suffix === "docx" || suffix === "doc") {
+    if (shouldConvertToPdf(suffix)) {
       try {
         const pdfBuf = await docxToPdf(content);
         const pdfKey = convertedPdfKey(userId, docId);
@@ -947,7 +940,7 @@ export async function handleDocumentUpload(
         pdfStoragePath = pdfKey;
       } catch (err) {
         console.error(
-          `[upload] DOCX→PDF conversion failed for ${filename}:`,
+          `[upload] Office→PDF conversion failed for ${filename}:`,
           err,
         );
       }

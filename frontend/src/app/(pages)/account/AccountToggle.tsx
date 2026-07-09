@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 import { Loader2 } from "lucide-react";
 
 type AccountToggleSize = "sm" | "md";

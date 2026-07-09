@@ -40,6 +40,7 @@ import {
     buildUserTabularReviewsExport,
     userExportFilename,
 } from "../lib/userDataExport";
+import { findProfileUserByEmail } from "../lib/userLookup";
 
 export const userRouter = Router();
 
@@ -503,6 +504,22 @@ userRouter.post("/profile", requireAuth, async (_req, res) => {
     const error = await ensureProfileRow(db, userId);
     if (error) return void res.status(500).json({ detail: error.message });
     res.json({ ok: true });
+});
+
+// GET /user/lookup?email=person@example.com
+userRouter.get("/lookup", requireAuth, async (req, res) => {
+    const email = typeof req.query.email === "string" ? req.query.email : "";
+    if (!email.trim()) {
+        return void res.status(400).json({ detail: "email is required" });
+    }
+
+    const db = createServerSupabase();
+    const user = await findProfileUserByEmail(db, email);
+    res.json({
+        exists: !!user,
+        email: user?.email ?? email.trim().toLowerCase(),
+        display_name: user?.display_name ?? null,
+    });
 });
 
 // GET /user/profile

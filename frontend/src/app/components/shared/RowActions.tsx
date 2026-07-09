@@ -35,6 +35,7 @@ interface Props {
     onNewSubfolder?: () => void;
     deleting?: boolean;
     deleteDisabled?: boolean;
+    onEditDetails?: () => void;
     onRename?: () => void;
     onUpdateCmNumber?: () => void;
     newSubfolderLabel?: string;
@@ -53,6 +54,7 @@ export function RowActionMenuItems({
     onNewSubfolder,
     deleting,
     deleteDisabled = false,
+    onEditDetails,
     onRename,
     onUpdateCmNumber,
     newSubfolderLabel = "New subfolder",
@@ -78,6 +80,15 @@ export function RowActionMenuItems({
                 >
                     <Pencil className="h-3.5 w-3.5" />
                     {renameLabel}
+                </button>
+            )}
+            {onEditDetails && (
+                <button
+                    onClick={() => { onClose(); onEditDetails(); }}
+                    className={`flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-600 ${GLASS_MENU_ITEM}`}
+                >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit details
                 </button>
             )}
             {onUpdateCmNumber && (
@@ -131,7 +142,7 @@ export function RowActionMenuItems({
                     className={`flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-600 ${GLASS_MENU_ITEM}`}
                 >
                     <Eye className="h-3.5 w-3.5" />
-                    Unhide
+                    Activate
                 </button>
             )}
             {onHide && (
@@ -140,7 +151,7 @@ export function RowActionMenuItems({
                     className={`flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-600 ${GLASS_MENU_ITEM}`}
                 >
                     <EyeOff className="h-3.5 w-3.5" />
-                    Hide
+                    Deactivate
                 </button>
             )}
             {onDelete && (

@@ -27,19 +27,34 @@ stable
 as $$
   with owned as (
     select
-      w.*,
+      w.id,
+      w.user_id::text as user_id,
+      w.title,
+      w.type,
+      w.prompt_md,
+      w.columns_config,
+      w.practice,
+      false as is_system,
+      w.created_at,
       true as allow_edit,
       true as is_owner,
       null::text as shared_by_name,
       0 as sort_bucket
     from public.workflows w
-    where w.user_id = p_user_id
-      and w.is_system = false
+    where w.user_id::text = p_user_id
       and (p_type is null or w.type = p_type)
   ),
   shared as (
     select
-      w.*,
+      w.id,
+      w.user_id::text as user_id,
+      w.title,
+      w.type,
+      w.prompt_md,
+      w.columns_config,
+      w.practice,
+      false as is_system,
+      w.created_at,
       ws.allow_edit,
       false as is_owner,
       nullif(trim(up.display_name), '') as shared_by_name,
@@ -48,7 +63,7 @@ as $$
     join public.workflows w
       on w.id = ws.workflow_id
     left join public.user_profiles up
-      on up.user_id::text = ws.shared_by_user_id
+      on up.user_id::text = ws.shared_by_user_id::text
     where lower(ws.shared_with_email) = lower(coalesce(p_user_email, ''))
       and (p_type is null or w.type = p_type)
   ),

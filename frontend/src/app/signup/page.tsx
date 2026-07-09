@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { supabase } from "@/app/lib/supabase";
+import { Button } from "@/app/components/ui/button";
+import { Input } from "@/app/components/ui/input";
 import Link from "next/link";
-import { SiteLogo } from "@/components/site-logo";
+import { SiteLogo } from "@/app/components/site-logo";
 import { CheckCircle2 } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/app/contexts/AuthContext";
 import { updateUserProfile } from "@/app/lib/mikeApi";
 
 const authGlassCardClassName =

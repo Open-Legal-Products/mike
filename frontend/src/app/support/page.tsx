@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Send, CheckCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/app/contexts/AuthContext";
 
 type FeedbackType = "bug" | "feature" | "question" | "other";
 

@@ -28,6 +28,7 @@
     "multer": "^1.4.5-lts.2",
     "pdfjs-dist": "^4.10.38",
     "resend": "^4.5.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^3.25.76"
   },
   "devDependencies": {

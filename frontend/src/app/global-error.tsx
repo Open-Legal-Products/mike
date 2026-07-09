@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { PillButton } from "@/app/components/ui/pill-button";
 
 export default function GlobalError({
     error,
@@ -51,30 +52,7 @@ export default function GlobalError({
                         margin-bottom: 2rem;
                     }
 
-                    .btn-back {
-                        display: inline-flex;
-                        align-items: center;
-                        gap: 0.5rem;
-                        padding: 0.625rem 1.25rem;
-                        border-radius: 0.5rem;
-                        font-size: 0.875rem;
-                        font-weight: 500;
-                        font-family: 'Inter', sans-serif;
-                        cursor: pointer;
-                        transition: all 0.15s ease;
-                        text-decoration: none;
-                        border: none;
-                        background-color: rgb(0, 136, 255);
-                        color: white;
-                    }
-
-                    .btn-back:hover {
-                        background-color: rgb(0, 120, 230);
-                    }
-
-                    .btn-back:active {
-                        transform: scale(0.98);
-                    }
+                    .btn-back { font-family: 'Inter', sans-serif; }
                 `}</style>
             </head>
             <body>
@@ -84,12 +62,14 @@ export default function GlobalError({
                         We encountered an unexpected error. This has been logged
                         and our team will look into it.
                     </p>
-                    <button
+                    <PillButton
+                        tone="blue"
+                        size="normal"
                         className="btn-back"
                         onClick={() => window.history.back()}
                     >
                         Back
-                    </button>
+                    </PillButton>
                 </div>
             </body>
         </html>

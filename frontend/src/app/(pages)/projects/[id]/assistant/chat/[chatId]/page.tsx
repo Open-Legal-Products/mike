@@ -39,24 +39,28 @@ import { AssistantMessage } from "@/app/components/assistant/AssistantMessage";
 import { ChatInput } from "@/app/components/assistant/ChatInput";
 import type { ChatInputHandle } from "@/app/components/assistant/ChatInput";
 import { ProjectExplorer } from "@/app/components/projects/ProjectExplorer";
-import { DocView } from "@/app/components/shared/DocView";
-import { OwnerOnlyModal } from "@/app/components/shared/OwnerOnlyModal";
-import { DocxView } from "@/app/components/shared/DocxView";
-import { MikeIcon } from "@/components/chat/mike-icon";
-import { useAuth } from "@/contexts/AuthContext";
-import { useUserProfile } from "@/contexts/UserProfileContext";
+import { PdfView } from "@/app/components/shared/views/PdfView";
+import { SpreadsheetView } from "@/app/components/shared/views/SpreadsheetView";
+import { OwnerOnlyPopup } from "@/app/components/popups/OwnerOnlyPopup";
+import { DocxView } from "@/app/components/shared/views/DocxView";
+import { MikeIcon } from "@/app/components/chat/mike-icon";
+import { useAuth } from "@/app/contexts/AuthContext";
+import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import { useSidebar } from "@/app/contexts/SidebarContext";
 import { PageHeader } from "@/app/components/shared/PageHeader";
 import { HeaderActionsMenu } from "@/app/components/shared/HeaderActionsMenu";
 import type {
     CitationQuote,
-    CitationAnnotation,
+    Citation,
     Document,
     EditAnnotation,
     Message,
     Project,
 } from "@/app/components/shared/types";
-import { expandCitationToEntries } from "@/app/components/shared/types";
+import {
+    expandCitationToEntries,
+    isSpreadsheetFilename,
+} from "@/app/components/shared/types";
 
 interface Props {
     params: Promise<{ id: string; chatId: string }>;
@@ -92,6 +96,7 @@ const EXPLORER_MIN = 160;
 const EXPLORER_DEFAULT = 280;
 const CHAT_MIN = 320;
 const CHAT_DEFAULT = 420;
+const DEFAULT_ASSISTANT_BOTTOM_PADDING = 116;
 
 function AssistantGreeting({ username }: { username: string }) {
     const { profile } = useUserProfile();
@@ -260,6 +265,11 @@ export default function ProjectAssistantChatPage({ params }: Props) {
     const [initialMessages] = useState<Message[]>(newChatMessages ?? []);
     const { messages, isResponseLoading, handleChat, setMessages, cancel } =
         useAssistantChat({ initialMessages, chatId, projectId });
+    const pendingInitialUserMessageRef = useRef<Message | null>(
+        initialMessages.length === 1 && initialMessages[0].role === "user"
+            ? initialMessages[0]
+            : null,
+    );
 
     const hasLoaded = useRef(false);
     const hasAutoSent = useRef(false);
@@ -349,19 +359,19 @@ export default function ProjectAssistantChatPage({ params }: Props) {
     }, [chats, chatId]);
 
     useEffect(() => {
+        const pendingMessage = pendingInitialUserMessageRef.current;
         if (
-            newChatMessages &&
-            newChatMessages.length === 1 &&
-            newChatMessages[0].role === "user" &&
+            pendingMessage &&
             !hasAutoSent.current &&
             !isResponseLoading &&
             messages.length === 1
         ) {
             hasAutoSent.current = true;
+            pendingInitialUserMessageRef.current = null;
             setNewChatMessages(null);
-            void handleChat(newChatMessages[0]);
+            void handleChat(pendingMessage);
         }
-    }, [newChatMessages, messages.length, isResponseLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [messages.length, isResponseLoading, handleChat, setNewChatMessages]);
 
     const scrollLatestUserToTop = useCallback(() => {
         requestAnimationFrame(() => {
@@ -405,10 +415,17 @@ export default function ProjectAssistantChatPage({ params }: Props) {
         const userEl = latestUserMessageRef.current;
         const containerEl = messagesContainerRef.current;
         if (!userEl || !containerEl) return;
+        const messageGap = window.innerWidth < 768 ? 24 : 32;
         setMinHeight(
-            `${Math.max(0, containerEl.clientHeight - 48 - userEl.offsetHeight - 16)}px`,
+            `${Math.max(
+                0,
+                containerEl.clientHeight -
+                    messageGap * 3 -
+                    userEl.offsetHeight -
+                    DEFAULT_ASSISTANT_BOTTOM_PADDING,
+            )}px`,
         );
-    }, [messages.length, latestUserMessageRef.current]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [messages.length]);
 
     useEffect(() => {
         if (!activeTabId) return;
@@ -489,7 +506,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
         openTab(doc.id, doc.filename);
     };
 
-    const handleCitationClick = (citation: CitationAnnotation) => {
+    const handleCitationClick = (citation: Citation) => {
         if (citation.kind === "case") return;
         openTab(
             citation.document_id,
@@ -876,7 +893,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                                     <input
                                         ref={fileInputRef}
                                         type="file"
-                                        accept=".pdf,.docx,.doc"
+                                        accept=".pdf,.docx,.doc,.xlsx,.xlsm,.xls,.pptx,.ppt"
                                         multiple
                                         className="hidden"
                                         onChange={(e) =>
@@ -1099,15 +1116,20 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                                         )
                                     }
                                     rounded={false}
-                                    bordered={false}
+                                />
+                            ) : isSpreadsheetFilename(activeTab.filename) ? (
+                                <SpreadsheetView
+                                    key={activeTab.documentId}
+                                    documentId={activeTab.documentId}
+                                    versionId={activeTab.versionId}
+                                    rounded={false}
                                 />
                             ) : (
-                                <DocView
+                                <PdfView
                                     key={activeTab.documentId}
                                     doc={{ document_id: activeTab.documentId }}
                                     quotes={activeQuotes ?? undefined}
                                     rounded={false}
-                                    bordered={false}
                                 />
                             )
                         ) : (
@@ -1132,7 +1154,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                 {/* RIGHT: Assistant Panel */}
                 <div
                     style={{ width: chatWidth }}
-                    className="shrink-0 flex flex-col"
+                    className="relative shrink-0 flex flex-col"
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={handleChatDrop}
                 >
@@ -1166,8 +1188,11 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                     ) : (
                         <div
                             ref={messagesContainerRef}
-                            className="flex-1 overflow-y-auto px-4 py-4 space-y-4 min-h-0"
-                            style={{ scrollbarGutter: "stable" }}
+                            className="flex-1 overflow-y-auto px-4 pt-6 md:pt-8 space-y-6 md:space-y-8 min-h-0"
+                            style={{
+                                paddingBottom: DEFAULT_ASSISTANT_BOTTOM_PADDING,
+                                scrollbarGutter: "stable",
+                            }}
                         >
                             {(() => {
                                 const lastUserIdx = messages
@@ -1188,20 +1213,20 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                                         >
                                             <UserMessage
                                                 content={msg.content ?? ""}
-                                                files={(msg as any).files}
+                                                files={msg.files}
+                                                workflow={msg.workflow}
                                             />
                                         </div>
                                     ) : (
                                         <AssistantMessage
                                             key={i}
-                                            content={msg.content ?? ""}
                                             events={msg.events}
                                             isStreaming={
                                                 i === messages.length - 1 &&
                                                 isResponseLoading
                                             }
-                                            isError={!!(msg as any).error}
-                                            annotations={msg.annotations}
+                                            isError={!!msg.error}
+                                            citations={msg.citations}
                                             citationStatus={
                                                 msg.citationStatus
                                             }
@@ -1231,20 +1256,23 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                     )}
 
                     {/* ChatInput */}
-                    <div className="shrink-0 px-4 pb-4">
-                        <ChatInput
-                            ref={chatInputRef}
-                            onSubmit={handleSubmit}
-                            onCancel={cancel}
-                            isLoading={isResponseLoading}
-                            hideAddDocButton
-                            projectName={project?.name}
-                            projectCmNumber={project?.cm_number}
-                        />
+                    <div className="absolute bottom-2 left-0 right-0 z-30 w-full md:bottom-3">
+                        <div className="pointer-events-none absolute -bottom-2 left-4 right-4 z-0 h-7 bg-white/50 backdrop-blur-[1px] md:-bottom-3" />
+                        <div className="relative z-20 w-full px-4">
+                            <ChatInput
+                                ref={chatInputRef}
+                                onSubmit={handleSubmit}
+                                onCancel={cancel}
+                                isLoading={isResponseLoading}
+                                hideAddDocButton
+                                projectName={project?.name}
+                                projectCmNumber={project?.cm_number}
+                            />
+                        </div>
                     </div>
                 </div>
             </div>
-            <OwnerOnlyModal
+            <OwnerOnlyPopup
                 open={!!ownerOnlyAction}
                 action={ownerOnlyAction ?? undefined}
                 onClose={() => setOwnerOnlyAction(null)}

@@ -3,17 +3,20 @@
  * Attaches the Supabase auth token for user authentication.
  */
 
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/app/lib/supabase";
 import type {
     AssistantEvent,
     Chat,
     ChatDetailOut,
-    CitationAnnotation,
+    Citation,
     Document,
     Folder,
     Message,
+    OpenSourceWorkflowContributorMode,
+    OpenSourceWorkflowResponse,
     Project,
     Workflow,
+    WorkflowContributor,
     TabularReview,
     TabularReviewDetailOut,
 } from "@/app/components/shared/types";
@@ -26,7 +29,7 @@ interface ServerMessage {
     content: string | AssistantEvent[] | null;
     files?: { filename: string; document_id?: string }[] | null;
     workflow?: { id: string; title: string } | null;
-    annotations?: CitationAnnotation[] | null;
+    citations?: Citation[] | null;
     created_at: string;
 }
 interface ServerChatDetailOut {
@@ -166,12 +169,13 @@ export async function listProjects(): Promise<Project[]> {
 export async function createProject(
     name: string,
     cm_number?: string,
+    practice?: string,
     shared_with?: string[],
 ): Promise<Project> {
     return apiRequest<Project>("/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, cm_number, shared_with }),
+        body: JSON.stringify({ name, cm_number, practice, shared_with }),
     });
 }
 
@@ -226,8 +230,22 @@ export interface UserProfile {
     apiKeyStatus: ApiKeyStatus;
 }
 
+export interface UserLookupResult {
+    exists: boolean;
+    email: string;
+    display_name: string | null;
+}
+
 export async function getUserProfile(): Promise<UserProfile> {
     return apiRequest<UserProfile>("/user/profile");
+}
+
+export async function lookupUserByEmail(
+    email: string,
+): Promise<UserLookupResult> {
+    return apiRequest<UserLookupResult>(
+        `/user/lookup?email=${encodeURIComponent(email)}`,
+    );
 }
 
 export async function updateUserProfile(payload: {
@@ -411,6 +429,7 @@ export async function updateProject(
     payload: {
         name?: string;
         cm_number?: string;
+        practice?: string | null;
         shared_with?: string[];
     },
 ): Promise<Project> {
@@ -750,6 +769,7 @@ export async function getChat(chatId: string): Promise<ChatDetailOut> {
     const messages: Message[] = raw.messages.map((m) => {
         if (m.role === "user") {
             return {
+                id: m.id,
                 role: "user",
                 content: typeof m.content === "string" ? m.content : "",
                 files: m.files ?? undefined,
@@ -760,13 +780,14 @@ export async function getChat(chatId: string): Promise<ChatDetailOut> {
             ? (m.content as AssistantEvent[])
             : undefined;
         return {
+            id: m.id,
             role: "assistant",
             content:
                 events
                     ?.filter((e) => e.type === "content")
                     .map((e) => (e as { type: "content"; text: string }).text)
                     .join("") ?? "",
-            annotations: m.annotations ?? undefined,
+            citations: m.citations ?? undefined,
             events,
         };
     });
@@ -832,6 +853,23 @@ export async function streamChat(payload: {
     chat_id?: string;
     project_id?: string;
     model?: string;
+    ask_inputs_response?: {
+        responses: (
+            | {
+                  id: string;
+                  kind: "choice";
+                  question: string;
+                  answer?: string;
+                  skipped?: boolean;
+              }
+            | {
+                  id: string;
+                  kind: "documents";
+                  filenames: string[];
+                  skipped?: boolean;
+              }
+        )[];
+    };
     signal?: AbortSignal;
 }): Promise<Response> {
     const { signal, ...body } = payload;
@@ -862,6 +900,23 @@ export async function streamProjectChat(payload: {
     model?: string;
     displayed_doc?: { filename: string; document_id: string };
     attached_documents?: { filename: string; document_id: string }[];
+    ask_inputs_response?: {
+        responses: (
+            | {
+                  id: string;
+                  kind: "choice";
+                  question: string;
+                  answer?: string;
+                  skipped?: boolean;
+              }
+            | {
+                  id: string;
+                  kind: "documents";
+                  filenames: string[];
+                  skipped?: boolean;
+              }
+        )[];
+    };
     signal?: AbortSignal;
 }): Promise<Response> {
     const { projectId, signal, ...body } = payload;
@@ -1121,7 +1176,7 @@ export async function clearTabularCells(
 // Workflows
 // ---------------------------------------------------------------------------
 
-type WorkflowType = Workflow["type"];
+type WorkflowType = Workflow["metadata"]["type"];
 
 export async function listWorkflows(
     type: WorkflowType,
@@ -1134,11 +1189,15 @@ export async function getWorkflow(workflowId: string): Promise<Workflow> {
 }
 
 export async function createWorkflow(payload: {
-    title: string;
-    type: "assistant" | "tabular";
-    prompt_md?: string;
+    metadata: {
+        title: string;
+        type: "assistant" | "tabular";
+        language?: string | null;
+        practice?: string | null;
+        jurisdictions?: string[] | null;
+    };
+    skill_md?: string;
     columns_config?: { index: number; name: string; prompt: string }[];
-    practice?: string | null;
 }): Promise<Workflow> {
     return apiRequest<Workflow>("/workflows", {
         method: "POST",
@@ -1150,10 +1209,14 @@ export async function createWorkflow(payload: {
 export async function updateWorkflow(
     workflowId: string,
     payload: {
-        title?: string;
-        prompt_md?: string;
+        metadata?: {
+            title?: string;
+            language?: string | null;
+            practice?: string | null;
+            jurisdictions?: string[] | null;
+        };
+        skill_md?: string;
         columns_config?: { index: number; name: string; prompt: string }[];
-        practice?: string | null;
     },
 ): Promise<Workflow> {
     return apiRequest<Workflow>(`/workflows/${workflowId}`, {
@@ -1165,6 +1228,23 @@ export async function updateWorkflow(
 
 export async function deleteWorkflow(workflowId: string): Promise<void> {
     await apiRequest(`/workflows/${workflowId}`, { method: "DELETE" });
+}
+
+export async function openSourceWorkflow(
+    workflowId: string,
+    payload: {
+        contributor_mode: OpenSourceWorkflowContributorMode;
+        contributor?: WorkflowContributor | null;
+    },
+): Promise<OpenSourceWorkflowResponse> {
+    return apiRequest<OpenSourceWorkflowResponse>(
+        `/workflows/${workflowId}/open-source`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        },
+    );
 }
 
 export async function listHiddenWorkflows(): Promise<string[]> {

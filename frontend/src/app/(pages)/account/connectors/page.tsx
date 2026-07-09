@@ -3,20 +3,19 @@
 import { useCallback, useEffect, useState } from "react";
 import {
     ChevronDown,
-    Check,
     Eye,
     EyeOff,
     Loader2,
     Plus,
     RefreshCw,
-    Trash2,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Modal } from "@/app/components/shared/Modal";
+import { Input } from "@/app/components/ui/input";
+import { Modal } from "@/app/components/modals/Modal";
+import { NewMcpModal } from "@/app/components/account/NewMcpModal";
 import {
     MfaVerificationPopup,
     needsMfaVerification,
-} from "@/app/components/shared/MfaVerificationPopup";
+} from "@/app/components/popups/MfaVerificationPopup";
 import {
     type McpConnectorSummary,
     MikeApiError,
@@ -31,7 +30,6 @@ import {
     updateMcpConnector,
 } from "@/app/lib/mikeApi";
 import {
-    accountGlassDangerButtonClassName,
     accountGlassIconButtonClassName,
     accountGlassInputClassName,
     accountGlassPrimaryButtonClassName,
@@ -634,7 +632,7 @@ export default function ConnectorsPage() {
                 )}
             </div>
 
-            <AddMcpConnectorModal
+            <NewMcpModal
                 open={addOpen}
                 draft={addDraft}
                 step={addStep}
@@ -793,129 +791,6 @@ function ConnectorRow({
     );
 }
 
-function AddMcpConnectorModal({
-    open,
-    draft,
-    step,
-    result,
-    error,
-    authMessage,
-    showToken,
-    showAdvanced,
-    onDraftChange,
-    onShowTokenChange,
-    onShowAdvancedChange,
-    onClose,
-    onSubmit,
-    onOpenConnector,
-}: {
-    open: boolean;
-    draft: AddDraft;
-    step: AddStep;
-    result: McpConnectorSummary | null;
-    error: string | null;
-    authMessage: string | null;
-    showToken: boolean;
-    showAdvanced: boolean;
-    onDraftChange: (draft: AddDraft) => void;
-    onShowTokenChange: (show: boolean) => void;
-    onShowAdvancedChange: (show: boolean) => void;
-    onClose: () => void;
-    onSubmit: () => Promise<void>;
-    onOpenConnector: (connectorId: string) => void;
-}) {
-    const canSubmit =
-        draft.name.trim().length > 0 &&
-        draft.serverUrl.trim().length > 0 &&
-        step !== "working" &&
-        step !== "auth";
-
-    return (
-        <Modal
-            open={open}
-            onClose={onClose}
-            breadcrumbs={[
-                "Connectors",
-                step === "success"
-                    ? "Connector added"
-                    : step === "auth"
-                      ? "Authenticate connector"
-                      : "Add MCP connector",
-            ]}
-            size="lg"
-            primaryAction={
-                step === "success" && result
-                    ? {
-                          label: "View connector",
-                          onClick: () => onOpenConnector(result.id),
-                      }
-                    : {
-                          label:
-                              step === "working"
-                                  ? "Connecting..."
-                                  : step === "auth"
-                                    ? "Authorizing..."
-                                  : "Connect",
-                          icon:
-                              step === "working" || step === "auth" ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : undefined,
-                          onClick: () => void onSubmit(),
-                          disabled: !canSubmit,
-                      }
-            }
-            cancelAction={
-                step === "working" || step === "auth"
-                    ? false
-                    : { label: step === "success" ? "Done" : "Cancel", onClick: onClose }
-            }
-            footerStatus={
-                error ? (
-                    <div className="rounded-xl border border-white/70 bg-white/75 px-3 py-2 text-sm text-red-600 shadow-[0_12px_32px_rgba(15,23,42,0.10),inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-xl">
-                        {error}
-                    </div>
-                ) : null
-            }
-        >
-            {step === "success" && result ? (
-                <SuccessToolsList connector={result} />
-            ) : step === "auth" ? (
-                <ConnectorAuthScreen
-                    message={
-                        authMessage ??
-                        "Complete authorization in the popup to finish connecting this MCP server."
-                    }
-                />
-            ) : (
-                <div className="space-y-4 pb-4">
-                    <p className="text-sm text-gray-500">
-                        The assistant will have access to this MCP server and
-                        its enabled tools.
-                    </p>
-                    <ConnectorForm
-                        draft={draft}
-                        showToken={showToken}
-                        showAdvanced={showAdvanced}
-                        showTokenNote
-                        tokenPlaceholder="Bearer token"
-                        disabled={step === "working"}
-                        onDraftChange={(next) =>
-                            onDraftChange({
-                                name: next.name,
-                                serverUrl: next.serverUrl,
-                                bearerToken: next.bearerToken,
-                                customHeaders: next.customHeaders,
-                            })
-                        }
-                        onShowTokenChange={onShowTokenChange}
-                        onShowAdvancedChange={onShowAdvancedChange}
-                    />
-                </div>
-            )}
-        </Modal>
-    );
-}
-
 function McpConnectorDetailsModal({
     connector,
     draft,
@@ -1020,7 +895,7 @@ function McpConnectorDetailsModal({
             }
         >
             {connector && (
-                <div className="flex min-h-0 flex-1 flex-col gap-5 pb-4">
+                <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pb-4">
                     <ConnectorForm
                         draft={draft}
                         showToken={showToken}
@@ -1285,41 +1160,6 @@ function ConnectorForm({
                         </div>
                     </label>
                 )}
-            </div>
-        </div>
-    );
-}
-
-function SuccessToolsList({ connector }: { connector: McpConnectorSummary }) {
-    return (
-        <div className="flex h-full min-h-0 flex-1 flex-col gap-4 pb-4">
-            <div className="flex items-start gap-3 rounded-xl border border-green-100/80 bg-green-50/80 px-3 py-3 text-green-800 shadow-[0_3px_9px_rgba(15,23,42,0.03),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-4px_9px_rgba(255,255,255,0.05)] backdrop-blur-xl">
-                <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
-                <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">
-                        {connector.name} is connected.{" "}
-                        <span className="font-normal text-green-700">
-                        {connector.tools.length} tools discovered.
-                        </span>
-                    </p>
-                </div>
-            </div>
-            <ScrollableToolList connector={connector} fill />
-        </div>
-    );
-}
-
-function ConnectorAuthScreen({ message }: { message: string }) {
-    return (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 pb-4 text-center">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/70 bg-white/75 text-gray-700 shadow-[0_3px_9px_rgba(15,23,42,0.03),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-4px_9px_rgba(255,255,255,0.05)] backdrop-blur-xl">
-                <Loader2 className="h-4 w-4 animate-spin" />
-            </div>
-            <div className="max-w-sm space-y-1">
-                <h3 className="text-sm font-medium text-gray-900">
-                    Authentication required
-                </h3>
-                <p className="text-sm text-gray-500">{message}</p>
             </div>
         </div>
     );

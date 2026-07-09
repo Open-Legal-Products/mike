@@ -10,7 +10,7 @@ import { useChatHistoryContext } from "@/app/contexts/ChatHistoryContext";
 import { useGenerateChatTitle } from "./useGenerateChatTitle";
 import type {
   AssistantEvent,
-  CitationAnnotation,
+  Citation,
   Message,
 } from "@/app/components/shared/types";
 
@@ -99,6 +99,21 @@ export function useAssistantChat({
 
   const eventsRef = useRef<AssistantEvent[]>([]);
 
+  const updateLatestAssistantMessage = (
+    updater: (message: Message) => Message,
+  ) => {
+    setMessages((prev) => {
+      const assistantIndex = [...prev]
+        .map((message, index) => ({ message, index }))
+        .reverse()
+        .find(({ message }) => message.role === "assistant")?.index;
+      if (assistantIndex === undefined) return prev;
+      const updated = [...prev];
+      updated[assistantIndex] = updater(updated[assistantIndex]);
+      return updated;
+    });
+  };
+
   /**
    * Finalize any in-flight streaming content event so the next
    * content_delta starts a fresh block. Called
@@ -115,17 +130,10 @@ export function useAssistantChat({
         { type: "content", text: last.text },
       ];
       const snapshot = [...eventsRef.current];
-      setMessages((prev) => {
-        const updated = [...prev];
-        const lastMsg = updated[updated.length - 1];
-        if (lastMsg?.role === "assistant") {
-          updated[updated.length - 1] = {
-            ...lastMsg,
-            events: snapshot,
-          };
-        }
-        return updated;
-      });
+      updateLatestAssistantMessage((message) => ({
+        ...message,
+        events: snapshot,
+      }));
     }
   };
 
@@ -141,17 +149,10 @@ export function useAssistantChat({
       { type: "reasoning", text: last.text },
     ];
     const snapshot = [...eventsRef.current];
-    setMessages((prev) => {
-      const updated = [...prev];
-      const lastMsg = updated[updated.length - 1];
-      if (lastMsg?.role === "assistant") {
-        updated[updated.length - 1] = {
-          ...lastMsg,
-          events: snapshot,
-        };
-      }
-      return updated;
-    });
+    updateLatestAssistantMessage((message) => ({
+      ...message,
+      events: snapshot,
+    }));
   };
 
   // Transient placeholder events (tool_call_start, thinking) fill the
@@ -183,17 +184,10 @@ export function useAssistantChat({
       abortControllerRef.current.abort();
       const snapshot = cancelStreamingEvents(eventsRef.current);
       eventsRef.current = snapshot;
-      setMessages((prev) => {
-        const updated = [...prev];
-        const last = updated[updated.length - 1];
-        if (last?.role === "assistant") {
-          updated[updated.length - 1] = {
-            ...last,
-            events: cancelStreamingEvents(last.events ?? snapshot),
-          };
-        }
-        return updated;
-      });
+      updateLatestAssistantMessage((message) => ({
+        ...message,
+        events: cancelStreamingEvents(message.events ?? snapshot),
+      }));
       setIsResponseLoading(false);
       setIsLoadingCitations(false);
     }
@@ -205,14 +199,7 @@ export function useAssistantChat({
     if (after.length === before.length) return;
     eventsRef.current = after;
     const snapshot = [...after];
-    setMessages((prev) => {
-      const updated = [...prev];
-      const last = updated[updated.length - 1];
-      if (last?.role === "assistant") {
-        updated[updated.length - 1] = { ...last, events: snapshot };
-      }
-      return updated;
-    });
+    updateLatestAssistantMessage((message) => ({ ...message, events: snapshot }));
   };
 
   const pushThinkingPlaceholder = () => {
@@ -225,14 +212,7 @@ export function useAssistantChat({
       { type: "thinking" as const, isStreaming: true },
     ];
     const snapshot = [...eventsRef.current];
-    setMessages((prev) => {
-      const updated = [...prev];
-      const lastMsg = updated[updated.length - 1];
-      if (lastMsg?.role === "assistant") {
-        updated[updated.length - 1] = { ...lastMsg, events: snapshot };
-      }
-      return updated;
-    });
+    updateLatestAssistantMessage((message) => ({ ...message, events: snapshot }));
   };
 
   const pushEvent = (event: AssistantEvent) => {
@@ -243,14 +223,7 @@ export function useAssistantChat({
     const next = eventsRef.current.filter((e) => !isStreamingPlaceholder(e));
     eventsRef.current = [...next, event];
     const snapshot = [...eventsRef.current];
-    setMessages((prev) => {
-      const updated = [...prev];
-      const last = updated[updated.length - 1];
-      if (last?.role === "assistant") {
-        updated[updated.length - 1] = { ...last, events: snapshot };
-      }
-      return updated;
-    });
+    updateLatestAssistantMessage((message) => ({ ...message, events: snapshot }));
   };
 
   const updateMatchingEvent = (
@@ -267,14 +240,7 @@ export function useAssistantChat({
     newEvents[idx] = updater(events[idx]);
     eventsRef.current = newEvents;
     const snapshot = [...newEvents];
-    setMessages((prev) => {
-      const updated = [...prev];
-      const last = updated[updated.length - 1];
-      if (last?.role === "assistant") {
-        updated[updated.length - 1] = { ...last, events: snapshot };
-      }
-      return updated;
-    });
+    updateLatestAssistantMessage((message) => ({ ...message, events: snapshot }));
     return true;
   };
 
@@ -282,6 +248,10 @@ export function useAssistantChat({
     message: Message,
     opts?: {
       displayedDoc?: { filename: string; documentId: string } | null;
+      askInputsResponse?: Extract<
+        AssistantEvent,
+        { type: "ask_inputs_response" }
+      >;
     },
   ): Promise<string | null> => {
     if (!message.content.trim()) return null;
@@ -294,24 +264,62 @@ export function useAssistantChat({
       lastMessage.role === "user" &&
       lastMessage.content === message.content;
 
-    const newMessages: Message[] = isMessageAlreadyAdded
+    const apiMessagesForTurn: Message[] = isMessageAlreadyAdded
       ? messages
       : [...messages, message];
+    const askInputsResponseEvent = opts?.askInputsResponse ?? null;
+    const optimisticResponseEvent = askInputsResponseEvent;
+    const userInputThinkingEvent = optimisticResponseEvent
+      ? ({
+          type: "thinking" as const,
+          isStreaming: true,
+        } satisfies AssistantEvent)
+      : null;
+    const displayMessages: Message[] = optimisticResponseEvent
+      ? (() => {
+          const updated = messages.map((item) => ({
+            ...item,
+            events: item.events ? [...item.events] : item.events,
+          }));
+          for (let i = updated.length - 1; i >= 0; i--) {
+            const current = updated[i];
+            if (current.role !== "assistant") continue;
+            updated[i] = {
+              ...current,
+              events: [
+                ...(current.events ?? []),
+                optimisticResponseEvent,
+                ...(userInputThinkingEvent ? [userInputThinkingEvent] : []),
+              ],
+            };
+            return updated;
+          }
+          return updated;
+        })()
+      : apiMessagesForTurn;
 
-    setMessages([
-      ...newMessages,
-      { role: "assistant", content: "", annotations: [], events: [] },
-    ]);
+    setMessages(
+      optimisticResponseEvent
+        ? displayMessages
+        : [
+            ...displayMessages,
+            { role: "assistant", content: "", citations: [], events: [] },
+          ],
+    );
 
     let streamedChatId: string | null = null;
 
-    eventsRef.current = [];
+    eventsRef.current = optimisticResponseEvent
+      ? ([...displayMessages]
+          .reverse()
+          .find((item) => item.role === "assistant")?.events ?? [])
+      : [];
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
     try {
-      const apiMessages = newMessages.map((currentMessage) => ({
+      const apiMessages = apiMessagesForTurn.map((currentMessage) => ({
         role: currentMessage.role,
         content: currentMessage.content,
         files: currentMessage.files,
@@ -348,12 +356,14 @@ export function useAssistantChat({
               : undefined,
             attached_documents:
               attachedDocs.length > 0 ? attachedDocs : undefined,
+            ask_inputs_response: opts?.askInputsResponse,
             signal: controller.signal,
           })
         : streamChat({
             messages: apiMessages,
             chat_id: chatId,
             model,
+            ask_inputs_response: opts?.askInputsResponse,
             signal: controller.signal,
           }));
 
@@ -408,18 +418,11 @@ export function useAssistantChat({
                 { type: "error", message },
               ];
               const snapshot = [...eventsRef.current];
-              setMessages((prev) => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                if (last?.role === "assistant") {
-                  updated[updated.length - 1] = {
-                    ...last,
-                    events: snapshot,
-                    error: message,
-                  };
-                }
-                return updated;
-              });
+              updateLatestAssistantMessage((assistantMessage) => ({
+                ...assistantMessage,
+                events: snapshot,
+                error: message,
+              }));
               setIsResponseLoading(false);
               setIsLoadingCitations(false);
               continue;
@@ -451,17 +454,10 @@ export function useAssistantChat({
                   },
                 ];
                 const snapshot = [...eventsRef.current];
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  const last = updated[updated.length - 1];
-                  if (last?.role === "assistant") {
-                    updated[updated.length - 1] = {
-                      ...last,
-                      events: snapshot,
-                    };
-                  }
-                  return updated;
-                });
+                updateLatestAssistantMessage((message) => ({
+                  ...message,
+                  events: snapshot,
+                }));
               } else {
                 const nextEvents = [...events];
                 nextEvents[nextEvents.length - 1] = {
@@ -471,17 +467,10 @@ export function useAssistantChat({
                 };
                 eventsRef.current = nextEvents;
                 const snapshot = [...nextEvents];
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  const last = updated[updated.length - 1];
-                  if (last?.role === "assistant") {
-                    updated[updated.length - 1] = {
-                      ...last,
-                      events: snapshot,
-                    };
-                  }
-                  return updated;
-                });
+                updateLatestAssistantMessage((message) => ({
+                  ...message,
+                  events: snapshot,
+                }));
               }
               continue;
             }
@@ -516,17 +505,10 @@ export function useAssistantChat({
                 ];
               }
               const snapshot = [...eventsRef.current];
-              setMessages((prev) => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                if (last?.role === "assistant") {
-                  updated[updated.length - 1] = {
-                    ...last,
-                    events: snapshot,
-                  };
-                }
-                return updated;
-              });
+              updateLatestAssistantMessage((message) => ({
+                ...message,
+                events: snapshot,
+              }));
               continue;
             }
 
@@ -543,17 +525,10 @@ export function useAssistantChat({
                 ];
               }
               const snapshot = [...eventsRef.current];
-              setMessages((prev) => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                if (last?.role === "assistant") {
-                  updated[updated.length - 1] = {
-                    ...last,
-                    events: snapshot,
-                  };
-                }
-                return updated;
-              });
+              updateLatestAssistantMessage((message) => ({
+                ...message,
+                events: snapshot,
+              }));
               pushThinkingPlaceholder();
               continue;
             }
@@ -904,6 +879,85 @@ export function useAssistantChat({
               continue;
             }
 
+            if (data.type === "ask_inputs") {
+              const rawItems = Array.isArray(data.items)
+                ? (data.items as unknown[])
+                : [];
+              const items = rawItems.reduce<Extract<
+                AssistantEvent,
+                { type: "ask_inputs" }
+              >["items"]>((acc, item, index) => {
+                if (!item || typeof item !== "object") return acc;
+                const row = item as Record<string, unknown>;
+                const id =
+                  typeof row.id === "string" && row.id.trim()
+                    ? row.id.trim()
+                    : `input-${index + 1}`;
+                if (row.kind === "choice") {
+                  const options = Array.isArray(row.options)
+                    ? (row.options as unknown[]).flatMap((option) => {
+                        if (!option || typeof option !== "object") return [];
+                        const optionRow = option as Record<string, unknown>;
+                        const value =
+                          typeof optionRow.value === "string"
+                            ? optionRow.value
+                            : typeof optionRow.label === "string"
+                              ? optionRow.label
+                              : "";
+                        if (!value.trim()) return [];
+                        return [
+                          {
+                            value,
+                          },
+                        ];
+                      })
+                    : [];
+                  acc.push({
+                      id,
+                      kind: "choice" as const,
+                      question:
+                        typeof row.question === "string"
+                          ? row.question
+                          : "Please choose an option.",
+                      options,
+                      allow_other: row.allow_other !== false,
+                      other_label:
+                        typeof row.other_label === "string"
+                          ? row.other_label
+                          : "Other",
+                      response_prefix:
+                        typeof row.response_prefix === "string"
+                          ? row.response_prefix
+                          : undefined,
+                  });
+                  return acc;
+                }
+                if (row.kind === "documents") {
+                  const documentTypes = Array.isArray(row.document_types)
+                    ? (row.document_types as unknown[])
+                        .filter((type): type is string => typeof type === "string")
+                        .map((type) => type.trim())
+                        .filter(Boolean)
+                    : [];
+                  acc.push({
+                      id,
+                      kind: "documents" as const,
+                      document_types: documentTypes,
+                      response_prefix:
+                        typeof row.response_prefix === "string"
+                          ? row.response_prefix
+                          : undefined,
+                  });
+                  return acc;
+                }
+                return acc;
+              }, []);
+              if (items.length > 0) {
+                pushEvent({ type: "ask_inputs", items });
+              }
+              continue;
+            }
+
             if (data.type === "doc_read") {
               updateMatchingEvent(
                 (e) =>
@@ -1096,41 +1150,27 @@ export function useAssistantChat({
                   ? data.status
                   : "final";
               const incoming = (data.citations ??
-                []) as CitationAnnotation[];
+                []) as Citation[];
               if (status === "started" || status === "partial") {
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  const last = updated[updated.length - 1];
-                  if (last?.role === "assistant") {
-                    updated[updated.length - 1] = {
-                      ...last,
-                      annotations: incoming,
-                      citationStatus: status,
-                    };
-                  }
-                  return updated;
-                });
+                updateLatestAssistantMessage((message) => ({
+                  ...message,
+                  citations: incoming,
+                  citationStatus: status,
+                }));
                 continue;
               }
               // End-of-stream signal — scrub any lingering
               // placeholders so they don't persist into the
               // finalised message. First finalize content so adding
-              // annotations cannot re-render the markdown/citation view
+              // citations cannot re-render the markdown/citation view
               // against a streaming block.
               finalizeStreamingContent();
               clearStreamingPlaceholders();
-              setMessages((prev) => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                if (last?.role === "assistant") {
-                  updated[updated.length - 1] = {
-                    ...last,
-                    annotations: incoming,
-                    citationStatus: incoming.length ? "final" : undefined,
-                  };
-                }
-                return updated;
-              });
+              updateLatestAssistantMessage((message) => ({
+                ...message,
+                citations: incoming,
+                citationStatus: incoming.length ? "final" : undefined,
+              }));
               continue;
             }
           } catch (e) {
@@ -1166,7 +1206,7 @@ export function useAssistantChat({
       await loadChats();
 
       const finalChatIdForTitle = streamedChatId || chatId || null;
-      if (finalChatIdForTitle && newMessages.length === 1) {
+      if (finalChatIdForTitle && apiMessagesForTurn.length === 1) {
         const titleParts = [message.content];
         if (message.workflow)
           titleParts.push(`Workflow: ${message.workflow.title}`);
@@ -1184,15 +1224,19 @@ export function useAssistantChat({
         finalizeStreamingReasoning();
         eventsRef.current = appendCancellationEvent(eventsRef.current);
         setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === "assistant") {
-            const updated = [...prev];
+          const assistantIndex = [...prev]
+            .map((message, index) => ({ message, index }))
+            .reverse()
+            .find(({ message }) => message.role === "assistant")?.index;
+          if (assistantIndex !== undefined) {
+            const assistantMessage = prev[assistantIndex];
             const events = appendCancellationEvent(
-              last.events ?? eventsRef.current,
+              assistantMessage.events ?? eventsRef.current,
             );
             eventsRef.current = events;
-            updated[updated.length - 1] = {
-              ...last,
+            const updated = [...prev];
+            updated[assistantIndex] = {
+              ...assistantMessage,
               events,
             };
             return updated;
@@ -1214,11 +1258,14 @@ export function useAssistantChat({
             ? error.message
             : "Sorry, something went wrong.";
         setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === "assistant") {
+          const assistantIndex = [...prev]
+            .map((message, index) => ({ message, index }))
+            .reverse()
+            .find(({ message }) => message.role === "assistant")?.index;
+          if (assistantIndex !== undefined) {
             const updated = [...prev];
-            updated[updated.length - 1] = {
-              ...last,
+            updated[assistantIndex] = {
+              ...updated[assistantIndex],
               error: errorMessage,
             };
             return updated;

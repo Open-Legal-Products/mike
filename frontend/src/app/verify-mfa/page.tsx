@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { SiteLogo } from "@/components/site-logo";
-import { Button } from "@/components/ui/button";
-import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/lib/supabase";
+import { SiteLogo } from "@/app/components/site-logo";
+import { Button } from "@/app/components/ui/button";
+import { useAuth } from "@/app/contexts/AuthContext";
+import { supabase } from "@/app/lib/supabase";
 import {
     needsMfaVerification,
     VerificationCodeInput,
-} from "@/app/components/shared/MfaVerificationPopup";
+} from "@/app/components/popups/MfaVerificationPopup";
 import { markMfaVerifiedForGate } from "@/app/components/shared/MfaLoginGate";
 
 type MfaFactor = {

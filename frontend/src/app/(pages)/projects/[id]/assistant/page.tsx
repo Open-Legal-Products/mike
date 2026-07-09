@@ -10,7 +10,7 @@ import {
     useProjectWorkspace,
 } from "@/app/components/projects/ProjectWorkspace";
 import type { Chat } from "@/app/components/shared/types";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/app/contexts/AuthContext";
 
 interface Props {
     params: Promise<{ id: string }>;

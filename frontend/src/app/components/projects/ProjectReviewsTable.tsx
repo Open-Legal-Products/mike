@@ -31,18 +31,14 @@ export function ProjectReviewsTable({
     selectedReviewIds,
     allReviewsSelected,
     someReviewsSelected,
-    renamingReviewId,
-    renameReviewValue,
     creatingReview,
     currentUserId,
     onCreateReview,
     onOpenReview,
+    onOpenDetails,
     onDeleteReview,
     onOwnerOnlyAction,
-    submitReviewRename,
     setSelectedReviewIds,
-    setRenamingReviewId,
-    setRenameReviewValue,
     loading = false,
 }: {
     docs: Document[];
@@ -51,50 +47,49 @@ export function ProjectReviewsTable({
     selectedReviewIds: string[];
     allReviewsSelected: boolean;
     someReviewsSelected: boolean;
-    renamingReviewId: string | null;
-    renameReviewValue: string;
     creatingReview: boolean;
     currentUserId?: string | null;
     onCreateReview: () => void;
     onOpenReview: (reviewId: string) => void;
+    onOpenDetails: (review: TabularReview) => void;
     onDeleteReview: (review: TabularReview) => Promise<void> | void;
     onOwnerOnlyAction: (action: string) => void;
-    submitReviewRename: (reviewId: string) => Promise<void> | void;
     setSelectedReviewIds: Dispatch<SetStateAction<string[]>>;
-    setRenamingReviewId: Dispatch<SetStateAction<string | null>>;
-    setRenameReviewValue: Dispatch<SetStateAction<string>>;
     loading?: boolean;
 }) {
     return (
-        <TableScrollArea>
-            <TableHeaderRow className="pr-8 md:pr-8">
-                <TableStickyCell header>
-                    {loading ? (
-                        <SkeletonDot />
-                    ) : (
-                        <input
-                            type="checkbox"
-                            checked={allReviewsSelected}
-                            ref={(el) => {
-                                if (el) el.indeterminate = someReviewsSelected;
-                            }}
-                            onChange={() => {
-                                if (allReviewsSelected) setSelectedReviewIds([]);
-                                else
-                                    setSelectedReviewIds(
-                                        filteredReviews.map((r) => r.id),
-                                    );
-                            }}
-                            className={TABLE_CHECKBOX_CLASS}
-                        />
-                    )}
-                    <span>Name</span>
-                </TableStickyCell>
-                <TableHeaderCell className="ml-auto w-24">Columns</TableHeaderCell>
-                <TableHeaderCell className="w-24">Documents</TableHeaderCell>
-                <TableHeaderCell className="w-32">Created</TableHeaderCell>
-                <TableHeaderCell className="w-8" />
-            </TableHeaderRow>
+        <TableScrollArea
+            header={
+                <TableHeaderRow className="pr-8 md:pr-8">
+                    <TableStickyCell header>
+                        {loading ? (
+                            <SkeletonDot />
+                        ) : (
+                            <input
+                                type="checkbox"
+                                checked={allReviewsSelected}
+                                ref={(el) => {
+                                    if (el) el.indeterminate = someReviewsSelected;
+                                }}
+                                onChange={() => {
+                                    if (allReviewsSelected) setSelectedReviewIds([]);
+                                    else
+                                        setSelectedReviewIds(
+                                            filteredReviews.map((r) => r.id),
+                                        );
+                                }}
+                                className={TABLE_CHECKBOX_CLASS}
+                            />
+                        )}
+                        <span>Name</span>
+                    </TableStickyCell>
+                    <TableHeaderCell className="ml-auto w-24">Columns</TableHeaderCell>
+                    <TableHeaderCell className="w-24">Documents</TableHeaderCell>
+                    <TableHeaderCell className="w-32">Created</TableHeaderCell>
+                    <TableHeaderCell className="w-8" />
+                </TableHeaderRow>
+            }
+        >
             {loading ? (
                 <ProjectReviewsLoadingRows />
             ) : reviews.length === 0 ? (
@@ -122,28 +117,22 @@ export function ProjectReviewsTable({
                             rightClickDropdown={(close) => (
                                 <RowActionMenuItems
                                     onClose={close}
-                                    onRename={() => {
+                                    onEditDetails={() => {
                                         if (
                                             currentUserId &&
                                             review.user_id !== currentUserId
                                         ) {
                                             onOwnerOnlyAction(
-                                                "rename this tabular review",
+                                                "edit tabular review details",
                                             );
                                             return;
                                         }
-                                        setRenameReviewValue(
-                                            review.title ?? "Untitled Review",
-                                        );
-                                        setRenamingReviewId(review.id);
+                                        onOpenDetails(review);
                                     }}
                                     onDelete={() => onDeleteReview(review)}
                                 />
                             )}
-                            onClick={() => {
-                                if (renamingReviewId === review.id) return;
-                                onOpenReview(review.id);
-                            }}
+                            onClick={() => onOpenReview(review.id)}
                             className="pr-8 md:pr-8"
                         >
                             <TablePrimaryCell
@@ -163,13 +152,6 @@ export function ProjectReviewsTable({
                                     )
                                 }
                                 label={review.title ?? "Untitled Review"}
-                                editing={renamingReviewId === review.id}
-                                editValue={renameReviewValue}
-                                onEditValueChange={setRenameReviewValue}
-                                onEditCommit={() =>
-                                    void submitReviewRename(review.id)
-                                }
-                                onEditCancel={() => setRenamingReviewId(null)}
                             />
                             <TableCell className="ml-auto w-24">
                                 {review.columns_config?.length ?? 0}
@@ -189,20 +171,17 @@ export function ProjectReviewsTable({
                                 onClick={(e) => e.stopPropagation()}
                             >
                                 <RowActions
-                                    onRename={() => {
+                                    onEditDetails={() => {
                                         if (
                                             currentUserId &&
                                             review.user_id !== currentUserId
                                         ) {
                                             onOwnerOnlyAction(
-                                                "rename this tabular review",
+                                                "edit tabular review details",
                                             );
                                             return;
                                         }
-                                        setRenameReviewValue(
-                                            review.title ?? "Untitled Review",
-                                        );
-                                        setRenamingReviewId(review.id);
+                                        onOpenDetails(review);
                                     }}
                                     onDelete={() => onDeleteReview(review)}
                                 />

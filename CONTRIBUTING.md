@@ -20,6 +20,18 @@ Thanks for helping improve Mike. Please keep contributions small, focused, and e
     - why
     - testing
 
+## System Workflows
+
+System workflows live in `mike-workflows/system/`. Put structured metadata in
+the YAML frontmatter at the top of `SKILL.md`, put workflow instructions in the
+body of `SKILL.md`, and use `table-config.yaml` for tabular review columns.
+
+After changing system workflows, regenerate the app files:
+
+```bash
+node scripts/build-workflows.js
+```
+
 ## Security
 
 Do not open a public issue for security vulnerabilities. Use [GitHub's private vulnerability reporting](https://github.com/willchen96/mike/security/advisories/new) instead.

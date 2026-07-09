@@ -321,6 +321,10 @@ export async function deleteUserAccountData(
         db.from("chats").delete().eq("user_id", userId),
         db.from("project_subfolders").delete().eq("user_id", userId),
         db.from("hidden_workflows").delete().eq("user_id", userId),
+        db
+            .from("workflow_open_source_submissions")
+            .delete()
+            .eq("submitted_by_user_id", userId),
         db.from("workflow_shares").delete().eq("shared_by_user_id", userId),
         userEmail
             ? db

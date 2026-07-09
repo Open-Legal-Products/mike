@@ -8,16 +8,16 @@ import {
     type CSSProperties,
 } from "react";
 import { X } from "lucide-react";
-import { DocPanel, type DocPanelMode } from "../shared/DocPanel";
+import { DocPanel, type DocPanelMode } from "./DocPanel";
 import type {
-    CitationAnnotation,
+    Citation,
     EditAnnotation,
 } from "../shared/types";
 import {
     CaseLawPanel,
     type CaseTab,
 } from "./CaseLawPanel";
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Tab data
@@ -45,12 +45,13 @@ export type DocumentTab = CommonTab & { kind: "document" };
 
 export type CitationTab = CommonTab & {
     kind: "citation";
-    citation: CitationAnnotation;
+    citation: Citation;
 };
 
 export type EditTab = CommonTab & {
     kind: "edit";
     edit: EditAnnotation;
+    changeNumber?: number;
 };
 
 export type AssistantSidePanelTab =
@@ -307,6 +308,7 @@ export function AssistantSidePanel({
                               ? {
                                     kind: "edit",
                                     edit: tab.edit,
+                                    changeNumber: tab.changeNumber,
                                     isEditReloading:
                                         isEditReloading?.(tab.edit.edit_id) ??
                                         false,

@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import { Download, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/app/components/ui/button";
 import { useChatHistoryContext } from "@/app/contexts/ChatHistoryContext";
-import { ConfirmPopup } from "@/app/components/shared/ConfirmPopup";
+import { ConfirmPopup } from "@/app/components/popups/ConfirmPopup";
 import {
     MfaVerificationPopup,
     needsMfaVerification,
-} from "@/app/components/shared/MfaVerificationPopup";
+} from "@/app/components/popups/MfaVerificationPopup";
 import {
     deleteAllChats,
     deleteAllProjects,

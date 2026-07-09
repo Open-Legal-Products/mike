@@ -2,16 +2,20 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { listWorkflows } from "@/app/lib/mikeApi";
-import { Modal } from "../shared/Modal";
+import { Modal } from "../modals/Modal";
 import type { Workflow } from "../shared/types";
-import { BUILT_IN_WORKFLOWS } from "./builtinWorkflows";
 import { WorkflowPickerContent } from "./WorkflowPickerContent";
+
+const isDev = process.env.NODE_ENV !== "production";
+const devLog = (...args: Parameters<typeof console.log>) => {
+    if (isDev) console.log(...args);
+};
 
 interface WorkflowPickerModalProps {
     open: boolean;
     onClose: () => void;
     onSelect: (workflow: Workflow) => Promise<void> | void;
-    workflowType: Workflow["type"];
+    workflowType: Workflow["metadata"]["type"];
     breadcrumbs: ReactNode[];
     primaryLabel?: string;
     selectingLabel?: string;
@@ -42,43 +46,48 @@ export function WorkflowPickerModal({
     useEffect(() => {
         if (!open) return;
         let cancelled = false;
-        const builtins = BUILT_IN_WORKFLOWS.filter(
-            (workflow) => workflow.type === workflowType,
-        );
         const frame = requestAnimationFrame(() => {
             if (cancelled) return;
-            setWorkflows(builtins);
+            setWorkflows([]);
             setLoading(true);
-            setSelected(
-                initialWorkflowId
-                    ? builtins.find((workflow) => workflow.id === initialWorkflowId) ??
-                          null
-                    : null,
-            );
+            setSelected(null);
             setSearch("");
         });
 
         listWorkflows(workflowType)
-            .then((custom) => {
+            .then((workflows) => {
                 if (cancelled) return;
-                const all = [...builtins, ...custom];
-                setWorkflows(all);
+                devLog("[workflows/ui:picker] loaded", {
+                    workflowType,
+                    workflowCount: workflows.length,
+                    systemCount: workflows.filter((workflow) => workflow.is_system)
+                        .length,
+                    sample: workflows.slice(0, 5).map((workflow) => ({
+                        id: workflow.id,
+                        title: workflow.metadata.title,
+                        type: workflow.metadata.type,
+                        user_id: workflow.user_id,
+                        is_system: workflow.is_system,
+                        is_owner: workflow.is_owner,
+                    })),
+                });
+                setWorkflows(workflows);
                 if (initialWorkflowId) {
                     setSelected(
-                        all.find((workflow) => workflow.id === initialWorkflowId) ??
-                            null,
-                    );
-                }
-            })
-            .catch(() => {
-                if (cancelled) return;
-                if (initialWorkflowId) {
-                    setSelected(
-                        builtins.find(
+                        workflows.find(
                             (workflow) => workflow.id === initialWorkflowId,
                         ) ?? null,
                     );
                 }
+            })
+            .catch((error) => {
+                if (cancelled) return;
+                devLog("[workflows/ui:picker] failed", {
+                    workflowType,
+                    error,
+                });
+                setWorkflows([]);
+                setSelected(null);
             })
             .finally(() => {
                 if (!cancelled) setLoading(false);

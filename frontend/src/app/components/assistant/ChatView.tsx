@@ -6,6 +6,8 @@ import { ArrowDown } from "lucide-react";
 import { UserMessage } from "./UserMessage";
 import { AssistantMessage } from "./AssistantMessage";
 import { ChatInput } from "./ChatInput";
+import type { ChatInputHandle } from "./ChatInput";
+import { AskInputPopup } from "./AskInputPopup";
 import {
     AssistantSidePanel,
     type AssistantSidePanelTab,
@@ -13,24 +15,35 @@ import {
 import { AssistantWorkflowModal } from "./AssistantWorkflowModal";
 import type {
     AssistantEvent,
-    CitationAnnotation,
+    Citation,
     EditAnnotation,
     Message,
 } from "../shared/types";
 import { useSidebar } from "@/app/contexts/SidebarContext";
 import { invalidateDocxBytes } from "@/app/hooks/useFetchDocxBytes";
-import { cn } from "@/lib/utils";
 
 interface Props {
     chatId?: string | null;
     messages: Message[];
     isResponseLoading: boolean;
-    handleChat: (message: Message) => Promise<string | null>;
+    handleChat: (
+        message: Message,
+        opts?: {
+            displayedDoc?: { filename: string; documentId: string } | null;
+            askInputsResponse?: Extract<
+                AssistantEvent,
+                { type: "ask_inputs_response" }
+            >;
+        },
+    ) => Promise<string | null>;
     cancel: () => void;
 }
 
 const ASSISTANT_PANEL_TRANSITION_MS = 500;
 const MOBILE_BREAKPOINT_PX = 768;
+const DEFAULT_ASSISTANT_BOTTOM_PADDING = 116;
+const SCROLL_BUTTON_INPUT_GAP = 16;
+const CHAT_INPUT_BOTTOM_OFFSET = 12;
 
 function isSmallScreen() {
     return (
@@ -54,6 +67,9 @@ export function ChatView({
     const [workflowModalInitialId, setWorkflowModalInitialId] = useState<
         string | undefined
     >();
+    const [hiddenAskInputKeys, setHiddenAskInputKeys] = useState<Set<string>>(
+        () => new Set(),
+    );
     const [reloadingDocIds, setReloadingDocIds] = useState<Set<string>>(
         () => new Set(),
     );
@@ -65,6 +81,10 @@ export function ChatView({
     );
     const { setSidebarOpen } = useSidebar();
     const panelCloseTimerRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        setHiddenAskInputKeys(new Set());
+    }, [chatId]);
 
     const showPanel = useCallback(() => {
         if (panelCloseTimerRef.current !== null) {
@@ -199,7 +219,7 @@ export function ChatView({
      * AssistantMessage when the user clicks a numbered citation pill.
      */
     const openCitation = useCallback(
-        (citation: CitationAnnotation, options?: { showQuotes?: boolean }) => {
+        (citation: Citation, options?: { showQuotes?: boolean }) => {
             const showQuotes = options?.showQuotes ?? true;
             if (citation.kind === "case") {
                 if (!chatId) return;
@@ -270,7 +290,7 @@ export function ChatView({
      * AssistantMessage when the user clicks an EditCard's View button.
      */
     const openEditor = useCallback(
-        (ann: EditAnnotation, filename: string) => {
+        (ann: EditAnnotation, filename: string, changeNumber?: number) => {
             upsertTab({
                 kind: "edit",
                 id: ann.document_id,
@@ -279,6 +299,7 @@ export function ChatView({
                 versionId: ann.version_id ?? null,
                 versionNumber: ann.version_number ?? null,
                 edit: ann,
+                changeNumber,
             });
         },
         [upsertTab],
@@ -450,7 +471,8 @@ export function ChatView({
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const latestUserMessageRef = useRef<HTMLDivElement>(null);
-    const chatInputRef = useRef<HTMLDivElement>(null);
+    const chatInputRef = useRef<ChatInputHandle | null>(null);
+    const measuredInputRef = useRef<HTMLDivElement>(null);
     // Seed "already in place" when messages exist at mount (a freshly created
     // chat arrives with its first message in hand). Otherwise the skeleton +
     // opacity-0 gate would flash the message out and fade it back in on every
@@ -465,28 +487,26 @@ export function ChatView({
     const [minHeight, setMinHeight] = useState("0px");
 
     useEffect(() => {
-        const el = chatInputRef.current;
+        const el = measuredInputRef.current;
         if (!el) return;
-        const observer = new ResizeObserver(() =>
-            setInputHeight(el.offsetHeight),
-        );
+        const update = () => setInputHeight(el.offsetHeight);
+        const observer = new ResizeObserver(update);
         observer.observe(el);
-        setInputHeight(el.offsetHeight);
+        update();
         return () => observer.disconnect();
     }, []);
 
     useEffect(() => {
         if (latestUserMessageRef.current) {
             const headerHeight = window.innerWidth < 768 ? 56 : 0;
-            const gap = window.innerWidth < 768 ? 16 : 24;
-            const paddingBottom = 128;
-            const marginBottom = 48;
+            const messageGap = window.innerWidth < 768 ? 24 : 32;
+            const paddingBottom = DEFAULT_ASSISTANT_BOTTOM_PADDING;
             const userMessageHeight = latestUserMessageRef.current.offsetHeight;
             setMinHeight(
-                `calc(100dvh - ${headerHeight + gap + userMessageHeight + paddingBottom + marginBottom}px)`,
+                `calc(100dvh - ${headerHeight + messageGap * 3 + userMessageHeight + paddingBottom}px)`,
             );
         }
-    }, [messages.length, latestUserMessageRef.current]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const updateScrollButton = useCallback(() => {
         const c = messagesContainerRef.current;
@@ -573,6 +593,41 @@ export function ChatView({
         };
     }, [panelMounted]);
 
+    const rawActiveInput = (() => {
+        for (
+            let messageIndex = messages.length - 1;
+            messageIndex >= 0;
+            messageIndex--
+        ) {
+            const message = messages[messageIndex];
+            if (message.role === "user") return null;
+            if (message.role !== "assistant" || !message.events) continue;
+            for (
+                let eventIndex = message.events.length - 1;
+                eventIndex >= 0;
+                eventIndex--
+            ) {
+                const event = message.events[eventIndex];
+                if (event.type === "ask_inputs_response") {
+                    return null;
+                }
+                if (event.type === "ask_inputs") {
+                    return {
+                        key: `${messageIndex}-${eventIndex}`,
+                        event,
+                    };
+                }
+            }
+        }
+        return null;
+    })();
+    const activeInput =
+        rawActiveInput && !hiddenAskInputKeys.has(rawActiveInput.key)
+            ? rawActiveInput
+            : null;
+
+    const messagesBottomPadding = DEFAULT_ASSISTANT_BOTTOM_PADDING;
+
     return (
         <div className="h-full w-full flex relative">
             {/* Chat column */}
@@ -583,9 +638,12 @@ export function ChatView({
                     className="flex-1 w-full overflow-y-auto"
                     style={{ scrollbarGutter: "stable both-edges" }}
                 >
-                    <div className="w-full max-w-4xl mx-auto pb-32 px-6 md:px-8 pt-4 md:pt-6 min-h-full flex flex-col relative">
+                    <div
+                        className="w-full max-w-4xl mx-auto px-6 pt-6 md:px-8 md:pt-8 min-h-full flex flex-col relative"
+                        style={{ paddingBottom: messagesBottomPadding }}
+                    >
                         {!messagesVisible && (
-                            <div className="space-y-6 w-full">
+                            <div className="space-y-6 md:space-y-8 w-full">
                                 <div className="flex justify-end">
                                     <div className="bg-gray-100 rounded-2xl p-4 w-2/5">
                                         <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 bg-[length:200%_100%] animate-[shimmer_2s_ease-in-out_infinite] rounded w-full" />
@@ -602,7 +660,7 @@ export function ChatView({
                             </div>
                         )}
                         <div
-                            className="space-y-6 transition-opacity duration-150"
+                            className="space-y-6 md:space-y-8 transition-opacity duration-150"
                             style={{ opacity: messagesVisible ? 1 : 0 }}
                         >
                             {(() => {
@@ -629,7 +687,6 @@ export function ChatView({
                                             />
                                         ) : (
                                             <AssistantMessage
-                                                content={msg.content ?? ""}
                                                 events={msg.events}
                                                 isStreaming={
                                                     i === messages.length - 1 &&
@@ -642,7 +699,7 @@ export function ChatView({
                                                         ? (msg as any).error
                                                         : undefined
                                                 }
-                                                annotations={msg.annotations}
+                                                citations={msg.citations}
                                                 citationStatus={
                                                     msg.citationStatus
                                                 }
@@ -702,14 +759,16 @@ export function ChatView({
                 {showScrollButton && (
                     <div
                         className="absolute left-1/2 -translate-x-1/2 z-19"
-                        style={{ bottom: inputHeight + 12 }}
+                        style={{
+                            bottom:
+                                inputHeight +
+                                CHAT_INPUT_BOTTOM_OFFSET +
+                                SCROLL_BUTTON_INPUT_GAP,
+                        }}
                     >
                         <button
                             onClick={scrollToBottom}
-                            className={cn(
-                                "rounded-full p-2 cursor-pointer transition-all",
-                                "bg-white/30 shadow-[0_5px_16px_rgba(15,23,42,0.13),inset_0_1px_0_rgba(255,255,255,0.75),inset_0_-8px_18px_rgba(255,255,255,0.26)] backdrop-blur-xl hover:bg-white/45 hover:shadow-[0_7px_20px_rgba(15,23,42,0.16),inset_0_1px_0_rgba(255,255,255,0.85),inset_0_-8px_18px_rgba(255,255,255,0.32)]",
-                            )}
+                            className="rounded-full p-2 cursor-pointer transition-all bg-white/30 shadow-[0_5px_16px_rgba(15,23,42,0.13),inset_0_1px_0_rgba(255,255,255,0.75),inset_0_-8px_18px_rgba(255,255,255,0.26)] backdrop-blur-xl hover:bg-white/45 hover:shadow-[0_7px_20px_rgba(15,23,42,0.16),inset_0_1px_0_rgba(255,255,255,0.85),inset_0_-8px_18px_rgba(255,255,255,0.32)]"
                         >
                             <ArrowDown className="h-6 w-6 text-gray-500" />
                         </button>
@@ -717,34 +776,51 @@ export function ChatView({
                 )}
 
                 {/* Chat input */}
-                <div
-                    ref={chatInputRef}
-                    className="absolute bottom-0 left-0 right-0 w-full z-30"
-                >
+                <div className="absolute bottom-3 left-0 right-0 w-full z-30">
+                    <div className="pointer-events-none absolute -bottom-3 left-0 right-0 z-0">
+                        <div className="mx-auto h-7 w-full max-w-4xl px-4 md:px-6">
+                            <div className="h-full rounded-t-[20px] bg-white/50 backdrop-blur-[1px]" />
+                        </div>
+                    </div>
                     <div
-                        className={cn(
-                            "pointer-events-none absolute bottom-0 left-0 z-0",
-                            "right-4 h-28 bg-gradient-to-t from-white/50 via-white/25 to-transparent backdrop-blur-[1px]",
-                        )}
-                    />
-                    <div className="relative z-20 w-full max-w-4xl mx-auto px-4 md:px-6">
-                        <div
-                            className={cn(
-                                "w-full rounded-t-[20px]",
-                                "bg-transparent",
+                        ref={measuredInputRef}
+                        className="relative z-20 w-full max-w-4xl mx-auto px-4 md:px-6"
+                    >
+                        <div className="w-full rounded-t-[20px] bg-transparent">
+                            {activeInput ? (
+                                <AskInputPopup
+                                    key={activeInput.key}
+                                    event={activeInput.event}
+                                    onSubmit={(response, content, files) => {
+                                        setHiddenAskInputKeys((prev) => {
+                                            const next = new Set(prev);
+                                            next.add(activeInput.key);
+                                            return next;
+                                        });
+                                        void handleChat(
+                                            { role: "user", content, files },
+                                            {
+                                                askInputsResponse: response,
+                                            },
+                                        );
+                                    }}
+                                    onDismiss={() => {
+                                        setHiddenAskInputKeys((prev) => {
+                                            const next = new Set(prev);
+                                            next.add(activeInput.key);
+                                            return next;
+                                        });
+                                        cancel();
+                                    }}
+                                />
+                            ) : (
+                                <ChatInput
+                                    ref={chatInputRef}
+                                    onSubmit={handleChat}
+                                    onCancel={cancel}
+                                    isLoading={isResponseLoading}
+                                />
                             )}
-                        >
-                            <ChatInput
-                                onSubmit={handleChat}
-                                onCancel={cancel}
-                                isLoading={isResponseLoading}
-                            />
-                            <div className="py-3 text-center">
-                                <p className="text-xs text-gray-500">
-                                    AI can make mistakes. Answers are not legal
-                                    advice.
-                                </p>
-                            </div>
                         </div>
                     </div>
                 </div>

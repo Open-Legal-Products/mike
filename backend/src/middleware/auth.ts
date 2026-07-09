@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { syncProfileEmail } from "../lib/userLookup";
 
 const isDev = process.env.NODE_ENV !== "production";
 const devLog = (...args: Parameters<typeof console.log>) => {
@@ -118,6 +119,19 @@ export async function requireAuth(
   res.locals.userId = data.user.id;
   res.locals.userEmail = data.user.email?.toLowerCase() ?? "";
   res.locals.token = token;
+  const syncError = await syncProfileEmail(
+    admin,
+    data.user.id,
+    data.user.email,
+  );
+  if (syncError) {
+    devLog("[auth/profile-email] sync failed", {
+      method: req.method,
+      path: req.originalUrl,
+      userId: data.user.id,
+      error: syncError.message,
+    });
+  }
   if (!(await enforceLoginMfaIfEnabled(req, res, admin, token))) {
     return;
   }

@@ -12,12 +12,14 @@ import {
     Upload,
     X,
 } from "lucide-react";
-import { ConfirmPopup } from "@/app/components/shared/ConfirmPopup";
-import { DocView } from "@/app/components/shared/DocView";
-import { WarningPopup } from "@/app/components/shared/WarningPopup";
+import { ConfirmPopup } from "@/app/components/popups/ConfirmPopup";
+import { PdfView } from "@/app/components/shared/views/PdfView";
+import { SpreadsheetView } from "@/app/components/shared/views/SpreadsheetView";
+import { WarningPopup } from "@/app/components/popups/WarningPopup";
 import type { Document } from "@/app/components/shared/types";
+import { isSpreadsheetFilename } from "@/app/components/shared/types";
 import type { DocumentVersion } from "@/app/lib/mikeApi";
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 import { formatBytes } from "./ProjectPageParts";
 
 const MIN_DOC_COLUMN_WIDTH = 420;
@@ -163,7 +165,7 @@ export function DocumentSidePanel({
 
     const activeDoc = doc;
     const documentId = activeDoc.id;
-    const newVersionAccept = ".pdf,.docx,.doc";
+    const newVersionAccept = ".pdf,.docx,.doc,.xlsx,.xlsm,.xls,.pptx,.ppt";
     const orderedVersions = [...versions].reverse();
     const activeVersionCount = versions.filter(
         (version) => version.deleted_at == null,
@@ -481,15 +483,23 @@ export function DocumentSidePanel({
                             "rounded-xl border border-gray-200 bg-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-xl",
                         )}
                     >
-                        <DocView
-                            key={`${selectedVersionId ?? "current"}:${selectedUploadedAt ?? ""}:${selectedSizeBytes ?? ""}`}
-                            doc={{
-                                document_id: doc.id,
-                                version_id: selectedVersionId,
-                            }}
-                            rounded={false}
-                            bordered={false}
-                        />
+                        {isSpreadsheetFilename(selectedFilename) ? (
+                            <SpreadsheetView
+                                key={`${selectedVersionId ?? "current"}:${selectedUploadedAt ?? ""}:${selectedSizeBytes ?? ""}`}
+                                documentId={doc.id}
+                                versionId={selectedVersionId}
+                                rounded={false}
+                            />
+                        ) : (
+                            <PdfView
+                                key={`${selectedVersionId ?? "current"}:${selectedUploadedAt ?? ""}:${selectedSizeBytes ?? ""}`}
+                                doc={{
+                                    document_id: doc.id,
+                                    version_id: selectedVersionId,
+                                }}
+                                rounded={false}
+                            />
+                        )}
                     </div>
                 </section>
 

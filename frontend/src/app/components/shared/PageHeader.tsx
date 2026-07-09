@@ -12,7 +12,7 @@ import {
 import { createPortal } from "react-dom";
 import { ChevronLeft, Loader2, Plus, Search, Trash2 } from "lucide-react";
 import { usePageChrome } from "@/app/contexts/PageChromeContext";
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 
 export interface PageHeaderBreadcrumb {
     label?: ReactNode;

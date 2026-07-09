@@ -2,12 +2,13 @@
 
 import {
     useEffect,
+    useRef,
     useState,
     type HTMLAttributes,
     type MouseEvent,
     type ReactNode,
 } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/app/lib/utils";
 import {
     CLOSE_ROW_ACTIONS_EVENT,
     closeRowActionMenus,
@@ -45,13 +46,32 @@ export function TableScrollArea({
     children,
     className,
     innerClassName,
-}: DivProps & { innerClassName?: string }) {
+    header,
+}: DivProps & { innerClassName?: string; header?: ReactNode }) {
+    const bodyRef = useRef<HTMLDivElement>(null);
+    const headerRef = useRef<HTMLDivElement>(null);
+
+    function syncHeader() {
+        if (headerRef.current && bodyRef.current) {
+            headerRef.current.scrollLeft = bodyRef.current.scrollLeft;
+        }
+    }
+
     return (
-        <div className={cn("w-full min-h-0 flex-1 overflow-auto", className)}>
+        <div className={cn("w-full min-h-0 flex-1 flex flex-col overflow-hidden", className)}>
+            {header !== undefined && (
+                <div ref={headerRef} className="shrink-0 overflow-hidden">
+                    {header}
+                </div>
+            )}
             <div
-                className={cn("flex min-h-full min-w-max flex-col", innerClassName)}
+                ref={bodyRef}
+                className="min-h-0 flex-1 overflow-auto"
+                onScroll={header !== undefined ? syncHeader : undefined}
             >
-                {children}
+                <div className={cn("flex min-h-full min-w-max flex-col", innerClassName)}>
+                    {children}
+                </div>
             </div>
         </div>
     );
@@ -61,7 +81,7 @@ export function TableHeaderRow({ children, className, ...props }: DivProps) {
     return (
         <div
             className={cn(
-                "flex h-8 items-center border-b border-gray-200 pr-3 text-xs font-medium text-gray-500 select-none md:pr-10",
+                "sticky top-0 z-[70] flex h-8 items-center border-b border-gray-200 bg-[#fafbfc] pr-3 text-xs font-medium text-gray-500 select-none md:pr-10",
                 className,
             )}
             {...props}
@@ -176,7 +196,7 @@ export function TableStickyCell({
                 widthClassName,
                 bgClassName,
                 header
-                    ? "items-center self-stretch"
+                    ? "z-[80] items-center self-stretch"
                     : "py-2 transition-colors",
                 !header && hover && "group-hover:bg-gray-100",
                 className,
