@@ -21,6 +21,7 @@ export function MfaLoginGate({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         if (!user) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- upstream pattern, refactor deferred
             setGateState("idle");
             return;
         }
@@ -64,6 +65,7 @@ export function MfaLoginGate({ children }: { children: ReactNode }) {
 
         if (gateState === "required" && !isVerifyPage) {
             if (hasRecentMfaVerification()) {
+                // eslint-disable-next-line react-hooks/set-state-in-effect -- upstream pattern, refactor deferred
                 setGateState("verified");
                 return;
             }

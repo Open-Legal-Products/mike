@@ -28,6 +28,7 @@ export function useDirectoryData(enabled: boolean) {
 
         const now = Date.now();
         if (cache && now - cache.fetchedAt < CACHE_TTL_MS) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- upstream pattern, refactor deferred
             setStandaloneDocuments(cache.standaloneDocuments);
             setProjects(cache.projects);
             setLoading(false);

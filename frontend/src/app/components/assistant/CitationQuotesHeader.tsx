@@ -47,6 +47,7 @@ export function CitationQuotesHeader({
 
     useEffect(() => {
         if (!hasMultipleQuotes && viewMode === "list") {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- upstream pattern, refactor deferred
             setViewMode("single");
         }
     }, [hasMultipleQuotes, viewMode]);

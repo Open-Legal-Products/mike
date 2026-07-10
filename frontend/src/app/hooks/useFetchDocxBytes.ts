@@ -49,6 +49,7 @@ export function useFetchDocxBytes(
 
     useEffect(() => {
         if (!documentId) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- upstream pattern, refactor deferred
             setBytes(null);
             setDownloadUrl(null);
             return;

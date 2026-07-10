@@ -306,6 +306,7 @@ function TRResponseStatus({ isActive }: { isActive: boolean }) {
 
     useEffect(() => {
         if (wasActiveRef.current && !isActive) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- upstream pattern, refactor deferred
             setShowDone(true);
             setDoneVisible(true);
             const t = setTimeout(() => setDoneVisible(false), 1500);

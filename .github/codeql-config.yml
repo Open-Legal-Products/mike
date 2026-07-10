@@ -1,0 +1,12 @@
+name: "CodeQL Config"
+
+paths:
+  - backend/src
+  - frontend/src
+
+paths-ignore:
+  - backend/tests
+  - frontend/tests
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/.next/**"
