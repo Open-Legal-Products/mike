@@ -1,4 +1,5 @@
 import { createServerSupabase } from "../supabase";
+import { logger } from "../logger";
 import {
   attachActiveVersionPaths,
 } from "../documentVersions";
@@ -284,9 +285,9 @@ export async function appendAssistantEventsToLastAssistantMessage(
     .limit(1);
   if (selectError || !rows?.[0]) {
     if (selectError) {
-      console.error(
+      logger.error(
+        { err: selectError },
         "[assistant-events] failed to load assistant message",
-        selectError,
       );
     }
     return;
@@ -316,9 +317,9 @@ export async function appendAssistantEventsToLastAssistantMessage(
     })
     .eq("id", row.id);
   if (updateError) {
-    console.error(
+    logger.error(
+      { err: updateError },
       "[assistant-events] failed to update assistant message",
-      updateError,
     );
   }
 }

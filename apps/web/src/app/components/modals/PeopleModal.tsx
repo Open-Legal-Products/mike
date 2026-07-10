@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { User, Loader2 } from "lucide-react";
 import type { ProjectPeople } from "@/app/lib/mikeApi";
 import { AddUserInput } from "../shared/AddUserInput";
@@ -75,13 +75,11 @@ export function PeopleModal({
     const [loadedRosterKey, setLoadedRosterKey] = useState<string | null>(null);
 
     const resourceId = resource?.id ?? null;
-    const sharedWith: string[] = useMemo(
-        () =>
-            Array.isArray(resource?.shared_with)
-                ? (resource.shared_with as string[])
-                : [],
-        [resource?.shared_with],
-    );
+    // Plain derivation — the React Compiler memoizes it. A manual useMemo here
+    // tripped its "existing memoization could not be preserved" bailout.
+    const sharedWith: string[] = Array.isArray(resource?.shared_with)
+        ? (resource.shared_with as string[])
+        : [];
 
     useEffect(() => {
         if (!open) return;

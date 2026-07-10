@@ -11,6 +11,9 @@ export const STANDARD_FONT_DATA_URL = (() => {
 
 const isDev = process.env.NODE_ENV !== "production";
 export const devLog = (...args: Parameters<typeof console.log>) => {
+  // Intentional dev-only passthrough to the console (used ~60x across the chat
+  // pipeline for local tracing); the pino logger is for structured/prod logs.
+  // eslint-disable-next-line no-console
   if (isDev) console.log(...args);
 };
 
