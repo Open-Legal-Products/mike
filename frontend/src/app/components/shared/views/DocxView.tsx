@@ -430,7 +430,7 @@ export function DocxView({
             scrollRef.current,
             highlightEdit,
         );
-    }, [highlightEdit?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [highlightEdit?.key]);  
 
     // Re-apply quote highlights when the quote list changes without a full
     // re-render (e.g. clicking a different citation on the same doc).
@@ -441,7 +441,7 @@ export function DocxView({
             scrollRef.current,
             quotesRef.current,
         );
-    }, [quoteKey, quoteFocusKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [quoteKey, quoteFocusKey]);  
 
     // Fire onScrollChange (rAF-throttled) so parents can persist scroll
     // per-tab. We still maintain lastScrollTopRef locally for same-mount

@@ -479,7 +479,7 @@ export function PdfView({
         return () => {
             cancelled = true;
         };
-    }, [result, renderPDF]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [result, renderPDF]);  
 
     // Re-render at new scale when container is resized (debounced 150ms)
     useEffect(() => {
@@ -490,14 +490,14 @@ export function PdfView({
             }
         }, 150);
         return () => clearTimeout(timer);
-    }, [containerWidth, renderPDF]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [containerWidth, renderPDF]);  
 
     // Re-highlight when quotes change without full re-render
     useEffect(() => {
         if (!pdfDocRef.current) return;
         quoteListRef.current = quoteList;
         rehighlightQuotes(quoteList);
-    }, [quoteKey, quoteFocusKey, rehighlightQuotes]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [quoteKey, quoteFocusKey, rehighlightQuotes]);  
 
     function handleZoomIn() {
         const next = Math.min(

@@ -1,0 +1,32 @@
+name: Technical Task
+description: Internal development task or chore
+title: "[TASK]: "
+labels: ["task"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Task Description
+    validations:
+      required: true
+
+  - type: dropdown
+    id: sprint
+    attributes:
+      label: Sprint
+      options:
+        - MIKE-02-QUALITY-CI
+        - MIKE-03-AUTHORIZATION-TENANCY
+        - MIKE-04-AWS-S3-STORAGE
+        - MIKE-05-PRODUCTION-CONTAINERS
+        - MIKE-06-AWS-FOUNDATION
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+    validations:
+      required: true

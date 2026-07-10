@@ -1,5 +1,4 @@
-# Mike Atlas — local development commands
-# This Makefile prefers modern "docker compose" and falls back to "docker-compose".
+# Mike Atlas — quality and local development commands
 
 REPO_ROOT := $(shell pwd)
 
@@ -8,46 +7,87 @@ ifeq ($(shell docker compose version >/dev/null 2>&1 && echo yes),yes)
 else ifeq ($(shell docker-compose version >/dev/null 2>&1 && echo yes),yes)
   DOCKER_COMPOSE := docker-compose
 else
-  $(error Docker Compose is required. Install "docker compose" or "docker-compose".
+  $(error Docker Compose is required.)
 endif
 
-.PHONY: doctor bootstrap dev status smoke-local logs stop reset db-status db-verify db-reset shell
+.PHONY: doctor bootstrap dev status smoke-local logs stop reset db-status db-verify db-reset shell \
+  install lint typecheck test test-unit test-integration test-e2e coverage build audit ci-local
 
-doctor: ## Check prerequisites without changing state
+doctor:
 	@bash scripts/doctor.sh
 
-bootstrap: ## Install deps, generate secrets and start Supabase + MinIO
+bootstrap:
 	@bash scripts/bootstrap.sh
 
-dev: ## Start the full local stack (frontend, backend)
+dev:
 	@bash scripts/start-local.sh
 
-status: ## Show running services and health status
+status:
 	@bash scripts/status.sh
 
-smoke-local: ## Run local smoke tests (requires stack running)
+smoke-local:
 	@bash scripts/smoke-local.sh
 
-smoke-local-ai: ## Optional AI smoke test if a disposable LLM key is present
-	@bash scripts/smoke-local.sh --ai
-
-logs: ## Tail all local service logs
+logs:
 	$(DOCKER_COMPOSE) logs -f
 
-stop: ## Stop services without destroying data
+stop:
 	@bash scripts/stop-local.sh
 
-reset: ## Destroy local data only (requires CONFIRM=local-only)
+reset:
 	@bash scripts/reset-local.sh
 
-db-status: ## Show local database migration status
+db-status:
 	@bash scripts/db-status.sh
 
-db-verify: ## Verify local database schema and objects
+db-verify:
 	@bash scripts/db-verify.sh
 
-db-reset: ## Reset local database (requires CONFIRM=local-only)
+db-reset:
 	@bash scripts/db-reset.sh
 
-shell: ## Open a shell in the backend container
+shell:
 	$(DOCKER_COMPOSE) exec backend /bin/bash
+
+# Quality gates
+install:
+	cd backend && npm ci
+	cd frontend && npm ci
+
+lint:
+	cd backend && npm run lint
+	cd frontend && npm run lint
+
+typecheck:
+	cd backend && npm run typecheck
+	cd frontend && npm run typecheck
+
+test:
+	cd backend && npm run test
+	cd frontend && npm run test
+
+test-unit:
+	cd backend && npm run test:unit
+	cd frontend && npm run test
+
+test-integration:
+	cd backend && npm run test:integration
+
+test-e2e:
+	npx playwright test --config e2e/playwright.config.ts
+
+coverage:
+	cd backend && npm run test:coverage
+	cd frontend && npm run test:coverage
+
+build:
+	cd backend && npm run build
+	cd frontend && npm run build
+
+audit:
+	cd backend && npm audit --audit-level=moderate || true
+	cd frontend && npm audit --audit-level=moderate || true
+
+# Reproduce CI locally
+ci-local: lint typecheck test build audit
+	@echo "=== ci-local: ALL GATES PASSED ==="

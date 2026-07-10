@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -28,11 +29,22 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
+      - run: npm run lint -- --max-warnings=0
       - run: npm run typecheck
-      - run: npm run build
       - run: npm run test
-      - name: npm audit (high+critical only)
-        run: npm audit --audit-level=high || true
+      - run: npm run build
+      - name: Coverage report
+        run: npm run test:coverage
+        continue-on-error: true
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage/
+          retention-days: 14
+      - name: npm audit
+        run: npm audit --audit-level=moderate
         continue-on-error: true
 
   frontend:
@@ -49,17 +61,27 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      - run: npm run lint -- --max-warnings=0
       - run: npm run typecheck
-      - run: npm run lint
+      - run: npm run test
       - name: Build (with placeholder env for prerender)
         env:
           NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY: placeholder-anon-key-for-build-only
           NEXT_PUBLIC_API_BASE_URL: http://localhost:3001
         run: npm run build
-      - run: npm run test
-      - name: npm audit (high+critical only)
-        run: npm audit --audit-level=high || true
+      - name: Coverage report
+        run: npm run test:coverage
+        continue-on-error: true
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
+          retention-days: 14
+      - name: npm audit
+        run: npm audit --audit-level=moderate
         continue-on-error: true
 
   docker-build:
@@ -71,3 +93,20 @@ jobs:
         run: docker build -t mike-backend:ci ./backend
       - name: Build frontend image
         run: docker build -t mike-frontend:ci ./frontend
+
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, docker-build]
+    if: always()
+    steps:
+      - name: Check all jobs
+        run: |
+          echo "backend: ${{ needs.backend.result }}"
+          echo "frontend: ${{ needs.frontend.result }}"
+          echo "docker-build: ${{ needs.docker-build.result }}"
+          if [[ "${{ needs.backend.result }}" != "success" || "${{ needs.frontend.result }}" != "success" || "${{ needs.docker-build.result }}" != "success" ]]; then
+            echo "One or more required jobs failed"
+            exit 1
+          fi
+          echo "All required jobs passed!"

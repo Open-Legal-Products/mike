@@ -1,0 +1,48 @@
+name: Security Bug
+description: Report a security vulnerability (use private channel for critical issues)
+title: "[SECURITY]: "
+labels: ["security", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Security Bug Report
+
+        **IMPORTANT**: Do NOT include real secrets, API keys, or credentials in this issue.
+        For critical security issues that could compromise production, contact the security team
+        directly via internal channels instead of filing a public issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Vulnerability Description
+      description: Describe the security issue without revealing exploit details
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Critical (production impact)
+        - High (elevated access)
+        - Medium (limited impact)
+        - Low (defense in depth)
+    validations:
+      required: true
+
+  - type: textarea
+    id: affected
+    attributes:
+      label: Affected Components
+      description: Which services/endpoints are affected?
+    validations:
+      required: true
+
+  - type: textarea
+    id: mitigation
+    attributes:
+      label: Suggested Mitigation
+    validations:
+      required: false

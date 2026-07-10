@@ -277,7 +277,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
 
     useEffect(() => {
         setSidebarOpen(false);
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, []);  
 
     useEffect(() => {
         getProject(projectId)
@@ -351,7 +351,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
             })
             .catch(() => router.replace(`/projects/${projectId}/assistant`))
             .finally(() => setChatLoaded(true));
-    }, [chatId]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [chatId]);  
 
     useEffect(() => {
         const match = chats?.find((c) => c.id === chatId);

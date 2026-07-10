@@ -43,7 +43,7 @@ export default function AssistantChatPage() {
                 }
             })
             .catch(() => router.replace("/assistant"));
-    }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [id]);  
 
     useEffect(() => {
         if (
@@ -57,7 +57,7 @@ export default function AssistantChatPage() {
             hasAutoSent.current = true;
             void handleChat(newChatMessages[0]);
         }
-    }, [newChatMessages, messages.length, isResponseLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [newChatMessages, messages.length, isResponseLoading]);  
 
     return (
         <ChatView

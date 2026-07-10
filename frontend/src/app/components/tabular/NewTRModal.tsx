@@ -136,7 +136,7 @@ export function NewTRModal({
                 setDirectoryProjects([]);
             })
             .finally(() => setLoadingDirectory(false));
-    }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [open]);  
 
     if (!open) return null;
 
