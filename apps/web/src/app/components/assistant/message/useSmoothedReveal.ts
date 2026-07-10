@@ -18,13 +18,19 @@ export function useSmoothedReveal(text: string, active: boolean): string {
 
     useEffect(() => {
         if (!active) {
+            // Snap to the full text. The ref alone is not enough: the rendered
+            // slice is driven by `revealedInt`, so without this the message
+            // freezes at whatever prefix had been revealed when the stream
+            // ended — visible as a reply stuck mid-word.
             revealedFloat.current = text.length;
+            setRevealedInt(text.length);
             return;
         }
 
         // Defensive clamp in case the text was edited / replaced shorter.
         if (revealedFloat.current > text.length) {
             revealedFloat.current = text.length;
+            setRevealedInt(text.length);
         }
 
         let lastTick = performance.now();
