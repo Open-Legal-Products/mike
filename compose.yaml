@@ -1,0 +1,101 @@
+name: mike-local
+
+services:
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9090:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb local/mike-documents --ignore-existing &&
+      mc anonymous set private local/mike-documents
+      "
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:3001:3001"
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      FRONTEND_URL: http://localhost:3000
+      SUPABASE_URL: http://supabase_kong_mike:8000
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin
+      S3_BUCKET_NAME: mike-documents
+      S3_REGION: us-east-1
+      SOFFICE_BINARY_PATH: "/usr/lib/libreoffice/program/soffice"
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+      - backend-node_modules:/app/node_modules
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - default
+      - supabase_network_mike
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    command: ["npm", "run", "dev"]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      NODE_ENV: development
+    env_file:
+      - .env
+    volumes:
+      - ./frontend:/app
+      - frontend-node_modules:/app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    command: ["npm", "run", "dev"]
+
+volumes:
+  minio-data:
+  backend-node_modules:
+  frontend-node_modules:
+
+networks:
+  supabase_network_mike:
+    external: true
+    name: supabase_network_mike

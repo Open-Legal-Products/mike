@@ -7,10 +7,15 @@
         "build": "next build",
         "start": "next start",
         "lint": "eslint",
+        "typecheck": "tsc --noEmit",
         "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
         "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
         "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
         "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+    },
+    "engines": {
+      "node": "20.x",
+      "npm": "10.x"
     },
     "dependencies": {
         "@aws-sdk/client-s3": "^3.1025.0",

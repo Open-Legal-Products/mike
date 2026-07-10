@@ -1,0 +1,8 @@
+# Copy to compose.override.yaml to customize local development.
+# This file is ignored by Git; never commit real secrets.
+#
+# Example: mount an optional LLM key for local AI smoke tests.
+services:
+  backend:
+    environment:
+      ANTHROPIC_API_KEY: ""
