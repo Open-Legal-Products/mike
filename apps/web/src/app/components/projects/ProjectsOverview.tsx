@@ -230,7 +230,10 @@ export function ProjectsOverview() {
                         <ChevronDown className="h-3.5 w-3.5" />
                     </button>
                     {actionsOpen && (
-                        <div className="absolute top-full right-0 mt-1 w-36 rounded-lg border border-gray-100 bg-white shadow-lg z-50 overflow-hidden">
+                        // Must clear TablePrimitive's sticky header (z-[70]),
+                        // which otherwise covers this menu and swallows the
+                        // click. WorkflowList's menu uses the same z-[100].
+                        <div className="absolute top-full right-0 mt-1 w-36 rounded-lg border border-gray-100 bg-white shadow-lg z-[100] overflow-hidden">
                             <button
                                 onClick={handleDeleteSelected}
                                 className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 transition-colors"
