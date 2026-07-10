@@ -115,6 +115,11 @@ async function createReview(
         if (attempt === 0 && onFirstOpen) await onFirstOpen();
         await titleInput.fill(reviewName);
 
+        // NewTRModal is a two-step wizard ("Details" → "Add Documents"); the
+        // "Create" submit button only exists on the second step, and "Next" only
+        // enables once the review has a name.
+        await page.getByRole("button", { name: "Next", exact: true }).click();
+
         // Let the modal's project-fetch burst settle so the create POST doesn't
         // compete with it on the flaky local Supabase (best-effort; the HMR
         // socket means networkidle may not fully settle, so it's time-boxed).
@@ -188,11 +193,12 @@ test("creates a new tabular review and is redirected to the detail page", async 
     // createReview opens the modal, verifies the workflow-template default
     // renders, submits, and lands on the new review's detail page.
     const reviewName = await createReview(page, "E2E Review", async () => {
-        // The workflow template dropdown defaults to "No template — start from
+        // The workflow template control defaults to "No template - start from
         // scratch" once the templates request resolves (it shows "Loading
         // templates…" until then), so allow time for that listWorkflows() fetch.
+        // NewTRModal renders it as a button, with a hyphen — not an em dash.
         await expect(
-            page.getByText("No template — start from scratch"),
+            page.getByRole("button", { name: "No template - start from scratch" }),
         ).toBeVisible({ timeout: 15_000 });
     });
 

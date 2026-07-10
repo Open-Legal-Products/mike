@@ -38,8 +38,13 @@ async function createProject(
        `{ timeout }` option passed to test() is silently ignored by Playwright
        (that object only accepts tag/annotation), so the tests would otherwise
        run at the 30s default — too tight for the directory storm. Raise it
-       here, where the slow work happens, so every caller gets the budget. */
-    test.setTimeout(120_000);
+       here, where the slow work happens, so every caller gets the budget.
+
+       The storm scales with the number of projects the test user has
+       accumulated, and the modal now mounts FileDirectory on its second
+       ("Add Documents") step, so creation alone can consume most of a 120s
+       budget and starve whatever the caller does afterwards. */
+    test.setTimeout(180_000);
 
     await page.goto("/projects");
     await expect(page).toHaveURL(/\/projects/, { timeout: 10_000 });
@@ -53,14 +58,20 @@ async function createProject(
     await expect(nameInput).toBeVisible({ timeout: 5_000 });
     await nameInput.fill(projectName);
 
+    /* NewProjectModal is a two-step wizard: "Details" (name / CM number /
+       practice / colleagues) then "Add Documents". Only the second step has a
+       submit button — the first step's primary action is a plain "Next". */
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+
     if (filePath) {
-        /* The footer "Upload files" button opens a hidden file input. */
+        /* On the documents step the footer "Upload" button opens a hidden file
+           input, and its label gains a "(n)" count once files are attached. */
         const fileChooserPromise = page.waitForEvent("filechooser");
-        await page.getByText(/Upload files/).click();
+        await page.getByRole("button", { name: /^Upload/ }).click();
         (await fileChooserPromise).setFiles(filePath);
-        await expect(page.getByText(/Upload files \(1\)/)).toBeVisible({
-            timeout: 5_000,
-        });
+        await expect(
+            page.getByRole("button", { name: /^Upload \(1\)/ }),
+        ).toBeVisible({ timeout: 5_000 });
     }
 
     /* The modal mounts a FileDirectory whose useDirectoryData hook fires several
@@ -93,7 +104,9 @@ async function createProject(
     const navTimeout = filePath ? 30_000 : 15_000;
     const inlineError = page.locator("form p.text-red-500");
     for (let attempt = 1; attempt <= 5; attempt++) {
-        await page.click('button[type="submit"]');
+        /* The documents step's primary action submits the form (its label flips
+           to "Creating…" while in flight, so match on the submit role instead). */
+        await page.locator('button[type="submit"]').click();
         const outcome = await Promise.race([
             page
                 .waitForURL(/\/projects\/.+/, { timeout: navTimeout })
@@ -172,7 +185,7 @@ async function waitForProjectLoaded(
 
 // ─── Test 1: Rename a project inline ─────────────────────────────────────────
 
-test("rename a project inline", { timeout: 60_000 }, async ({ page }) => {
+test("rename a project via Edit details", async ({ page }) => {
     const projectName = `E2E Proj ${Date.now()}`;
     await createProject(page, projectName);
 
@@ -188,31 +201,21 @@ test("rename a project inline", { timeout: 60_000 }, async ({ page }) => {
     await ellipsisBtn.click();
 
     /*
-     * The dropdown is rendered as a fixed-position portal (outside the row
-     * in the DOM), so we query it globally. The "Rename" item maps to
-     * onRename which sets renamingId and shows the inline input.
-     *
-     * Use exact:true — getByRole name matching is a substring match by default,
-     * and the sidebar "Assistant History" can contain chats named e.g.
-     * "Renamed Chat …" whose accessible name also contains "Rename"; without
-     * exact:true, .first() would click that sidebar item and navigate away.
+     * The row menu (RowActions) offers "Edit details" and "Delete" — the old
+     * inline "Rename" affordance is gone; renaming now happens in
+     * ProjectDetailsModal, which also carries the CM number and practice fields.
      */
-    await page.getByRole("button", { name: "Rename", exact: true }).click();
+    await page.getByRole("button", { name: "Edit details", exact: true }).click();
 
-    /*
-     * An <input> with autoFocus replaces the project name span. It is the only
-     * textbox on the projects list (the header search input only mounts when
-     * the search affordance is opened), so we can target it by role.
-     *
-     * Use .fill() rather than "Control+a" + type: on macOS, Control+A maps to
-     * "move cursor to line start" (NOT select-all → that's Meta+A), so typing
-     * would PREPEND the new name to the old one. fill() clears the field first,
-     * platform-independently.
-     */
+    /* ProjectDetailsModal's name field is pre-filled with the current name;
+       fill() clears it first, platform-independently. */
     const newName = `E2E Proj Renamed ${Date.now()}`;
-    const renameInput = page.getByRole("textbox");
+    const renameInput = page.locator("#project-details-name");
+    await expect(renameInput).toBeVisible({ timeout: 10_000 });
     await renameInput.fill(newName);
-    await renameInput.press("Enter");
+
+    // REGRESSION: fails if ProjectDetailsModal's onSave (updateProject) is removed
+    await page.getByRole("button", { name: "Update", exact: true }).click();
 
     /* handleRenameSubmit optimistically updates the projects list state.
        Scope to table rows (div.group) so the sidebar's stale copy of the old
@@ -404,7 +407,7 @@ test("file upload type validation — .txt file is rejected", { timeout: 60_000 
     // (UNSUPPORTED_DOCUMENT_WARNING_MESSAGE in documentUploadValidation.ts).
     await expect(
         page.getByText(
-            "Unsupported file type. Only PDF, DOCX, and DOC files can be uploaded.",
+            "Unsupported file type. Only PDF, Word, Excel, and PowerPoint files can be uploaded.",
         ),
     ).toBeVisible({ timeout: 10_000 });
 

@@ -57,7 +57,7 @@ test("create project, upload PDF, ask a question and receive a response", async 
        the local Supabase stack and needs far more than the 30s default. The
        per-test `{ timeout }` option that test() accepts is silently ignored by
        Playwright (that object only takes tag/annotation), so set it here. */
-    test.setTimeout(120_000);
+    test.setTimeout(180_000);
 
     /* ── Step 1: navigate to projects ─────────────────────────────────────── */
     await page.goto("/projects");
@@ -76,8 +76,12 @@ test("create project, upload PDF, ask a question and receive a response", async 
     const projectName = `E2E Test Project ${Date.now()}`;
     await nameInput.fill(projectName);
 
-    /* ── Step 4: upload a PDF via the hidden file input ───────────────────── */
-    const uploadBtn = page.getByText(/Upload files/);
+    /* ── Step 4: advance to "Add Documents" and upload a PDF ──────────────── */
+    /* NewProjectModal is a two-step wizard; the details step's primary action is
+       a plain "Next" and only the documents step carries the file input. */
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+
+    const uploadBtn = page.getByRole("button", { name: /^Upload/ });
     /* We need to trigger the hidden file input; intercept the chooser */
     const fileChooserPromise = page.waitForEvent("filechooser");
     await uploadBtn.click();
@@ -85,9 +89,9 @@ test("create project, upload PDF, ask a question and receive a response", async 
     await fileChooser.setFiles(PDF_FIXTURE);
 
     /* The button label should update to reflect the queued file */
-    await expect(page.getByText(/Upload files \(1\)/)).toBeVisible({
-        timeout: 5_000,
-    });
+    await expect(
+        page.getByRole("button", { name: /^Upload \(1\)/ }),
+    ).toBeVisible({ timeout: 5_000 });
 
     /* ── Step 5: submit the form ──────────────────────────────────────────── */
     /* The modal's FileDirectory (useDirectoryData) fires a burst of Supabase
@@ -176,9 +180,14 @@ test("create project, upload PDF, ask a question and receive a response", async 
     /* The demo provider always opens its reply with "Demo mode …"
        (providers/demo.ts buildDemoAnswer). Its appearance proves the message
        was sent, streamed, and rendered end-to-end — deterministically and
-       without any provider key. */
+       without any provider key.
+
+       The reply is preceded by a POST that persists the chat and a client-side
+       route change to /assistant/chat/<id>; under the local-Supabase load that
+       round-trip alone can outlast a 30s budget, so allow the same headroom the
+       rest of this flow gets. */
     await expect(page.getByText("Demo mode").first()).toBeVisible({
-        timeout: 30_000,
+        timeout: 60_000,
     });
 });
 

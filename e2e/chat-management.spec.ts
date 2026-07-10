@@ -327,6 +327,10 @@ test("project assistant: create a new chat and submit a question", async ({ page
     const projectName = `E2E Chat Route ${Date.now()}`;
     await nameInput.fill(projectName);
 
+    // NewProjectModal is a two-step wizard ("Details" → "Add Documents"); the
+    // "Create project" submit button only exists on the second step.
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+
     // ── Step 4: submit the form (resilient to transient gateway 502s) ────────────
     // NewProjectModal.handleSubmit does NOT navigate itself — it calls onCreated()
     // then onClose().  ProjectsOverview.onCreated (ProjectsOverview.tsx:475-478)

@@ -6,7 +6,7 @@
  * Key source facts used by these selectors:
  *  - WorkflowList.tsx: h1 "Workflows"; Plus icon button (no aria-label) opens NewWorkflowModal
  *  - NewWorkflowModal.tsx: placeholder "Workflow name"; submit button text "Create workflow"
- *  - builtinWorkflows.ts: first built-in id = "builtin-cp-checklist", title = "Generate CP Checklist"
+ *  - systemWorkflows.ts (generated): built-in id "builtin-cp-checklist", title "Draft CP Checklist"
  *  - WorkflowDetailPage ([id]/page.tsx): readOnly badge renders <span>Read-only</span>;
  *    WorkflowPromptEditor passes editable:!readOnly to Tiptap → contenteditable="false" when readOnly
  *  - WorkflowPromptEditor.tsx: editorProps class = "workflow-editor-content" on the ProseMirror div
@@ -80,10 +80,11 @@ test.describe("Workflows", () => {
             page.getByRole("heading", { name: "Workflows" }),
         ).toBeVisible({ timeout: 10_000 });
 
-        // BUILT_IN_WORKFLOWS is hardcoded — "Generate CP Checklist" (id: builtin-cp-checklist)
+        // System workflows are generated into apps/api/src/lib/systemWorkflows.ts —
+        // "Draft CP Checklist" (id: builtin-cp-checklist) is always present
         // is always present; its title appears as a row in the table.
         // REGRESSION: fails if the workflow list page or built-in workflow rendering is broken
-        await expect(page.getByText("Generate CP Checklist")).toBeVisible({
+        await expect(page.getByText("Draft CP Checklist")).toBeVisible({
             timeout: 10_000,
         });
     });
@@ -137,7 +138,7 @@ test.describe("Workflows", () => {
         await page.goto("/workflows/builtin-cp-checklist");
 
         // The page loads and shows the built-in workflow title
-        await expect(page.getByText("Generate CP Checklist")).toBeVisible({
+        await expect(page.getByText("Draft CP Checklist")).toBeVisible({
             timeout: 15_000,
         });
 
