@@ -200,6 +200,13 @@ describe("projects.routes", () => {
         });
 
         it("creates the project (201) and normalises shared_with", async () => {
+            // Sharing now requires each recipient to have a mirrored
+            // user_profiles row (findMissingUserEmails); seed both emails so
+            // validation passes and the create path proceeds.
+            supabaseState.tables.user_profiles = {
+                data: [{ email: "a@x.com" }, { email: "b@x.com" }],
+                error: null,
+            };
             supabaseState.tables.projects = {
                 data: {
                     id: "p9",
@@ -230,6 +237,23 @@ describe("projects.routes", () => {
                 name: "Gamma",
                 shared_with: ["a@x.com", "b@x.com"],
             });
+        });
+
+        it("returns 400 when a shared_with recipient is not a Mike user", async () => {
+            // No user_profiles rows seeded → findMissingUserEmails reports the
+            // recipient as unknown and the create is rejected before insert.
+            const res = await request(app)
+                .post("/projects")
+                .set(...AUTH)
+                .send({ name: "Gamma", shared_with: ["ghost@x.com"] });
+
+            expect(res.status).toBe(400);
+            expect(res.body.detail).toBe(
+                "ghost@x.com does not belong to a Mike user.",
+            );
+            expect(
+                supabaseState.inserts.find((i) => i.table === "projects"),
+            ).toBeUndefined();
         });
 
         it("returns 500 when the insert errors", async () => {

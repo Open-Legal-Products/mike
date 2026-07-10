@@ -88,8 +88,8 @@ vi.mock("../../middleware/auth", () => ({
 // Keep the real spotlight/annotation/error helpers (the failure-path test
 // relies on the genuine isAbortError + AssistantStreamError behavior) but
 // stub the functions that would otherwise hit the DB or the LLM.
-vi.mock("../../lib/chatTools", async (importOriginal) => {
-    const actual = await importOriginal<typeof import("../../lib/chatTools")>();
+vi.mock("../../lib/chat", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("../../lib/chat")>();
     return {
         ...actual,
         buildDocContext: vi.fn(async () => ({ docIndex: {}, docStore: {} })),
@@ -126,7 +126,7 @@ describe("POST /chat — credit reservation", () => {
         runLLMStream.mockResolvedValue({
             fullText: "hi there",
             events: [],
-            annotations: [],
+            citations: [],
         });
     });
 

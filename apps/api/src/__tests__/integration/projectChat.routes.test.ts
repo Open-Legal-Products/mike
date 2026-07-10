@@ -72,8 +72,8 @@ vi.mock("../../middleware/auth", () => ({
         next(),
 }));
 
-vi.mock("../../lib/chatTools", async (importOriginal) => {
-    const actual = await importOriginal<typeof import("../../lib/chatTools")>();
+vi.mock("../../lib/chat", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("../../lib/chat")>();
     return {
         ...actual,
         buildProjectDocContext: vi.fn(async () => ({
@@ -115,7 +115,11 @@ describe("POST /projects/:projectId/chat", () => {
         vi.clearAllMocks();
         consumeMessageCredit.mockResolvedValue({ allowed: true });
         refundMessageCredit.mockResolvedValue(undefined);
-        runLLMStream.mockResolvedValue({ events: [], annotations: [] });
+        runLLMStream.mockResolvedValue({
+            fullText: "",
+            events: [],
+            citations: [],
+        });
         checkProjectAccess.mockResolvedValue({
             ok: true,
             isOwner: true,
