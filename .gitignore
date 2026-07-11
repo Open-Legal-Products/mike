@@ -17,3 +17,11 @@ next-env.d.ts
 .DS_Store
 .vercel
 coverage
+
+# Supabase CLI local state
+supabase/.temp
+supabase/.branches
+supabase/seed.sql
+
+# Local Docker volumes
+volumes/

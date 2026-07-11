@@ -857,3 +857,30 @@ revoke all on public.user_mcp_connector_tools from anon, authenticated;
 revoke all on public.user_mcp_tool_audit_logs from anon, authenticated;
 revoke all on public.courtlistener_citation_index from anon, authenticated;
 revoke all on public.courtlistener_opinion_cluster_index from anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Row Level Security — enable on all private tables
+-- ---------------------------------------------------------------------------
+--
+-- Defense-in-depth: the backend uses the service-role key (which bypasses
+-- RLS) and all table privileges are revoked from anon/authenticated above.
+-- These policies ensure that IF direct table access is ever granted to the
+-- authenticated role, users can only access their own data.
+-- Full policy definitions are in the incremental migration:
+-- backend/migrations/20260710_01_rls_all_tables.sql
+
+alter table public.user_profiles enable row level security;
+alter table public.projects enable row level security;
+alter table public.project_subfolders enable row level security;
+alter table public.documents enable row level security;
+alter table public.document_versions enable row level security;
+alter table public.document_edits enable row level security;
+alter table public.workflows enable row level security;
+alter table public.hidden_workflows enable row level security;
+alter table public.workflow_shares enable row level security;
+alter table public.chats enable row level security;
+alter table public.chat_messages enable row level security;
+alter table public.tabular_reviews enable row level security;
+alter table public.tabular_cells enable row level security;
+alter table public.tabular_review_chats enable row level security;
+alter table public.tabular_review_chat_messages enable row level security;

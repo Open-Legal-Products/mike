@@ -70,7 +70,7 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
         } else {
             setSelected(null);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     }, [workflow?.id]);
 
     // Reset configure state on back

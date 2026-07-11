@@ -1,53 +1,75 @@
-# Contributing
+# Contributing to Mike Atlas
 
-Thanks for helping improve Mike. Please keep contributions small, focused, and easy to review.
+## Prerequisites
 
-## Guidelines
+- Node.js 20.x (see `.nvmrc`)
+- npm 10.x
+- Docker Desktop
+- Git
 
-- Prefer targeted edits over broad refactors.
-- Keep each PR focused on one bug, feature, or cleanup.
-- Update docs or env examples when changing setup, config, or user-facing behavior.
-- Please do not propose local-hosting refactors for the main app, such as local LLMs, local databases, or local filesystem storage. Those ideas are better suited to a future fully local version of the project.
-- Do not commit secrets, API keys, private documents, or local `.env` files.
-
-## Before Opening a PR
-
-- Run the relevant build or test command for the area you changed.
-- Check `git diff` and remove unrelated changes.
-- Write a concise Markdown PR description with:
-    - summary
-    - changes
-    - why
-    - testing
-
-## System Workflows
-
-System workflows live in `mike-workflows/system/`. Put structured metadata in
-the YAML frontmatter at the top of `SKILL.md`, put workflow instructions in the
-body of `SKILL.md`, and use `table-config.yaml` for tabular review columns.
-
-After changing system workflows, regenerate the app files:
+## Getting Started
 
 ```bash
-node scripts/build-workflows.js
+make doctor      # verify prerequisites
+make bootstrap   # install deps, start Supabase + MinIO
+make dev         # start frontend + backend
+make smoke-local # verify stack
 ```
+
+## Development Workflow
+
+1. **Branch**: Create from `main` (updated)
+   ```bash
+   git switch main && git pull && git switch -c feat/<slug>
+   ```
+
+2. **Commits**: Use Conventional Commits
+   ```
+   feat(api): add document export endpoint
+   fix(auth): resolve token expiry handling
+   chore(deps): update express to 4.22
+   test(backend): add storage integration tests
+   docs(ci): update quality gates documentation
+   ```
+
+3. **Quality gates** (must pass before PR):
+   ```bash
+   make ci-local
+   ```
+   This runs: lint, typecheck, test, build, audit
+
+4. **PR**: Open via `gh pr create` with the PR template filled.
+
+5. **CI**: All checks must be green before merge.
+
+6. **Merge**: Squash merge to `main`. Delete the branch.
+
+## Quality Gates
+
+| Gate | Command | Required |
+|------|---------|----------|
+| Backend lint | `npm run lint --prefix backend` | ✅ |
+| Frontend lint | `npm run lint --prefix frontend` | ✅ |
+| Backend typecheck | `npm run typecheck --prefix backend` | ✅ |
+| Frontend typecheck | `npm run typecheck --prefix frontend` | ✅ |
+| Backend tests | `npm run test --prefix backend` | ✅ |
+| Frontend tests | `npm run test --prefix frontend` | ✅ |
+| Backend build | `npm run build --prefix backend` | ✅ |
+| Frontend build | `npm run build --prefix frontend` | ✅ |
+| npm audit | `make audit` | ⚠️ (non-blocking) |
+| E2E | `make test-e2e` | When applicable |
+
+## Data Policy
+
+**NOT APPROVED FOR REAL OR CONFIDENTIAL DATA**
+
+- Use only synthetic fixtures from `test/fixtures/documents/`
+- No real client data, credentials, or API keys
+- No production Supabase or S3 credentials
 
 ## Security
 
-Do not open a public issue for security vulnerabilities. Use [GitHub's private vulnerability reporting](https://github.com/willchen96/mike/security/advisories/new) instead.
-
-We will aim to respond promptly and coordinate a disclosure timeline with you.
-
-## Local Development
-
-Backend:
-
-```bash
-npm run build --prefix backend
-```
-
-Frontend:
-
-```bash
-npm run build --prefix frontend
-```
+- Never commit `.env` files
+- Never log secrets, tokens, or API keys
+- Report security issues privately (see `.github/ISSUE_TEMPLATE/security_bug.yml`)
+- Raw LLM logging is prohibited in production

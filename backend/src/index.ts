@@ -12,10 +12,17 @@ import { workflowsRouter } from "./routes/workflows";
 import { userRouter } from "./routes/user";
 import { downloadsRouter } from "./routes/downloads";
 import { caseLawRouter } from "./routes/caseLaw";
+import { validateEnv, getEnv } from "./lib/env";
+import { checkSupabaseConnectivity } from "./lib/supabase";
+import { checkStorageConnectivity } from "./lib/storage";
 
+// Validate environment at startup. Fails fast if required secrets are missing or unsafe.
+validateEnv();
+
+const env = getEnv();
 const app = express();
-const PORT = process.env.PORT ?? 3001;
-const isProduction = process.env.NODE_ENV === "production";
+const PORT = env.PORT;
+const isProduction = env.NODE_ENV === "production";
 
 function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -113,7 +120,7 @@ app.use(
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL ?? "http://localhost:3000",
+    origin: env.FRONTEND_URL,
     credentials: true,
   }),
 );
@@ -156,7 +163,38 @@ app.use("/users", userRouter);
 app.use("/download", downloadsRouter);
 app.use("/case-law", caseLawRouter);
 
-app.get("/health", (_req, res) => res.json({ ok: true }));
+const VERSION = process.env.npm_package_version ?? "local";
+const COMMIT_SHA = process.env.COMMIT_SHA ?? "unknown";
+
+app.get("/health", (_req, res) =>
+  res.status(200).json({
+    status: "ok",
+    service: "mike-backend",
+    version: VERSION,
+    commit: COMMIT_SHA,
+    timestamp: new Date().toISOString(),
+  }),
+);
+
+app.get("/ready", async (_req, res) => {
+  const [supabase, storage] = await Promise.all([
+    checkSupabaseConnectivity(),
+    checkStorageConnectivity(),
+  ]);
+
+  const ready = supabase && storage;
+  const status = ready ? 200 : 503;
+
+  res.status(status).json({
+    status: ready ? "ready" : "not_ready",
+    service: "mike-backend",
+    checks: {
+      supabase,
+      storage,
+    },
+    timestamp: new Date().toISOString(),
+  });
+});
 
 app.listen(PORT, () => {
   console.log(`Mike backend running on port ${PORT}`);

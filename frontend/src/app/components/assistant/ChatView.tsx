@@ -83,6 +83,7 @@ export function ChatView({
     const panelCloseTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- upstream pattern, refactor deferred
         setHiddenAskInputKeys(new Set());
     }, [chatId]);
 
@@ -506,7 +507,7 @@ export function ChatView({
                 `calc(100dvh - ${headerHeight + messageGap * 3 + userMessageHeight + paddingBottom}px)`,
             );
         }
-    }, [messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [messages.length]);  
 
     const updateScrollButton = useCallback(() => {
         const c = messagesContainerRef.current;
@@ -519,6 +520,7 @@ export function ChatView({
         const c = messagesContainerRef.current;
         if (!c) return;
         c.addEventListener("scroll", updateScrollButton);
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- upstream pattern, refactor deferred
         updateScrollButton();
         return () => c.removeEventListener("scroll", updateScrollButton);
     }, [messages, updateScrollButton]);
@@ -553,6 +555,7 @@ export function ChatView({
     useEffect(() => {
         if (messages.length === 0) {
             hasScrolledRef.current = false;
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- upstream pattern, refactor deferred
             setMessagesVisible(false);
         } else if (!hasScrolledRef.current) {
             const userMsgCount = messages.filter(
@@ -580,7 +583,7 @@ export function ChatView({
                 setMessagesVisible(true);
             }
         }
-    }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [messages]);  
 
     useEffect(() => {
         if (panelMounted && window.innerWidth < 768) {
@@ -682,8 +685,8 @@ export function ChatView({
                                         {msg.role === "user" ? (
                                             <UserMessage
                                                 content={msg.content ?? ""}
-                                                files={(msg as any).files}
-                                                workflow={(msg as any).workflow}
+                                                files={msg.files}
+                                                workflow={msg.workflow}
                                             />
                                         ) : (
                                             <AssistantMessage
@@ -692,11 +695,10 @@ export function ChatView({
                                                     i === messages.length - 1 &&
                                                     isResponseLoading
                                                 }
-                                                isError={!!(msg as any).error}
+                                                isError={!!msg.error}
                                                 errorMessage={
-                                                    typeof (msg as any)
-                                                        .error === "string"
-                                                        ? (msg as any).error
+                                                    typeof msg.error === "string"
+                                                        ? msg.error
                                                         : undefined
                                                 }
                                                 citations={msg.citations}

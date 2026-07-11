@@ -13,6 +13,19 @@ export function createServerSupabase() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+export async function checkSupabaseConnectivity(): Promise<boolean> {
+  try {
+    const supabase = createServerSupabase();
+    // Lightweight admin call. A 404 user response still proves connectivity.
+    const { error } = await supabase.auth.admin.getUserById(
+      "00000000-0000-0000-0000-000000000000",
+    );
+    return !error || error.status === 404 || error.status === 406;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Extract and verify the Supabase JWT from the Authorization header.
  * Returns the user's UUID string, or throws a Response with 401.

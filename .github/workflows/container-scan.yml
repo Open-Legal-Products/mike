@@ -1,0 +1,66 @@
+name: Container Scan
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/Dockerfile"
+      - "frontend/Dockerfile"
+      - "backend/package.json"
+      - "frontend/package.json"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/Dockerfile"
+      - "frontend/Dockerfile"
+      - "backend/package.json"
+      - "frontend/package.json"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan-backend:
+    name: Scan Backend Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false
+          tags: mike-backend:scan
+          load: true
+      - uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: mike-backend:scan
+          format: sarif
+          output: trivy-backend.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-backend.sarif
+
+  scan-frontend:
+    name: Scan Frontend Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          tags: mike-frontend:scan
+          load: true
+      - uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: mike-frontend:scan
+          format: sarif
+          output: trivy-frontend.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-frontend.sarif

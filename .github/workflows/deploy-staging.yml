@@ -1,0 +1,258 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'infra/**'
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag (SHA or branch name)'
+        required: false
+        default: ''
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: us-east-1
+  ECR_FRONTEND: 136770599935.dkr.ecr.us-east-1.amazonaws.com/atlas-mike-staging/frontend
+  ECR_BACKEND: 136770599935.dkr.ecr.us-east-1.amazonaws.com/atlas-mike-staging/backend
+  ECS_CLUSTER: atlas-mike-staging-cluster
+  ECS_FRONTEND_SERVICE: atlas-mike-staging-frontend
+  ECS_BACKEND_SERVICE: atlas-mike-staging-backend
+  DEPLOY_ROLE_ARN: arn:aws:iam::136770599935:role/atlas-mike-staging-github-deploy
+  TASK_EXEC_ROLE: arn:aws:iam::136770599935:role/atlas-mike-staging-task-execution
+  TASK_ROLE: arn:aws:iam::136770599935:role/atlas-mike-staging-task
+  SECRET_ARN: arn:aws:secretsmanager:us-east-1:136770599935:secret:atlas-mike-staging-app-secrets-SCo8Ga
+  FE_TG: arn:aws:elasticloadbalancing:us-east-1:136770599935:targetgroup/atlas-mike-stg-fe/e05bddff01b286eb
+  BE_TG: arn:aws:elasticloadbalancing:us-east-1:136770599935:targetgroup/atlas-mike-stg-be/2422b758db6b41c7
+  FE_SG: sg-082d8757b66a10ae3
+  BE_SG: sg-0ff72c73aa67e4e86
+  VPC_SUBNETS: subnet-0185ebeda08b3c0d7 subnet-0bebb07a8edf20dc8 subnet-05549d7007b3f5eb0
+
+jobs:
+  deploy:
+    name: Build and Deploy to Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Determine image tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            echo "tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.prod
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.ECR_BACKEND }}:${{ steps.tag.outputs.tag }}
+            ${{ env.ECR_BACKEND }}:latest
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile.prod
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+            NEXT_PUBLIC_API_BASE_URL=http://atlas-mike-staging-alb-1821218227.us-east-1.elb.amazonaws.com
+          tags: |
+            ${{ env.ECR_FRONTEND }}:${{ steps.tag.outputs.tag }}
+            ${{ env.ECR_FRONTEND }}:latest
+
+      - name: Register backend task definition
+        id: backend-td
+        run: |
+          cat > /tmp/backend-td.json << 'TDJSON'
+          {
+            "family": "atlas-mike-staging-backend",
+            "networkMode": "awsvpc",
+            "executionRoleArn": "${TASK_EXEC_ROLE}",
+            "taskRoleArn": "${TASK_ROLE}",
+            "containerDefinitions": [{
+              "name": "backend",
+              "image": "${ECR_BACKEND}:${TAG}",
+              "essential": true,
+              "portMappings": [{"containerPort": 3001, "protocol": "tcp"}],
+              "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                  "awslogs-group": "/ecs/atlas-mike-staging-backend",
+                  "awslogs-region": "us-east-1",
+                  "awslogs-stream-prefix": "ecs"
+                }
+              },
+              "secrets": [
+                {"name": "SUPABASE_URL", "valueFrom": "${SECRET_ARN}:SUPABASE_URL::"},
+                {"name": "SUPABASE_SECRET_KEY", "valueFrom": "${SECRET_ARN}:SUPABASE_SECRET_KEY::"},
+                {"name": "DOWNLOAD_SIGNING_SECRET", "valueFrom": "${SECRET_ARN}:DOWNLOAD_SIGNING_SECRET::"},
+                {"name": "USER_API_KEYS_ENCRYPTION_SECRET", "valueFrom": "${SECRET_ARN}:USER_API_KEYS_ENCRYPTION_SECRET::"},
+                {"name": "S3_BUCKET_NAME", "valueFrom": "${SECRET_ARN}:S3_BUCKET_NAME::"},
+                {"name": "S3_REGION", "valueFrom": "${SECRET_ARN}:S3_REGION::"}
+              ],
+              "environment": [
+                {"name": "NODE_ENV", "value": "production"},
+                {"name": "PORT", "value": "3001"},
+                {"name": "FRONTEND_URL", "value": "http://atlas-mike-staging-alb-1821218227.us-east-1.elb.amazonaws.com"}
+              ],
+              "healthCheck": {
+                "command": ["CMD-SHELL", "curl -f http://localhost:3001/health || exit 1"],
+                "interval": 30,
+                "timeout": 5,
+                "retries": 3,
+                "startPeriod": 15
+              },
+              "memory": 2048,
+              "cpu": 1024
+            }],
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "1024",
+            "memory": "2048"
+          }
+          TDJSON
+
+          # Substitute variables
+          sed -i "s|\${TASK_EXEC_ROLE}|${TASK_EXEC_ROLE}|g" /tmp/backend-td.json
+          sed -i "s|\${TASK_ROLE}|${TASK_ROLE}|g" /tmp/backend-td.json
+          sed -i "s|\${ECR_BACKEND}|${ECR_BACKEND}|g" /tmp/backend-td.json
+          sed -i "s|\${TAG}|${{ steps.tag.outputs.tag }}|g" /tmp/backend-td.json
+          sed -i "s|\${SECRET_ARN}|${SECRET_ARN}|g" /tmp/backend-td.json
+
+          REV=$(aws ecs register-task-definition --cli-input-json file:///tmp/backend-td.json --query 'taskDefinition.revision' --output text)
+          echo "revision=$REV" >> $GITHUB_OUTPUT
+
+      - name: Register frontend task definition
+        id: frontend-td
+        run: |
+          cat > /tmp/frontend-td.json << 'TDJSON'
+          {
+            "family": "atlas-mike-staging-frontend",
+            "networkMode": "awsvpc",
+            "executionRoleArn": "${TASK_EXEC_ROLE}",
+            "taskRoleArn": "${TASK_ROLE}",
+            "containerDefinitions": [{
+              "name": "frontend",
+              "image": "${ECR_FRONTEND}:${TAG}",
+              "essential": true,
+              "portMappings": [{"containerPort": 3000, "protocol": "tcp"}],
+              "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                  "awslogs-group": "/ecs/atlas-mike-staging-frontend",
+                  "awslogs-region": "us-east-1",
+                  "awslogs-stream-prefix": "ecs"
+                }
+              },
+              "secrets": [
+                {"name": "NEXT_PUBLIC_SUPABASE_URL", "valueFrom": "${SECRET_ARN}:NEXT_PUBLIC_SUPABASE_URL::"},
+                {"name": "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY", "valueFrom": "${SECRET_ARN}:NEXT_PUBLIC_SUPABASE_ANON_KEY::"}
+              ],
+              "environment": [
+                {"name": "NODE_ENV", "value": "production"},
+                {"name": "PORT", "value": "3000"},
+                {"name": "NEXT_PUBLIC_API_BASE_URL", "value": "http://atlas-mike-staging-alb-1821218227.us-east-1.elb.amazonaws.com"}
+              ],
+              "healthCheck": {
+                "command": ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"],
+                "interval": 30,
+                "timeout": 5,
+                "retries": 3,
+                "startPeriod": 15
+              },
+              "memory": 512,
+              "cpu": 256
+            }],
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "256",
+            "memory": "512"
+          }
+          TDJSON
+
+          sed -i "s|\${TASK_EXEC_ROLE}|${TASK_EXEC_ROLE}|g" /tmp/frontend-td.json
+          sed -i "s|\${TASK_ROLE}|${TASK_ROLE}|g" /tmp/frontend-td.json
+          sed -i "s|\${ECR_FRONTEND}|${ECR_FRONTEND}|g" /tmp/frontend-td.json
+          sed -i "s|\${TAG}|${{ steps.tag.outputs.tag }}|g" /tmp/frontend-td.json
+          sed -i "s|\${SECRET_ARN}|${SECRET_ARN}|g" /tmp/frontend-td.json
+
+          REV=$(aws ecs register-task-definition --cli-input-json file:///tmp/frontend-td.json --query 'taskDefinition.revision' --output text)
+          echo "revision=$REV" >> $GITHUB_OUTPUT
+
+      - name: Update backend service
+        run: |
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_BACKEND_SERVICE \
+            --task-definition atlas-mike-staging-backend:${{ steps.backend-td.outputs.revision }} \
+            --force-new-deployment || \
+          aws ecs create-service \
+            --cluster $ECS_CLUSTER \
+            --service-name $ECS_BACKEND_SERVICE \
+            --task-definition atlas-mike-staging-backend:${{ steps.backend-td.outputs.revision }} \
+            --desired-count 1 \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$VPC_SUBNETS],securityGroups=[$BE_SG],assignPublicIp=ENABLED}" \
+            --load-balancers "targetGroupArn=$BE_TG,containerName=backend,containerPort=3001"
+
+      - name: Update frontend service
+        run: |
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_FRONTEND_SERVICE \
+            --task-definition atlas-mike-staging-frontend:${{ steps.frontend-td.outputs.revision }} \
+            --force-new-deployment || \
+          aws ecs create-service \
+            --cluster $ECS_CLUSTER \
+            --service-name $ECS_FRONTEND_SERVICE \
+            --task-definition atlas-mike-staging-frontend:${{ steps.frontend-td.outputs.revision }} \
+            --desired-count 1 \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$VPC_SUBNETS],securityGroups=[$FE_SG],assignPublicIp=ENABLED}" \
+            --load-balancers "targetGroupArn=$FE_TG,containerName=frontend,containerPort=3000"
+
+      - name: Wait for services to stabilize
+        run: |
+          echo "Waiting for backend service to stabilize..."
+          aws ecs wait services-stable --cluster $ECS_CLUSTER --services $ECS_BACKEND_SERVICE || true
+          echo "Waiting for frontend service to stabilize..."
+          aws ecs wait services-stable --cluster $ECS_CLUSTER --services $ECS_FRONTEND_SERVICE || true
+
+      - name: Smoke test
+        run: |
+          echo "=== Health check ==="
+          curl -sf http://atlas-mike-staging-alb-1821218227.us-east-1.elb.amazonaws.com/health || echo "Backend health check failed"
+          echo "=== Frontend ==="
+          curl -sf http://atlas-mike-staging-alb-1821218227.us-east-1.elb.amazonaws.com/ | head -5 || echo "Frontend check failed"

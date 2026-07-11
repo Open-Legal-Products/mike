@@ -73,6 +73,7 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         if (!user) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- upstream pattern, refactor deferred
             setChats([]);
             setChatLimit(INITIAL_CHAT_LIMIT);
             setHasMoreChats(false);

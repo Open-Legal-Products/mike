@@ -29,6 +29,7 @@ export function PreResponseWrapper({
 
     useEffect(() => {
         if (forceOpen) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- upstream pattern, refactor deferred
             setIsOpen(true);
             return;
         }

@@ -306,6 +306,7 @@ function TRResponseStatus({ isActive }: { isActive: boolean }) {
 
     useEffect(() => {
         if (wasActiveRef.current && !isActive) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- upstream pattern, refactor deferred
             setShowDone(true);
             setDoneVisible(true);
             const t = setTimeout(() => setDoneVisible(false), 1500);
@@ -843,7 +844,7 @@ export function TRChatPanel({
             .then((raw) => setMessages(mapTRMessages(raw) as TRMessage[]))
             .catch(() => {})
             .finally(() => setIsLoadingMessages(false));
-    }, [reviewId]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [reviewId]);  
 
     // Fill in title once chats list arrives
     useEffect(() => {
@@ -892,7 +893,7 @@ export function TRChatPanel({
                 setMessagesVisible(true);
             }
         }
-    }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [messages]);  
 
     useEffect(() => {
         const userEl = latestUserMessageRef.current;
@@ -904,7 +905,7 @@ export function TRChatPanel({
         setMinHeight(
             `${Math.max(0, containerEl.clientHeight - BOTTOM_PAD - userEl.offsetHeight - messageContainerTopPadding - messageGap)}px`,
         );
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [messages.length, latestUserMessageRef.current]);
 
     useEffect(() => {

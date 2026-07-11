@@ -1,0 +1,58 @@
+#syntax=docker/dockerfile:1
+
+# ===== Stage 1: Build =====
+FROM node:20.19.0-slim AS builder
+
+WORKDIR /app
+
+# Copy package files and install dependencies.
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# Copy source and build.
+COPY tsconfig.json ./
+COPY next.config.ts ./
+COPY src/ ./src/
+COPY public/ ./public/
+
+# Build with placeholder env vars for prerender.
+ENV NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321
+ENV NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=placeholder
+ENV NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+
+RUN npm run build
+
+# ===== Stage 2: Production =====
+FROM node:20.19.0-slim AS production
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+# Copy package files and install production dependencies only.
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev
+
+# Copy Next.js build output.
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/next.config.ts ./next.config.ts
+
+# Create non-root user.
+RUN groupadd -r mike && useradd -r -g mike -d /app -s /sbin/nologin mike \
+  && chown -R mike:mike /app
+
+USER mike
+
+EXPOSE 3000
+
+# Health check — Next.js doesn't have a built-in /health endpoint,
+# so we check if the server responds on the port.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD curl -f http://localhost:3000/ || exit 1
+
+CMD ["npm", "start"]

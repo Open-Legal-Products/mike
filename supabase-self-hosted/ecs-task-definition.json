@@ -1,0 +1,105 @@
+{
+  "family": "atlas-mike-staging-supabase",
+  "networkMode": "awsvpc",
+  "executionRoleArn": "arn:aws:iam::136770599935:role/atlas-mike-staging-task-execution",
+  "taskRoleArn": "arn:aws:iam::136770599935:role/atlas-mike-staging-task",
+  "containerDefinitions": [
+    {
+      "name": "kong",
+      "image": "136770599935.dkr.ecr.us-east-1.amazonaws.com/atlas-mike-staging/kong:latest",
+      "essential": true,
+      "portMappings": [{"containerPort": 8000, "protocol": "tcp"}],
+      "environment": [
+        {"name": "KONG_DATABASE", "value": "off"},
+        {"name": "KONG_DECLARATIVE_CONFIG", "value": "/var/lib/kong/kong.yml"},
+        {"name": "KONG_DNS_ORDER", "value": "LAST,A,CNAME"},
+        {"name": "KONG_PLUGINS", "value": "request-transformer,cors,key-auth,acl,basic-auth"},
+        {"name": "KONG_NGINX_PROXY_PROXY_BUFFER_SIZE", "value": "160k"},
+        {"name": "KONG_NGINX_PROXY_PROXY_BUFFERS", "value": "64 160k"}
+      ],
+      "secrets": [
+        {"name": "SUPABASE_ANON_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:136770599935:secret:atlas-mike-staging-app-secrets-SCo8Ga:SUPABASE_ANON_KEY::"},
+        {"name": "SUPABASE_SERVICE_KEY", "valueFrom": "arn:aws:secretsmanager:us-east-1:136770599935:secret:atlas-mike-staging-app-secrets-SCo8Ga:SUPABASE_SECRET_KEY::"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/atlas-mike-staging-supabase",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "memory": 512,
+      "cpu": 256,
+      "dependsOn": [{"containerName": "auth", "condition": "START"}, {"containerName": "rest", "condition": "START"}]
+    },
+    {
+      "name": "auth",
+      "image": "supabase/gotrue:v2.164.0",
+      "essential": true,
+      "environment": [
+        {"name": "GOTRUE_API_HOST", "value": "0.0.0.0"},
+        {"name": "GOTRUE_API_PORT", "value": "9999"},
+        {"name": "API_EXTERNAL_URL", "value": "http://atlas-mike-staging-alb-1821218227.us-east-1.elb.amazonaws.com/supabase"},
+        {"name": "GOTRUE_DB_DRIVER", "value": "postgres"},
+        {"name": "GOTRUE_SITE_URL", "value": "http://atlas-mike-staging-alb-1821218227.us-east-1.elb.amazonaws.com"},
+        {"name": "GOTRUE_DISABLE_SIGNUP", "value": "false"},
+        {"name": "GOTRUE_ENABLE_ADMIN_API", "value": "true"},
+        {"name": "GOTRUE_JWT_ADMIN_ROLES", "value": "service_role"},
+        {"name": "GOTRUE_JWT_AUD", "value": "authenticated"},
+        {"name": "GOTRUE_JWT_DEFAULT_GROUP_NAME", "value": "authenticated"},
+        {"name": "GOTRUE_JWT_EXP", "value": "3600"},
+        {"name": "GOTRUE_EXTERNAL_EMAIL_ENABLED", "value": "false"},
+        {"name": "GOTRUE_MAILER_AUTOCONFIRM", "value": "true"},
+        {"name": "GOTRUE_SECURITY_REFRESH_TOKEN_ROTATION_ENABLED", "value": "true"},
+        {"name": "GOTRUE_SECURITY_REFRESH_TOKEN_REUSE_INTERVAL", "value": "10"},
+        {"name": "GOTRUE_MFA_ENABLED", "value": "true"},
+        {"name": "GOTRUE_MFA_PHONE_ENROLL_ENABLED", "value": "false"},
+        {"name": "GOTRUE_MFA_PHONE_VERIFY_ENABLED", "value": "false"}
+      ],
+      "secrets": [
+        {"name": "GOTRUE_DB_DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:us-east-1:136770599935:secret:atlas-mike-staging-app-secrets-SCo8Ga:DATABASE_URL::"},
+        {"name": "GOTRUE_JWT_SECRET", "valueFrom": "arn:aws:secretsmanager:us-east-1:136770599935:secret:atlas-mike-staging-app-secrets-SCo8Ga:SUPABASE_JWT_SECRET::"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/atlas-mike-staging-supabase",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "memory": 512,
+      "cpu": 256
+    },
+    {
+      "name": "rest",
+      "image": "postgrest/postgrest:v12.2.3",
+      "essential": true,
+      "environment": [
+        {"name": "PGRST_DB_SCHEMAS", "value": "public,storage,graphql_public"},
+        {"name": "PGRST_DB_ANON_ROLE", "value": "anon"},
+        {"name": "PGRST_DB_USE_LEGACY_GUCS", "value": "false"},
+        {"name": "PGRST_APP_SETTINGS_JWT_EXP", "value": "3600"},
+        {"name": "PGRST_OPENAPI_SERVER_PROXY_URI", "value": "http://atlas-mike-staging-alb-1821218227.us-east-1.elb.amazonaws.com/supabase/rest/v1"}
+      ],
+      "secrets": [
+        {"name": "PGRST_DB_URI", "valueFrom": "arn:aws:secretsmanager:us-east-1:136770599935:secret:atlas-mike-staging-app-secrets-SCo8Ga:DATABASE_URL::"},
+        {"name": "PGRST_APP_SETTINGS_JWT_SECRET", "valueFrom": "arn:aws:secretsmanager:us-east-1:136770599935:secret:atlas-mike-staging-app-secrets-SCo8Ga:SUPABASE_JWT_SECRET::"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/atlas-mike-staging-supabase",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "memory": 512,
+      "cpu": 256
+    }
+  ],
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048"
+}

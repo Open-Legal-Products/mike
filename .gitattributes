@@ -1,0 +1,2 @@
+# Mark generated artifacts as generated to suppress noisy diffs
+artifacts/*.json linguist-generated=true

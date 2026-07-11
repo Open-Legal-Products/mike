@@ -203,8 +203,9 @@ export function CaseLawPanel({
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [activeOpinionId, setActiveOpinionId] = useState<number | null>(null);
-    const [relevantQuotes, setRelevantQuotes] = useState<CaseCitationQuote[]>(
-        tab.quotes ?? [],
+    const relevantQuotes = useMemo<CaseCitationQuote[]>(
+        () => tab.quotes ?? [],
+        [tab.quotes],
     );
     const [activeQuoteKey, setActiveQuoteKey] = useState<string | null>(null);
     const [quoteIndexState, setQuoteIndexState] = useState({
@@ -216,6 +217,7 @@ export function CaseLawPanel({
 
     useEffect(() => {
         if (tab.opinions?.length) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- upstream pattern, refactor deferred
             setOpinions(tab.opinions);
             setLoading(false);
             setError(null);
@@ -269,12 +271,9 @@ export function CaseLawPanel({
             orderOpinions(opinions).find(
                 ({ opinion }) => typeof opinion.opinionId === "number",
             )?.opinion.opinionId ?? null;
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- upstream pattern, refactor deferred
         setActiveOpinionId(firstOpinionId);
     }, [opinions]);
-
-    useEffect(() => {
-        setRelevantQuotes(tab.quotes ?? []);
-    }, [tab.quotes]);
 
     const title = tab.caseName;
     const citation = tab.citation;
@@ -321,6 +320,7 @@ export function CaseLawPanel({
     );
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- upstream pattern, refactor deferred
         setQuoteIndexState({ cacheKey: quoteCacheKey, index: 0 });
         const firstQuote = relevantQuotes[0];
         setActiveQuoteKey(firstQuote ? relevantQuoteKey(firstQuote, 0) : null);

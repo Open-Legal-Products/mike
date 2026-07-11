@@ -1,12 +1,15 @@
 /**
- * Cloudflare R2 storage utilities for Mike document management.
- * R2 is S3-compatible — uses @aws-sdk/client-s3.
+ * S3-compatible storage utilities for Mike document management.
+ * Supports AWS S3, Cloudflare R2, MinIO and other S3-compatible stores.
  *
- * Required env vars:
- *   R2_ENDPOINT_URL     — https://<account-id>.r2.cloudflarestorage.com
- *   R2_ACCESS_KEY_ID    — R2 API token (Access Key ID)
- *   R2_SECRET_ACCESS_KEY — R2 API token (Secret Access Key)
- *   R2_BUCKET_NAME      — bucket name (default: "mike")
+ * Env vars (S3_* preferred; R2_* kept for upstream compatibility):
+ *   S3_ENDPOINT_URL      — optional endpoint for S3-compatible stores (MinIO, R2)
+ *   S3_ACCESS_KEY_ID     — access key ID
+ *   S3_SECRET_ACCESS_KEY — secret access key
+ *   S3_BUCKET_NAME       — bucket name
+ *   S3_REGION            — region (default: us-east-1)
+ *
+ * Fallback to legacy R2_* variables if S3_* are not set.
  */
 
 import {
@@ -14,41 +17,75 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
   ListObjectsV2Command,
+  HeadBucketCommand,
 } from "@aws-sdk/client-s3";
 import * as S3Commands from "@aws-sdk/client-s3";
 import { getSignedUrl as awsGetSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const GetObjectCommand = (S3Commands as any).GetObjectCommand;
 
+function endpointUrl(): string | undefined {
+  return process.env.S3_ENDPOINT_URL || process.env.R2_ENDPOINT_URL;
+}
+
+function accessKeyId(): string | undefined {
+  return process.env.S3_ACCESS_KEY_ID || process.env.R2_ACCESS_KEY_ID;
+}
+
+function secretAccessKey(): string | undefined {
+  return process.env.S3_SECRET_ACCESS_KEY || process.env.R2_SECRET_ACCESS_KEY;
+}
+
+function bucketName(): string {
+  return process.env.S3_BUCKET_NAME || process.env.R2_BUCKET_NAME || "mike";
+}
+
+function region(): string {
+  return process.env.S3_REGION || "us-east-1";
+}
+
 let cachedClient: S3Client | undefined;
 
 function getClient(): S3Client {
   if (!cachedClient) {
+    const endpoint = endpointUrl();
     cachedClient = new S3Client({
-      region: "auto",
-      endpoint: process.env.R2_ENDPOINT_URL!,
-      forcePathStyle: true,
+      region: region(),
+      ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
       credentials: {
-        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+        accessKeyId: accessKeyId()!,
+        secretAccessKey: secretAccessKey()!,
       },
     });
   }
   return cachedClient;
 }
 
-const BUCKET = process.env.R2_BUCKET_NAME ?? "mike";
+const BUCKET = bucketName();
 
 export const storageEnabled = Boolean(
-  process.env.R2_ENDPOINT_URL &&
-  process.env.R2_ACCESS_KEY_ID &&
-  process.env.R2_SECRET_ACCESS_KEY,
+  endpointUrl() && accessKeyId() && secretAccessKey(),
 );
+
+export async function checkStorageConnectivity(): Promise<boolean> {
+  if (!storageEnabled) return false;
+  try {
+    const client = getClient();
+    await client.send(new HeadBucketCommand({ Bucket: BUCKET }));
+    return true;
+  } catch (err: any) {
+    if (err && err.name === "NotFound") {
+      // Bucket does not exist, but service responded — connection works.
+      return false;
+    }
+    return false;
+  }
+}
 
 function requireStorageConfig(): void {
   if (!storageEnabled) {
     throw new Error(
-      "R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY must be set",
+      "S3_ENDPOINT_URL (or R2_ENDPOINT_URL), S3_ACCESS_KEY_ID (or R2_ACCESS_KEY_ID), and S3_SECRET_ACCESS_KEY (or R2_SECRET_ACCESS_KEY) must be set",
     );
   }
 }
@@ -136,10 +173,6 @@ export async function getSignedUrl(
   if (!storageEnabled) return null;
   try {
     const client = getClient();
-    // Override the response Content-Disposition so the browser uses this
-    // filename on download, instead of the last path segment of the R2 key
-    // (which includes the document UUID). The `download` attribute on <a>
-    // is ignored for cross-origin URLs, so we have to set it server-side.
     const responseContentDisposition = downloadFilename
       ? buildContentDisposition("attachment", downloadFilename)
       : undefined;

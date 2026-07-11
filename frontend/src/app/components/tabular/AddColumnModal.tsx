@@ -64,7 +64,7 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
             setColumns([{ ...EMPTY_DRAFT }]);
         }
         setCollapsedIndices([]);
-    }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [open]);  
 
     useEffect(() => {
         if (presetsOpenIndex === null) return;
