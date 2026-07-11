@@ -46,16 +46,32 @@ describe("env validation", () => {
     expect(() => validateEnv()).toThrow();
   });
 
-  it("should fail when no storage credentials are provided", async () => {
+  it("should fail when no storage credentials and no S3_BUCKET_NAME are provided", async () => {
     delete process.env.S3_ENDPOINT_URL;
     delete process.env.S3_ACCESS_KEY_ID;
     delete process.env.S3_SECRET_ACCESS_KEY;
+    delete process.env.S3_BUCKET_NAME;
     delete process.env.R2_ENDPOINT_URL;
     delete process.env.R2_ACCESS_KEY_ID;
     delete process.env.R2_SECRET_ACCESS_KEY;
     vi.resetModules();
     const { validateEnv } = await import("../src/lib/env");
     expect(() => validateEnv()).toThrow(/Storage credentials/);
+  });
+
+  it("should allow S3_BUCKET_NAME without explicit credentials (AWS IAM role mode)", async () => {
+    delete process.env.S3_ENDPOINT_URL;
+    delete process.env.S3_ACCESS_KEY_ID;
+    delete process.env.S3_SECRET_ACCESS_KEY;
+    delete process.env.R2_ENDPOINT_URL;
+    delete process.env.R2_ACCESS_KEY_ID;
+    delete process.env.R2_SECRET_ACCESS_KEY;
+    process.env.S3_BUCKET_NAME = "atlas-mike-staging-documents";
+    process.env.S3_REGION = "us-east-1";
+    vi.resetModules();
+    const { validateEnv } = await import("../src/lib/env");
+    const env = validateEnv();
+    expect(env.S3_BUCKET_NAME).toBe("atlas-mike-staging-documents");
   });
 
   it("should block raw LLM logging in production", async () => {
