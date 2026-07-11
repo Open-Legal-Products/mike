@@ -1,0 +1,31 @@
+#syntax=docker/dockerfile:1
+
+# Staging Dockerfile for frontend — runs in dev mode without next build.
+# The production Dockerfile (Dockerfile.prod) requires more memory for
+# next build under QEMU cross-platform emulation. This staging Dockerfile
+# copies source and runs npm run dev, which works on any platform.
+# CI will build the production image on x86_64 runners.
+
+FROM node:20.19.0-slim
+
+WORKDIR /app
+
+# Copy package files and install dependencies.
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# Copy source code.
+COPY tsconfig.json ./
+COPY next.config.ts ./
+COPY src/ ./src/
+COPY public/ ./public/
+
+# Create non-root user.
+RUN groupadd -r mike && useradd -r -g mike -d /app -s /sbin/nologin mike \
+  && chown -R mike:mike /app
+
+USER mike
+
+EXPOSE 3000
+
+CMD ["npm", "run", "dev", "--", "-H", "0.0.0.0", "-p", "3000"]

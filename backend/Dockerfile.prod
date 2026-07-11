@@ -1,0 +1,51 @@
+#syntax=docker/dockerfile:1
+
+# ===== Stage 1: Build =====
+FROM node:20.19.0-slim AS builder
+
+WORKDIR /app
+
+# Copy package files and install dependencies.
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# Copy source and build.
+COPY tsconfig.json ./
+COPY src/ ./src/
+RUN npm run build
+
+# ===== Stage 2: Production =====
+FROM node:20.19.0-slim AS production
+
+# Install LibreOffice for DOC/DOCX/PPTX to PDF conversion.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+     libreoffice-writer \
+     libreoffice-calc \
+     libreoffice-impress \
+     fonts-dejavu \
+     curl \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy package files and install production dependencies only.
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev
+
+# Copy built output from builder stage.
+COPY --from=builder /app/dist ./dist
+
+# Create non-root user.
+RUN groupadd -r mike && useradd -r -g mike -d /app -s /sbin/nologin mike \
+  && chown -R mike:mike /app
+
+USER mike
+
+EXPOSE 3001
+
+# Health check — /health returns 200 without checking dependencies.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD curl -f http://localhost:3001/health || exit 1
+
+CMD ["node", "dist/index.js"]
