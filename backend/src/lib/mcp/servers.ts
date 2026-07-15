@@ -39,6 +39,40 @@ import {
 
 export { startUserMcpConnectorOAuth, validateRemoteMcpUrl };
 
+function localizeMcpError(serverUrl: string, originalError: unknown): string {
+    const message =
+        originalError instanceof Error
+            ? originalError.message
+            : "MCP tool call failed.";
+    try {
+        const url = new URL(serverUrl);
+        const hostname = url.hostname.toLowerCase();
+        if (hostname.includes("pkulaw.com")) {
+            if (
+                message.includes("401") ||
+                message.includes("Unauthorized") ||
+                message.includes("unauthorized") ||
+                message.includes("auth")
+            ) {
+                return "北大法宝 MCP 认证失败 (401)。请前往 https://mcp.pkulaw.com/console 检查 Token 是否有效。";
+            }
+            if (
+                message.includes("403") ||
+                message.includes("Forbidden") ||
+                message.includes("forbidden")
+            ) {
+                return "北大法宝 MCP 访问被拒绝 (403)。请确认您的账户有权限访问该服务。";
+            }
+            if (message.includes("ENOTFOUND") || message.includes("ECONNREFUSED")) {
+                return "无法连接到北大法宝 MCP 服务。请检查网络连接或服务状态。";
+            }
+        }
+    } catch {
+        // ignore URL parse errors
+    }
+    return message;
+}
+
 async function withMcpClient<T>(
     connector: ConnectorRow,
     callback: (client: Client) => Promise<T>,
@@ -88,6 +122,12 @@ async function withMcpClient<T>(
                 if (discoveryErr instanceof McpOAuthRequiredError)
                     throw discoveryErr;
             }
+        }
+        const localized = localizeMcpError(connector.server_url, err);
+        const originalMessage =
+            err instanceof Error ? err.message : "MCP tool call failed.";
+        if (localized !== originalMessage) {
+            throw new Error(localized);
         }
         throw err;
     } finally {
@@ -597,8 +637,7 @@ export async function executeMcpToolCall(
             },
         };
     } catch (err) {
-        const message =
-            err instanceof Error ? err.message : "MCP tool call failed.";
+        const message = localizeMcpError(connector.server_url, err);
         await insertMcpAuditLog(db, {
             user_id: userId,
             connector_id: connector.id,

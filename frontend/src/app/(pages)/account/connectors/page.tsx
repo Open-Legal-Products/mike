@@ -17,7 +17,7 @@ import {
     needsMfaVerification,
 } from "@/app/components/popups/MfaVerificationPopup";
 import {
-    type McpConnectorSummary,
+    McpConnectorSummary,
     MikeApiError,
     createMcpConnector,
     deleteMcpConnector,
@@ -29,6 +29,7 @@ import {
     startMcpConnectorOAuth,
     updateMcpConnector,
 } from "@/app/lib/mikeApi";
+import { isPkulawConnector } from "@/app/lib/mcpPresets";
 import {
     accountGlassIconButtonClassName,
     accountGlassInputClassName,
@@ -97,6 +98,10 @@ function parseCustomHeaders(raw: string): Record<string, string> | undefined {
         headers[key] = value;
     }
     return headers;
+}
+
+function isPkulawMcpConnector(connector: McpConnectorSummary) {
+    return isPkulawConnector(connector.serverUrl);
 }
 
 function isGoogleMcpConnector(connector: McpConnectorSummary) {
@@ -752,6 +757,11 @@ function ConnectorRow({
             <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-3">
                 <div className="min-w-0 text-left">
                     <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-gray-900">
+                        {isPkulawMcpConnector(connector) && (
+                            <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700">
+                                北大法宝
+                            </span>
+                        )}
                         <span className="truncate">{connector.name}</span>
                         <span className="h-1 w-1 rounded-full bg-gray-300" />
                         <span className="shrink-0 text-xs font-medium text-gray-500">
@@ -896,6 +906,24 @@ function McpConnectorDetailsModal({
         >
             {connector && (
                 <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pb-4">
+                    {isPkulawMcpConnector(connector) && (
+                        <div className="rounded-lg border border-blue-100/80 bg-blue-50/60 px-3 py-2">
+                            <p className="text-xs font-medium text-blue-700">
+                                北大法宝 MCP 连接器
+                            </p>
+                            <p className="text-xs text-blue-600">
+                                中国领先的法律数据库，提供法规/案例检索等法律 AI 能力
+                            </p>
+                            <a
+                                href="https://mcp.pkulaw.com/console"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="mt-1 inline-block text-xs font-medium text-blue-700 underline"
+                            >
+                                管理 Token
+                            </a>
+                        </div>
+                    )}
                     <ConnectorForm
                         draft={draft}
                         showToken={showToken}

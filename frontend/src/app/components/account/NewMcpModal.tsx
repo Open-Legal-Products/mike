@@ -1,9 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import { Check, ChevronDown, Eye, EyeOff, Loader2 } from "lucide-react";
 import { Input } from "@/app/components/ui/input";
 import { Modal } from "@/app/components/modals/Modal";
 import type { McpConnectorSummary } from "@/app/lib/mikeApi";
+import {
+    MCP_PRESETS,
+    type McpPreset,
+    buildPresetName,
+    buildPresetUrl,
+} from "@/app/lib/mcpPresets";
 import {
     accountGlassIconButtonClassName,
     accountGlassInputClassName,
@@ -154,8 +161,106 @@ function NewMcpForm({
     onShowTokenChange: (show: boolean) => void;
     onShowAdvancedChange: (show: boolean) => void;
 }) {
+    const [presetId, setPresetId] = useState("");
+    const [serverId, setServerId] = useState("");
+    const [preset, setPreset] = useState<McpPreset | null>(null);
+
+    const handlePresetChange = (nextPresetId: string) => {
+        setPresetId(nextPresetId);
+        if (!nextPresetId) {
+            setPreset(null);
+            setServerId("");
+            return;
+        }
+        const found = MCP_PRESETS.find((p) => p.id === nextPresetId) ?? null;
+        setPreset(found);
+        if (found) {
+            const firstServerId = found.serverIdOptions[0]?.value ?? "";
+            setServerId(firstServerId);
+            const nextName = buildPresetName(found, firstServerId);
+            const nextUrl = buildPresetUrl(found, firstServerId);
+            onDraftChange({
+                ...draft,
+                name: nextName,
+                serverUrl: nextUrl,
+            });
+        }
+    };
+
+    const handleServerIdChange = (nextServerId: string) => {
+        setServerId(nextServerId);
+        if (preset) {
+            const nextName = buildPresetName(preset, nextServerId);
+            const nextUrl = buildPresetUrl(preset, nextServerId);
+            onDraftChange({
+                ...draft,
+                name: nextName,
+                serverUrl: nextUrl,
+            });
+        }
+    };
+
     return (
         <div className="grid gap-3 pt-1">
+            <label className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-center">
+                <span className="text-xs font-medium text-gray-500">
+                    Preset
+                </span>
+                <select
+                    value={presetId}
+                    onChange={(e) => handlePresetChange(e.target.value)}
+                    disabled={disabled}
+                    className={`h-8 rounded-lg px-2 text-sm ${accountGlassInputClassName}`}
+                >
+                    <option value="">Custom</option>
+                    {MCP_PRESETS.map((p) => (
+                        <option key={p.id} value={p.id}>
+                            {p.brand}
+                        </option>
+                    ))}
+                </select>
+            </label>
+
+            {preset && (
+                <label className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-center">
+                    <span className="text-xs font-medium text-gray-500">
+                        Service
+                    </span>
+                    <select
+                        value={serverId}
+                        onChange={(e) => handleServerIdChange(e.target.value)}
+                        disabled={disabled}
+                        className={`h-8 rounded-lg px-2 text-sm ${accountGlassInputClassName}`}
+                    >
+                        {preset.serverIdOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+                </label>
+            )}
+
+            {preset && serverId && (
+                <div className="rounded-lg border border-blue-100/80 bg-blue-50/60 px-3 py-2 text-xs text-blue-700">
+                    <p>
+                        {
+                            preset.serverIdOptions.find(
+                                (o) => o.value === serverId,
+                            )?.description
+                        }
+                    </p>
+                    <a
+                        href={preset.consoleUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 inline-block font-medium underline"
+                    >
+                        {preset.tokenHint}
+                    </a>
+                </div>
+            )}
+
             <label className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-center">
                 <span className="text-xs font-medium text-gray-500">
                     Label
