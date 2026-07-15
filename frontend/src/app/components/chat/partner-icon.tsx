@@ -48,9 +48,9 @@ const ERROR_PALETTE: IconPalette = {
     fillStops: ["#f87171", "#fca5a5", "#ef4444", "#fecaca"],
     fillOpacities: [0.95, 0.88, 0.9, 0.94],
     specularStops: [0.68, 0.32, 0.03, 0],
-    borderStops: ["#fef2f2", "#fca5a5", "#fee2e2"],
+    borderStops: ["#fef2f2", "#fca5a5", "#fee2f2"],
     borderOpacities: [0.42, 0.24, 0.3],
-    innerStops: ["#ffffff", "#fee2e2", "#f87171", "#ffffff"],
+    innerStops: ["#ffffff", "#fee2f2", "#f87171", "#ffffff"],
     innerOpacities: [0, 0.16, 0.08, 0],
 };
 
@@ -88,22 +88,22 @@ function Blades({ ids }: { ids: Record<string, string> }) {
     );
 }
 
-export function MikeIcon({
+export function PartnerIcon({
     spin = false,
     done = false,
     error = false,
-    mike = false,
+    partner = false,
     size = 24,
     style,
 }: {
     spin?: boolean;
     done?: boolean;
     error?: boolean;
-    mike?: boolean;
+    partner?: boolean;
     size?: number;
     style?: React.CSSProperties;
 }) {
-    void mike;
+    void partner;
     const id = useId().replace(/:/g, "");
     const palette = error
         ? ERROR_PALETTE

@@ -54,7 +54,7 @@ interface Props {
     quoteFocusKey?: string | number;
     /**
      * Warning banner copy rendered in the top-left of the viewer. Used
-     * for non-blocking errors (e.g. "Accept failed — reverted").
+     * for non-blocking errors (e.g. "接受失败 — 已撤销").
      */
     warning?: string | null;
     /**
@@ -474,7 +474,7 @@ export function DocxView({
                         type="button"
                         onClick={() => onWarningDismiss?.()}
                         className="text-amber-600 hover:text-amber-900"
-                        aria-label="Dismiss warning"
+                        aria-label="关闭警告"
                     >
                         ×
                     </button>

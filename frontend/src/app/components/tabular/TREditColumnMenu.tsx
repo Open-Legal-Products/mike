@@ -244,19 +244,19 @@ export function TREditColumnMenu({
                     >
                     <div className="flex items-center justify-between mb-3">
                         <p className="font-serif text-lg font-medium text-gray-900">
-                            Edit Column
+                            编辑列
                         </p>
                         <button
                             type="button"
                             onClick={() => setOpen(false)}
-                            aria-label="Close"
+                            aria-label="关闭"
                             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/70 bg-white/55 text-gray-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),inset_0_-1px_0_rgba(255,255,255,0.55),0_6px_18px_rgba(15,23,42,0.08)] backdrop-blur-xl transition-colors hover:bg-white/75 hover:text-gray-700"
                         >
                             <X className="h-3.5 w-3.5" />
                         </button>
                     </div>
                     <label className="text-xs font-medium text-gray-800">
-                        Label
+                        标签名
                     </label>
                     <input
                         type="text"
@@ -268,7 +268,7 @@ export function TREditColumnMenu({
                     {/* Format */}
                     <div className="mt-3">
                         <label className="text-xs font-medium text-gray-800">
-                            Format
+                            格式
                         </label>
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -353,7 +353,7 @@ export function TREditColumnMenu({
                                     onKeyDown={handleTagKeyDown}
                                     onBlur={commitTag}
                                     placeholder={
-                                        tags.length === 0 ? "Add tags…" : ""
+                                        tags.length === 0 ? "添加标签…" : ""
                                     }
                                     className="min-w-[60px] flex-1 bg-transparent text-xs text-gray-700 placeholder-gray-300 focus:outline-none"
                                 />
@@ -365,7 +365,7 @@ export function TREditColumnMenu({
                     <div className="mt-3">
                         <div className="flex items-center justify-between">
                             <label className="text-xs font-medium text-gray-800">
-                                Prompt
+                                提示词
                             </label>
                             <button
                                 type="button"
@@ -395,7 +395,7 @@ export function TREditColumnMenu({
                             onClick={handleDelete}
                             disabled={deleting || saving}
                         >
-                            Delete
+                            删除
                         </PillButton>
                         <button
                             type="button"
@@ -409,7 +409,7 @@ export function TREditColumnMenu({
                             }
                             className="rounded-full border border-gray-700/40 bg-gray-950/88 px-3 py-1 text-xs font-medium text-white shadow-[0_3px_9px_rgba(15,23,42,0.16),inset_0_1px_0_rgba(255,255,255,0.22),inset_0_-4px_9px_rgba(15,23,42,0.2)] backdrop-blur-xl transition-colors hover:bg-gray-900/90 disabled:opacity-40"
                         >
-                            {saving ? "Saving…" : "Save"}
+                            {saving ? "保存中…" : "保存"}
                         </button>
                     </div>
                     </div>,

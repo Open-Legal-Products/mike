@@ -82,7 +82,7 @@ export function WarningPopup({
                     type="button"
                     onClick={onClose}
                     className="shrink-0 text-red-700 transition-colors hover:text-red-500"
-                    aria-label="Dismiss warning"
+                    aria-label="关闭警告"
                 >
                     <X className="h-3.5 w-3.5" />
                 </button>

@@ -85,7 +85,7 @@ export function useFetchSingleDoc(
                     if (!cancelled) setResult({ type: "docx" });
                 }
             } catch {
-                if (!cancelled) setError("Failed to load document.");
+                if (!cancelled) setError("加载文档失败。");
             } finally {
                 if (!cancelled) setLoading(false);
             }

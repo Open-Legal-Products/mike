@@ -214,22 +214,22 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
             open={open}
             onClose={handleClose}
             breadcrumbs={[
-                "Tabular Review",
-                isEditing ? "Edit column" : "New column",
+                "表格审查",
+                isEditing ? "编辑列" : "新建列",
             ]}
             primaryAction={{
-                label: isEditing ? "Save changes" : "Add columns",
+                label: isEditing ? "保存更改" : "添加列",
                 type: "submit",
                 form: formId,
                 disabled: columns.some(
                     (col) => !col.name.trim() || !col.prompt.trim(),
                 ),
             }}
-            cancelAction={{ label: "Cancel", onClick: handleClose }}
+            cancelAction={{ label: "取消", onClick: handleClose }}
             secondaryAction={
                 isEditing && onDelete
                     ? {
-                          label: "Delete",
+                          label: "删除",
                           variant: "danger",
                           onClick: onDelete,
                       }
@@ -282,7 +282,7 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
                                                             removeColumn(index)
                                                         }
                                                         className="rounded-lg p-1.5 text-gray-300 transition-colors hover:bg-gray-100 hover:text-gray-500"
-                                                        aria-label="Remove column"
+                                                        aria-label="移除列"
                                                     >
                                                         <X className="h-4 w-4" />
                                                     </button>
@@ -291,7 +291,7 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
                                             {!isCollapsed && (
                                                 <>
                                             <ModalFieldLabel htmlFor={nameInputId}>
-                                                Column title
+                                                列标题
                                             </ModalFieldLabel>
                                 {/* Name row */}
                                 <div className="flex items-start gap-2">
@@ -327,7 +327,7 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
                                                         : {}),
                                                 });
                                             }}
-                                            placeholder="Column name"
+                                            placeholder="列名称"
                                             className="flex-1"
                                             autoFocus={index === 0}
                                         />
@@ -340,7 +340,7 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
                                                         : index,
                                                 )
                                             }
-                                            title="Column presets"
+                                            title="列预设"
                                             className="mt-1.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
                                         >
                                             <ChevronDown
@@ -357,7 +357,7 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
                                                     }}
                                                     className="w-full px-3 py-2 text-left text-sm text-gray-400 hover:bg-gray-50 transition-colors border-b border-gray-100"
                                                 >
-                                                    No Preset
+                                                    无预设
                                                 </button>
                                                 {PROMPT_PRESETS.map(
                                                     (preset) => (
@@ -396,7 +396,7 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
                                 {/* Format */}
                                 <div className="mt-4">
                                     <ModalFieldLabel htmlFor={formatInputId}>
-                                        Format
+                                        格式
                                     </ModalFieldLabel>
                                     <ModalSelect
                                         id={formatInputId}
@@ -421,7 +421,7 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
                                 {column.format === "tag" && (
                                     <div className="mt-3">
                                         <ModalFieldLabel htmlFor={tagInputId}>
-                                            Tags
+                                            标签
                                         </ModalFieldLabel>
                                         <div className="mt-1 flex flex-wrap gap-1.5 rounded-xl border border-white/70 bg-white/55 px-2 py-1.5 shadow-[0_3px_9px_rgba(15,23,42,0.052),inset_0_1px_0_rgba(255,255,255,0.86),inset_0_-1px_0_rgba(255,255,255,0.58)] backdrop-blur-xl">
                                             {column.tags.map((tag, tagIdx) => (
@@ -465,12 +465,12 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
                                                     handleTagKeyDown(e, index)
                                                 }
                                                 onBlur={() => commitTag(index)}
-                                                placeholder="Add tag…"
+                                                placeholder="添加标签…"
                                                 className="min-w-[80px] flex-1 bg-transparent font-sans text-sm text-gray-700 shadow-none placeholder:text-gray-400"
                                             />
                                         </div>
                                         <p className="mt-1 text-xs text-gray-400">
-                                            Press Enter or comma to add a tag.
+                                            按回车或逗号添加标签。
                                         </p>
                                     </div>
                                 )}
@@ -481,7 +481,7 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
                                         htmlFor={promptInputId}
                                         className="mb-0"
                                     >
-                                        Prompt
+                                        提示词
                                     </ModalFieldLabel>
                                     <button
                                         type="button"
@@ -499,7 +499,7 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
                                         ) : (
                                             <Plus className="h-4 w-4" />
                                         )}
-                                        Auto-Generate Prompt
+                                        Auto-Generate 提示词
                                     </button>
                                 </div>
                                 <ModalTextarea
@@ -511,7 +511,7 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
                                             prompt: e.target.value,
                                         })
                                     }
-                                    placeholder="Write the analysis prompt — describe what Mike should extract from each document for this column…"
+                                    placeholder="编写分析提示词 — 说明应从每份文档中提取哪些信息到此列…"
                                     className="mt-2 min-h-36"
                                 />
                                                 </>
@@ -529,7 +529,7 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
                                 className="inline-flex items-center gap-1.5 text-sm text-gray-500 transition-colors hover:text-gray-900"
                             >
                                 <Plus className="h-4 w-4" />
-                                Add another column
+                                再添加一列
                             </button>
                         )}
                 </div>

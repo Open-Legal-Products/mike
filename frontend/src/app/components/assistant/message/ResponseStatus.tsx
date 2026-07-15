@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MikeIcon } from "@/app/components/chat/mike-icon";
+import { MikeIcon } from "@/app/components/chat/partner-icon";
 
 export type StatusState = "active" | "error" | null;
 

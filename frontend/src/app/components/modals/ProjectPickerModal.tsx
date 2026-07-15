@@ -51,7 +51,7 @@ export function ProjectPickerModal({
                 <SearchBar
                     value={search}
                     onValueChange={setSearch}
-                    placeholder="Search projects..."
+                    placeholder="搜索项目..."
                     autoFocus
                 />
             </div>
@@ -77,13 +77,13 @@ export function ProjectPickerModal({
                     </div>
                 ) : filtered.length === 0 ? (
                     <p className="text-center text-sm text-gray-400 py-8">
-                        {q ? "No matches found" : "No projects yet"}
+                        {q ? "未找到匹配项" : "暂无项目"}
                     </p>
                 ) : (
                     <div className="rounded-sm overflow-hidden">
                         <div className="flex items-center justify-between px-2 py-2">
                             <p className="text-xs font-medium text-gray-400">
-                                Projects
+                                项目
                             </p>
                         </div>
                         <div className="space-y-px">

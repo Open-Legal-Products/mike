@@ -13,9 +13,9 @@ export default function GlobalError({
     }, [error]);
 
     return (
-        <html lang="en">
+        <html lang="zh-CN">
             <head>
-                <title>Something went wrong – Mike</title>
+                <title>出错了 – 我的律师合伙人</title>
                 <style>{`
                     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=EB+Garamond:wght@400;500&display=swap');
                     
@@ -57,10 +57,9 @@ export default function GlobalError({
             </head>
             <body>
                 <div className="error-container">
-                    <h1 className="error-title">Something went wrong</h1>
+                    <h1 className="error-title">出错了</h1>
                     <p className="error-message">
-                        We encountered an unexpected error. This has been logged
-                        and our team will look into it.
+                        遇到了意外错误。错误已记录，我们的团队将进行排查。
                     </p>
                     <PillButton
                         tone="blue"
@@ -68,7 +67,7 @@ export default function GlobalError({
                         className="btn-back"
                         onClick={() => window.history.back()}
                     >
-                        Back
+                        返回
                     </PillButton>
                 </div>
             </body>

@@ -25,9 +25,9 @@ export function ConfirmPopup({
     open,
     title,
     message,
-    confirmLabel = "Confirm",
+    confirmLabel = "确认",
     confirmStatus = "idle",
-    cancelLabel = "Cancel",
+    cancelLabel = "取消",
     onConfirm,
     onCancel,
     confirmDisabled = false,
@@ -37,7 +37,7 @@ export function ConfirmPopup({
     const confirmBusy = confirmStatus === "loading";
     const resolvedConfirmDisabled = confirmDisabled || confirmStatus !== "idle";
     const normalizedConfirmLabel =
-        typeof confirmLabel === "string" ? confirmLabel : "Confirm";
+        typeof confirmLabel === "string" ? confirmLabel : "确认";
     const isDeleteAction = normalizedConfirmLabel.toLowerCase() === "delete";
     const resolvedConfirmLabel =
         confirmStatus === "loading" ? (

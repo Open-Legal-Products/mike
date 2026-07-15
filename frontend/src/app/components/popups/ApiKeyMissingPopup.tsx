@@ -17,10 +17,10 @@ export function ApiKeyMissingPopup({ open, onClose, provider, message }: Props) 
     const router = useRouter();
     if (!open) return null;
 
-    const providerName = provider ? providerLabel(provider) : "this provider";
+    const providerName = provider ? providerLabel(provider) : "该服务商";
     const body =
         message ??
-        `You haven't added a ${providerName} API key yet. Add one in your account settings to use this model.`;
+        `您尚未添加 ${providerName} 的 API 密钥。请在账户设置中添加后再使用此模型。`;
 
     const handleGoToAccount = () => {
         onClose();
@@ -31,13 +31,13 @@ export function ApiKeyMissingPopup({ open, onClose, provider, message }: Props) 
         <WarningPopup
             open={open}
             onClose={onClose}
-            title="API key required"
+            title="需要 API 密钥"
             message={body}
             icon={
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-600" />
             }
             primaryAction={{
-                label: "Go to account settings",
+                label: "前往账户设置",
                 onClick: handleGoToAccount,
             }}
         />

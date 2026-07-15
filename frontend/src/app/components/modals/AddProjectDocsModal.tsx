@@ -122,7 +122,7 @@ export function AddProjectDocsModal({
             onClose={onClose}
             breadcrumbs={breadcrumb}
             secondaryAction={{
-                label: uploading ? "Uploading…" : "Upload",
+                label: uploading ? "上传中…" : "上传",
                 icon: uploading ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
@@ -139,7 +139,7 @@ export function AddProjectDocsModal({
                 ) : null
             }
             primaryAction={{
-                label: "Confirm",
+                label: "确认",
                 onClick: handleConfirm,
                 disabled: selectedIds.size === 0 || uploading,
             }}
@@ -156,7 +156,7 @@ export function AddProjectDocsModal({
                 <SearchBar
                     value={search}
                     onValueChange={setSearch}
-                    placeholder="Search..."
+                    placeholder="搜索..."
                     autoFocus
                 />
             </div>
@@ -181,7 +181,7 @@ export function AddProjectDocsModal({
                 </div>
             ) : filtered.length === 0 ? (
                 <p className="text-center text-sm text-gray-400 py-8">
-                    {q ? "No matches found" : "No documents in this project"}
+                    {q ? "未找到匹配项" : "该项目中暂无文档"}
                 </p>
             ) : (
                 <div className="rounded-sm border border-gray-100 overflow-hidden">
@@ -225,7 +225,7 @@ export function AddProjectDocsModal({
                                 </span>
                                 {excluded && (
                                     <span className="text-[10px] text-gray-400 shrink-0">
-                                        Already added
+                                        已添加
                                     </span>
                                 )}
                                 <VersionChip

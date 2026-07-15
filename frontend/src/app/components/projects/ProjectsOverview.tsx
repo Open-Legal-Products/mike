@@ -48,7 +48,7 @@ function getProjectOwnerLabel(project: Project, currentUserId?: string | null) {
     return (
         project.owner_display_name?.trim() ||
         project.owner_email?.trim() ||
-        "Shared"
+        "已共享"
     );
 }
 
@@ -157,9 +157,9 @@ export function ProjectsOverview() {
     }
 
     const filters: { id: ProjectFilter; label: string }[] = [
-        { id: "all", label: "All" },
-        { id: "mine", label: "Mine" },
-        { id: "shared-with-me", label: "Shared with me" },
+        { id: "all", label: "全部" },
+        { id: "mine", label: "我的" },
+        { id: "shared-with-me", label: "与我共享" },
     ];
 
     async function handleProjectDetailsSave(values: {
@@ -223,7 +223,7 @@ export function ProjectsOverview() {
                         onClick={() => setActionsOpen((v) => !v)}
                         className="flex items-center gap-1 text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
                     >
-                        Actions
+                        操作
                         <ChevronDown className="h-3.5 w-3.5" />
                     </button>
                     {actionsOpen && (
@@ -232,7 +232,7 @@ export function ProjectsOverview() {
                                 onClick={handleDeleteSelected}
                                 className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 transition-colors"
                             >
-                                Delete
+                                删除
                             </button>
                         </div>
                     )}
@@ -251,17 +251,17 @@ export function ProjectsOverview() {
                         type: "search",
                         value: search,
                         onChange: setSearch,
-                        placeholder: "Search projects…",
+                        placeholder: "搜索项目…",
                     },
                     {
                         type: "new",
                         onClick: () => setModalOpen(true),
-                        title: "New project",
+                        title: "新建项目",
                     },
                 ]}
             >
                 <h1 className="text-2xl font-medium font-serif text-gray-900">
-                    Projects
+                    项目
                 </h1>
             </PageHeader>
 
@@ -293,17 +293,17 @@ export function ProjectsOverview() {
                                     className={TABLE_CHECKBOX_CLASS}
                                 />
                             )}
-                            <span>Name</span>
+                            <span>名称</span>
                         </TableStickyCell>
                         <TableHeaderCell className="ml-auto w-32">CM</TableHeaderCell>
-                        <TableHeaderCell className="w-36">Practice</TableHeaderCell>
-                        <TableHeaderCell className="w-32">Owner</TableHeaderCell>
-                        <TableHeaderCell className="w-24">Files</TableHeaderCell>
-                        <TableHeaderCell className="w-24">Chats</TableHeaderCell>
+                        <TableHeaderCell className="w-36">业务领域</TableHeaderCell>
+                        <TableHeaderCell className="w-32">所有者</TableHeaderCell>
+                        <TableHeaderCell className="w-24">文件</TableHeaderCell>
+                        <TableHeaderCell className="w-24">对话</TableHeaderCell>
                         <TableHeaderCell className="w-36">
-                            Tabular Reviews
+                            表格审查
                         </TableHeaderCell>
-                        <TableHeaderCell className="w-32">Created</TableHeaderCell>
+                        <TableHeaderCell className="w-32">创建时间</TableHeaderCell>
                         <TableHeaderCell className="w-8" />
                     </TableHeaderRow>
                 }
@@ -352,7 +352,7 @@ export function ProjectsOverview() {
                     <TableEmptyState>
                         <FolderOpen className="h-8 w-8 text-gray-300 mb-4" />
                         <p className="text-2xl font-medium font-serif text-gray-900">
-                            Projects
+                            项目
                         </p>
                         <p className="mt-1 text-xs text-red-500 max-w-xs">
                             {loadError}
@@ -364,23 +364,21 @@ export function ProjectsOverview() {
                             <>
                                 <FolderOpen className="h-8 w-8 text-gray-300 mb-4" />
                                 <p className="text-2xl font-medium font-serif text-gray-900">
-                                    Projects
+                                    项目
                                 </p>
                                 <p className="mt-1 text-xs text-gray-400 max-w-xs">
-                                    Upload documents into projects and to
-                                    commence chats and tabular reviews with
-                                    them.
+                                    将文档上传到项目中，并据此开展对话与表格审查。
                                 </p>
                                 <button
                                     onClick={() => setModalOpen(true)}
                                     className="mt-4 inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors shadow-md"
                                 >
-                                    + Create New
+                                    + 新建
                                 </button>
                             </>
                         ) : (
                             <p className="text-sm text-gray-400">
-                                No {activeFilter} projects
+                                暂无「{activeFilter}」项目
                             </p>
                         )}
                     </TableEmptyState>

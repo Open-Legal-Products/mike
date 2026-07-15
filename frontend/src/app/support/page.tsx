@@ -31,23 +31,23 @@ export default function SupportPage() {
     }[] = [
         {
             value: "bug",
-            label: "Bug Report",
-            description: "Report something that isn't working",
+            label: "问题反馈",
+            description: "报告功能异常或错误",
         },
         {
             value: "feature",
-            label: "Feature Request",
-            description: "Suggest a new feature or improvement",
+            label: "功能建议",
+            description: "提出新功能或改进建议",
         },
         {
             value: "question",
-            label: "Question",
-            description: "Ask a question about using Mike",
+            label: "使用咨询",
+            description: "咨询如何使用本产品",
         },
         {
             value: "other",
-            label: "Other",
-            description: "General feedback or other inquiries",
+            label: "其他",
+            description: "一般反馈或其他问题",
         },
     ];
 
@@ -70,13 +70,13 @@ export default function SupportPage() {
             });
 
             if (!response.ok) {
-                throw new Error("Failed to submit feedback");
+                throw new Error("提交反馈失败");
             }
 
             setIsSubmitted(true);
         } catch (err) {
             console.error("Error submitting feedback:", err);
-            setError("Failed to submit your feedback. Please try again.");
+            setError("提交反馈失败，请重试。");
         } finally {
             setIsSubmitting(false);
         }
@@ -92,16 +92,16 @@ export default function SupportPage() {
                         </div>
                     </div>
                     <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-                        Thank you for helping us improve.
+                        感谢您帮助我们改进产品。
                     </h2>
                     <p className="text-gray-600 mb-6">
-                        We will get in touch with you soon via email.
+                        我们会尽快通过邮件与您联系。
                     </p>
                     <button
                         onClick={() => router.push("/")}
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
                     >
-                        Back to Home
+                        返回首页
                     </button>
                 </div>
             </div>
@@ -115,7 +115,7 @@ export default function SupportPage() {
                 <div className="flex-shrink-0 pt-6 md:pt-10 pb-0">
                     <div className="mb-5">
                         <h1 className="text-4xl font-medium font-eb-garamond text-gray-900 mb-3">
-                            Support
+                            帮助与支持
                         </h1>
                     </div>
                 </div>
@@ -127,7 +127,7 @@ export default function SupportPage() {
                             {/* Feedback Type Selection */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-3">
-                                    What can we help you with?
+                                    您需要哪方面的帮助？
                                 </label>
                                 <div className="grid grid-cols-2 gap-3">
                                     {feedbackTypes.map((type) => (
@@ -167,7 +167,7 @@ export default function SupportPage() {
                                         htmlFor="link"
                                         className="block text-sm font-medium text-gray-700 mb-2"
                                     >
-                                        Link to issue (optional)
+                                        问题相关链接（选填）
                                     </label>
                                     <input
                                         type="url"
@@ -180,10 +180,7 @@ export default function SupportPage() {
                                         className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                                     />
                                     <p className="text-xs text-gray-500 mt-1">
-                                        If the bug is in a chat, mouseover the
-                                        chat in the sidebar, click the dots,
-                                        then click share and paste the link
-                                        here.
+                                        如果问题出现在某次对话中，请将鼠标移到侧边栏中的对话上，点击更多菜单，选择分享，然后将链接粘贴到这里。
                                     </p>
                                 </div>
                             )}
@@ -194,7 +191,7 @@ export default function SupportPage() {
                                     htmlFor="subject"
                                     className="block text-sm font-medium text-gray-700 mb-2"
                                 >
-                                    Subject
+                                    主题
                                 </label>
                                 <input
                                     type="text"
@@ -212,13 +209,13 @@ export default function SupportPage() {
                                     htmlFor="message"
                                     className="block text-sm font-medium text-gray-700 mb-2"
                                 >
-                                    Message
+                                    详细说明
                                 </label>
                                 <textarea
                                     id="message"
                                     value={message}
                                     onChange={(e) => setMessage(e.target.value)}
-                                    placeholder="Please describe your question, issue, or suggestion in detail..."
+                                    placeholder="请详细描述您的问题、故障或建议..."
                                     rows={5}
                                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all resize-none"
                                     required
@@ -228,7 +225,7 @@ export default function SupportPage() {
                             {/* Email Display (if logged in) */}
                             {user?.email && (
                                 <div className="text-sm text-gray-500">
-                                    We'll respond to:{" "}
+                                    我们将回复至：{" "}
                                     <span className="font-medium">
                                         {user.email}
                                     </span>
@@ -255,12 +252,12 @@ export default function SupportPage() {
                                 {isSubmitting ? (
                                     <>
                                         <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                        <span>Sending...</span>
+                                        <span>发送中...</span>
                                     </>
                                 ) : (
                                     <>
                                         <Send className="h-4 w-4" />
-                                        <span>Submit</span>
+                                        <span>提交</span>
                                     </>
                                 )}
                             </button>

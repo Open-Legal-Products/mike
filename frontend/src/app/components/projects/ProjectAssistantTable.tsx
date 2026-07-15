@@ -26,7 +26,7 @@ import { formatDate } from "./ProjectPageParts";
 
 function creatorLabel(chat: Chat, currentUserId?: string | null) {
     if (currentUserId && chat.user_id === currentUserId) return "Me";
-    return chat.creator_display_name?.trim() || "Shared";
+    return chat.creator_display_name?.trim() || "已共享";
 }
 
 export function ProjectAssistantTable({
@@ -90,10 +90,10 @@ export function ProjectAssistantTable({
                                 className={TABLE_CHECKBOX_CLASS}
                             />
                         )}
-                        <span>Chats</span>
+                        <span>对话</span>
                     </TableStickyCell>
-                    <TableHeaderCell className="ml-auto w-32">Creator</TableHeaderCell>
-                    <TableHeaderCell className="w-32">Created</TableHeaderCell>
+                    <TableHeaderCell className="ml-auto w-32">创建者</TableHeaderCell>
+                    <TableHeaderCell className="w-32">创建时间</TableHeaderCell>
                     <TableHeaderCell className="w-8" />
                 </TableHeaderRow>
             }
@@ -104,17 +104,17 @@ export function ProjectAssistantTable({
                 <TableEmptyState>
                     <MessageSquare className="h-8 w-8 text-gray-300 mb-4" />
                     <p className="text-2xl font-medium font-serif text-gray-900">
-                        Assistant
+                        智能助理
                     </p>
                     <p className="mt-1 text-xs text-gray-400 max-w-xs">
-                        Ask questions and get answers grounded in the documents
+                        基于文档提问并获取有据可依的回答
                         in this project.
                     </p>
                     <button
                         onClick={onCreateChat}
                         className="mt-4 inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors shadow-md"
                     >
-                        + Create New
+                        + 新建
                     </button>
                 </TableEmptyState>
             ) : (
@@ -134,7 +134,7 @@ export function ProjectAssistantTable({
                                             return;
                                         }
                                         setRenameChatValue(
-                                            chat.title ?? "Untitled Chat",
+                                            chat.title ?? "未命名对话",
                                         );
                                         setRenamingChatId(chat.id);
                                     }}
@@ -161,7 +161,7 @@ export function ProjectAssistantTable({
                                             : [...prev, chat.id],
                                     )
                                 }
-                                label={chat.title ?? "Untitled Chat"}
+                                label={chat.title ?? "未命名对话"}
                                 editing={renamingChatId === chat.id}
                                 editValue={renameChatValue}
                                 onEditValueChange={setRenameChatValue}
@@ -190,7 +190,7 @@ export function ProjectAssistantTable({
                                             return;
                                         }
                                         setRenameChatValue(
-                                            chat.title ?? "Untitled Chat",
+                                            chat.title ?? "未命名对话",
                                         );
                                         setRenamingChatId(chat.id);
                                     }}

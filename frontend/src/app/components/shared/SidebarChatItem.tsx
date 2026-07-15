@@ -95,12 +95,12 @@ export function SidebarChatItem({ chat, isActive, onSelect, projectName }: Props
                         className={`flex-1 min-w-0 text-left px-3 py-2 text-xs overflow-x-hidden whitespace-nowrap scrollbar-none ${
                             isActive ? "text-gray-900" : "text-gray-700"
                         }`}
-                        title={projectName ? `${projectName}: ${chat.title ?? "Untitled chat"}` : (chat.title ?? "Untitled chat")}
+                        title={projectName ? `${projectName}: ${chat.title ?? "未命名对话"}` : (chat.title ?? "未命名对话")}
                     >
                         {projectName && (
                             <span className="text-gray-400 font-normal">{projectName}: </span>
                         )}
-                        {chat.title ?? "Untitled chat"}
+                        {chat.title ?? "未命名对话"}
                     </button>
 
                     <DropdownMenu>
@@ -127,7 +127,7 @@ export function SidebarChatItem({ chat, isActive, onSelect, projectName }: Props
                                 }}
                             >
                                 <Pencil className="mr-2 h-4 w-4" />
-                                Rename
+                                重命名
                             </DropdownMenuItem>
                             <DropdownMenuItem
                                 onClick={() => {
@@ -140,7 +140,7 @@ export function SidebarChatItem({ chat, isActive, onSelect, projectName }: Props
                                 className="text-red-600 focus:text-red-600"
                             >
                                 <Trash2 className="mr-2 h-4 w-4" />
-                                Delete
+                                删除
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>

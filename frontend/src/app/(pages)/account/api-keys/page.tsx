@@ -18,22 +18,22 @@ import { AccountSection } from "../AccountSection";
 const MODEL_API_KEY_FIELDS = [
     {
         provider: "claude",
-        label: "Anthropic (Claude) API Key",
+        label: "Anthropic (Claude) API 密钥",
         placeholder: "sk-ant-...",
     },
     {
         provider: "gemini",
-        label: "Google (Gemini) API Key",
+        label: "Google (Gemini) API 密钥",
         placeholder: "AI...",
     },
     {
         provider: "openai",
-        label: "OpenAI API Key",
+        label: "OpenAI API 密钥",
         placeholder: "sk-...",
     },
     {
         provider: "openrouter",
-        label: "OpenRouter API Key",
+        label: "OpenRouter API 密钥",
         placeholder: "sk-or-...",
     },
 ] as const;
@@ -41,10 +41,10 @@ const MODEL_API_KEY_FIELDS = [
 const OTHER_API_KEY_FIELDS = [
     {
         provider: "courtlistener",
-        label: "CourtListener API Key",
+        label: "CourtListener API 密钥",
         placeholder: "Token...",
         description:
-            "Add a CourtListener API key if you want the latest CourtListener data. Otherwise, Mike will use the bulk data hosted by us.",
+            "如需最新 CourtListener 数据，请添加 CourtListener API 密钥；否则将使用我们托管的批量数据。",
     },
 ] as const;
 
@@ -54,12 +54,10 @@ export default function ApiKeysPage() {
     return (
         <div>
             <h2 className="mb-3 text-2xl font-medium font-serif text-gray-900">
-                API Keys
+                API 密钥
             </h2>
             <p className="text-sm text-gray-500 mb-4">
-                You must provide your own API keys for the app to work or add
-                your API keys into the .env file if you are running your own
-                instance of Mike. All API keys are encrypted in storage.
+                应用正常运行需要您提供自己的 API 密钥；若自行部署，也可将密钥写入 .env 文件。所有 API 密钥均加密存储。
             </p>
             <AccountSection>
                 {MODEL_API_KEY_FIELDS.map((field, index) => (
@@ -183,7 +181,7 @@ function ApiKeyField({
             if (isMfaRequiredError(error)) {
                 setPendingMfaAction("remove");
             } else {
-                alert(`Failed to remove ${label}.`);
+                alert(`移除 ${label} 失败。`);
             }
         } finally {
             setIsSaving(false);
@@ -217,9 +215,9 @@ function ApiKeyField({
                             onChange={(e) => setValue(e.target.value)}
                             placeholder={
                                 isServerConfigured
-                                    ? "Server .env key configured"
+                                    ? "已配置服务器环境密钥"
                                     : hasSavedKey
-                                      ? "Saved key hidden"
+                                      ? "已保存的密钥已隐藏"
                                       : placeholder
                             }
                             className={`pr-10 ${accountGlassInputClassName}`}
@@ -233,7 +231,7 @@ function ApiKeyField({
                                 onClick={() => setReveal((r) => !r)}
                                 disabled={isServerConfigured}
                                 className={`absolute inset-y-1 right-1.5 flex items-center ${accountGlassIconButtonClassName}`}
-                                aria-label={reveal ? "Hide key" : "Show key"}
+                                aria-label={reveal ? "隐藏密钥" : "显示密钥"}
                             >
                                 {reveal ? (
                                     <EyeOff className="h-4 w-4" />
@@ -256,11 +254,11 @@ function ApiKeyField({
                             className="text-xs font-medium text-gray-700 transition-colors hover:text-gray-950 disabled:cursor-not-allowed disabled:text-gray-400"
                         >
                             {isSaving ? (
-                                "Saving..."
+                                "保存中..."
                             ) : saved ? (
-                                "Saved"
+                                "已保存"
                             ) : (
-                                "Save"
+                                "保存"
                             )}
                         </button>
                         {hasSavedKey && !isServerConfigured && (
@@ -270,7 +268,7 @@ function ApiKeyField({
                                 disabled={isSaving}
                                 className="text-xs font-medium text-red-600 transition-colors hover:text-red-700 disabled:cursor-not-allowed disabled:text-red-300"
                             >
-                                Remove
+                                移除
                             </button>
                         )}
                     </div>

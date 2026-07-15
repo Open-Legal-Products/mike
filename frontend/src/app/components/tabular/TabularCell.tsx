@@ -108,7 +108,7 @@ function CellMarkdown({
                         if (citation) {
                             return (
                                 <span
-                                    title={`Page ${citation.page}: "${citation.quote}"`}
+                                    title={`第 ${citation.page} 页： "${citation.quote}"`}
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         if (onCitationClick) {
@@ -271,7 +271,7 @@ export function TabularCell({
                             className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition-colors"
                         >
                             <Expand className="h-3 w-3" />
-                            See details
+                            查看详情
                         </button>
                     </div>
                 </div>

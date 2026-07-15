@@ -22,8 +22,8 @@ export function AddDocButton({
                     ? "text-black hover:bg-gray-100"
                     : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
             }`}
-            title="Add documents"
-            aria-label="Add documents"
+            title="添加文档"
+            aria-label="添加文档"
         >
             {selectedDocIds.length > 0 ? (
                 <span className="font-medium tabular-nums">
@@ -33,7 +33,7 @@ export function AddDocButton({
                 <PlusIcon className="h-4 w-4 shrink-0" />
             )}
             <span className={hideLabel ? "hidden" : "hidden sm:inline"}>
-                {selectedDocIds.length === 1 ? "Document" : "Documents"}
+                {selectedDocIds.length === 1 ? "文档" : "文档"}
             </span>
         </button>
     );

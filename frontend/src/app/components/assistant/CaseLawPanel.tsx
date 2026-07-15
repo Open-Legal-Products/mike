@@ -13,7 +13,7 @@ import {
     Download,
     ExternalLink,
 } from "lucide-react";
-import { MikeIcon } from "@/app/components/chat/mike-icon";
+import { PartnerIcon } from "@/app/components/chat/partner-icon";
 import type { CaseCitationQuote } from "../shared/types";
 import {
     clearDocxQuoteHighlights,
@@ -252,7 +252,7 @@ export function CaseLawPanel({
                     setError(
                         err instanceof Error
                             ? friendlyCaseError(err.message)
-                            : "Failed to load case",
+                            : "加载案例失败",
                     );
                 }
             })
@@ -377,7 +377,7 @@ export function CaseLawPanel({
                     </h2>
                     {filedDate ? (
                         <p className="mt-1 font-serif text-sm text-gray-600">
-                            Date: {filedDate}
+                            日期：{filedDate}
                         </p>
                     ) : null}
                 </div>
@@ -388,8 +388,8 @@ export function CaseLawPanel({
                             target="_blank"
                             rel="noopener noreferrer"
                             download
-                            aria-label="Download PDF"
-                            title="Download PDF"
+                            aria-label="下载 PDF"
+                            title="下载 PDF"
                             className={`inline-flex min-w-0 shrink items-center justify-center rounded-lg border border-gray-200 text-xs text-gray-700 hover:bg-gray-50 ${
                                 compactActions
                                     ? "h-8 w-8 p-0"
@@ -411,8 +411,8 @@ export function CaseLawPanel({
                             href={courtlistenerUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            aria-label="Open in CourtListener"
-                            title="Open in CourtListener"
+                            aria-label="在 CourtListener 中打开"
+                            title="在 CourtListener 中打开"
                             className={`inline-flex min-w-0 shrink items-center justify-center rounded-lg border border-gray-200 text-xs text-gray-700 hover:bg-gray-50 ${
                                 compactActions
                                     ? "h-8 w-8 p-0"
@@ -492,7 +492,7 @@ export function CaseLawPanel({
                 {loading && (
                     <div className={cn("h-full min-h-0 rounded-lg border border-gray-200", opinionSurfaceClassName)}>
                         <div className="flex h-full items-center justify-center p-5">
-                            <MikeIcon spin mike size={28} />
+                            <PartnerIcon spin mike partner size={28} />
                         </div>
                     </div>
                 )}
@@ -503,7 +503,7 @@ export function CaseLawPanel({
                 )}
                 {!loading && !error && opinions.length === 0 && (
                     <p className={cn("rounded-md p-4 font-serif text-sm text-gray-500", opinionSurfaceClassName)}>
-                        No opinions were returned for this case.
+                        该案例未返回意见书。
                     </p>
                 )}
                 {!loading && !error && opinions.length > 0 && (
@@ -530,15 +530,15 @@ function opinionTypeLabel(value: string | null): string {
     if (!value) return "Opinion";
     const type = value.replace(/^\d+/, "").replace(/_/g, " ").trim();
     const compactType = type.toLowerCase().replace(/\s+/g, "");
-    if (compactType === "lead") return "Lead Opinion";
+    if (compactType === "lead") return "主笔意见";
     if (
         compactType === "concurrentinpart" ||
         compactType === "concurrenceinpart" ||
         compactType === "concurinpart"
     ) {
-        return "Concurrence in part";
+        return "部分协同意见";
     }
-    if (compactType === "combined") return "Combined Opinion";
+    if (compactType === "combined") return "综合意见";
     return type.replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
@@ -571,7 +571,7 @@ function orderOpinions(opinions: CaseLawOpinion[]) {
 
 function opinionTitle(opinion: CaseLawOpinion, index?: number): string {
     const type = opinionTypeLabel(opinion.type);
-    const fallbackType = opinion.type ? type : `Opinion ${index ?? ""}`.trim();
+    const fallbackType = opinion.type ? type : `意见书 ${index ?? ""}`.trim();
     return opinion.author
         ? `${fallbackType} by ${opinion.author}`
         : fallbackType;
@@ -609,7 +609,7 @@ function OpinionBlock({
                 />
             ) : (
                 <div className="whitespace-pre-wrap font-serif text-sm leading-7 text-gray-900 [&_p]:my-3">
-                    {opinion.text || "No opinion text returned."}
+                    {opinion.text || "未返回意见书文本。"}
                 </div>
             )}
         </article>

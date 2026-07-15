@@ -188,7 +188,7 @@ export function PeopleModal({
             normalizedCurrentUserEmail &&
             email === normalizedCurrentUserEmail
         ) {
-            return "You cannot share this with yourself.";
+            return "不能共享给自己。";
         }
         return null;
     }
@@ -216,7 +216,7 @@ export function PeopleModal({
             throw new Error(
                 e instanceof Error
                     ? e.message
-                    : "Couldn't add the member. Try again.",
+                    : "无法添加成员，请重试。",
             );
         } finally {
             setBusy(null);
@@ -237,7 +237,7 @@ export function PeopleModal({
             setError(
                 e instanceof Error
                     ? e.message
-                    : "Couldn't remove the member. Try again.",
+                    : "无法移除成员，请重试。",
             );
         } finally {
             setBusy(null);
@@ -256,9 +256,9 @@ export function PeopleModal({
                             onAdd={handleAddUser}
                             validateEmail={validateNewEmail}
                             busy={busy === "add"}
-                            placeholder="Add by email..."
+                            placeholder="通过邮箱添加..."
                             autoFocus
-                            submitLabel="Add member"
+                            submitLabel="添加成员"
                             className="bg-white focus-within:bg-white"
                         />
                         {error && (
@@ -272,7 +272,7 @@ export function PeopleModal({
                 <section className="flex min-h-0 flex-1 flex-col">
                     <div className="mb-2 flex items-center gap-2">
                         <h3 className="text-xs font-medium text-gray-500">
-                            People with Access
+                            有权限的成员
                         </h3>
                         {peopleLoading && (
                             <Loader2 className="h-3 w-3 animate-spin text-gray-400" />
@@ -297,7 +297,7 @@ export function PeopleModal({
                         </div>
                     ) : roster.length === 0 ? (
                         <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-gray-400">
-                            No one has access yet.
+                            暂无任何人有访问权限。
                         </div>
                     ) : (
                         <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto">
@@ -351,7 +351,7 @@ export function PeopleModal({
                                         </div>
                                         {entry.role === "owner" && (
                                             <span className="shrink-0 rounded-full px-2 py-1 text-xs text-gray-400">
-                                                Owner
+                                                所有者
                                             </span>
                                         )}
                                         {entry.role === "member" && (
@@ -360,7 +360,7 @@ export function PeopleModal({
                                                 data-people-member-menu
                                             >
                                                 <span className="rounded-full px-2 py-1 text-xs text-gray-400">
-                                                    Member
+                                                    成员
                                                 </span>
                                                 {onSharedWithChange && (
                                                     <>
@@ -379,7 +379,7 @@ export function PeopleModal({
                                                             disabled={
                                                                 busy !== null
                                                             }
-                                                            title="Member actions"
+                                                            title="成员操作"
                                                             className={`flex h-6 items-center justify-center overflow-hidden rounded-full text-xs leading-none text-gray-500 transition-all hover:bg-gray-200/70 hover:text-gray-800 disabled:opacity-50 ${
                                                                 memberMenuEmail ===
                                                                 entryEmail
@@ -415,7 +415,7 @@ export function PeopleModal({
                                                                     {isRemoving && (
                                                                         <Loader2 className="h-3 w-3 animate-spin" />
                                                                     )}
-                                                                    Delete
+                                                                    删除
                                                                 </button>
                                                             </div>
                                                         )}

@@ -40,7 +40,7 @@ export default function FeaturesPage() {
             if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
             savedTimerRef.current = setTimeout(() => setSaved(false), 1600);
         } else {
-            setSaveError("Could not update. Try again.");
+            setSaveError("更新失败，请重试。");
         }
     };
 
@@ -49,19 +49,17 @@ export default function FeaturesPage() {
             <section className="space-y-3">
                 <div className="flex items-center gap-2">
                     <h2 className="text-2xl font-medium font-serif text-gray-900">
-                        Legal Research
+                        法律检索
                     </h2>
                 </div>
                 <AccountSection>
                     <div className="px-4 py-5">
                         <div className="space-y-1">
                             <p className="text-sm font-medium text-gray-900">
-                                Jurisdiction
+                                管辖区域
                             </p>
                             <p className="text-sm text-gray-500">
-                                Choose which jurisdictions the assistant can
-                                research. When a jurisdiction is enabled, its
-                                case-law research tools are available in chat.
+                                选择助理可检索的管辖区域。启用后，对应的判例检索工具将在对话中可用。
                             </p>
                         </div>
                         <div className="mt-4 flex items-start justify-between gap-3 px-3 bg-gray-50 py-3 rounded-md">
@@ -69,10 +67,9 @@ export default function FeaturesPage() {
                                 htmlFor="jurisdiction-us"
                                 className="min-w-0 cursor-pointer select-none"
                             >
-                                <p className="text-sm text-gray-900">US</p>
+                                <p className="text-sm text-gray-900">美国</p>
                                 <p className="text-sm text-gray-500">
-                                    Enable US case law research (CourtListener)
-                                    in chat.
+                                    在对话中启用美国判例检索（CourtListener）。
                                 </p>
                             </label>
                             <button
@@ -106,10 +103,10 @@ export default function FeaturesPage() {
                                 className="text-sm font-medium text-gray-700 transition-colors hover:text-gray-950 disabled:cursor-not-allowed disabled:text-gray-300"
                             >
                                 {saving
-                                    ? "Updating..."
+                                    ? "更新中..."
                                     : saved
-                                      ? "Updated"
-                                      : "Update"}
+                                      ? "已更新"
+                                      : "更新"}
                             </button>
                         </div>
                     </div>

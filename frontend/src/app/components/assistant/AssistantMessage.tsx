@@ -60,7 +60,7 @@ interface Props {
     }) => void;
     /**
      * Fires immediately when the user clicks Accept / Reject (single card
-     * or the bulk "Accept all" / "Reject all"), before the backend call.
+     * or the bulk "全部接受" / "全部拒绝"), before the backend call.
      * Parents use this to flip download cards / editor viewers into a
      * "saving" state for the duration of the round-trip.
      */
@@ -385,7 +385,7 @@ export function AssistantMessage({
                     showConnector={showConnector}
                     isStreaming
                 >
-                    <span>Thinking...</span>
+                    <span>思考中...</span>
                 </EventBlock>
             );
         }
@@ -402,7 +402,7 @@ export function AssistantMessage({
                     dotColor={isError ? "red" : "gray"}
                 >
                     <span className="font-medium">
-                        {event.isStreaming ? "Using connector..." : label}
+                        {event.isStreaming ? "正在使用连接器..." : label}
                     </span>
                     {isError && event.error && (
                         <p className="mt-0.5 text-xs text-red-600">
@@ -517,10 +517,10 @@ export function AssistantMessage({
                     key={globalIdx}
                     label={
                         event.isStreaming
-                            ? "Searching case law"
+                            ? "正在检索判例"
                             : event.error
-                              ? "Case law search failed"
-                              : "Searched case law"
+                              ? "判例检索失败"
+                              : "已检索判例"
                     }
                     detail={detail}
                     isStreaming={!!event.isStreaming}
@@ -545,7 +545,7 @@ export function AssistantMessage({
                     const citation = caseCitations.get(`us-case-${clusterId}`);
                     return {
                         caseName: citation?.case_name ?? null,
-                        citation: citation?.citation ?? `Cluster ${clusterId}`,
+                        citation: citation?.citation ?? `聚类 ${clusterId}`,
                         url: citation?.url ?? null,
                     };
                 });
@@ -554,10 +554,10 @@ export function AssistantMessage({
                     key={globalIdx}
                     label={
                         event.isStreaming
-                            ? `Fetching ${displayLabel}`
+                            ? `正在获取 ${displayLabel}`
                             : event.error
-                              ? "Case fetch failed"
-                              : `Fetched ${displayLabel}`
+                              ? "获取案例失败"
+                              : `已获取 ${displayLabel}`
                     }
                     detail={detail}
                     isStreaming={!!event.isStreaming}
@@ -598,7 +598,7 @@ export function AssistantMessage({
                         citation:
                             search.citation ??
                             (search.cluster_id
-                                ? `Cluster ${search.cluster_id}`
+                                ? `聚类 ${search.cluster_id}`
                                 : null),
                         url: null,
                         query: search.query,
@@ -611,10 +611,10 @@ export function AssistantMessage({
                         key={globalIdx}
                         label={
                             event.isStreaming
-                                ? `Running ${searchLabel}`
+                                ? `正在运行 ${searchLabel}`
                                 : event.error
-                                  ? "Case searches failed"
-                                  : `Ran ${searchLabel}`
+                                  ? "案例检索失败"
+                                  : `已运行 ${searchLabel}`
                         }
                         detail={detail}
                         isStreaming={!!event.isStreaming}
@@ -640,10 +640,10 @@ export function AssistantMessage({
                     key={globalIdx}
                     label={
                         event.isStreaming
-                            ? "Searching case"
+                            ? "正在搜索案例"
                             : event.error
-                              ? "Case search failed"
-                              : "Searched case"
+                              ? "案例搜索失败"
+                              : "已搜索案例"
                     }
                     detail={detail}
                     isStreaming={!!event.isStreaming}
@@ -669,10 +669,10 @@ export function AssistantMessage({
                     key={globalIdx}
                     label={
                         event.isStreaming
-                            ? `Reading case ${caseLabel}`
+                            ? `正在阅读案例 ${caseLabel}`
                             : event.error
-                              ? `Case read failed ${caseLabel}`
-                              : `Read case ${caseLabel}`
+                              ? `案例阅读失败 ${caseLabel}`
+                              : `已阅读案例 ${caseLabel}`
                     }
                     detail={detail}
                     isStreaming={!!event.isStreaming}
@@ -710,9 +710,9 @@ export function AssistantMessage({
                     key={globalIdx}
                     label={
                         event.isStreaming
-                            ? `Verifying ${citationLabel}`
+                            ? `正在核验 ${citationLabel}`
                             : event.error
-                              ? "Citation verification failed"
+                              ? "引文核验失败"
                               : `Verified ${citationLabel}`
                     }
                     detail={detail}

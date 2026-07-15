@@ -242,7 +242,7 @@ export function AskInputPopup({
             if (item.skipped) return `${index + 1}. Skipped document request.`;
             return `${index + 1}. Documents attached: ${item.filenames.join(", ")}`;
         });
-        return `Responses to Mike's questions:\n${lines.join("\n\n")}`;
+        return `对助理提问的回答：\n${lines.join("\n\n")}`;
     };
 
     const submit = () => {
@@ -283,7 +283,7 @@ export function AskInputPopup({
                     <div className="flex min-w-0 items-center">
                         <div className="text-sm text-gray-500">
                             {submitted ? (
-                                "Inputs sent"
+                                "已发送输入"
                             ) : (
                                 <div className="flex flex-wrap gap-x-3 gap-y-1">
                                     {event.items.map((item, index) => {
@@ -292,8 +292,8 @@ export function AskInputPopup({
                                         const isResolved = itemResolved(item);
                                         const label =
                                             item.kind === "choice"
-                                                ? `Question ${index + 1}`
-                                                : "Add Documents";
+                                                ? `问题 ${index + 1}`
+                                                : "添加文档";
                                         return (
                                             <button
                                                 key={item.id}
@@ -359,8 +359,8 @@ export function AskInputPopup({
                                             className="shrink-0 rounded-full py-0.5 font-sans text-[10px] text-gray-500 transition-colors hover:text-gray-800 disabled:cursor-default disabled:opacity-40"
                                         >
                                             {skipped.has(activeItem.id)
-                                                ? "Unskip"
-                                                : "Skip"}
+                                                ? "取消跳过"
+                                                : "跳过"}
                                         </button>
                                     )}
                                 </div>
@@ -460,7 +460,7 @@ export function AskInputPopup({
                                 type="button"
                                 onClick={() => setUploadWarning(null)}
                                 className="shrink-0 rounded p-0.5 text-black hover:bg-gray-100"
-                                aria-label="Dismiss warning"
+                                aria-label="关闭警告"
                             >
                                 <X className="h-3.5 w-3.5" />
                             </button>
@@ -476,7 +476,7 @@ export function AskInputPopup({
                     if (docSelectorInputId)
                         addDocs(docSelectorInputId, selected);
                 }}
-                breadcrumb={["Assistant", "Add Documents"]}
+                breadcrumb={["智能助理", "添加文档"]}
             />
         </>
     );
@@ -564,7 +564,7 @@ function OptionInput({
                                             onAnswer(otherValue);
                                         }
                                     }}
-                                    placeholder="Type your answer..."
+                                    placeholder="输入您的回答..."
                                     className="flex-1 resize-none overflow-hidden bg-transparent text-sm leading-5 text-gray-600 outline-none placeholder:text-gray-400"
                                 />
                                 <button
@@ -576,7 +576,7 @@ function OptionInput({
                                     }}
                                     className="shrink-0 flex items-center gap-1 rounded-full bg-blue-600 px-3 py-0.5 font-sans text-[10px] text-white transition-colors hover:bg-blue-700 disabled:cursor-default disabled:opacity-40"
                                 >
-                                    Set
+                                    设置
                                     <CornerDownLeft className="h-3 w-3" />
                                 </button>
                             </span>
@@ -600,7 +600,7 @@ function DocumentPrompt({
     const documentTypes = item.document_types ?? [];
     return (
         <div className="mt-0.5 text-sm text-gray-800">
-            <p>Add the following documents if available:</p>
+            <p>如有以下文档，请一并添加：</p>
             {documentTypes.length > 0 && (
                 <div className="mt-1 space-y-0.5 text-gray-700">
                     {documentTypes.map((documentType, index) => (
@@ -688,11 +688,11 @@ function DocumentInput({
                 )}
                 <span className="text-gray-800">
                     {uploading
-                        ? "Uploading documents..."
-                        : "Drop files here or click to choose documents"}
+                        ? "正在上传文档..."
+                        : "将文件拖放到此处，或点击选择文档"}
                 </span>
                 <span className="text-[11px] text-gray-400">
-                    PDF, Word, Excel, or PowerPoint
+                    PDF、Word、Excel 或 PowerPoint
                 </span>
             </button>
 

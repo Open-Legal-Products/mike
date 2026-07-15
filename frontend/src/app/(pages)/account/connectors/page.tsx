@@ -158,7 +158,7 @@ export default function ConnectorsPage() {
             setConnectors(await listMcpConnectors());
         } catch (err) {
             setError(
-                err instanceof Error ? err.message : "Failed to load connectors.",
+                err instanceof Error ? err.message : "加载连接器失败。",
             );
         } finally {
             setLoading(false);
@@ -230,7 +230,7 @@ export default function ConnectorsPage() {
             setDetailError(
                 err instanceof Error
                     ? err.message
-                    : "Failed to load connector details.",
+                    : "加载连接器详情失败。",
             );
         } finally {
             setLoadingConnectorId((current) =>
@@ -257,7 +257,7 @@ export default function ConnectorsPage() {
                 return;
             }
             const message =
-                err instanceof Error ? err.message : "Action failed.";
+                err instanceof Error ? err.message : "操作失败。";
             if (action.type === "create") setAddError(message);
             else if (action.type === "save") setDetailError(message);
             else setError(message);
@@ -375,7 +375,7 @@ export default function ConnectorsPage() {
                     ) {
                         replaceConnector(connector);
                         setAddAuthMessage(
-                            "Complete authorization in the popup to finish connecting this MCP server.",
+                            "请在弹出窗口中完成授权以连接此 MCP 服务器。",
                         );
                         setAddStep("auth");
                         const authorized = await connectConnectorOAuth(
@@ -393,7 +393,7 @@ export default function ConnectorsPage() {
                 replaceConnector(refreshed);
                 if (isGoogleMcpConnector(refreshed) && !refreshed.oauthConnected) {
                     setAddAuthMessage(
-                        "Authorize Google in the popup to finish connecting this MCP server.",
+                        "请在弹出窗口中授权 Google 以连接此 MCP 服务器。",
                     );
                     setAddStep("auth");
                     const authorized = await connectConnectorOAuth(refreshed.id);
@@ -412,7 +412,7 @@ export default function ConnectorsPage() {
                 setAddError(
                     err instanceof Error
                         ? err.message
-                        : "Failed to add connector.",
+                        : "添加连接器失败。",
                 );
             } finally {
                 setBusyKey(null);
@@ -596,7 +596,7 @@ export default function ConnectorsPage() {
             <div className="mb-4">
                 <div className="flex items-center justify-between gap-3">
                     <h2 className="font-serif text-2xl font-medium text-gray-900">
-                        Connectors
+                        连接器
                     </h2>
                     <button
                         type="button"
@@ -604,7 +604,7 @@ export default function ConnectorsPage() {
                         className={`inline-flex h-9 items-center gap-1.5 text-sm ${accountGlassPrimaryButtonClassName}`}
                     >
                         <Plus className="h-4 w-4" />
-                        Add
+                        添加
                     </button>
                 </div>
             </div>
@@ -621,7 +621,7 @@ export default function ConnectorsPage() {
                 ) : connectors.length === 0 ? (
                     <AccountSection className="p-4">
                         <p className="text-sm text-gray-500">
-                            No connectors yet.
+                            暂无连接器。
                         </p>
                     </AccountSection>
                 ) : (
@@ -777,7 +777,7 @@ function ConnectorRow({
                         checked={connector.enabled}
                         disabled={busyKey === `connector:${connector.id}`}
                         loading={busyKey === `connector:${connector.id}`}
-                        label={connector.enabled ? "Enabled" : "Disabled"}
+                        label={connector.enabled ? "已启用" : "已禁用"}
                         onChange={(enabled) =>
                             void onConnectorEnabled(connector.id, enabled)
                         }
@@ -794,7 +794,7 @@ function ConnectorRow({
                     }}
                     className="shrink-0 justify-self-end text-xs font-medium text-gray-500 transition-colors hover:text-gray-950"
                 >
-                    Details
+                    详情
                 </button>
             </div>
         </AccountSection>
@@ -859,14 +859,14 @@ function McpConnectorDetailsModal({
         <Modal
             open={!!connector}
             onClose={onClose}
-            breadcrumbs={["Connectors", connector?.name ?? "MCP connector"]}
+            breadcrumbs={["连接器", connector?.name ?? "MCP connector"]}
             headerAction={
                 connector ? (
                     <AccountToggle
                         checked={connector.enabled}
                         disabled={busyKey === `connector:${connector.id}`}
                         loading={busyKey === `connector:${connector.id}`}
-                        label={connector.enabled ? "Enabled" : "Disabled"}
+                        label={connector.enabled ? "已启用" : "已禁用"}
                         onChange={(enabled) =>
                             void onConnectorEnabled(connector.id, enabled)
                         }
@@ -877,7 +877,7 @@ function McpConnectorDetailsModal({
             secondaryAction={
                 connector
                     ? {
-                          label: "Delete connector",
+                          label: "删除连接器",
                           variant: "danger",
                           onClick: () => void onDelete(connector.id),
                           disabled: busyKey === `delete:${connector.id}`,
@@ -885,7 +885,7 @@ function McpConnectorDetailsModal({
                     : undefined
             }
             primaryAction={{
-                label: isSaving ? "Saving..." : "Save",
+                label: isSaving ? "保存中..." : "保存",
                 icon: isSaving ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                 ) : undefined,
@@ -897,7 +897,7 @@ function McpConnectorDetailsModal({
                     !draft.name.trim() ||
                     !draft.serverUrl.trim(),
             }}
-            cancelAction={{ label: "Close", onClick: onClose }}
+            cancelAction={{ label: "关闭", onClick: onClose }}
             footerStatus={
                 error ? (
                     <span className="text-sm text-red-600">{error}</span>
@@ -930,8 +930,8 @@ function McpConnectorDetailsModal({
                         showAdvanced={showAdvanced}
                         tokenPlaceholder={
                             connector.hasAuthConfig
-                                ? "Saved token encrypted"
-                                : "Bearer token"
+                                ? "已加密保存令牌"
+                                : "Bearer 令牌"
                         }
                         tokenAction={
                             connector.hasAuthConfig ||
@@ -939,8 +939,8 @@ function McpConnectorDetailsModal({
                                 ? {
                                       label:
                                           clearTokenStatus === "cleared"
-                                              ? "Cleared"
-                                              : "Clear",
+                                              ? "已清除"
+                                              : "清空",
                                       loading:
                                           clearTokenStatus === "clearing",
                                       cleared:
@@ -972,7 +972,7 @@ function McpConnectorDetailsModal({
                                     ? connector.toolCount
                                     : connector.tools.length) === 1
                                     ? "Tool"
-                                    : "Tools"}
+                                    : "工具"}
                             </h3>
                             <div className="flex items-center">
                                 <button
@@ -1042,21 +1042,21 @@ function ConnectorForm({
         <div className="grid gap-3 pt-1">
             <label className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-center">
                 <span className="text-xs font-medium text-gray-500">
-                    Label
+                    标签名
                 </span>
                 <Input
                     value={draft.name}
                     onChange={(event) =>
                         onDraftChange({ ...draft, name: event.target.value })
                     }
-                    placeholder="Connector label"
+                    placeholder="连接器名称"
                     className={`h-8 text-sm ${accountGlassInputClassName}`}
                     disabled={disabled}
                 />
             </label>
             <label className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-center">
                 <span className="text-xs font-medium text-gray-500">
-                    URL endpoint
+                    URL 端点
                 </span>
                 <Input
                     value={draft.serverUrl}
@@ -1073,7 +1073,7 @@ function ConnectorForm({
             </label>
             <div className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-start">
                 <span className="pt-2 text-xs font-medium text-gray-500">
-                    Bearer token
+                    Bearer 令牌
                 </span>
                 <div className="min-w-0">
                     <div className="relative">
@@ -1106,7 +1106,7 @@ function ConnectorForm({
                                 } flex items-center ${accountGlassIconButtonClassName}`}
                                 onClick={() => onShowTokenChange(!showToken)}
                                 aria-label={
-                                    showToken ? "Hide token" : "Show token"
+                                    showToken ? "隐藏令牌" : "显示令牌"
                                 }
                                 disabled={disabled}
                             >
@@ -1143,7 +1143,7 @@ function ConnectorForm({
                     </div>
                     {showTokenNote && (
                         <p className="mt-1 text-right text-xs text-gray-500">
-                            Tokens are stored encrypted.
+                            令牌已加密存储。
                         </p>
                     )}
                 </div>
@@ -1155,7 +1155,7 @@ function ConnectorForm({
                     className="inline-flex items-center gap-1 justify-self-start text-xs font-medium text-gray-500 transition-colors hover:text-gray-900"
                     disabled={disabled}
                 >
-                    Advanced
+                    高级
                     <ChevronDown
                         className={`h-3.5 w-3.5 transition-transform ${
                             showAdvanced ? "" : "-rotate-90"
@@ -1165,7 +1165,7 @@ function ConnectorForm({
                 {showAdvanced && (
                     <label className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-start">
                         <span className="text-xs font-medium text-gray-500">
-                            Custom headers
+                            自定义请求头
                         </span>
                         <div className="min-w-0">
                             <textarea
@@ -1183,7 +1183,7 @@ function ConnectorForm({
                                 disabled={disabled}
                             />
                             <p className="mt-1 text-right text-xs text-gray-500">
-                                Secrets are stored encrypted.
+                                密钥已加密存储。
                             </p>
                         </div>
                     </label>
@@ -1246,7 +1246,7 @@ function ScrollableToolList({
                     fill ? "min-h-0 flex-1" : ""
                 }`}
             >
-                No tools discovered yet.
+                尚未发现工具。
             </div>
         );
     }
@@ -1277,7 +1277,7 @@ function ScrollableToolList({
                                     }
                                     className="inline-flex h-5 w-5 items-center justify-center text-gray-400 transition-colors hover:text-gray-800"
                                     aria-label={`${
-                                        isExpanded ? "Collapse" : "Expand"
+                                        isExpanded ? "收起" : "展开"
                                     } ${toolLabel}`}
                                 >
                                     <ChevronDown
@@ -1310,7 +1310,7 @@ function ScrollableToolList({
                                                 : "text-gray-500"
                                         }`}
                                     >
-                                        {tool.enabled ? "Enabled" : "Disabled"}
+                                        {tool.enabled ? "已启用" : "已禁用"}
                                     </span>
                                 )}
                             </div>
@@ -1318,7 +1318,7 @@ function ScrollableToolList({
                                 <div className="ml-7 mt-2 min-w-0">
                                     {tool.requiresConfirmation && (
                                         <p className="text-xs font-medium text-amber-700">
-                                            Confirmation required
+                                            需要确认
                                         </p>
                                     )}
                                     {tool.description && (

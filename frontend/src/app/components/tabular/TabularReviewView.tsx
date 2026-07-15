@@ -229,7 +229,7 @@ export function TRView({ reviewId, projectId }: Props) {
     }
 
     function hasFilePayload(dt: DataTransfer): boolean {
-        return Array.from(dt.types).includes("Files");
+        return Array.from(dt.types).includes("文件");
     }
 
     async function handleDropReviewFiles(files: File[]) {
@@ -332,7 +332,7 @@ export function TRView({ reviewId, projectId }: Props) {
                     setApiKeyModalProvider(provider);
                 }
                 throw new Error(
-                    payload?.detail ?? `Generation failed: ${response.status}`,
+                    payload?.detail ?? `生成失败：${response.status}`,
                 );
             }
             if (!response.body) throw new Error("No body");
@@ -677,7 +677,7 @@ export function TRView({ reviewId, projectId }: Props) {
                         ...(projectId
                             ? [
                                   {
-                                      label: "Projects",
+                                      label: "项目",
                                       onClick: () => router.push("/projects"),
                                   },
                                   loading
@@ -688,7 +688,7 @@ export function TRView({ reviewId, projectId }: Props) {
                                                 router.push(
                                                     `/projects/${projectId}/tabular-reviews`,
                                                 ),
-                                            title: "Back to project",
+                                            title: "返回项目",
                                         }
                                       : {
                                             label: project?.name ?? "",
@@ -696,14 +696,14 @@ export function TRView({ reviewId, projectId }: Props) {
                                                 router.push(
                                                     `/projects/${projectId}/tabular-reviews`,
                                                 ),
-                                            title: "Back to project",
+                                            title: "返回项目",
                                         },
                               ]
                             : [
                                   {
-                                      label: "Tabular Reviews",
+                                      label: "表格审查",
                                       onClick: () => router.push("/tabular-reviews"),
-                                      title: "Back to Tabular Reviews",
+                                      title: "返回表格审查",
                                   },
                               ]),
                         loading
@@ -712,7 +712,7 @@ export function TRView({ reviewId, projectId }: Props) {
                                   skeletonClassName: "w-40",
                               }
                             : {
-                                  label: review?.title || "Untitled Review",
+                                  label: review?.title || "未命名审查",
                               },
                     ]}
                     actionGroups={[
@@ -721,14 +721,14 @@ export function TRView({ reviewId, projectId }: Props) {
                                 type: "search",
                                 value: search,
                                 onChange: setSearch,
-                                placeholder: "Search documents…",
+                                placeholder: "搜索文档…",
                             },
                             !projectId
                                 ? {
                                       onClick: () => setPeopleModalOpen(true),
                                       disabled: loading,
                                       iconOnly: true,
-                                      title: "People with access",
+                                      title: "有权限的成员",
                                       icon: <Users className="h-4 w-4" />,
                                   }
                                 : null,
@@ -738,23 +738,23 @@ export function TRView({ reviewId, projectId }: Props) {
                                     <HeaderActionsMenu
                                         items={[
                                             {
-                                                label: "Edit details",
+                                                label: "编辑详情",
                                                 icon: Pencil,
                                                 onSelect: requestReviewDetails,
                                             },
                                             {
-                                                label: "Apply workflow",
+                                                label: "应用工作流",
                                                 icon: WandSparkles,
                                                 onSelect: requestWorkflow,
                                             },
                                             {
-                                                label: "Export",
+                                                label: "导出",
                                                 icon: Download,
                                                 onSelect: () =>
                                                     exportTabularReviewToExcel({
                                                         reviewTitle:
                                                             review?.title ||
-                                                            "Tabular Review",
+                                                            "表格审查",
                                                         columns,
                                                         documents,
                                                         cells,
@@ -764,14 +764,14 @@ export function TRView({ reviewId, projectId }: Props) {
                                                     documents.length === 0,
                                             },
                                             {
-                                                label: "Clear results",
+                                                label: "清空结果",
                                                 icon: X,
                                                 onSelect: handleClearAllResults,
                                                 disabled:
                                                     documents.length === 0,
                                             },
                                             {
-                                                label: "Delete",
+                                                label: "删除",
                                                 icon: Trash2,
                                                 onSelect: requestReviewDelete,
                                                 variant: "danger",
@@ -794,8 +794,8 @@ export function TRView({ reviewId, projectId }: Props) {
                                         columns.length === 0 ||
                                         documents.length === 0,
                                     title: chatOpen
-                                        ? "Close assistant"
-                                        : "Open assistant",
+                                        ? "关闭助理"
+                                        : "打开助理",
                                     icon: chatOpen ? (
                                         <X className="h-4 w-4" />
                                     ) : (
@@ -803,7 +803,7 @@ export function TRView({ reviewId, projectId }: Props) {
                                     ),
                                     label: (
                                         <span className="hidden sm:inline">
-                                            Assistant
+                                            智能助理
                                         </span>
                                     ),
                                 },
@@ -851,7 +851,7 @@ export function TRView({ reviewId, projectId }: Props) {
                                         }
                                         className="flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors"
                                     >
-                                        Actions
+                                        操作
                                         <ChevronDown className="h-3.5 w-3.5" />
                                     </button>
                                     {actionsOpen && (
@@ -860,13 +860,13 @@ export function TRView({ reviewId, projectId }: Props) {
                                                 onClick={handleClearResults}
                                                 className="w-full px-3 py-1.5 text-left text-xs text-gray-700 hover:bg-gray-50 transition-colors"
                                             >
-                                                Clear results
+                                                清空结果
                                             </button>
                                             <button
                                                 onClick={handleDeleteDocuments}
                                                 className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 transition-colors"
                                             >
-                                                Delete
+                                                删除
                                             </button>
                                         </div>
                                     )}
@@ -884,7 +884,7 @@ export function TRView({ reviewId, projectId }: Props) {
                                         }`}
                                     >
                                         <Upload className="h-3.5 w-3.5" />
-                                        Add Documents
+                                        添加文档
                                     </button>
                                     <button
                                         onClick={() => setAddColOpen(true)}
@@ -898,7 +898,7 @@ export function TRView({ reviewId, projectId }: Props) {
                                         }`}
                                     >
                                         <Plus className="h-3.5 w-3.5" />
-                                        Add Columns
+                                        添加列
                                     </button>
                                 </>
                             )}
@@ -1041,14 +1041,14 @@ export function TRView({ reviewId, projectId }: Props) {
                         handleAddDocuments(docs)
                     }
                     breadcrumb={[
-                        "Projects",
+                        "项目",
                         project.name +
                             (project.cm_number
                                 ? ` (#${project.cm_number})`
                                 : ""),
-                        "Tabular Reviews",
-                        ...(review ? [review.title || "Untitled Review"] : []),
-                        "Add Documents",
+                        "表格审查",
+                        ...(review ? [review.title || "未命名审查"] : []),
+                        "添加文档",
                     ]}
                     projectId={project.id}
                     excludeDocIds={new Set(documents.map((d) => d.id))}
@@ -1061,9 +1061,9 @@ export function TRView({ reviewId, projectId }: Props) {
                         handleAddDocuments(docs)
                     }
                     breadcrumb={[
-                        "Tabular Reviews",
-                        ...(review ? [review.title || "Untitled Review"] : []),
-                        "Add Documents",
+                        "表格审查",
+                        ...(review ? [review.title || "未命名审查"] : []),
+                        "添加文档",
                     ]}
                 />
             )}
@@ -1085,9 +1085,9 @@ export function TRView({ reviewId, projectId }: Props) {
                 fetchPeople={getTabularReviewPeople}
                 currentUserEmail={user?.email ?? null}
                 breadcrumb={[
-                    "Tabular Reviews",
-                    review?.title || "Untitled Review",
-                    "People",
+                    "表格审查",
+                    review?.title || "未命名审查",
+                    "成员",
                 ]}
                 // Only the review owner may modify the member list. PeopleModal
                 // hides the add/remove controls when this prop is undefined.
@@ -1121,25 +1121,25 @@ export function TRView({ reviewId, projectId }: Props) {
                 breadcrumbs={[
                     ...(project
                         ? [
-                              "Projects",
+                              "项目",
                               project.name +
                                   (project.cm_number
                                       ? ` (#${project.cm_number})`
                                       : ""),
                           ]
                         : []),
-                    "Tabular Reviews",
-                    review?.title || "Untitled Review",
-                    "Add workflow",
+                    "表格审查",
+                    review?.title || "未命名审查",
+                    "添加工作流",
                 ]}
                 applying={applyingWorkflow}
             />
 
             <ConfirmPopup
                 open={deleteReviewConfirmOpen}
-                title="Delete tabular review?"
-                message="This will permanently delete the tabular review and its generated cells."
-                confirmLabel="Delete"
+                title="删除表格审查？"
+                message="将永久删除该表格审查及其已生成的单元格内容。"
+                confirmLabel="删除"
                 confirmStatus={
                     deleteReviewStatus === "deleting"
                         ? "loading"
@@ -1147,7 +1147,7 @@ export function TRView({ reviewId, projectId }: Props) {
                           ? "complete"
                           : "idle"
                 }
-                cancelLabel="Cancel"
+                cancelLabel="取消"
                 onCancel={() => {
                     if (deleteReviewStatus === "deleting") return;
                     setDeleteReviewConfirmOpen(false);

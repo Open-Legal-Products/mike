@@ -69,27 +69,27 @@ export function NewMcpModal({
             open={open}
             onClose={onClose}
             breadcrumbs={[
-                "Connectors",
+                "连接器",
                 step === "success"
-                    ? "Connector added"
+                    ? "连接器已添加"
                     : step === "auth"
-                      ? "Authenticate connector"
-                      : "New MCP connector",
+                      ? "连接器身份验证"
+                      : "新建 MCP 连接器",
             ]}
             size="lg"
             primaryAction={
                 step === "success" && result
                     ? {
-                          label: "View connector",
+                          label: "查看连接器",
                           onClick: () => onOpenConnector(result.id),
                       }
                     : {
                           label:
                               step === "working"
-                                  ? "Connecting..."
+                                  ? "连接中..."
                                   : step === "auth"
-                                    ? "Authorizing..."
-                                    : "Connect",
+                                    ? "授权中..."
+                                    : "连接",
                           icon:
                               step === "working" || step === "auth" ? (
                                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -102,7 +102,7 @@ export function NewMcpModal({
                 step === "working" || step === "auth"
                     ? false
                     : {
-                          label: step === "success" ? "Done" : "Cancel",
+                          label: step === "success" ? "完成" : "取消",
                           onClick: onClose,
                       }
             }
@@ -120,14 +120,13 @@ export function NewMcpModal({
                 <NewMcpAuth
                     message={
                         authMessage ??
-                        "Complete authorization in the popup to finish connecting this MCP server."
+                        "请在弹出窗口中完成授权以连接此 MCP 服务器。"
                     }
                 />
             ) : (
                 <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-4">
                     <p className="text-sm text-gray-500">
-                        The assistant will have access to this MCP server and
-                        its enabled tools.
+                        智能助理将可使用此 MCP 服务器及其已启用的工具。
                     </p>
                     <NewMcpForm
                         draft={draft}
@@ -204,7 +203,7 @@ function NewMcpForm({
         <div className="grid gap-3 pt-1">
             <label className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-center">
                 <span className="text-xs font-medium text-gray-500">
-                    Preset
+                    预设
                 </span>
                 <select
                     value={presetId}
@@ -212,7 +211,7 @@ function NewMcpForm({
                     disabled={disabled}
                     className={`h-8 rounded-lg px-2 text-sm ${accountGlassInputClassName}`}
                 >
-                    <option value="">Custom</option>
+                    <option value="">自定义</option>
                     {MCP_PRESETS.map((p) => (
                         <option key={p.id} value={p.id}>
                             {p.brand}
@@ -224,7 +223,7 @@ function NewMcpForm({
             {preset && (
                 <label className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-center">
                     <span className="text-xs font-medium text-gray-500">
-                        Service
+                        服务
                     </span>
                     <select
                         value={serverId}
@@ -263,21 +262,21 @@ function NewMcpForm({
 
             <label className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-center">
                 <span className="text-xs font-medium text-gray-500">
-                    Label
+                    标签名
                 </span>
                 <Input
                     value={draft.name}
                     onChange={(event) =>
                         onDraftChange({ ...draft, name: event.target.value })
                     }
-                    placeholder="Connector label"
+                    placeholder="连接器名称"
                     className={`h-8 text-sm ${accountGlassInputClassName}`}
                     disabled={disabled}
                 />
             </label>
             <label className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-center">
                 <span className="text-xs font-medium text-gray-500">
-                    URL endpoint
+                    URL 端点
                 </span>
                 <Input
                     value={draft.serverUrl}
@@ -294,7 +293,7 @@ function NewMcpForm({
             </label>
             <div className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-start">
                 <span className="pt-2 text-xs font-medium text-gray-500">
-                    Bearer token
+                    Bearer 令牌
                 </span>
                 <div className="min-w-0">
                     <div className="relative">
@@ -307,7 +306,7 @@ function NewMcpForm({
                                 })
                             }
                             type={showToken ? "text" : "password"}
-                            placeholder="Bearer token"
+                            placeholder="Bearer 令牌"
                             className={`h-8 pr-10 text-sm ${accountGlassInputClassName}`}
                             autoComplete="off"
                             spellCheck={false}
@@ -319,7 +318,7 @@ function NewMcpForm({
                                 className={`absolute inset-y-1 right-1.5 flex items-center ${accountGlassIconButtonClassName}`}
                                 onClick={() => onShowTokenChange(!showToken)}
                                 aria-label={
-                                    showToken ? "Hide token" : "Show token"
+                                    showToken ? "隐藏令牌" : "显示令牌"
                                 }
                                 disabled={disabled}
                             >
@@ -332,7 +331,7 @@ function NewMcpForm({
                         )}
                     </div>
                     <p className="mt-1 text-right text-xs text-gray-500">
-                        Tokens are stored encrypted.
+                        令牌已加密存储。
                     </p>
                 </div>
             </div>
@@ -343,7 +342,7 @@ function NewMcpForm({
                     className="inline-flex items-center gap-1 justify-self-start text-xs font-medium text-gray-500 transition-colors hover:text-gray-900"
                     disabled={disabled}
                 >
-                    Advanced
+                    高级
                     <ChevronDown
                         className={`h-3.5 w-3.5 transition-transform ${
                             showAdvanced ? "" : "-rotate-90"
@@ -353,7 +352,7 @@ function NewMcpForm({
                 {showAdvanced && (
                     <label className="grid gap-2 sm:grid-cols-[96px_minmax(0,1fr)] sm:items-start">
                         <span className="text-xs font-medium text-gray-500">
-                            Custom headers
+                            自定义请求头
                         </span>
                         <div className="min-w-0">
                             <textarea
@@ -371,7 +370,7 @@ function NewMcpForm({
                                 disabled={disabled}
                             />
                             <p className="mt-1 text-right text-xs text-gray-500">
-                                Secrets are stored encrypted.
+                                密钥已加密存储。
                             </p>
                         </div>
                     </label>
@@ -411,7 +410,7 @@ function NewMcpSuccess({ connector }: { connector: McpConnectorSummary }) {
                                 )}
                             </div>
                             <span className="text-xs text-gray-400">
-                                {tool.enabled ? "Enabled" : "Disabled"}
+                                {tool.enabled ? "已启用" : "已禁用"}
                             </span>
                         </div>
                     ))}
@@ -429,7 +428,7 @@ function NewMcpAuth({ message }: { message: string }) {
             </div>
             <div className="max-w-sm space-y-1">
                 <h3 className="text-sm font-medium text-gray-900">
-                    Authentication required
+                    需要身份验证
                 </h3>
                 <p className="text-sm text-gray-500">{message}</p>
             </div>

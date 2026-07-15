@@ -35,7 +35,7 @@ function SelectedChatActions({
                 onClick={() => onOpenChange(!open)}
                 className="flex items-center gap-1 text-xs font-medium text-gray-700 transition-colors hover:text-gray-900"
             >
-                Actions
+                操作
                 <ChevronDown className="h-3.5 w-3.5" />
             </button>
             {open && (
@@ -44,7 +44,7 @@ function SelectedChatActions({
                         onClick={onDelete}
                         className="w-full px-3 py-1.5 text-left text-xs text-red-600 transition-colors hover:bg-red-50"
                     >
-                        Delete
+                        删除
                     </button>
                 </div>
             )}

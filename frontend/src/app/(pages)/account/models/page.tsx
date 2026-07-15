@@ -76,16 +76,16 @@ export default function ModelPreferencesPage() {
         <div>
             <div className="flex items-center gap-2 mb-4">
                 <h2 className="text-2xl font-medium font-serif">
-                    Model Preferences
+                    模型偏好
                 </h2>
             </div>
             <AccountSection>
                 <div className="px-4 py-5">
                     <label className="text-sm font-medium text-gray-700 block mb-2">
-                        Title generation model
+                        标题生成模型
                     </label>
                     <p className="text-xs text-gray-400 mb-2">
-                        Used for naming chats and other lightweight titles.
+                        用于为对话等轻量场景生成标题。
                     </p>
                     <ModelPreferenceDropdown
                         value={
@@ -103,11 +103,10 @@ export default function ModelPreferencesPage() {
                 <div className="mx-4 h-px bg-gray-200" />
                 <div className="px-4 py-5">
                     <label className="text-sm font-medium text-gray-700 block mb-2">
-                        Tabular review model
+                        表格审查模型
                     </label>
                     <p className="text-xs text-gray-400 mb-2">
-                        We recommend using a smaller model for tabular reviews
-                        to reduce token costs.
+                        建议表格审查使用较小模型，以降低 token 成本。
                     </p>
                     <ModelPreferenceDropdown
                         value={
@@ -164,7 +163,7 @@ function ModelPreferenceDropdown({
                             <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
                         )}
                         <span className="truncate text-gray-900">
-                            {selected?.label ?? "Select a model"}
+                            {selected?.label ?? "选择模型"}
                         </span>
                     </span>
                     {isSaving ? (

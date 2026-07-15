@@ -21,7 +21,7 @@ import { UseWorkflowModal } from "./UseWorkflowModal";
 import { NewWorkflowModal } from "./NewWorkflowModal";
 import { TableToolbar } from "../shared/TableToolbar";
 import { RowActionMenuItems, RowActions } from "../shared/RowActions";
-import { MikeIcon } from "@/app/components/chat/mike-icon";
+import { PartnerIcon } from "@/app/components/chat/partner-icon";
 import { PageHeader } from "@/app/components/shared/PageHeader";
 import { workflowDetailPath } from "./workflowRoutes";
 import {
@@ -48,10 +48,10 @@ import {
 type WorkflowScope = "all" | "system" | "user" | "shared";
 
 const WORKFLOW_SCOPES: { id: WorkflowScope; label: string }[] = [
-    { id: "all", label: "All" },
-    { id: "user", label: "User" },
-    { id: "shared", label: "Shared with me" },
-    { id: "system", label: "System" },
+    { id: "all", label: "全部" },
+    { id: "user", label: "用户" },
+    { id: "shared", label: "与我共享" },
+    { id: "system", label: "系统" },
 ];
 
 const isDev = process.env.NODE_ENV !== "production";
@@ -253,18 +253,18 @@ export function WorkflowList() {
 
     const getTypeMeta = (type: Workflow["metadata"]["type"]) =>
         type === "tabular"
-            ? { label: "Tabular", Icon: Table2, className: "text-violet-700" }
+            ? { label: "表格审查", Icon: Table2, className: "text-violet-700" }
             : {
-                  label: "Assistant",
+                  label: "智能助理",
                   Icon: MessageSquare,
                   className: "text-blue-700",
               };
 
     const typeFilterButton = (
         <HeaderFilterDropdown
-            label="Filter by type"
+            label="按类型筛选"
             value={typeFilter}
-            allLabel="All Types"
+            allLabel="全部类型"
             widthClassName="w-40"
             options={(["assistant", "tabular"] as const).map((type) => {
                 const { label, Icon, className } = getTypeMeta(type);
@@ -281,9 +281,9 @@ export function WorkflowList() {
 
     const practiceFilterButton = (
         <HeaderFilterDropdown
-            label="Filter by practice"
+            label="按业务领域筛选"
             value={practiceFilter}
-            allLabel="All Practices"
+            allLabel="全部业务领域"
             options={practices.map((practice) => ({
                 value: practice,
                 label: practice,
@@ -311,7 +311,7 @@ export function WorkflowList() {
                     onClick={() => setActionsOpen((v) => !v)}
                     className="flex items-center gap-1 text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
                 >
-                    Actions
+                    操作
                     <ChevronDown className="h-3.5 w-3.5" />
                 </button>
                 {actionsOpen && (
@@ -321,14 +321,14 @@ export function WorkflowList() {
                                 onClick={handleBulkUnhide}
                                 className={`w-full px-3 py-1.5 text-left text-xs text-gray-700 ${GLASS_MENU_ITEM}`}
                             >
-                                Activate
+                                启用
                             </button>
                         ) : (
                             <button
                                 onClick={handleBulkRemove}
                                 className="w-full px-3 py-1.5 text-left text-xs text-red-600 transition-colors hover:bg-red-500/10"
                             >
-                                {selectedOnlySystem ? "Deactivate" : "Delete"}
+                                {selectedOnlySystem ? "停用" : "删除"}
                             </button>
                         )}
                     </div>
@@ -347,17 +347,17 @@ export function WorkflowList() {
                         type: "search",
                         value: search,
                         onChange: setSearch,
-                        placeholder: "Search workflows…",
+                        placeholder: "搜索工作流…",
                     },
                     {
                         type: "new",
                         onClick: () => setNewModalOpen(true),
-                        title: "New workflow",
+                        title: "新建工作流",
                     },
                 ]}
             >
                 <h1 className="text-2xl font-medium font-serif text-gray-900">
-                    Workflows
+                    工作流
                 </h1>
             </PageHeader>
 
@@ -386,23 +386,23 @@ export function WorkflowList() {
                                     className={TABLE_CHECKBOX_CLASS}
                                 />
                             )}
-                            <span>Name</span>
+                            <span>名称</span>
                         </TableStickyCell>
                         <TableHeaderCell className="ml-auto w-28">
                             <div className="flex items-center gap-1">
-                                <span>Type</span>
+                                <span>类型</span>
                                 {typeFilterButton}
                             </div>
                         </TableHeaderCell>
                         <TableHeaderCell className="w-40">
                             <div className="flex items-center gap-1">
-                                <span>Practice</span>
+                                <span>业务领域</span>
                                 {practiceFilterButton}
                             </div>
                         </TableHeaderCell>
-                        <TableHeaderCell className="w-40">Jurisdiction</TableHeaderCell>
-                        <TableHeaderCell className="w-28">Language</TableHeaderCell>
-                        <TableHeaderCell className="w-44">Source</TableHeaderCell>
+                        <TableHeaderCell className="w-40">管辖区域</TableHeaderCell>
+                        <TableHeaderCell className="w-28">语言</TableHeaderCell>
+                        <TableHeaderCell className="w-44">来源</TableHeaderCell>
                         <TableHeaderCell className="w-8" />
                     </TableHeaderRow>
                 }
@@ -451,40 +451,36 @@ export function WorkflowList() {
                                 <>
                                     <Library className="h-8 w-8 text-gray-300 mb-4" />
                                     <p className="text-2xl font-medium font-serif text-gray-900">
-                                        User Workflows
+                                        用户工作流
                                     </p>
                                     <p className="mt-1 text-xs text-gray-400 text-left">
-                                        Build reusable prompts and tabular
-                                        review templates tailored to your
-                                        practice.
+                                        构建贴合您业务实践的可复用提示词与表格审查模板。
                                     </p>
                                     <button
                                         onClick={() => setNewModalOpen(true)}
                                         className="mt-4 inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors shadow-md"
                                     >
-                                        + Create New
+                                        + 新建
                                     </button>
                                 </>
                             ) : activeScope === "shared" ? (
                                 <>
                                     <Library className="h-8 w-8 text-gray-300 mb-4" />
                                     <p className="text-2xl font-medium font-serif text-gray-900">
-                                        Shared Workflows
+                                        共享工作流
                                     </p>
                                     <p className="mt-1 text-xs text-gray-400 text-left">
-                                        Workflows shared with you by other users
-                                        will appear here.
+                                        其他用户与您共享的工作流将显示在这里。
                                     </p>
                                 </>
                             ) : (
                                 <>
                                     <Library className="h-8 w-8 text-gray-300 mb-4" />
                                     <p className="text-2xl font-medium font-serif text-gray-900">
-                                        Workflows
+                                        工作流
                                     </p>
                                     <p className="mt-1 text-xs text-gray-400 text-left">
-                                        Automate document analysis with reusable
-                                        prompts and tabular review templates.
+                                        使用可复用提示词与表格审查模板，自动化文档分析。
                                     </p>
                                 </>
                             )}
@@ -610,13 +606,13 @@ export function WorkflowList() {
                                 <TableCell className="w-44">
                                     {wf.is_system ? (
                                         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600">
-                                            <MikeIcon size={14} />
-                                            System
+                                            <PartnerIcon size={14} />
+                                            系统
                                         </span>
                                     ) : wf.is_owner !== false ? (
                                         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600">
                                             <User className="h-3.5 w-3.5 text-blue-600" />
-                                            User
+                                            用户
                                         </span>
                                     ) : (
                                         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 truncate max-w-full">
@@ -705,7 +701,7 @@ export function WorkflowList() {
 }
 
 function getSharedByLabel(workflow: Workflow) {
-    return workflow.shared_by_name?.trim() || "Shared";
+    return workflow.shared_by_name?.trim() || "已共享";
 }
 
 // Liquid-glass treatment shared by every practice dot: a top inset highlight

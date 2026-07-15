@@ -41,19 +41,19 @@ const DELETE_DATA_COPY: Record<
     }
 > = {
     chats: {
-        title: "Delete all chats?",
+        title: "删除全部对话？",
         message:
-            "This will permanently delete your assistant and tabular review chat history. This action cannot be undone.",
+            "将永久删除您的助理与表格审查对话历史。此操作无法撤销。",
     },
     "tabular-reviews": {
-        title: "Delete all tabular reviews?",
+        title: "删除全部表格审查？",
         message:
-            "This will permanently delete all tabular reviews you own, including their cells and review chats. This action cannot be undone.",
+            "将永久删除您拥有的全部表格审查，包括其单元格与审查对话。此操作无法撤销。",
     },
     projects: {
-        title: "Delete all projects?",
+        title: "删除全部项目？",
         message:
-            "This will permanently delete all projects you own, including their documents, chats, and tabular reviews. This action cannot be undone.",
+            "将永久删除您拥有的全部项目，包括其文档、对话与表格审查。此操作无法撤销。",
     },
 };
 
@@ -100,7 +100,7 @@ export default function PrivacyDataPage() {
                 setPendingMfaAction("export-account");
                 return;
             }
-            alert("Failed to export account data. Please try again.");
+            alert("导出账户数据失败，请重试。");
         } finally {
             setIsExportingAccount(false);
         }
@@ -125,7 +125,7 @@ export default function PrivacyDataPage() {
                 setPendingMfaAction("export-chats");
                 return;
             }
-            alert("Failed to export chats. Please try again.");
+            alert("导出对话失败，请重试。");
         } finally {
             setIsExportingChats(false);
         }
@@ -150,7 +150,7 @@ export default function PrivacyDataPage() {
                 setPendingMfaAction("export-tabular-reviews");
                 return;
             }
-            alert("Failed to export tabular reviews. Please try again.");
+            alert("导出表格审查失败，请重试。");
         } finally {
             setIsExportingTabularReviews(false);
         }
@@ -188,7 +188,7 @@ export default function PrivacyDataPage() {
                 setPendingMfaAction(action);
                 return;
             }
-            alert("Failed to delete data. Please try again.");
+            alert("删除数据失败，请重试。");
         } finally {
             setDeletingAction(null);
         }
@@ -219,17 +219,16 @@ export default function PrivacyDataPage() {
         <div className="space-y-8">
             <section className="space-y-3">
                 <h2 className="text-2xl font-medium font-serif text-gray-900">
-                    Export data
+                    导出数据
                 </h2>
                 <AccountSection>
                     <div className="flex flex-col gap-3 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
                         <div className="space-y-1">
                             <p className="text-sm font-medium text-gray-900">
-                                Export chats
+                                导出对话
                             </p>
                             <p className="text-sm text-gray-500">
-                                Download assistant and tabular review chat
-                                history as JSON.
+                                将助理与表格审查的对话历史下载为 JSON。
                             </p>
                         </div>
                         <Button
@@ -241,7 +240,7 @@ export default function PrivacyDataPage() {
                             {!isExportingChats && (
                                 <Download className="h-4 w-4 shrink-0" />
                             )}
-                            {isExportingChats ? "Exporting..." : "Export"}
+                            {isExportingChats ? "导出中..." : "导出"}
                         </Button>
                     </div>
                     <div className="mx-4 h-px bg-gray-200" />
@@ -249,11 +248,10 @@ export default function PrivacyDataPage() {
                     <div className="flex flex-col gap-3 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
                         <div className="space-y-1">
                             <p className="text-sm font-medium text-gray-900">
-                                Export tabular reviews
+                                导出表格审查
                             </p>
                             <p className="text-sm text-gray-500">
-                                Download all owned tabular reviews, cells, and
-                                review chat records as JSON.
+                                将您拥有的全部表格审查、单元格与审查对话记录下载为 JSON。
                             </p>
                         </div>
                         <Button
@@ -266,8 +264,8 @@ export default function PrivacyDataPage() {
                                 <Download className="h-4 w-4 shrink-0" />
                             )}
                             {isExportingTabularReviews
-                                ? "Exporting..."
-                                : "Export"}
+                                ? "导出中..."
+                                : "导出"}
                         </Button>
                     </div>
                     <div className="mx-4 h-px bg-gray-200" />
@@ -275,11 +273,10 @@ export default function PrivacyDataPage() {
                     <div className="flex flex-col gap-3 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
                         <div className="space-y-1">
                             <p className="text-sm font-medium text-gray-900">
-                                Export account JSON
+                                导出账户 JSON
                             </p>
                             <p className="text-sm text-gray-500">
-                                Download account metadata, projects, document
-                                metadata, workflows, and review data as JSON.
+                                将账户元数据、项目、文档元数据、工作流与审查数据下载为 JSON。
                             </p>
                         </div>
                         <Button
@@ -291,7 +288,7 @@ export default function PrivacyDataPage() {
                             {!isExportingAccount && (
                                 <Download className="h-4 w-4 shrink-0" />
                             )}
-                            {isExportingAccount ? "Exporting..." : "Export"}
+                            {isExportingAccount ? "导出中..." : "导出"}
                         </Button>
                     </div>
                 </AccountSection>
@@ -299,17 +296,16 @@ export default function PrivacyDataPage() {
 
             <section className="space-y-3">
                 <h2 className="text-2xl font-medium font-serif text-gray-900">
-                    Delete data
+                    删除数据
                 </h2>
                 <AccountSection>
                     <div className="flex flex-col gap-3 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
                         <div className="space-y-1">
                             <p className="text-sm font-medium text-gray-900">
-                                Delete all chats
+                                删除全部对话
                             </p>
                             <p className="text-sm text-gray-500">
-                                Permanently delete your assistant and tabular
-                                review chat history.
+                                永久删除您的助理与表格审查对话历史。
                             </p>
                         </div>
                         <Button
@@ -319,7 +315,7 @@ export default function PrivacyDataPage() {
                             className={`h-9 w-full shrink-0 gap-1.5 sm:w-auto ${accountGlassDangerOutlineButtonClassName}`}
                         >
                             <Trash2 className="h-4 w-4 shrink-0" />
-                            Delete
+                            删除
                         </Button>
                     </div>
                     <div className="mx-4 h-px bg-gray-200" />
@@ -327,11 +323,10 @@ export default function PrivacyDataPage() {
                     <div className="flex flex-col gap-3 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
                         <div className="space-y-1">
                             <p className="text-sm font-medium text-gray-900">
-                                Delete all tabular reviews
+                                删除全部表格审查
                             </p>
                             <p className="text-sm text-gray-500">
-                                Permanently delete all tabular reviews you own,
-                                including cells and review chats.
+                                永久删除您拥有的全部表格审查，包括单元格与审查对话。
                             </p>
                         </div>
                         <Button
@@ -343,7 +338,7 @@ export default function PrivacyDataPage() {
                             className={`h-9 w-full shrink-0 gap-1.5 sm:w-auto ${accountGlassDangerOutlineButtonClassName}`}
                         >
                             <Trash2 className="h-4 w-4 shrink-0" />
-                            Delete
+                            删除
                         </Button>
                     </div>
                     <div className="mx-4 h-px bg-gray-200" />
@@ -351,11 +346,10 @@ export default function PrivacyDataPage() {
                     <div className="flex flex-col gap-3 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
                         <div className="space-y-1">
                             <p className="text-sm font-medium text-gray-900">
-                                Delete all projects
+                                删除全部项目
                             </p>
                             <p className="text-sm text-gray-500">
-                                Permanently delete all projects you own,
-                                including documents, chats, and tabular reviews.
+                                永久删除您拥有的全部项目，包括文档、对话与表格审查。
                             </p>
                         </div>
                         <Button
@@ -365,7 +359,7 @@ export default function PrivacyDataPage() {
                             className={`h-9 w-full shrink-0 gap-1.5 sm:w-auto ${accountGlassDangerOutlineButtonClassName}`}
                         >
                             <Trash2 className="h-4 w-4 shrink-0" />
-                            Delete
+                            删除
                         </Button>
                     </div>
                 </AccountSection>
@@ -374,9 +368,9 @@ export default function PrivacyDataPage() {
                 open={!!pendingDeleteAction}
                 title={pendingDeleteCopy?.title}
                 message={pendingDeleteCopy?.message}
-                confirmLabel="Delete"
+                confirmLabel="删除"
                 confirmStatus={deletingAction ? "loading" : "idle"}
-                cancelLabel="Cancel"
+                cancelLabel="取消"
                 onCancel={() => {
                     if (deletingAction) return;
                     setPendingDeleteAction(null);
@@ -390,8 +384,8 @@ export default function PrivacyDataPage() {
                 open={!!pendingMfaAction}
                 onCancel={() => setPendingMfaAction(null)}
                 onVerified={() => void handleMfaVerified()}
-                title="Two-factor verification required"
-                message="This action is sensitive. Enter a code from your authenticator app to continue."
+                title="需要双重验证"
+                message="此操作属于敏感操作。请输入身份验证器应用中的验证码以继续。"
             />
         </div>
     );

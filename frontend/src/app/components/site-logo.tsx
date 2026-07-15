@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MikeIcon } from "@/app/components/chat/mike-icon";
+import { PartnerIcon } from "@/app/components/chat/partner-icon";
 
 interface SiteLogoProps {
     size?: "sm" | "md" | "lg" | "xl";
@@ -43,9 +43,9 @@ export function SiteLogo({
             <span
                 className={`inline-flex shrink-0 items-center leading-none ${iconClassName}`}
             >
-                <MikeIcon size={iconSizes[size]} />
+                <PartnerIcon size={iconSizes[size]} />
             </span>
-            <span>Mike</span>
+            <span>我的律师合伙人</span>
         </h1>
     );
 

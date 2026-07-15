@@ -26,7 +26,7 @@ export function TRWorkflowModal({
             onSelect={onApply}
             workflowType="tabular"
             breadcrumbs={breadcrumbs}
-            primaryLabel="Apply"
+            primaryLabel="应用"
             selectingLabel="Applying..."
             selecting={applying}
             closeOnSelect={false}

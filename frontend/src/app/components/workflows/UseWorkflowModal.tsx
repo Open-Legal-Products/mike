@@ -26,7 +26,7 @@ function SelectedWorkflowSummary({ workflow }: { workflow: Workflow }) {
     return (
         <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
             <span className="shrink-0 text-xs font-medium text-gray-700">
-                Selected workflow
+                已选工作流
             </span>
             <span className="min-w-0 flex-1 truncate text-right text-xs text-gray-500">
                 {workflow.metadata.title}
@@ -180,20 +180,20 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
     const locationOptions =
         wf.metadata.type === "assistant"
             ? [
-                  { value: "workspace" as const, label: "Assistant" },
-                  { value: "project" as const, label: "Project assistant" },
+                  { value: "workspace" as const, label: "智能助理" },
+                  { value: "project" as const, label: "项目助理" },
               ]
             : [
-                  { value: "workspace" as const, label: "Tabular reviews" },
+                  { value: "workspace" as const, label: "表格审查" },
                   {
                       value: "project" as const,
-                      label: "Project tabular reviews",
+                      label: "项目表格审查",
                   },
               ];
 
     const breadcrumbs =
         screen === "select"
-            ? ["Workflows", "Select workflow"]
+            ? ["工作流", "选择工作流"]
             : [
                   <button
                       key="workflows"
@@ -201,11 +201,11 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
                       onClick={() => setScreen("select")}
                       className="transition-colors hover:text-gray-700"
                   >
-                      Workflows
+                      工作流
                   </button>,
                   wf.metadata.title,
-                  wf.metadata.type === "assistant" ? "New Chat" : "New Review",
-                  screen === "details" ? "Details" : "Attach Documents",
+                  wf.metadata.type === "assistant" ? "新建对话" : "新建审查",
+                  screen === "details" ? "详情" : "附加文档",
               ];
 
     const selectPageAction = () => {
@@ -225,17 +225,17 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
             secondaryAction={
                 screen === "select"
                     ? {
-                          label: "View Page",
+                          label: "查看页面",
                           onClick: selectPageAction,
                       }
                     : screen === "details"
                       ? {
-                          label: "Back",
+                          label: "返回",
                           onClick: () => setScreen("select"),
                           disabled: saving,
                       }
                       : {
-                          label: "Back",
+                          label: "返回",
                           onClick: () => setScreen("details"),
                           disabled: saving,
                       }
@@ -250,25 +250,25 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
             primaryAction={
                 screen === "select"
                     ? {
-                          label: "Use",
+                          label: "使用",
                           onClick: () => setScreen("details"),
                       }
                     : screen === "details"
                       ? {
-                            label: "Next",
+                            label: "下一步",
                             onClick: () => setScreen("documents"),
                             disabled:
                                 saving || (inProject && !selectedProjectId),
                         }
                     : wf.metadata.type === "assistant"
                       ? {
-                            label: saving ? "Starting…" : "Start Chat",
+                            label: saving ? "启动中…" : "开始对话",
                             onClick: handleStartChat,
                             disabled:
                                 saving || (inProject && !selectedProjectId),
                         }
                       : {
-                            label: saving ? "Creating…" : "Create Review",
+                            label: saving ? "创建中…" : "创建审查",
                             onClick: handleCreateReview,
                             disabled:
                                 saving ||
@@ -302,7 +302,7 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
 
                     <div className="space-y-6">
                         <div>
-                            <ModalFieldLabel as="p">Use in</ModalFieldLabel>
+                            <ModalFieldLabel as="p">用于</ModalFieldLabel>
                             <ModalSegmentedToggle
                                 value={location}
                                 onChange={(value) => {
@@ -317,7 +317,7 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
                         {inProject && (
                             <div>
                                 <ModalFieldLabel htmlFor="workflow-project">
-                                    Project
+                                    项目
                                 </ModalFieldLabel>
                                 <ModalSelect
                                     id="workflow-project"
@@ -329,10 +329,10 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
                                     }}
                                     placeholder={
                                         dirLoading
-                                            ? "Loading projects..."
+                                            ? "正在加载项目..."
                                             : projects.length
-                                            ? "Select project..."
-                                            : "No projects found"
+                                            ? "选择项目..."
+                                            : "暂无项目"
                                     }
                                     disabled={dirLoading || projects.length === 0}
                                 />
@@ -342,7 +342,7 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
                         {wf.metadata.type === "assistant" && (
                             <div>
                                 <ModalFieldLabel htmlFor="workflow-additional-message">
-                                    Additional message
+                                    补充说明
                                 </ModalFieldLabel>
                                 <ModalTextarea
                                     id="workflow-additional-message"
@@ -350,7 +350,7 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
                                     onChange={(e) =>
                                         setAssistantPrompt(e.target.value)
                                     }
-                                    placeholder="Add any additional instructions..."
+                                    placeholder="添加补充说明..."
                                     rows={4}
                                 />
                             </div>
@@ -377,8 +377,8 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
                             forceExpanded={inProject}
                             emptyMessage={
                                 inProject
-                                    ? "No documents in this project"
-                                    : "No documents yet"
+                                    ? "该项目中暂无文档"
+                                    : "暂无文档"
                             }
                             searchable
                             searchAutoFocus

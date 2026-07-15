@@ -459,7 +459,7 @@ export function SpreadsheetView({
     const frameClass = `fortune-sheet-viewer relative flex flex-col flex-1 min-h-0 overflow-hidden ${rounded ? "rounded-lg" : ""}`;
 
     const message =
-        error ?? (fetchError ? "Failed to load spreadsheet." : null);
+        error ?? (fetchError ? "加载电子表格失败。" : null);
     if (message) {
         return (
             <div className={frameClass}>

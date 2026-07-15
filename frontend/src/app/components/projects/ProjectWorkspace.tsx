@@ -334,7 +334,7 @@ export function ProjectWorkspaceProvider({
 
     function requestProjectDelete() {
         if (project && project.is_owner === false) {
-            setOwnerOnlyAction("delete this project");
+            setOwnerOnlyAction("删除此项目");
             return;
         }
         setDeleteProjectStatus("idle");
@@ -462,9 +462,9 @@ export function ProjectWorkspaceProvider({
 
                 <ConfirmPopup
                     open={deleteProjectConfirmOpen}
-                    title="Delete project?"
-                    message="This will permanently delete the project and its related documents, chats, and tabular reviews."
-                    confirmLabel="Delete"
+                    title="删除项目？"
+                    message="将永久删除该项目及其相关文档、对话和表格审查。"
+                    confirmLabel="删除"
                     confirmStatus={
                         deleteProjectStatus === "deleting"
                             ? "loading"
@@ -472,7 +472,7 @@ export function ProjectWorkspaceProvider({
                               ? "complete"
                               : "idle"
                     }
-                    cancelLabel="Cancel"
+                    cancelLabel="取消"
                     onCancel={() => {
                         if (deleteProjectStatus === "deleting") return;
                         setDeleteProjectConfirmOpen(false);
@@ -489,12 +489,12 @@ export function ProjectWorkspaceProvider({
                         fetchPeople={getProjectPeople}
                         currentUserEmail={user?.email ?? null}
                         breadcrumb={[
-                            "Projects",
+                            "项目",
                             project.name +
                                 (project.cm_number
                                     ? ` (${project.cm_number})`
                                     : ""),
-                            "People",
+                            "成员",
                         ]}
                         onSharedWithChange={
                             project.is_owner === false
@@ -533,9 +533,9 @@ export function ProjectSectionToolbar({
     return (
         <TableToolbar
             items={[
-                { id: "documents", label: "Documents" },
-                { id: "assistant", label: "Assistant Chats" },
-                { id: "reviews", label: "Tabular Reviews" },
+                { id: "documents", label: "文档" },
+                { id: "assistant", label: "助理对话" },
+                { id: "reviews", label: "表格审查" },
             ]}
             active={activeSection}
             onChange={(next) => {

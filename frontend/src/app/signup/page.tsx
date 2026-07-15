@@ -47,14 +47,14 @@ export default function SignupPage() {
 
         // Validate passwords match
         if (password !== confirmPassword) {
-            setError("Passwords do not match");
+            setError("两次输入的密码不一致");
             setLoading(false);
             return;
         }
 
         // Validate password length
         if (password.length < 6) {
-            setError("Password must be at least 6 characters");
+            setError("密码至少需要 6 个字符");
             setLoading(false);
             return;
         }
@@ -92,14 +92,14 @@ export default function SignupPage() {
             setError(
                 error instanceof Error
                     ? error.message
-                    : "An error occurred during signup",
+                    : "注册时发生错误",
             );
         } finally {
             setLoading(false);
         }
     };
 
-    // Success View
+    // Success 查看
     if (success) {
         return (
             <div className="min-h-dvh bg-gray-50/80 flex items-start justify-center px-6 pt-32 md:pt-40 pb-10 relative">
@@ -114,10 +114,10 @@ export default function SignupPage() {
                             <CheckCircle2 className="h-6 w-6 text-green-600" />
                         </div>
                         <h2 className="text-2xl font-bold text-gray-950 mb-3">
-                            Account created!
+                            账户创建成功！
                         </h2>
                         <p className="text-gray-600 leading-relaxed">
-                            Redirecting you to the home page...
+                            正在跳转到首页...
                         </p>
                     </div>
                 </div>
@@ -125,7 +125,7 @@ export default function SignupPage() {
         );
     }
 
-    // Default Signup Form View
+    // Default Signup Form 查看
     return (
         <div className="min-h-dvh bg-gray-50/80 flex items-start justify-center px-6 pt-32 md:pt-40 pb-10 relative">
             <div className="absolute top-4 md:top-8 left-1/2 -translate-x-1/2">
@@ -135,17 +135,17 @@ export default function SignupPage() {
                 <div className={`${authGlassCardClassName} mb-4`}>
                     <div className="flex justify-between items-center mb-6">
                         <h2 className="text-left text-2xl font-medium font-serif text-gray-950">
-                            Create Account
+                            创建账户
                         </h2>
                         <div className={authToggleClassName}>
                             <Link
                                 href="/login"
                                 className={authToggleInactiveClassName}
                             >
-                                Log in
+                                登录
                             </Link>
                             <span className={authToggleActiveClassName}>
-                                Sign up
+                                注册
                             </span>
                         </div>
                     </div>
@@ -156,7 +156,7 @@ export default function SignupPage() {
                                 htmlFor="name"
                                 className="block text-sm font-medium text-gray-700 mb-2"
                             >
-                                Name{" "}
+                                姓名{" "}
                                 <span className="text-gray-400 font-normal">
                                     (optional)
                                 </span>
@@ -166,7 +166,7 @@ export default function SignupPage() {
                                 type="text"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
-                                placeholder="Your name"
+                                placeholder="您的姓名"
                                 className={`w-full ${authInputClassName}`}
                             />
                         </div>
@@ -188,7 +188,7 @@ export default function SignupPage() {
                                 onChange={(e) =>
                                     setOrganisation(e.target.value)
                                 }
-                                placeholder="Your organisation"
+                                placeholder="您所在的机构"
                                 className={`w-full ${authInputClassName}`}
                             />
                         </div>
@@ -198,14 +198,14 @@ export default function SignupPage() {
                                 htmlFor="email"
                                 className="block text-sm font-medium text-gray-700 mb-2"
                             >
-                                Email
+                                邮箱
                             </label>
                             <Input
                                 id="email"
                                 type="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                placeholder="Enter your email"
+                                placeholder="请输入邮箱"
                                 required
                                 className={`w-full ${authInputClassName}`}
                             />
@@ -216,14 +216,14 @@ export default function SignupPage() {
                                 htmlFor="password"
                                 className="block text-sm font-medium text-gray-700 mb-2"
                             >
-                                Password
+                                密码
                             </label>
                             <Input
                                 id="password"
                                 type="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                placeholder="Create a password (min. 6 characters)"
+                                placeholder="设置密码（至少 6 个字符）"
                                 required
                                 className={`w-full ${authInputClassName}`}
                             />
@@ -234,7 +234,7 @@ export default function SignupPage() {
                                 htmlFor="confirmPassword"
                                 className="block text-sm font-medium text-gray-700 mb-2"
                             >
-                                Confirm Password
+                                确认密码
                             </label>
                             <Input
                                 id="confirmPassword"
@@ -243,7 +243,7 @@ export default function SignupPage() {
                                 onChange={(e) =>
                                     setConfirmPassword(e.target.value)
                                 }
-                                placeholder="Confirm your password"
+                                placeholder="请再次输入密码"
                                 required
                                 className={`w-full ${authInputClassName}`}
                             />
@@ -260,29 +260,29 @@ export default function SignupPage() {
                             disabled={loading}
                             className="w-full bg-black hover:bg-gray-900 text-white"
                         >
-                            {loading ? "Creating account..." : "Sign up"}
+                            {loading ? "创建账户中..." : "注册"}
                         </Button>
                     </form>
 
                     {/* Terms and Privacy */}
                     <div className="mt-4 text-center text-xs text-gray-500">
-                        By signing up, you agree to our{" "}
+                        注册即表示您同意我们的{" "}
                         <Link
                             href="https://mikeoss.com/terms"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-600 hover:underline"
                         >
-                            Terms of Use
+                            使用条款
                         </Link>{" "}
-                        and{" "}
+                        和{" "}
                         <Link
                             href="https://mikeoss.com/privacy"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-600 hover:underline"
                         >
-                            Privacy Policy
+                            隐私政策
                         </Link>
                     </div>
                 </div>

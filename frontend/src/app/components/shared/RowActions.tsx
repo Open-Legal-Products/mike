@@ -57,9 +57,9 @@ export function RowActionMenuItems({
     onEditDetails,
     onRename,
     onUpdateCmNumber,
-    newSubfolderLabel = "New subfolder",
-    renameLabel = "Rename",
-    deleteLabel = "Delete",
+    newSubfolderLabel = "新建子文件夹",
+    renameLabel = "重命名",
+    deleteLabel = "删除",
     onClose,
 }: Props & { onClose: () => void }) {
     return (
@@ -88,7 +88,7 @@ export function RowActionMenuItems({
                     className={`flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-600 ${GLASS_MENU_ITEM}`}
                 >
                     <Pencil className="h-3.5 w-3.5" />
-                    Edit details
+                    编辑详情
                 </button>
             )}
             {onUpdateCmNumber && (
@@ -97,7 +97,7 @@ export function RowActionMenuItems({
                     className={`flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-600 ${GLASS_MENU_ITEM}`}
                 >
                     <Hash className="h-3.5 w-3.5" />
-                    Edit CM No.
+                    编辑案号
                 </button>
             )}
             {onDownload && (
@@ -106,7 +106,7 @@ export function RowActionMenuItems({
                     className={`flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-600 ${GLASS_MENU_ITEM}`}
                 >
                     <Download className="h-3.5 w-3.5" />
-                    Download
+                    下载
                 </button>
             )}
             {onShowAllVersions && (
@@ -115,7 +115,7 @@ export function RowActionMenuItems({
                     className={`flex items-center gap-2 w-full px-3 py-2 text-xs text-left text-gray-600 ${GLASS_MENU_ITEM}`}
                 >
                     <History className="h-3.5 w-3.5 shrink-0" />
-                    Show all versions
+                    显示全部版本
                 </button>
             )}
             {onUploadNewVersion && (
@@ -124,7 +124,7 @@ export function RowActionMenuItems({
                     className={`flex items-center gap-2 w-full px-3 py-2 text-xs text-left text-gray-600 ${GLASS_MENU_ITEM}`}
                 >
                     <Upload className="h-3.5 w-3.5 shrink-0" />
-                    Upload new version
+                    上传新版本
                 </button>
             )}
             {onRemoveFromFolder && (
@@ -133,7 +133,7 @@ export function RowActionMenuItems({
                     className={`flex items-center gap-2 w-full px-3 py-2 text-xs text-left text-gray-600 ${GLASS_MENU_ITEM}`}
                 >
                     <FolderMinus className="h-3.5 w-3.5 shrink-0" />
-                    Remove from subfolder
+                    从子文件夹移除
                 </button>
             )}
             {onUnhide && (
@@ -142,7 +142,7 @@ export function RowActionMenuItems({
                     className={`flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-600 ${GLASS_MENU_ITEM}`}
                 >
                     <Eye className="h-3.5 w-3.5" />
-                    Activate
+                    启用
                 </button>
             )}
             {onHide && (
@@ -151,7 +151,7 @@ export function RowActionMenuItems({
                     className={`flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-600 ${GLASS_MENU_ITEM}`}
                 >
                     <EyeOff className="h-3.5 w-3.5" />
-                    Deactivate
+                    停用
                 </button>
             )}
             {onDelete && (

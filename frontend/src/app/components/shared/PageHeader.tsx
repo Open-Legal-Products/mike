@@ -320,7 +320,7 @@ function PageHeaderDeleteActionControl({
     action: PageHeaderDeleteAction;
     disabled: boolean;
 }) {
-    const title = action.title ?? "Delete";
+    const title = action.title ?? "删除";
     return (
         <PageHeaderActionButton
             onClick={action.onClick}
@@ -348,7 +348,7 @@ function PageHeaderSearchActionControl({
 }) {
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
-    const placeholder = action.placeholder ?? "Search…";
+    const placeholder = action.placeholder ?? "搜索…";
 
     useEffect(() => {
         function handleClick(e: MouseEvent) {
@@ -468,8 +468,8 @@ function PageHeaderBreadcrumbs({ items }: { items: PageHeaderBreadcrumb[] }) {
                 <button
                     onClick={parent.onClick}
                     className="shrink-0 text-gray-400 transition-colors hover:text-gray-600 sm:hidden"
-                    title={parent.title ?? "Back"}
-                    aria-label={parent.title ?? "Back"}
+                    title={parent.title ?? "返回"}
+                    aria-label={parent.title ?? "返回"}
                 >
                     <ChevronLeft className="h-5 w-5" />
                 </button>

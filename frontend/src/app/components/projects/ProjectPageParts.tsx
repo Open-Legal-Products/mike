@@ -173,7 +173,7 @@ export function DocVersionHistory({
                     className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} bg-gray-50/80 py-2 pl-4 pr-2`}
                     style={treeNameCellStyle(depth)}
                 >
-                    <div>No version history.</div>
+                    <div>暂无版本历史。</div>
                 </div>
             </div>
         );
@@ -193,7 +193,7 @@ export function DocVersionHistory({
                     v.version_number >= 1
                         ? `${v.version_number}`
                         : v.source === "upload"
-                          ? "Original"
+                          ? "原始版本"
                           : "—";
                 const displayLabel = v.filename?.trim() || numberLabel;
                 const downloadFilename = v.filename?.trim() || filename;
@@ -328,7 +328,7 @@ export function DocVersionHistory({
                                               }
                                             : undefined
                                     }
-                                    renameLabel="Rename version"
+                                    renameLabel="重命名版本"
                                     onDownload={() =>
                                         onDownloadVersion(
                                             docId,
@@ -379,9 +379,9 @@ export function ProjectPageHeader({
         <PageHeader
             breadcrumbs={[
                 {
-                    label: "Projects",
+                    label: "项目",
                     onClick: onBackToProjects,
-                    title: "Back to Projects",
+                    title: "返回项目",
                 },
                 {
                     ...(project
@@ -400,12 +400,12 @@ export function ProjectPageHeader({
                         type: "search",
                         value: search,
                         onChange: onSearchChange,
-                        placeholder: "Search…",
+                        placeholder: "搜索…",
                     },
                     {
                         onClick: onOpenPeople,
                         iconOnly: true,
-                        title: "People with access",
+                        title: "有权限的成员",
                         icon: <Users className="h-4 w-4" />,
                     },
                     {
@@ -415,13 +415,13 @@ export function ProjectPageHeader({
                                 items={[
                                     {
                                         label: isOwner
-                                            ? "Edit details"
-                                            : "View details",
+                                            ? "编辑详情"
+                                            : "查看详情",
                                         icon: Pencil,
                                         onSelect: onOpenDetails,
                                     },
                                     {
-                                        label: "Delete",
+                                        label: "删除",
                                         icon: Trash2,
                                         onSelect: onDeleteProject,
                                         variant: "danger",
@@ -443,7 +443,7 @@ export function ProjectPageHeader({
                             ),
                             label: (
                                 <span className="hidden sm:inline">
-                                    New Chat
+                                    新建对话
                                 </span>
                             ),
                         },
@@ -457,12 +457,12 @@ export function ProjectPageHeader({
                             ),
                             label: (
                                 <span className="hidden sm:inline">
-                                    New Review
+                                    新建审查
                                 </span>
                             ),
                             tooltip:
                                 docsCount === 0
-                                    ? "Upload a document first"
+                                    ? "请先上传文档"
                                     : null,
                         },
                     ],

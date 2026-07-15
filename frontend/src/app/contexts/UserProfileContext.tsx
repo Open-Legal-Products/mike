@@ -116,7 +116,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 messageCreditsUsed: 0,
                 creditsResetDate: futureResetDate.toISOString(),
                 creditsRemaining: 999999, // temporarily unlimited
-                tier: "Free",
+                tier: "免费版",
                 titleModel: "gemini-3.1-flash-lite-preview",
                 tabularModel: "gemini-3-flash-preview",
                 mfaOnLogin: false,

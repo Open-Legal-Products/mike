@@ -44,9 +44,9 @@ import {
 type ReviewScope = "all" | "in-project" | "standalone";
 
 const REVIEW_SCOPES: { id: ReviewScope; label: string }[] = [
-    { id: "all", label: "All" },
-    { id: "in-project", label: "In Project" },
-    { id: "standalone", label: "Standalone" },
+    { id: "all", label: "全部" },
+    { id: "in-project", label: "项目内" },
+    { id: "standalone", label: "独立" },
 ];
 
 function formatDate(iso: string) {
@@ -211,9 +211,9 @@ export default function TabularReviewsPage() {
 
     const projectFilterButton = (
         <HeaderFilterDropdown
-            label="Filter by project"
+            label="按项目筛选"
             value={projectFilter}
-            allLabel="All Projects"
+            allLabel="全部项目"
             options={projects.map((project) => ({
                 value: project.id,
                 label: project.name,
@@ -229,7 +229,7 @@ export default function TabularReviewsPage() {
                     onClick={() => setActionsOpen((v) => !v)}
                     className="flex items-center gap-1 text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
                 >
-                    Actions
+                    操作
                     <ChevronDown className="h-3.5 w-3.5" />
                 </button>
                 {actionsOpen && (
@@ -238,7 +238,7 @@ export default function TabularReviewsPage() {
                             onClick={handleDeleteSelected}
                             className="w-full px-3 py-1.5 text-left text-xs text-red-600 transition-colors hover:bg-red-500/10"
                         >
-                            Delete
+                            删除
                         </button>
                     </div>
                 )}
@@ -255,18 +255,18 @@ export default function TabularReviewsPage() {
                         type: "search",
                         value: search,
                         onChange: setSearch,
-                        placeholder: "Search reviews…",
+                        placeholder: "搜索审查…",
                     },
                     {
                         type: "new",
                         onClick: () => setNewTROpen(true),
                         loading: creating,
-                        title: "New tabular review",
+                        title: "新建表格审查",
                     },
                 ]}
             >
                 <h1 className="text-2xl font-medium font-serif text-gray-900">
-                    Tabular Reviews
+                    表格审查
                 </h1>
             </PageHeader>
 
@@ -295,19 +295,19 @@ export default function TabularReviewsPage() {
                                     className={TABLE_CHECKBOX_CLASS}
                                 />
                             )}
-                            <span>Name</span>
+                            <span>名称</span>
                         </TableStickyCell>
                         <TableHeaderCell className="ml-auto w-24">
-                            Columns
+                            列
                         </TableHeaderCell>
-                        <TableHeaderCell className="w-24">Documents</TableHeaderCell>
+                        <TableHeaderCell className="w-24">文档</TableHeaderCell>
                         <TableHeaderCell className="w-40">
                             <div className="flex items-center gap-1">
-                                <span>Project</span>
+                                <span>项目</span>
                                 {projectFilterButton}
                             </div>
                         </TableHeaderCell>
-                        <TableHeaderCell className="w-32">Created</TableHeaderCell>
+                        <TableHeaderCell className="w-32">创建时间</TableHeaderCell>
                         <TableHeaderCell className="w-8" />
                     </TableHeaderRow>
                 }
@@ -349,23 +349,22 @@ export default function TabularReviewsPage() {
                             <>
                                 <Table2 className="h-8 w-8 text-gray-300 mb-4" />
                                 <p className="text-2xl font-medium font-serif text-gray-900">
-                                    Tabular Reviews
+                                    表格审查
                                 </p>
                                 <p className="mt-1 text-xs text-gray-400 max-w-xs text-left">
-                                    Extract data from documents into tables
-                                    using AI.
+                                    使用 AI 从文档中提取数据并生成表格。
                                 </p>
                                 <button
                                     onClick={() => setNewTROpen(true)}
                                     disabled={creating}
                                     className="mt-4 inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors shadow-md disabled:opacity-40"
                                 >
-                                    + Create New
+                                    + 新建
                                 </button>
                             </>
                         ) : (
                             <p className="text-sm text-gray-400">
-                                No reviews found
+                                未找到审查
                             </p>
                         )}
                     </TableEmptyState>
@@ -426,7 +425,7 @@ export default function TabularReviewsPage() {
                                             toggleOne(review.id)
                                         }
                                         label={
-                                            review.title ?? "Untitled Review"
+                                            review.title ?? "未命名审查"
                                         }
                                     />
                                     <TableCell className="ml-auto w-24">

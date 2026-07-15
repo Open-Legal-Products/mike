@@ -76,7 +76,7 @@ export function WorkflowPickerContent({
               [
                   workflow.metadata.title,
                   workflow.metadata.practice ?? "",
-                  workflow.is_system ? "System" : "Custom",
+                  workflow.is_system ? "系统" : "自定义",
               ]
                   .join(" ")
                   .toLowerCase()
@@ -86,10 +86,10 @@ export function WorkflowPickerContent({
     const resolvedEmptyMessage =
         emptyMessage ??
         (search
-            ? "No matches found"
+            ? "未找到匹配项"
             : workflowType === "all"
-              ? "No workflows found"
-              : `No ${workflowType} workflows found`);
+              ? "暂无工作流"
+              : `未找到${workflowType === "tabular" ? "表格审查" : "智能助理"}类工作流`);
     const handleSelectWorkflow = (workflow: Workflow | null) => {
         onSelect(workflow);
         setMobilePane(workflow ? "details" : "list");
@@ -109,7 +109,7 @@ export function WorkflowPickerContent({
                 <SearchBar
                     value={search}
                     onValueChange={onSearchChange}
-                    placeholder="Search workflows..."
+                    placeholder="搜索工作流..."
                 />
 
                 <div className="min-h-0 min-w-0 flex-1 overflow-y-auto rounded-sm pt-2">
@@ -175,8 +175,8 @@ export function WorkflowPickerContent({
                                         ) : (
                                             <span className="shrink-0 text-xs text-gray-400">
                                                 {workflow.is_system
-                                                    ? "System"
-                                                    : "Custom"}
+                                                    ? "系统"
+                                                    : "自定义"}
                                             </span>
                                         )}
                                     </button>
@@ -355,7 +355,7 @@ function WorkflowColumnPreview({ columns }: { columns: ColumnConfig[] }) {
         <div className="min-w-0 flex-1 space-y-px rounded-sm">
             {sortedColumns.length === 0 ? (
                 <p className="px-4 py-6 text-center text-xs text-gray-400">
-                    No columns defined
+                    未定义列
                 </p>
             ) : (
                 sortedColumns.map((column) => {
@@ -394,7 +394,7 @@ function WorkflowColumnPreview({ columns }: { columns: ColumnConfig[] }) {
                                     {column.tags && column.tags.length > 0 ? (
                                         <div>
                                             <p className="mb-1.5 font-sans text-[11px] font-medium text-gray-600">
-                                                Tags
+                                                标签
                                             </p>
                                             <div className="flex flex-wrap gap-1.5">
                                                 {column.tags.map(
@@ -412,7 +412,7 @@ function WorkflowColumnPreview({ columns }: { columns: ColumnConfig[] }) {
                                     ) : null}
                                     <div>
                                         <p className="mb-1 font-sans text-[11px] font-medium text-gray-600">
-                                            Prompt
+                                            提示词
                                         </p>
                                         <WorkflowPromptMarkdown
                                             content={

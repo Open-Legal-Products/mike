@@ -57,7 +57,7 @@ interface Props {
 export function ModelToggle({ value, onChange, apiKeys }: Props) {
     const [isOpen, setIsOpen] = useState(false);
     const selected = MODELS.find((m) => m.id === value);
-    const selectedLabel = selected?.label ?? "Model";
+    const selectedLabel = selected?.label ?? "模型";
     const selectedAvailable = apiKeys
         ? isModelAvailable(value, apiKeys)
         : true;
@@ -71,7 +71,7 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                     title={
                         !selectedAvailable
                             ? "API key missing for selected model"
-                            : "Choose model"
+                            : "选择模型"
                     }
                 >
                     {!selectedAvailable && (
@@ -111,7 +111,7 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                                         {!available && (
                                             <AlertCircle
                                                 className="h-3.5 w-3.5 text-red-500 ml-1"
-                                                aria-label="API key missing"
+                                                aria-label="缺少 API 密钥"
                                             />
                                         )}
                                         {m.id === value && available && (

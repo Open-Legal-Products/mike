@@ -13,7 +13,7 @@ import {
     ChevronLeft,
     Trash2,
 } from "lucide-react";
-import { MikeIcon } from "@/app/components/chat/mike-icon";
+import { PartnerIcon } from "@/app/components/chat/partner-icon";
 import {
     streamTabularChat,
     getTabularChats,
@@ -117,7 +117,7 @@ interface Props {
 // ---------------------------------------------------------------------------
 
 const THINKING_PHRASES = [
-    "Thinking...",
+    "思考中...",
     "Pondering...",
     "Analyzing...",
     "Reasoning...",
@@ -180,7 +180,7 @@ function ReasoningBlock({
                 <span className="font-medium ml-2">
                     {isStreaming
                         ? THINKING_PHRASES[phraseIdx]
-                        : "Thought process"}
+                        : "思考过程"}
                 </span>
                 {!isStreaming && (
                     <ChevronDown
@@ -219,7 +219,7 @@ function ReasoningBlock({
                                         setIsOpen(true);
                                     }}
                                     className="absolute left-1/2 bottom-2 z-10 -translate-x-1/2 text-gray-400 transition-colors hover:text-gray-600"
-                                    aria-label="Expand thought process"
+                                    aria-label="展开思考过程"
                                 >
                                     <ChevronDown className="h-3.5 w-3.5" />
                                 </button>
@@ -234,7 +234,7 @@ function ReasoningBlock({
                                 setIsOpen(false);
                             }}
                             className="mx-auto mt-2 flex text-gray-400 transition-colors hover:text-gray-600"
-                            aria-label="Minimise thought process"
+                            aria-label="收起思考过程"
                         >
                             <ChevronDown className="h-3.5 w-3.5 rotate-180" />
                         </button>
@@ -264,7 +264,7 @@ function DocReadBlock({
                 <div className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
             )}
             <span className="font-medium ml-2">
-                {isStreaming ? "Reading" : "Read"}
+                {isStreaming ? "正在阅读" : "Read"}
             </span>
             <span className="ml-1 text-gray-500">{label}</span>
         </div>
@@ -321,7 +321,7 @@ function TRResponseStatus({ isActive }: { isActive: boolean }) {
 
     return (
         <div className="w-full h-9 flex items-center mb-2">
-            <MikeIcon
+            <PartnerIcon
                 spin={isActive}
                 done={showDone && doneVisible}
                 mike={!(showDone && doneVisible)}
@@ -418,7 +418,7 @@ function TRAssistantMessage({
                     className="flex items-center text-sm text-gray-400 ml-1"
                 >
                     <div className="w-1.5 h-1.5 rounded-full border border-gray-400 border-t-transparent animate-spin shrink-0" />
-                    <span className="ml-2">Thinking...</span>
+                    <span className="ml-2">思考中...</span>
                 </div>
             );
         }
@@ -503,7 +503,7 @@ function TRAssistantMessage({
                             );
                         }
                         const subsequentContent = hasContentAfter(gIdx);
-                        // "Working" while at least one event in *this*
+                        // "处理中" while at least one event in *this*
                         // wrapper is actively streaming. Gaps between real
                         // events are bridged by `pushThinkingPlaceholder`
                         // so this check stays continuously true through
@@ -639,7 +639,7 @@ function TRChatInput({
                 <textarea
                     ref={textareaRef}
                     rows={1}
-                    placeholder="Ask a question about your documents..."
+                    placeholder="就您的文档提出问题..."
                     value={value}
                     onChange={(e) => {
                         setValue(e.target.value);
@@ -712,7 +712,7 @@ function HistoryDropdown({
                 <input
                     autoFocus
                     type="text"
-                    placeholder="Search chats…"
+                    placeholder="搜索对话…"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     className="flex-1 text-xs bg-transparent outline-none placeholder:text-gray-400 text-gray-700"
@@ -723,8 +723,8 @@ function HistoryDropdown({
                     <p className="px-3 py-2 text-xs text-gray-400">
                         {chats.filter((c) => c.id !== currentChatId).length ===
                         0
-                            ? "No previous chats."
-                            : "No matches."}
+                            ? "暂无历史对话。"
+                            : "无匹配结果。"}
                     </p>
                 ) : (
                     filtered.map((chat) => {
@@ -1723,7 +1723,7 @@ export function TRChatPanel({
                                     type: "content" as const,
                                     text: isAbort
                                         ? ""
-                                        : "An error occurred. Please try again.",
+                                        : "发生错误，请重试。",
                                 },
                             ],
                         };
@@ -1774,7 +1774,7 @@ export function TRChatPanel({
                 <div className="flex items-center gap-1 pl-2 pr-2 min-w-0">
                     <button
                         onClick={onClose}
-                        title="Close"
+                        title="关闭"
                         className="flex items-center justify-center h-7 w-7 shrink-0 rounded-md text-gray-600 hover:text-gray-900 transition-colors"
                     >
                         <ChevronLeft className="h-3.5 w-3.5" />
@@ -1798,7 +1798,7 @@ export function TRChatPanel({
                         className="min-w-0 overflow-x-hidden whitespace-nowrap scrollbar-none"
                     >
                         <span className="text-xs font-medium text-gray-700">
-                            {currentChatTitle ?? "New chat"}
+                            {currentChatTitle ?? "新对话"}
                         </span>
                     </div>
                 </div>
@@ -1806,7 +1806,7 @@ export function TRChatPanel({
                     <div ref={historyRef} className="relative">
                         <button
                             onClick={() => setHistoryOpen((v) => !v)}
-                            title="Chat history"
+                            title="对话历史"
                             className={`flex items-center justify-center h-7 w-7 rounded-md transition-colors ${historyOpen ? "text-gray-900" : "text-gray-600 hover:text-gray-900"}`}
                         >
                             <Clock className="h-3.5 w-3.5" />
@@ -1823,7 +1823,7 @@ export function TRChatPanel({
                     </div>
                     <button
                         onClick={handleNewChat}
-                        title="New chat"
+                        title="新对话"
                         className="flex items-center justify-center h-7 w-7 rounded-md text-gray-600 hover:text-gray-900 transition-colors"
                     >
                         <MessageSquarePlus className="h-3.5 w-3.5" />
@@ -1831,7 +1831,7 @@ export function TRChatPanel({
                     {currentChatId && (
                         <button
                             onClick={handleDeleteChat}
-                            title="Delete chat"
+                            title="删除对话"
                             className="flex items-center justify-center h-7 w-7 rounded-md text-gray-600 hover:text-red-600 transition-colors"
                         >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -1848,9 +1848,9 @@ export function TRChatPanel({
             >
                 {messages.length === 0 && !isLoadingMessages && (
                     <div className="flex flex-1 flex-col items-center justify-center gap-2">
-                        <MikeIcon size={24} />
+                        <PartnerIcon size={24} />
                         <p className="text-gray-400 font-serif text-center">
-                            Ask a question about this tabular review.
+                            就该表格审查提出问题。
                         </p>
                     </div>
                 )}

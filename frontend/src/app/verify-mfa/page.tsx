@@ -68,7 +68,7 @@ export default function VerifyMfaPage() {
                 setSelectedFactorId(verified[0]?.id ?? "");
                 if (verified.length === 0) {
                     setError(
-                        "No verified authenticator factor is available for this account.",
+                        "此账户没有可用的已验证身份验证器。",
                     );
                 }
             } catch (loadError) {
@@ -76,7 +76,7 @@ export default function VerifyMfaPage() {
                 setError(
                     loadError instanceof Error
                         ? loadError.message
-                        : "Unable to load authenticator verification.",
+                        : "无法加载身份验证信息。",
                 );
             } finally {
                 if (!cancelled) setLoading(false);
@@ -125,11 +125,10 @@ export default function VerifyMfaPage() {
             <div className={`w-full max-w-md ${authGlassCardClassName}`}>
                 <div className="mb-8 space-y-2">
                     <h1 className="text-2xl font-serif">
-                        Verify your identity
+                        验证身份
                     </h1>
                     <p className="text-sm text-gray-500">
-                        Enter the six-digit code from your authenticator app to
-                        continue.
+                        请输入身份验证器应用中的 6 位验证码以继续。
                     </p>
                 </div>
 
@@ -137,12 +136,11 @@ export default function VerifyMfaPage() {
                     {loading ? (
                         <div className="flex h-13 items-center justify-center text-sm text-gray-500">
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Loading authenticator...
+                            正在加载身份验证器...
                         </div>
                     ) : factors.length === 0 ? (
                         <p className="rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600">
-                            No verified authenticator factor is available for
-                            this session.
+                            当前会话没有可用的已验证身份验证器。
                         </p>
                     ) : (
                         <>
@@ -160,7 +158,7 @@ export default function VerifyMfaPage() {
                                             value={factor.id}
                                         >
                                             {factor.friendly_name ||
-                                                "Authenticator app"}
+                                                "身份验证器应用"}
                                         </option>
                                     ))}
                                 </select>
@@ -185,7 +183,7 @@ export default function VerifyMfaPage() {
                             disabled={verifying}
                             className="px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:text-gray-950 disabled:cursor-not-allowed disabled:text-gray-400"
                         >
-                            Cancel
+                            取消
                         </button>
                         <Button
                             type="button"
@@ -196,10 +194,10 @@ export default function VerifyMfaPage() {
                             {verifying ? (
                                 <span className="inline-flex items-center gap-1.5">
                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    Verifying...
+                                    验证中...
                                 </span>
                             ) : (
-                                "Verify"
+                                "验证"
                             )}
                         </Button>
                     </div>

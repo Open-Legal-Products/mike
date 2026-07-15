@@ -322,9 +322,9 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                     shrink
                     breadcrumbs={[
                         {
-                            label: "Workflows",
+                            label: "工作流",
                             onClick: () => router.push("/workflows"),
-                            title: "Back to Workflows",
+                            title: "返回工作流",
                         },
                         { loading: true, skeletonClassName: "w-40" },
                     ]}
@@ -344,7 +344,7 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
     if (notFound || !workflow) {
         return (
             <div className="flex-1 flex items-center justify-center">
-                <p className="text-gray-400 font-serif">Workflow not found.</p>
+                <p className="text-gray-400 font-serif">未找到工作流。</p>
             </div>
         );
     }
@@ -355,7 +355,7 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
         workflow.open_source_submission?.status === "pending";
     const workflowActionItems: HeaderActionsMenuItem[] = [
         {
-            label: "Download workflow",
+            label: "下载工作流",
             icon: Download,
             onSelect: () => downloadWorkflowZip(workflow, promptMd, columns),
         },
@@ -363,21 +363,21 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
 
     if (!readOnly) {
         workflowActionItems.push({
-            label: "Edit details",
+            label: "编辑详情",
             icon: Pencil,
             onSelect: () => setDetailsOpen(true),
         });
 
         if (canOpenSource) {
             workflowActionItems.push({
-                label: "Open source this",
+                label: "开源此工作流",
                 icon: Globe,
                 onSelect: () => setOpenSourceOpen(true),
             });
         }
 
         workflowActionItems.push({
-            label: "Delete",
+            label: "删除",
             icon: Trash2,
             variant: "danger",
             disabled: workflow.is_owner === false,
@@ -395,9 +395,9 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                 shrink
                 breadcrumbs={[
                     {
-                        label: "Workflows",
+                        label: "工作流",
                         onClick: () => router.push("/workflows"),
-                        title: "Back to Workflows",
+                        title: "返回工作流",
                     },
                     {
                         label: (
@@ -418,8 +418,8 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                                               <Check className="h-3.5 w-3.5 text-green-600" />
                                           ) : null}
                                           {saveStatus === "saving"
-                                              ? "Saving…"
-                                              : "Saved"}
+                                              ? "保存中…"
+                                              : "已保存"}
                                       </span>
                                   ),
                               },
@@ -429,7 +429,7 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                         canShare
                             ? {
                                   onClick: () => setShareOpen(true),
-                                  title: "Open workflow people",
+                                  title: "管理工作流成员",
                                   iconOnly: true,
                                   icon: <Users className="h-4 w-4" />,
                               }
@@ -438,7 +438,7 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                             type: "custom",
                             render: (
                                 <HeaderActionsMenu
-                                    title="Workflow actions"
+                                    title="工作流操作"
                                     items={workflowActionItems}
                                 />
                             ),
@@ -446,7 +446,7 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                     ],
                     [
                         {
-                            label: "Use",
+                            label: "使用",
                             icon: <Play className="h-3.5 w-3.5" />,
                             onClick: () => setUseOpen(true),
                         },
@@ -492,18 +492,18 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                     fetchPeople={fetchWorkflowPeople}
                     currentUserEmail={user?.email ?? null}
                     breadcrumb={[
-                        "Workflows",
+                        "工作流",
                         workflow.metadata.title,
-                        "People",
+                        "成员",
                     ]}
                     onSharedWithChange={handleWorkflowSharedWithChange}
                 />
             )}
             <ConfirmPopup
                 open={deleteOpen}
-                title="Delete workflow?"
-                message="This workflow will be permanently deleted."
-                confirmLabel="Delete"
+                title="删除工作流？"
+                message="此工作流将被永久删除。"
+                confirmLabel="删除"
                 confirmStatus={deleteStatus}
                 onConfirm={() => void handleDeleteWorkflow()}
                 onCancel={() => {
@@ -556,7 +556,7 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                                             onClick={() => setColActionsOpen((v) => !v)}
                                             className="flex items-center gap-1 text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
                                         >
-                                            Actions
+                                            操作
                                             <ChevronDown className="h-3.5 w-3.5" />
                                         </button>
                                         {colActionsOpen && (
@@ -573,7 +573,7 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                                                     }}
                                                     className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 transition-colors"
                                                 >
-                                                    Delete
+                                                    删除
                                                 </button>
                                             </div>
                                         )}
@@ -587,14 +587,14 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                                     className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
                                 >
                                     <Plus className="h-3.5 w-3.5" />
-                                    Add Column
+                                    添加列
                                 </button>
                             </div>
                         )}
                         {readOnly && (
                             <div className="flex h-10 shrink-0 items-center bg-gray-50 px-4 md:px-10">
                                 <span className="text-xs font-medium text-gray-500">
-                                    Read-only
+                                    只读
                                 </span>
                             </div>
                         )}
@@ -618,10 +618,10 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                                         aria-hidden="true"
                                     />
                                 )}
-                                <span>Column Title</span>
+                                <span>列标题</span>
                             </div>
-                            <div className="ml-auto w-36 shrink-0">Format</div>
-                            <div className="flex-1 min-w-0">Prompt</div>
+                            <div className="ml-auto w-36 shrink-0">格式</div>
+                            <div className="flex-1 min-w-0">提示词</div>
                             {!readOnly && <div className="w-8 shrink-0" />}
                         </div>
 
@@ -631,17 +631,17 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                                 <div className="flex flex-col items-start py-24 w-full max-w-xs mx-auto">
                                     <Plus className="h-8 w-8 text-gray-300 mb-4" />
                                     <p className="text-2xl font-medium font-serif text-gray-900">
-                                        Columns
+                                        列
                                     </p>
                                     <p className="mt-1 text-xs text-gray-400 text-left">
-                                        Add columns to define what this tabular review workflow extracts from each document.
+                                        添加列以定义此表格审查工作流从每份文档中提取的内容。
                                     </p>
                                     {!readOnly && (
                                         <button
                                             onClick={() => setAddColumnOpen(true)}
                                             className="mt-4 inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors shadow-md"
                                         >
-                                            + Add Column
+                                            + 添加列
                                         </button>
                                     )}
                                 </div>
@@ -745,26 +745,26 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
 
 function WorkflowMetadata({ workflow }: { workflow: Workflow }) {
     const fields: { label: string; value: string }[] = [
-        { label: "Type", value: workflow.metadata.type === "tabular" ? "Tabular" : "Assistant" },
-        { label: "Source", value: getWorkflowSourceLabel(workflow) },
+        { label: "类型", value: workflow.metadata.type === "tabular" ? "表格审查" : "智能助理" },
+        { label: "来源", value: getWorkflowSourceLabel(workflow) },
     ];
-    if (workflow.metadata.language) fields.push({ label: "Language", value: workflow.metadata.language });
-    if (workflow.metadata.version) fields.push({ label: "Version", value: workflow.metadata.version });
-    if (workflow.metadata.practice) fields.push({ label: "Practice", value: workflow.metadata.practice });
+    if (workflow.metadata.language) fields.push({ label: "语言", value: workflow.metadata.language });
+    if (workflow.metadata.version) fields.push({ label: "版本", value: workflow.metadata.version });
+    if (workflow.metadata.practice) fields.push({ label: "业务领域", value: workflow.metadata.practice });
     if (workflow.metadata.jurisdictions?.length) {
-        fields.push({ label: "Jurisdiction", value: workflow.metadata.jurisdictions.join(", ") });
+        fields.push({ label: "管辖区域", value: workflow.metadata.jurisdictions.join(", ") });
     }
     if (workflow.open_source_submission) {
         const statusLabels: Record<
             NonNullable<Workflow["open_source_submission"]>["status"],
             string
         > = {
-            pending: "Pending review",
-            approved: "Approved",
-            rejected: "Rejected",
+            pending: "审核中",
+            approved: "已通过",
+            rejected: "已拒绝",
         };
         fields.push({
-            label: "Open source",
+            label: "开源",
             value: statusLabels[workflow.open_source_submission.status],
         });
     }
@@ -807,9 +807,9 @@ function WorkflowMetadataSkeleton() {
 }
 
 function getWorkflowSourceLabel(workflow: Workflow) {
-    if (workflow.is_system) return "System";
+    if (workflow.is_system) return "系统";
     if (workflow.is_owner === false) {
-        return workflow.shared_by_name?.trim() || "Shared";
+        return workflow.shared_by_name?.trim() || "已共享";
     }
     return "User";
 }

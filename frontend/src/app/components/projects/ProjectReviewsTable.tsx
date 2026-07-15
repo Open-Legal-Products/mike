@@ -81,11 +81,11 @@ export function ProjectReviewsTable({
                                 className={TABLE_CHECKBOX_CLASS}
                             />
                         )}
-                        <span>Name</span>
+                        <span>名称</span>
                     </TableStickyCell>
-                    <TableHeaderCell className="ml-auto w-24">Columns</TableHeaderCell>
-                    <TableHeaderCell className="w-24">Documents</TableHeaderCell>
-                    <TableHeaderCell className="w-32">Created</TableHeaderCell>
+                    <TableHeaderCell className="ml-auto w-24">列</TableHeaderCell>
+                    <TableHeaderCell className="w-24">文档</TableHeaderCell>
+                    <TableHeaderCell className="w-32">创建时间</TableHeaderCell>
                     <TableHeaderCell className="w-8" />
                 </TableHeaderRow>
             }
@@ -96,17 +96,17 @@ export function ProjectReviewsTable({
                 <TableEmptyState>
                     <Table2 className="h-8 w-8 text-gray-300 mb-4" />
                     <p className="text-2xl font-medium font-serif text-gray-900">
-                        Tabular Reviews
+                        表格审查
                     </p>
                     <p className="mt-1 text-xs text-gray-400 max-w-xs">
-                        Extract data from project documents into tables using AI.
+                        使用 AI 从项目文档中提取数据生成表格。
                     </p>
                     <button
                         onClick={onCreateReview}
                         disabled={creatingReview || docs.length === 0}
                         className="mt-4 inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors shadow-md disabled:opacity-40"
                     >
-                        + Create New
+                        + 新建
                     </button>
                 </TableEmptyState>
             ) : (
@@ -151,7 +151,7 @@ export function ProjectReviewsTable({
                                             : [...prev, review.id],
                                     )
                                 }
-                                label={review.title ?? "Untitled Review"}
+                                label={review.title ?? "未命名审查"}
                             />
                             <TableCell className="ml-auto w-24">
                                 {review.columns_config?.length ?? 0}

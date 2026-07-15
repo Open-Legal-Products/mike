@@ -57,7 +57,7 @@ export function TabularReviewDetailsModal({
                           project.name +
                           (project.cm_number ? ` (#${project.cm_number})` : ""),
                   }))
-                : [{ value: "", label: "No projects found" }],
+                : [{ value: "", label: "暂无项目" }],
         [projects],
     );
     const hasChanges = useMemo(() => {
@@ -101,21 +101,21 @@ export function TabularReviewDetailsModal({
             open={open}
             onClose={onClose}
             breadcrumbs={[
-                "Tabular Reviews",
-                review.title || "Untitled Review",
-                "Details",
+                "表格审查",
+                review.title || "未命名审查",
+                "详情",
             ]}
             footerStatus={
                 error ? (
                     <span className="text-sm text-red-600">{error}</span>
                 ) : saved ? (
-                    <span className="text-sm text-gray-400">Updated</span>
+                    <span className="text-sm text-gray-400">更新时间</span>
                 ) : null
             }
             primaryAction={
                 canEdit
                     ? {
-                          label: saving ? "Saving..." : "Save changes",
+                          label: saving ? "保存中..." : "保存更改",
                           onClick: () => void handleSave(),
                           disabled:
                               saving ||
@@ -130,7 +130,7 @@ export function TabularReviewDetailsModal({
             <div className="space-y-6">
                 <div>
                     <ModalFieldLabel htmlFor="tabular-review-details-title">
-                        Review name
+                        审查名称
                     </ModalFieldLabel>
                     <ModalTextInput
                         id="tabular-review-details-title"
@@ -141,7 +141,7 @@ export function TabularReviewDetailsModal({
                             setSaved(false);
                             setError(null);
                         }}
-                        placeholder="Review name"
+                        placeholder="审查名称"
                         variant="minimal"
                         className="placeholder:text-gray-400"
                         disabled={!canEdit || saving}
@@ -151,7 +151,7 @@ export function TabularReviewDetailsModal({
 
                 {!lockProject && (
                     <div className="space-y-3">
-                        <ModalFieldLabel as="p">Project</ModalFieldLabel>
+                        <ModalFieldLabel as="p">项目</ModalFieldLabel>
                         <button
                             type="button"
                             onClick={() => {
@@ -178,7 +178,7 @@ export function TabularReviewDetailsModal({
                                 />
                             </span>
                             <span className="text-sm text-gray-600">
-                                Move under a project
+                                移动到项目下
                             </span>
                         </button>
 
@@ -192,7 +192,7 @@ export function TabularReviewDetailsModal({
                                     setSaved(false);
                                     setError(null);
                                 }}
-                                placeholder="Select project..."
+                                placeholder="选择项目..."
                                 disabled={
                                     !canEdit || saving || projects.length === 0
                                 }

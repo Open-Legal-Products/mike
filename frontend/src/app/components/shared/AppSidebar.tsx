@@ -17,17 +17,17 @@ import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import { useChatHistoryContext } from "@/app/contexts/ChatHistoryContext";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { MikeIcon } from "@/app/components/chat/mike-icon";
+import { PartnerIcon } from "@/app/components/chat/partner-icon";
 import { SidebarChatItem } from "@/app/components/shared/SidebarChatItem";
 import { listProjects } from "@/app/lib/mikeApi";
 import type { Project } from "@/app/components/shared/types";
 import { cn } from "@/app/lib/utils";
 
 const NAV_ITEMS = [
-    { href: "/assistant", label: "Assistant", icon: MessageSquare },
-    { href: "/projects", label: "Projects", icon: FolderOpen },
-    { href: "/tabular-reviews", label: "Tabular Review", icon: Table2 },
-    { href: "/workflows", label: "Workflows", icon: Library },
+    { href: "/assistant", label: "智能助理", icon: MessageSquare },
+    { href: "/projects", label: "项目", icon: FolderOpen },
+    { href: "/tabular-reviews", label: "表格审查", icon: Table2 },
+    { href: "/workflows", label: "工作流", icon: Library },
 ];
 
 interface AppSidebarProps {
@@ -117,7 +117,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
 
     const getUserTier = () => {
         if (!profile) return "";
-        return profile.tier || "Free";
+        return profile.tier || "免费版";
     };
 
     if (!user) return null;
@@ -155,7 +155,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                 href="/assistant"
                                 className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
                             >
-                                <MikeIcon size={22} />
+                                <PartnerIcon size={22} />
                                 <span
                                     className={`text-2xl font-light font-serif ${
                                         shouldAnimate ? "sidebar-fade-in" : ""
@@ -172,7 +172,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                             "h-9 w-9 p-2.5 items-center flex transition-colors",
                             "rounded-md hover:bg-gray-100",
                         )}
-                        title={isOpen ? "Close sidebar" : "Open sidebar"}
+                        title={isOpen ? "收起侧边栏" : "展开侧边栏"}
                     >
                         <PanelLeft className="h-4 w-4" />
                     </button>
@@ -225,7 +225,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
 
                 {isOpen && (
                     <div className="mt-4 flex-1 min-h-0 flex flex-col gap-4">
-                        {/* Recent Projects */}
+                        {/* 最近项目 */}
                         <div>
                             <button
                                 onClick={() => setProjectsCollapsed((v) => !v)}
@@ -233,7 +233,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                     shouldAnimate ? "sidebar-fade-in" : ""
                                 }`}
                             >
-                                <span>Recent Projects</span>
+                                <span>最近项目</span>
                                 <ChevronDown
                                     className={`h-3.5 w-3.5 transition-transform ${
                                         projectsCollapsed ? "-rotate-90" : ""
@@ -266,7 +266,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                                     : ""
                                             }`}
                                         >
-                                            No projects yet
+                                            暂无项目
                                         </div>
                                     ) : (
                                         <div
@@ -316,7 +316,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                             )}
                         </div>
 
-                        {/* Assistant History */}
+                        {/* 对话历史 */}
                         <div className="flex min-h-0 flex-1 flex-col">
                             <button
                                 onClick={() => setHistoryCollapsed((v) => !v)}
@@ -324,7 +324,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                     shouldAnimate ? "sidebar-fade-in" : ""
                                 }`}
                             >
-                                <span>Assistant History</span>
+                                <span>对话历史</span>
                                 <ChevronDown
                                     className={`h-3.5 w-3.5 transition-transform ${
                                         historyCollapsed ? "-rotate-90" : ""
@@ -358,7 +358,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                                 : ""
                                         }`}
                                     >
-                                        No chats yet
+                                        暂无对话
                                     </div>
                                 ) : (
                                     <>
@@ -406,7 +406,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                                         "hover:bg-gray-100",
                                                     )}
                                                 >
-                                                    Load more
+                                                    加载更多
                                                 </button>
                                             </div>
                                         )}
@@ -478,7 +478,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                         )}
                                     >
                                         <User className="h-4 w-4" />
-                                        Account Settings
+                                        账户设置
                                     </button>
                                 </div>
                             )}

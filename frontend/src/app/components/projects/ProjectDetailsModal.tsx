@@ -81,11 +81,11 @@ export function ProjectDetailsModal({
         <Modal
             open={open}
             onClose={onClose}
-            breadcrumbs={["Projects", project.name, "Details"]}
+            breadcrumbs={["项目", project.name, "详情"]}
             secondaryAction={
                 onShareProject
                     ? {
-                          label: "Share Project",
+                          label: "共享项目",
                           icon: <Users className="h-4 w-4" />,
                           onClick: onShareProject,
                       }
@@ -95,13 +95,13 @@ export function ProjectDetailsModal({
                 error ? (
                     <span className="text-sm text-red-600">{error}</span>
                 ) : saved ? (
-                    <span className="text-sm text-gray-400">Updated</span>
+                    <span className="text-sm text-gray-400">更新时间</span>
                 ) : null
             }
             primaryAction={
                 canEdit
                     ? {
-                          label: saving ? "Updating..." : "Update",
+                          label: saving ? "更新中..." : "更新",
                           onClick: () => void handleSave(),
                           disabled: saving || !hasChanges || !trimmedName,
                       }
@@ -112,7 +112,7 @@ export function ProjectDetailsModal({
             <div className="flex min-h-0 flex-1 flex-col gap-6 py-1">
                 <div>
                     <ModalFieldLabel htmlFor="project-details-name">
-                        Project name
+                        项目名称
                     </ModalFieldLabel>
                     <ModalTextInput
                         id="project-details-name"
@@ -123,14 +123,14 @@ export function ProjectDetailsModal({
                             setError(null);
                         }}
                         disabled={!canEdit || saving}
-                        placeholder="Add project name"
+                        placeholder="输入项目名称"
                         variant="minimal"
                     />
                 </div>
 
                 <div>
                     <ModalFieldLabel htmlFor="project-details-cm">
-                        CM number
+                        案号
                     </ModalFieldLabel>
                     <ModalTextInput
                         id="project-details-cm"
@@ -141,7 +141,7 @@ export function ProjectDetailsModal({
                             setError(null);
                         }}
                         disabled={!canEdit || saving}
-                        placeholder="Add a CM number..."
+                        placeholder="添加案号..."
                         variant="minimal"
                         className="text-xl text-gray-600"
                     />
@@ -149,7 +149,7 @@ export function ProjectDetailsModal({
 
                 <div>
                     <ModalFieldLabel htmlFor="project-details-practice">
-                        Practice
+                        业务领域
                     </ModalFieldLabel>
                     <ProjectPracticeField
                         id="project-details-practice"

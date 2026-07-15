@@ -22,12 +22,12 @@ export function AssistantWorkflowModal({
 }: Props) {
     const breadcrumbs = projectName
         ? [
-              "Projects",
+              "项目",
               `${projectName}${projectCmNumber ? ` (#${projectCmNumber})` : ""}`,
-              "Assistant",
-              "Add workflow",
+              "智能助理",
+              "添加工作流",
           ]
-        : ["Assistant", "Add workflow"];
+        : ["智能助理", "添加工作流"];
 
     return (
         <WorkflowPickerModal

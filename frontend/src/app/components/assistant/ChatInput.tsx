@@ -221,7 +221,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                         <textarea
                             ref={textareaRef}
                             rows={1}
-                            placeholder="Ask a question about your documents..."
+                            placeholder="就您的文档提出问题..."
                             value={value}
                             onChange={handleChange}
                             onKeyDown={handleKeyDown}
@@ -248,7 +248,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                                 <button
                                     type="button"
                                     onClick={() => setWorkflowModalOpen(true)}
-                                    aria-label="Open workflows"
+                                    aria-label="打开工作流"
                                     className={cn(
                                         "flex items-center gap-1.5 rounded-lg px-2 h-8 text-sm transition-colors",
                                         selectedWorkflow
@@ -268,7 +268,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                                                 : "hidden sm:inline"
                                         }
                                     >
-                                        Workflows
+                                        工作流
                                     </span>
                                 </button>
                             )}
@@ -276,7 +276,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                                 <button
                                     type="button"
                                     onClick={onProjectsClick}
-                                    aria-label="Open projects"
+                                    aria-label="打开项目"
                                     className={cn(
                                         "flex items-center gap-1.5 rounded-lg px-2 h-8 text-sm text-gray-400 hover:text-gray-700 transition-colors",
                                         "hover:bg-white/55",
@@ -284,7 +284,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                                 >
                                     <FolderOpen className="h-3.5 w-3.5" />
                                     <span className="hidden sm:inline">
-                                        Projects
+                                        项目
                                     </span>
                                 </button>
                             )}
@@ -324,7 +324,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                 open={docSelectorOpen}
                 onClose={() => setDocSelectorOpen(false)}
                 onSelect={handleAddDocsFromSelector}
-                breadcrumb={["Assistant", "Add Documents"]}
+                breadcrumb={["智能助理", "添加文档"]}
             />
             <AssistantWorkflowModal
                 open={workflowModalOpen}

@@ -42,13 +42,13 @@ export function SelectAssistantProjectModal({ open, onClose }: Props) {
         <ProjectPickerModal
             open={open}
             onClose={onClose}
-            breadcrumbs={["Assistant", "Start Chat in a Project"]}
+            breadcrumbs={["智能助理", "在项目中开始对话"]}
             projects={projects}
             loading={loading}
             selectedId={selectedId}
             onSelect={setSelectedId}
             primaryAction={{
-                label: creating ? "Creating…" : "Continue",
+                label: creating ? "创建中…" : "继续",
                 onClick: handleContinue,
                 disabled: !selectedId || creating,
             }}

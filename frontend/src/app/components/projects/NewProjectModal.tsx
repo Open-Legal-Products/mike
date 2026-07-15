@@ -112,7 +112,7 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
 
     function validateShareUser(email: string) {
         if (ownEmail && email === ownEmail) {
-            return "You cannot share a project with yourself.";
+            return "不能将项目共享给自己。";
         }
         if (
             sharedUsers.some(
@@ -149,14 +149,14 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
             open={open}
             onClose={handleClose}
             breadcrumbs={[
-                "Projects",
-                "New project",
-                step === "details" ? "Details" : "Add Documents",
+                "项目",
+                "新建项目",
+                step === "details" ? "详情" : "添加文档",
             ]}
             secondaryAction={
                 step === "documents"
                     ? {
-                          label: `Upload${pendingFiles.length > 0 ? ` (${pendingFiles.length})` : ""}`,
+                          label: `上传${pendingFiles.length > 0 ? ` (${pendingFiles.length})` : ""}`,
                           icon: <Upload className="h-3.5 w-3.5" />,
                           onClick: () => fileInputRef.current?.click(),
                           disabled: loading,
@@ -166,7 +166,7 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
             cancelAction={
                 step === "documents"
                     ? {
-                          label: "Back",
+                          label: "返回",
                           onClick: () => setStep("details"),
                           disabled: loading,
                       }
@@ -175,7 +175,7 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
             primaryAction={
                 step === "details"
                     ? {
-                          label: "Next",
+                          label: "下一步",
                           type: "button",
                           onClick: (event) => {
                               event.preventDefault();
@@ -184,7 +184,7 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
                           disabled: !name.trim() || loading,
                       }
                     : {
-                          label: loading ? "Creating…" : "Create project",
+                          label: loading ? "创建中…" : "创建项目",
                           type: "submit",
                           form: formId,
                           name: "modalAction",
@@ -209,14 +209,14 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
                     <div className="space-y-6">
                         <div>
                             <ModalFieldLabel htmlFor="new-project-name">
-                                Project name
+                                项目名称
                             </ModalFieldLabel>
                             <ModalTextInput
                                 id="new-project-name"
                                 type="text"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
-                                placeholder="Add project name"
+                                placeholder="输入项目名称"
                                 variant="minimal"
                                 autoFocus
                             />
@@ -224,14 +224,14 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
 
                         <div>
                             <ModalFieldLabel htmlFor="new-project-cm-number">
-                                CM number
+                                案号
                             </ModalFieldLabel>
                             <ModalTextInput
                                 id="new-project-cm-number"
                                 type="text"
                                 value={cmNumber}
                                 onChange={(e) => setCmNumber(e.target.value)}
-                                placeholder="Add a CM number..."
+                                placeholder="添加案号..."
                                 variant="minimal"
                                 className="text-xl text-gray-600"
                             />
@@ -239,7 +239,7 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
 
                         <div>
                             <ModalFieldLabel htmlFor="new-project-practice">
-                                Practice
+                                业务领域
                             </ModalFieldLabel>
                             <ProjectPracticeField
                                 id="new-project-practice"
@@ -250,12 +250,12 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
 
                         <div className="space-y-2">
                             <ModalFieldLabel as="p">
-                                Share with
+                                共享给
                             </ModalFieldLabel>
                             <AddUserInput
                                 onAdd={handleAddShareUser}
                                 validateEmail={validateShareUser}
-                                placeholder="Add colleagues by email..."
+                                placeholder="通过邮箱添加同事..."
                             />
                             {sharedUsers.length > 0 && (
                                 <ul className="space-y-1 pt-1">
@@ -297,7 +297,7 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
                                                         )
                                                     }
                                                     className="self-center inline-flex items-center rounded-full px-2 py-1 text-xs text-gray-500 transition-colors hover:text-red-600"
-                                                    aria-label={`Remove ${entry.email}`}
+                                                    aria-label={`移除 ${entry.email}`}
                                                 >
                                                     <X className="h-3 w-3" />
                                                 </button>
@@ -316,7 +316,7 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
                             loading={dirLoading}
                             selectedIds={selectedDocIds}
                             onChange={setSelectedDocIds}
-                            emptyMessage="No existing documents"
+                            emptyMessage="暂无已有文档"
                             searchable
                             searchAutoFocus
                             showProjectTabs

@@ -11,9 +11,9 @@ import { ModalSegmentedToggle } from "../modals/ModalSegmentedToggle";
 import { ModalSelect } from "../modals/ModalSelect";
 import { ModalTextInput } from "../modals/ModalTextInput";
 
-const DEFAULT_LANGUAGE = "English";
-const DEFAULT_PRACTICE = "General Transactions";
-const DEFAULT_JURISDICTION = "General";
+const DEFAULT_LANGUAGE = "中文";
+const DEFAULT_PRACTICE = "一般交易";
+const DEFAULT_JURISDICTION = "通用";
 const LANGUAGE_OPTIONS = [
     "English",
     "Chinese",
@@ -57,7 +57,7 @@ const LANGUAGE_OPTIONS = [
     "Other",
 ] as const;
 const JURISDICTION_OPTIONS = [
-    "General",
+    "通用",
     "United States",
     "England and Wales",
     "European Union",
@@ -369,7 +369,7 @@ export function NewWorkflowModal({
             resetForm();
             onClose();
         } catch (err: unknown) {
-            setError((err as Error).message || `Failed to ${isEditing ? "update" : "create"} workflow`);
+            setError((err as Error).message || `${isEditing ? "更新" : "创建"}工作流失败`);
         } finally {
             setLoading(false);
         }
@@ -416,17 +416,17 @@ export function NewWorkflowModal({
             open={open}
             onClose={handleClose}
             breadcrumbs={[
-                "Workflows",
-                isEditing ? "Edit workflow" : "New workflow",
+                "工作流",
+                isEditing ? "编辑工作流" : "新建工作流",
             ]}
             primaryAction={{
                 label: loading
                     ? isEditing
-                        ? "Saving…"
-                        : "Creating…"
+                        ? "保存中…"
+                        : "创建中…"
                     : isEditing
-                      ? "Save changes"
-                      : "Create workflow",
+                      ? "保存更改"
+                      : "创建工作流",
                 type: "submit",
                 form: formId,
                 disabled: !title.trim() || loading,
@@ -434,7 +434,7 @@ export function NewWorkflowModal({
             secondaryAction={
                 !isEditing && type === "assistant"
                     ? {
-                          label: importedSkillName ?? "Upload markdown",
+                          label: importedSkillName ?? "上传 Markdown",
                           icon: <Upload className="h-3.5 w-3.5" />,
                           onClick: () => markdownInputRef.current?.click(),
                           disabled: loading,
@@ -450,14 +450,14 @@ export function NewWorkflowModal({
                 <div className="space-y-6">
                     <div>
                         <ModalFieldLabel htmlFor="workflow-title">
-                            Title
+                            标题
                         </ModalFieldLabel>
                         <ModalTextInput
                             id="workflow-title"
                             type="text"
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
-                            placeholder="Add workflow name"
+                            placeholder="输入工作流名称"
                             variant="minimal"
                             autoFocus
                         />
@@ -465,19 +465,19 @@ export function NewWorkflowModal({
 
                     {!isEditing && (
                         <div>
-                            <ModalFieldLabel as="p">Type</ModalFieldLabel>
+                            <ModalFieldLabel as="p">类型</ModalFieldLabel>
                             <ModalSegmentedToggle
                                 value={type}
                                 onChange={setType}
                                 options={[
                                     {
                                         value: "assistant",
-                                        label: "Assistant",
+                                        label: "智能助理",
                                         icon: MessageSquare,
                                     },
                                     {
                                         value: "tabular",
-                                        label: "Tabular",
+                                        label: "表格审查",
                                         icon: Table2,
                                     },
                                 ]}
@@ -488,7 +488,7 @@ export function NewWorkflowModal({
                     <div className="grid gap-5 md:grid-cols-2">
                         <div>
                             <ModalFieldLabel htmlFor="workflow-language">
-                                Language
+                                语言
                             </ModalFieldLabel>
                             <ModalSelect
                                 id="workflow-language"
@@ -520,7 +520,7 @@ export function NewWorkflowModal({
                                     onChange={(e) =>
                                         setCustomLanguage(e.target.value)
                                     }
-                                    placeholder="Enter language…"
+                                    placeholder="输入语言…"
                                     className="mt-2"
                                 />
                             )}
@@ -528,7 +528,7 @@ export function NewWorkflowModal({
 
                         <div>
                             <ModalFieldLabel htmlFor="workflow-practice">
-                                Practice area
+                                业务领域
                             </ModalFieldLabel>
                             <ModalSelect
                                 id="workflow-practice"
@@ -560,7 +560,7 @@ export function NewWorkflowModal({
                                     onChange={(e) =>
                                         setCustomPractice(e.target.value)
                                     }
-                                    placeholder="Enter practice area…"
+                                    placeholder="输入业务领域…"
                                     className="mt-2"
                                 />
                             )}
@@ -569,7 +569,7 @@ export function NewWorkflowModal({
 
                     <div>
                         <ModalFieldLabel htmlFor="workflow-jurisdiction">
-                            Jurisdiction
+                            管辖区域
                         </ModalFieldLabel>
                         <ModalSelect
                             id="workflow-jurisdiction"
@@ -602,8 +602,8 @@ export function NewWorkflowModal({
                                 options={jurisdictionRegionOptions}
                                 placeholder={
                                     jurisdiction === "United States"
-                                        ? "Select state..."
-                                        : "Select province..."
+                                        ? "选择州..."
+                                        : "选择省/地区..."
                                 }
                                 open={openDropdown === "jurisdictionRegion"}
                                 onOpenChange={(nextOpen) =>
@@ -629,7 +629,7 @@ export function NewWorkflowModal({
                                 onChange={(e) =>
                                     setCustomJurisdiction(e.target.value)
                                 }
-                                placeholder="Enter jurisdiction…"
+                                placeholder="输入管辖区域…"
                                 className="mt-2"
                             />
                         )}

@@ -91,7 +91,7 @@ export default function AccountPage() {
                 return;
             }
             setDeleteConfirm(false);
-            alert("Failed to delete account. Please try again.");
+            alert("删除账户失败，请重试。");
         }
     };
 
@@ -116,7 +116,7 @@ export default function AccountPage() {
             setEmailStatus(
                 pendingEmail
                     ? `Confirmation sent to ${pendingEmail}. Your current email remains ${updatedUser.email} until the change is confirmed.`
-                    : "Email updated.",
+                    : "邮箱已更新。",
             );
             setTimeout(() => setEmailSaved(false), 2000);
         } catch (error: unknown) {
@@ -124,7 +124,7 @@ export default function AccountPage() {
             const message =
                 error instanceof Error
                     ? error.message
-                    : "Failed to update email. Please try again.";
+                    : "更新邮箱失败，请重试。";
 
             if (isAlreadyRegisteredEmailError(message)) {
                 setEmail(user?.pendingEmail || user?.email || "");
@@ -147,7 +147,7 @@ export default function AccountPage() {
             setSaved(true);
             setTimeout(() => setSaved(false), 2000);
         } else {
-            alert("Failed to update display name. Please try again.");
+            alert("更新显示名称失败，请重试。");
         }
     };
 
@@ -160,7 +160,7 @@ export default function AccountPage() {
             setOrgSaved(true);
             setTimeout(() => setOrgSaved(false), 2000);
         } else {
-            alert("Failed to update organisation. Please try again.");
+            alert("更新所属机构失败，请重试。");
         }
     };
 
@@ -171,13 +171,13 @@ export default function AccountPage() {
             {/* Profile Settings */}
             <section className="space-y-3">
                 <h2 className="text-2xl font-medium font-serif text-gray-900">
-                    Profile
+                    个人资料
                 </h2>
                 <AccountSection className="p-4">
                     <div className="divide-y divide-gray-200">
                         <div className="pb-4">
                             <label className="text-sm text-gray-600 block mb-2">
-                                Display Name
+                                显示名称
                             </label>
                             <div className="space-y-2">
                                 <Input
@@ -186,7 +186,7 @@ export default function AccountPage() {
                                     onChange={(e) =>
                                         setDisplayName(e.target.value)
                                     }
-                                    placeholder="Enter your name"
+                                    placeholder="请输入姓名"
                                     className={accountGlassInputClassName}
                                 />
                                 <div className="flex justify-end">
@@ -201,11 +201,11 @@ export default function AccountPage() {
                                         className="text-xs font-medium text-gray-700 transition-colors hover:text-gray-950 disabled:cursor-not-allowed disabled:text-gray-400"
                                     >
                                         {isSavingName ? (
-                                            "Saving..."
+                                            "保存中..."
                                         ) : saved ? (
-                                            "Saved"
+                                            "已保存"
                                         ) : (
-                                            "Save"
+                                            "保存"
                                         )}
                                     </button>
                                 </div>
@@ -213,7 +213,7 @@ export default function AccountPage() {
                         </div>
                         <div className="pt-4">
                             <label className="text-sm text-gray-600 block mb-2">
-                                Organisation
+                                所属机构
                             </label>
                             <div className="space-y-2">
                                 <Input
@@ -222,7 +222,7 @@ export default function AccountPage() {
                                     onChange={(e) =>
                                         setOrganisation(e.target.value)
                                     }
-                                    placeholder="Enter your organisation"
+                                    placeholder="请输入所属机构"
                                     className={accountGlassInputClassName}
                                 />
                                 <div className="flex justify-end">
@@ -238,11 +238,11 @@ export default function AccountPage() {
                                         className="text-xs font-medium text-gray-700 transition-colors hover:text-gray-950 disabled:cursor-not-allowed disabled:text-gray-400"
                                     >
                                         {isSavingOrg ? (
-                                            "Saving..."
+                                            "保存中..."
                                         ) : orgSaved ? (
-                                            "Saved"
+                                            "已保存"
                                         ) : (
-                                            "Save"
+                                            "保存"
                                         )}
                                     </button>
                                 </div>
@@ -255,7 +255,7 @@ export default function AccountPage() {
             {/* Email */}
             <section className="space-y-3">
                 <h2 className="text-2xl font-medium font-serif text-gray-900">
-                    Email
+                    邮箱
                 </h2>
                 <AccountSection className="p-4">
                     <div className="space-y-2">
@@ -268,7 +268,7 @@ export default function AccountPage() {
                                 setEmailWarning(null);
                                 setEmailSaved(false);
                             }}
-                            placeholder="Enter your email"
+                            placeholder="请输入邮箱"
                             className={accountGlassInputClassName}
                         />
                         {emailStatus ? (
@@ -277,12 +277,12 @@ export default function AccountPage() {
                             </p>
                         ) : user.pendingEmail ? (
                             <p className="text-xs text-gray-500">
-                                Pending confirmation: {user.pendingEmail}
+                                待确认：{user.pendingEmail}
                             </p>
                         ) : null}
                         {emailStatus && (
                             <p className="text-xs text-gray-400">
-                                Current email: {user.email}
+                                当前邮箱：{user.email}
                             </p>
                         )}
                         <div className="flex justify-end">
@@ -299,11 +299,11 @@ export default function AccountPage() {
                                 className="text-xs font-medium text-gray-700 transition-colors hover:text-gray-950 disabled:cursor-not-allowed disabled:text-gray-400"
                             >
                                 {isSavingEmail ? (
-                                    "Saving..."
+                                    "保存中..."
                                 ) : emailSaved ? (
-                                    "Saved"
+                                    "已保存"
                                 ) : (
-                                    "Save"
+                                    "保存"
                                 )}
                             </button>
                         </div>
@@ -314,12 +314,12 @@ export default function AccountPage() {
             {/* Plan */}
             <section className="space-y-3">
                 <h2 className="text-2xl font-medium font-serif text-gray-900">
-                    Usage Plan
+                    使用方案
                 </h2>
                 <AccountSection className="p-4">
                     <div>
                         <p className="text-base font-medium text-gray-500 capitalize">
-                            {profile?.tier || "Free"}
+                            {profile?.tier || "免费版"}
                         </p>
                     </div>
                 </AccountSection>
@@ -328,7 +328,7 @@ export default function AccountPage() {
             {/* Actions */}
             <section className="space-y-3">
                 <h2 className="text-2xl font-medium font-serif text-gray-900">
-                    Actions
+                    操作
                 </h2>
                 <Button
                     variant="outline"
@@ -336,23 +336,22 @@ export default function AccountPage() {
                     className="w-full gap-1.5 rounded-lg border border-transparent bg-gray-950 px-3 text-white shadow-none transition-colors hover:bg-gray-900 hover:text-white active:bg-black sm:w-auto"
                 >
                     <LogOut className="h-4 w-4 shrink-0" />
-                    Sign Out
+                    退出登录
                 </Button>
             </section>
 
             {/* Danger Zone */}
             <section className="space-y-3">
                 <h2 className="text-2xl font-medium font-serif text-red-600">
-                    Danger Zone
+                    危险操作
                 </h2>
                 <AccountSection className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="space-y-1">
                         <p className="text-sm font-medium text-gray-900">
-                            Delete account
+                            删除账户
                         </p>
                         <p className="text-sm text-gray-500">
-                            Permanently delete your account and all associated
-                            data. This action cannot be undone.
+                            永久删除您的账户及所有相关数据。此操作无法撤销。
                         </p>
                     </div>
                     <Button
@@ -362,17 +361,17 @@ export default function AccountPage() {
                         className={`w-full shrink-0 gap-1.5 sm:w-auto ${accountGlassDangerOutlineButtonClassName}`}
                     >
                         <Trash2 className="h-4 w-4 shrink-0" />
-                        Delete account
+                        删除账户
                     </Button>
                 </AccountSection>
             </section>
             <ConfirmPopup
                 open={deleteConfirm}
-                title="Delete account?"
-                message="This will permanently delete your account and all associated data. This action cannot be undone."
-                confirmLabel="Delete"
+                title="删除账户？"
+                message="将永久删除您的账户及所有相关数据。此操作无法撤销。"
+                confirmLabel="删除"
                 confirmStatus={isDeleting ? "loading" : "idle"}
-                cancelLabel="Cancel"
+                cancelLabel="取消"
                 onCancel={() => {
                     if (isDeleting) return;
                     setDeleteConfirm(false);
@@ -381,7 +380,7 @@ export default function AccountPage() {
             />
             <WarningPopup
                 open={!!emailWarning}
-                title="Email already registered"
+                title="该邮箱已被注册"
                 message={emailWarning}
                 onClose={() => setEmailWarning(null)}
             />
@@ -393,8 +392,8 @@ export default function AccountPage() {
                     setAccountDeleteMfaOpen(false);
                     void handleDeleteAccount();
                 }}
-                title="Two-factor verification required"
-                message="Account deletion is sensitive. Enter a code from your authenticator app to continue."
+                title="需要双重验证"
+                message="删除账户属于敏感操作。请输入身份验证器应用中的验证码以继续。"
             />
             <MfaVerificationPopup
                 open={emailMfaOpen}
@@ -404,8 +403,8 @@ export default function AccountPage() {
                     setEmailMfaOpen(false);
                     void handleSaveEmail();
                 }}
-                title="Two-factor verification required"
-                message="Email changes are sensitive. Enter a code from your authenticator app to continue."
+                title="需要双重验证"
+                message="修改邮箱属于敏感操作。请输入身份验证器应用中的验证码以继续。"
             />
         </div>
     );

@@ -116,16 +116,16 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
         <Modal
             open
             onClose={onClose}
-            breadcrumbs={["Workflows", "Edit column"]}
+            breadcrumbs={["工作流", "编辑列"]}
             primaryAction={{
-                label: "Save changes",
+                label: "保存更改",
                 type: "submit",
                 form: formId,
                 disabled: !draft.name.trim() || !draft.prompt.trim(),
             }}
-            cancelAction={{ label: "Cancel", onClick: onClose }}
+            cancelAction={{ label: "取消", onClick: onClose }}
             secondaryAction={{
-                label: "Delete",
+                label: "删除",
                 variant: "danger",
                 onClick: onDelete,
             }}
@@ -137,7 +137,7 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
             >
                 <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-5 pt-2">
                         <ModalFieldLabel htmlFor="workflow-column-name">
-                            Column title
+                            列标题
                         </ModalFieldLabel>
                         {/* Name row */}
                         <div className="flex items-start gap-2">
@@ -160,14 +160,14 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
                                             } : {}),
                                         });
                                     }}
-                                    placeholder="Column name"
+                                    placeholder="列名称"
                                     className="flex-1"
                                     autoFocus
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setPresetsOpen((v) => !v)}
-                                    title="Column presets"
+                                    title="列预设"
                                     className="mt-1.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100/70 hover:text-gray-700"
                                 >
                                     <ChevronDown className={`h-4 w-4 transition-transform ${presetsOpen ? "rotate-180" : ""}`} />
@@ -179,7 +179,7 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
                                             onClick={() => { update({ name: "", prompt: "", format: "text", tags: [], tagInput: "" }); setPresetsOpen(false); }}
                                             className="w-full px-3 py-2 text-left text-sm text-gray-400 transition-all hover:bg-gray-100/70 border-b border-gray-100"
                                         >
-                                            No Preset
+                                            无预设
                                         </button>
                                         {PROMPT_PRESETS.map((preset) => (
                                             <button
@@ -202,7 +202,7 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
                         {/* Format */}
                         <div className="mt-4">
                             <ModalFieldLabel htmlFor="workflow-column-format">
-                                Format
+                                格式
                             </ModalFieldLabel>
                             <ModalSelect
                                 id="workflow-column-format"
@@ -227,7 +227,7 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
                         {draft.format === "tag" && (
                             <div className="mt-3">
                                 <ModalFieldLabel htmlFor="workflow-column-tag">
-                                    Tags
+                                    标签
                                 </ModalFieldLabel>
                                 <div className="mt-1 flex flex-wrap gap-1.5 rounded-md border border-gray-200 px-2 py-1.5 focus-within:border-gray-400">
                                     {draft.tags.map((tag, tagIdx) => (
@@ -253,11 +253,11 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
                                         onChange={(e) => update({ tagInput: e.target.value })}
                                         onKeyDown={handleTagKeyDown}
                                         onBlur={commitTag}
-                                        placeholder="Add tag…"
+                                        placeholder="添加标签…"
                                         className="min-w-[80px] flex-1 font-sans text-sm text-gray-700 placeholder:text-gray-400"
                                     />
                                 </div>
-                                <p className="mt-1 text-xs text-gray-400">Press Enter or comma to add a tag.</p>
+                                <p className="mt-1 text-xs text-gray-400">按回车或逗号添加标签。</p>
                             </div>
                         )}
 
@@ -267,7 +267,7 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
                                 htmlFor="workflow-column-prompt"
                                 className="mb-0"
                             >
-                                Prompt
+                                提示词
                             </ModalFieldLabel>
                             <button
                                 type="button"
@@ -280,7 +280,7 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
                                 ) : (
                                     <Plus className="h-4 w-4" />
                                 )}
-                                Auto-Generate Prompt
+                                Auto-Generate 提示词
                             </button>
                         </div>
                         <ModalTextarea
@@ -288,7 +288,7 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
                             rows={6}
                             value={draft.prompt}
                             onChange={(e) => update({ prompt: e.target.value })}
-                            placeholder="Write the analysis prompt — describe what Mike should extract from each document for this column…"
+                            placeholder="编写分析提示词 — 说明应从每份文档中提取哪些信息到此列…"
                             className="mt-2 min-h-36"
                         />
                 </div>

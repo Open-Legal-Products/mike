@@ -53,7 +53,7 @@ export function TrackedChangeHeader({
             <div className={`${PANEL_GLASS_SURFACE} px-2 py-2`}>
                 <div className="mb-1 flex items-center gap-2">
                     <p className="text-xs font-medium text-gray-700">
-                        Tracked Change
+                        修订痕迹
                         {changeNumber !== undefined ? ` ${changeNumber}` : ""}
                     </p>
                     <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -214,7 +214,7 @@ function EditResolveButtons({
                 onClick={() => handle("accept")}
                 disabled={inFlight || resolved}
             >
-                {status === "accepted" ? "Accepted" : "Accept"}
+                {status === "accepted" ? "已接受" : "接受"}
             </PillButton>
             <PillButton
                 tone="white"
@@ -222,7 +222,7 @@ function EditResolveButtons({
                 onClick={() => handle("reject")}
                 disabled={inFlight || resolved}
             >
-                {status === "rejected" ? "Rejected" : "Reject"}
+                {status === "rejected" ? "已拒绝" : "拒绝"}
             </PillButton>
         </div>
     );

@@ -119,7 +119,7 @@ function VerificationCodeInput({
         <div
             className="flex justify-center gap-2"
             role="group"
-            aria-label="Six digit verification code"
+            aria-label="六位验证码"
         >
             {digits.map((digit, index) => (
                 <input
@@ -138,7 +138,7 @@ function VerificationCodeInput({
                     onPaste={handlePaste}
                     onKeyDown={(event) => handleKeyDown(event, index)}
                     className="h-11 w-10 rounded-lg border border-transparent bg-gray-100 text-center text-lg font-medium text-gray-950 shadow-none outline-none transition-colors focus:border-gray-200 focus:ring-2 focus:ring-gray-300/45 disabled:cursor-not-allowed disabled:opacity-45"
-                    aria-label={`Verification code digit ${index + 1}`}
+                    aria-label={`验证码第 ${index + 1} 位`}
                     maxLength={1}
                 />
             ))}
@@ -267,7 +267,7 @@ export default function SecurityPage() {
                 error = retry.error;
             }
             if (error) throw error;
-            if (!data) throw new Error("Failed to start MFA setup.");
+            if (!data) throw new Error("启动双重验证设置失败。");
             traceMfa("[security/mfa] enrollment created", {
                 factorId: data.id,
             });
@@ -293,7 +293,7 @@ export default function SecurityPage() {
             setStatus(
                 error instanceof Error
                     ? error.message
-                    : "Failed to start MFA setup.",
+                    : "启动双重验证设置失败。",
             );
         } finally {
             setBusy(false);
@@ -340,13 +340,13 @@ export default function SecurityPage() {
             setSetupModalOpen(false);
             setVerificationCode("");
             setSetupKeyCopied(false);
-            setStatus("MFA enabled.");
+            setStatus("双重验证已启用。");
             await refreshMfaState();
         } catch (error) {
             setStatus(
                 error instanceof Error
                     ? error.message
-                    : "Failed to verify MFA code.",
+                    : "验证码校验失败。",
             );
         } finally {
             setBusy(false);
@@ -406,7 +406,7 @@ export default function SecurityPage() {
             return;
         }
 
-        setStatus("MFA disabled.");
+        setStatus("双重验证已关闭。");
         if (profile?.mfaOnLogin) {
             void updateMfaOnLogin(false);
         }
@@ -428,7 +428,7 @@ export default function SecurityPage() {
             setStatus(
                 error instanceof Error
                     ? error.message
-                    : "Failed to update login authentication preference.",
+                    : "更新登录验证偏好失败。",
             );
         } finally {
             setSavingLoginPreference(false);
@@ -441,7 +441,7 @@ export default function SecurityPage() {
         try {
             const success = await updateMfaOnLogin(enabled);
             if (!success) {
-                setStatus("Failed to update login authentication preference.");
+                setStatus("更新登录验证偏好失败。");
             }
         } catch (error) {
             if (isMfaRequiredError(error)) {
@@ -450,7 +450,7 @@ export default function SecurityPage() {
                 setStatus(
                     error instanceof Error
                         ? error.message
-                        : "Failed to update login authentication preference.",
+                        : "更新登录验证偏好失败。",
                 );
             }
         } finally {
@@ -466,7 +466,7 @@ export default function SecurityPage() {
         <div className="space-y-8">
             <section className="space-y-3">
                 <h2 className="text-2xl font-medium font-serif text-gray-900">
-                    Multi-Factor Authentication
+                    多重身份验证
                 </h2>
                 <AccountSection>
                     {loading ? (
@@ -477,7 +477,7 @@ export default function SecurityPage() {
                                 <div className="space-y-1">
                                     <div className="flex items-start justify-between gap-3">
                                         <p className="text-sm font-medium text-gray-900">
-                                            Verification method
+                                            验证方式
                                         </p>
                                         <span
                                             className={`shrink-0 text-xs font-medium ${
@@ -487,16 +487,16 @@ export default function SecurityPage() {
                                             }`}
                                         >
                                             {hasVerifiedFactor
-                                                ? "Enabled"
-                                                : "Not set up"}
+                                                ? "已启用"
+                                                : "未设置"}
                                         </span>
                                     </div>
                                     <p className="text-sm text-gray-500">
                                         {hasVerifiedFactor
                                             ? sessionVerified
-                                                ? "Authenticator app is saved on your account. Sensitive actions are unlocked for this session."
-                                                : "Authenticator app is saved on your account. Sensitive actions require a verification code."
-                                            : "Add an authenticator app to protect sensitive actions such as exporting data, deleting data, deleting your account, and changing API keys."}
+                                                ? "身份验证器应用已绑定到您的账户。本会话中敏感操作已解锁。"
+                                                : "身份验证器应用已绑定到您的账户。敏感操作需要验证码。"
+                                            : "添加身份验证器应用，以保护导出数据、删除数据、删除账户和修改 API 密钥等敏感操作。"}
                                     </p>
                                 </div>
                                 {!hasVerifiedFactor && !enrollment ? (
@@ -512,10 +512,10 @@ export default function SecurityPage() {
                                             {busy ? (
                                                 <>
                                                     <Loader2 className="h-4 w-4 animate-spin" />
-                                                    Starting...
+                                                    启动中...
                                                 </>
                                             ) : (
-                                                "Set up"
+                                                "设置"
                                             )}
                                         </Button>
                                     </div>
@@ -528,12 +528,10 @@ export default function SecurityPage() {
                                     <div className="flex flex-col gap-3 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
                                         <div className="space-y-1">
                                             <p className="text-sm font-medium text-gray-900">
-                                                Login verification
+                                                登录验证
                                             </p>
                                             <p className="text-sm text-gray-500">
-                                                Ask for an authenticator code
-                                                after each new login, instead of
-                                                only before sensitive actions.
+                                                每次新登录后都要求输入验证码，而不仅在敏感操作前要求。
                                             </p>
                                         </div>
                                         <AccountToggle
@@ -557,7 +555,7 @@ export default function SecurityPage() {
                                             disabled={busy || !factors[0]?.id}
                                             className="text-xs font-medium text-red-600 transition-colors hover:text-red-700 disabled:cursor-not-allowed disabled:text-red-300"
                                         >
-                                            Remove authenticator app
+                                            移除身份验证器应用
                                         </button>
                                     </div>
                                 </>
@@ -578,9 +576,9 @@ export default function SecurityPage() {
             <Modal
                 open={setupModalOpen}
                 onClose={() => void closeSetupModal()}
-                breadcrumbs={["Security", "Set up authenticator app"]}
+                breadcrumbs={["安全", "设置身份验证器应用"]}
                 cancelAction={{
-                    label: enrollment ? "Back" : "Cancel",
+                    label: enrollment ? "返回" : "取消",
                     onClick: enrollment
                         ? () => void returnToSetupInstructions()
                         : () => void closeSetupModal(),
@@ -589,13 +587,13 @@ export default function SecurityPage() {
                 primaryAction={
                     enrollment
                         ? {
-                              label: busy ? "Verifying..." : "Verify",
+                              label: busy ? "验证中..." : "验证",
                               onClick: () => void verifyEnrollment(),
                               disabled:
                                   busy || verificationCode.trim().length !== 6,
                           }
                         : {
-                              label: busy ? "Starting..." : "Continue",
+                              label: busy ? "启动中..." : "继续",
                               onClick: () => void startEnrollment(),
                               disabled: busy,
                           }
@@ -611,46 +609,44 @@ export default function SecurityPage() {
                     {!enrollment ? (
                         <>
                             <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
-                                Step 1
+                                步骤 1
                             </p>
                             <div className="space-y-1">
                                 <p className="text-sm font-medium text-gray-900">
-                                    Before you start
+                                    开始前
                                 </p>
                                 <p className="text-sm text-gray-500">
-                                    Download an authenticator app such as Google
-                                    Authenticator, Microsoft Authenticator,
-                                    Authy, 1Password, or iCloud Passwords.
+                                    请先下载身份验证器应用，例如 Google
+                                    Authenticator、Microsoft Authenticator、
+                                    Authy、1Password 或 iCloud 密码。
                                 </p>
                             </div>
                             <ol className="list-decimal space-y-1 pl-4 text-sm text-gray-500">
                                 <li>
-                                    Download and open your authenticator app.
+                                    下载并打开您的身份验证器应用。
                                 </li>
                                 <li>
-                                    Choose the option to add a new account.
+                                    选择添加新账户。
                                 </li>
                             </ol>
                         </>
                     ) : (
                         <>
                             <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
-                                Step 2
+                                步骤 2
                             </p>
                             <div className="space-y-1">
                                 <p className="text-sm font-medium text-gray-900">
-                                    Scan this code
+                                    扫描此二维码
                                 </p>
                                 <p className="text-sm text-gray-500">
-                                    In your authenticator app, add a new account
-                                    and scan the QR code. If you cannot scan it,
-                                    enter the setup key below manually.
+                                    在身份验证器应用中添加新账户并扫描二维码。若无法扫描，请手动输入下方的设置密钥。
                                 </p>
                             </div>
                             <div className="min-w-0">
                                 <div className="mb-1 flex items-center justify-between gap-3">
                                     <p className="text-xs font-medium text-gray-500">
-                                        Setup key
+                                        设置密钥
                                     </p>
                                     <button
                                         type="button"
@@ -658,7 +654,7 @@ export default function SecurityPage() {
                                         className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 transition-colors hover:text-gray-950"
                                     >
                                         <Copy className="h-3 w-3" />
-                                        {setupKeyCopied ? "Copied" : "Copy"}
+                                        {setupKeyCopied ? "已复制" : "复制"}
                                     </button>
                                 </div>
                                 <p className="break-all text-xs text-gray-700">
@@ -669,7 +665,7 @@ export default function SecurityPage() {
                                 <div className="flex h-48 w-48 items-center justify-center rounded-xl bg-white p-2">
                                     <img
                                         src={enrollment.qrCode}
-                                        alt="MFA QR code"
+                                        alt="双重验证二维码"
                                         className="h-full w-full"
                                     />
                                 </div>
@@ -702,8 +698,8 @@ export default function SecurityPage() {
                     setPendingLoginPreference(null);
                     if (enabled !== null) void saveLoginPreference(enabled);
                 }}
-                title="Authenticator required"
-                message="Enter a code from your authenticator app to change login verification."
+                title="需要身份验证器"
+                message="请输入身份验证器应用中的验证码以更改登录验证设置。"
             />
         </div>
     );

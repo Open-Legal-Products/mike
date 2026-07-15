@@ -97,13 +97,13 @@ function ProjectTableLoading({
                     className={`sticky left-0 z-[80] ${DOC_NAME_COL_W} ${stickyCellBg} flex items-center gap-4 self-stretch pl-4 pr-2 text-left`}
                 >
                     <div className="h-2.5 w-2.5 rounded bg-gray-100 animate-pulse" />
-                    <span>Name</span>
+                    <span>名称</span>
                 </div>
-                <div className="ml-auto w-20 shrink-0 text-left">Type</div>
-                <div className="w-24 shrink-0 text-left">Size</div>
-                <div className="w-20 shrink-0 text-left">Version</div>
-                <div className="w-32 shrink-0 text-left">Created</div>
-                <div className="w-32 shrink-0 text-left">Updated</div>
+                <div className="ml-auto w-20 shrink-0 text-left">类型</div>
+                <div className="w-24 shrink-0 text-left">大小</div>
+                <div className="w-20 shrink-0 text-left">版本</div>
+                <div className="w-32 shrink-0 text-left">创建时间</div>
+                <div className="w-32 shrink-0 text-left">更新时间</div>
                 <div className="w-8 shrink-0" />
             </div>
             {[1, 2, 3, 4, 5].map((i) => (
@@ -290,7 +290,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
         if (replaced) {
             setViewingDocVersion({
                 id: replaced.id,
-                label: replaced.filename?.trim() || "Version",
+                label: replaced.filename?.trim() || "版本",
             });
         }
     }
@@ -374,13 +374,13 @@ export function ProjectDocumentsView({ projectId }: Props) {
                 nextVersion
                     ? {
                           id: nextVersion.id,
-                          label: nextVersion.filename?.trim() || "Version",
+                          label: nextVersion.filename?.trim() || "版本",
                       }
                     : null,
             );
         } catch (e) {
             console.error("deleteDocumentVersion failed", e);
-            setDocumentRenameWarning("Could not delete this version.");
+            setDocumentRenameWarning("无法删除此版本。");
         }
     }
 
@@ -672,7 +672,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
             console.error("delete folder failed", err);
             setPendingDeleteFolderStatus("idle");
             setProjectActionWarning(
-                "Folder could not be deleted. Please try again.",
+                "文件夹删除失败，请重试。",
             );
         }
     }
@@ -1055,7 +1055,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
     }
 
     function hasFilePayload(dt: DataTransfer): boolean {
-        return Array.from(dt.types).includes("Files");
+        return Array.from(dt.types).includes("文件");
     }
 
     function hasDocumentPayload(dt: DataTransfer): boolean {
@@ -1150,7 +1150,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
             restoreDocumentToLocalState(sourceDoc, sourceSnapshot);
             setProjectActionWarning(
                 apiErrorDetail(err) ??
-                    "Could not save this document as a new version.",
+                    "无法将此文档另存为新版本。",
             );
         } finally {
             setUploadingVersionDocIds((prev) => {
@@ -1291,7 +1291,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                         <input
                             autoFocus
                             className="flex-1 min-w-0 text-sm text-gray-800 bg-transparent outline-none border-b border-gray-300"
-                            placeholder="Folder name"
+                            placeholder="文件夹名称"
                             value={newFolderName}
                             onChange={(e) => setNewFolderName(e.target.value)}
                             onKeyDown={(e) => {
@@ -1370,7 +1370,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                 filename,
                 fileType: null,
                 depth,
-                statusLabel: "Uploading",
+                statusLabel: "上传中",
             }),
         );
     }
@@ -1407,7 +1407,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                             filename: doc.filename,
                             fileType: doc.file_type,
                             depth,
-                            statusLabel: "Deleting...",
+                            statusLabel: "删除中...",
                         });
                     }
                     return (
@@ -1642,7 +1642,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                                                                 doc.id,
                                                             );
                                                         }}
-                                                        renameLabel="Rename document"
+                                                        renameLabel="重命名文档"
                                                         onDownload={() =>
                                                             downloadDoc(doc.id)
                                                         }
@@ -1884,7 +1884,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
     if (!loading && !project) {
         return (
             <div className="flex h-full items-center justify-center">
-                <p className="text-gray-400">Project not found</p>
+                <p className="text-gray-400">未找到项目</p>
             </div>
         );
     }
@@ -1913,7 +1913,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                     onClick={() => setActionsOpen((v) => !v)}
                     className="flex items-center gap-1 text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
                 >
-                    Actions
+                    操作
                     <ChevronDown className="h-3.5 w-3.5" />
                 </button>
                 {actionsOpen && (
@@ -1922,7 +1922,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                             onClick={handleDownloadSelectedDocs}
                             className="w-full px-3 py-1.5 text-left text-xs text-gray-600 hover:bg-gray-50 transition-colors"
                         >
-                            Download
+                            下载
                         </button>
                         {selectedDocIds.some(
                             (id) =>
@@ -1933,14 +1933,14 @@ export function ProjectDocumentsView({ projectId }: Props) {
                                 onClick={handleRemoveSelectedFromFolder}
                                 className="w-full px-3 py-1.5 text-left text-xs text-gray-600 hover:bg-gray-50 transition-colors"
                             >
-                                Remove from subfolder
+                                从子文件夹移除
                             </button>
                         )}
                         <button
                             onClick={handleDeleteSelectedDocs}
                             className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 transition-colors"
                         >
-                            Delete
+                            删除
                         </button>
                     </div>
                 )}
@@ -1960,7 +1960,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                 className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors disabled:cursor-default disabled:text-gray-300 disabled:hover:text-gray-300"
             >
                 <FolderPlus className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Add Subfolder</span>
+                <span className="hidden sm:inline">添加子文件夹</span>
             </button>
             <button
                 onClick={() => setAddDocsOpen(true)}
@@ -1968,7 +1968,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                 className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors disabled:cursor-default disabled:text-gray-300 disabled:hover:text-gray-300"
             >
                 <Upload className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Add Documents</span>
+                <span className="hidden sm:inline">添加文档</span>
             </button>
         </div>
     );
@@ -2076,10 +2076,10 @@ export function ProjectDocumentsView({ projectId }: Props) {
             />
             <ConfirmPopup
                 open={!!pendingVersionDrop}
-                title="Save as new version?"
+                title="保存为新版本？"
                 message={pendingVersionDropMessage}
-                confirmLabel="Confirm"
-                cancelLabel="Cancel"
+                confirmLabel="确认"
+                cancelLabel="取消"
                 onCancel={() => setPendingVersionDrop(null)}
                 onConfirm={() => {
                     const pending = pendingVersionDrop;
@@ -2093,9 +2093,9 @@ export function ProjectDocumentsView({ projectId }: Props) {
             />
             <ConfirmPopup
                 open={!!pendingDeleteDoc}
-                title="Delete document?"
+                title="删除文档？"
                 message={pendingDeleteDocMessage}
-                confirmLabel="Delete"
+                confirmLabel="删除"
                 confirmStatus={
                     pendingDeleteStatus === "deleting"
                         ? "loading"
@@ -2103,7 +2103,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                           ? "complete"
                           : "idle"
                 }
-                cancelLabel="Cancel"
+                cancelLabel="取消"
                 onCancel={() => {
                     if (pendingDeleteStatus === "deleting") return;
                     setPendingDeleteDoc(null);
@@ -2113,9 +2113,9 @@ export function ProjectDocumentsView({ projectId }: Props) {
             />
             <ConfirmPopup
                 open={!!pendingDeleteFolder}
-                title="Delete folder?"
+                title="删除文件夹？"
                 message={pendingDeleteFolderMessage}
-                confirmLabel="Delete"
+                confirmLabel="删除"
                 confirmStatus={
                     pendingDeleteFolderStatus === "deleting"
                         ? "loading"
@@ -2123,7 +2123,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                           ? "complete"
                           : "idle"
                 }
-                cancelLabel="Cancel"
+                cancelLabel="取消"
                 onCancel={() => {
                     if (pendingDeleteFolderStatus === "deleting") return;
                     setPendingDeleteFolder(null);
@@ -2164,22 +2164,22 @@ export function ProjectDocumentsView({ projectId }: Props) {
                                         }}
                                         className="h-2.5 w-2.5 rounded border-gray-200 cursor-pointer accent-black"
                                     />
-                                    <span>Name</span>
+                                    <span>名称</span>
                                 </div>
                                 <div className="ml-auto w-20 shrink-0 text-left">
-                                    Type
+                                    类型
                                 </div>
                                 <div className="w-24 shrink-0 text-left">
-                                    Size
+                                    大小
                                 </div>
                                 <div className="w-20 shrink-0 text-left">
-                                    Version
+                                    版本
                                 </div>
                                 <div className="w-32 shrink-0 text-left">
-                                    Created
+                                    创建时间
                                 </div>
                                 <div className="w-32 shrink-0 text-left">
-                                    Updated
+                                    更新时间
                                 </div>
                                 <div className="w-8 shrink-0" />
                             </div>
@@ -2233,7 +2233,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                                     >
                                         <Upload className="h-8 w-8 text-gray-200 mb-3" />
                                         <p className="text-sm text-gray-400">
-                                            Drop PDF, Word, Excel, or PowerPoint files here
+                                            将 PDF、Word、Excel 或 PowerPoint 文件拖放到此处
                                         </p>
                                     </div>
                                 ) : (
@@ -2326,7 +2326,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                                                                     doc.file_type,
                                                                 depth: 0,
                                                                 statusLabel:
-                                                                    "Deleting...",
+                                                                    "删除中...",
                                                             },
                                                         );
                                                     }
@@ -2611,7 +2611,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                                                                                     doc.id,
                                                                                 );
                                                                             }}
-                                                                            renameLabel="Rename document"
+                                                                            renameLabel="重命名文档"
                                                                             onDownload={() =>
                                                                                 downloadDoc(
                                                                                     doc.id,
@@ -2769,7 +2769,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                                                                 menuDoc.id,
                                                             );
                                                         }}
-                                                        renameLabel="Rename document"
+                                                        renameLabel="重命名文档"
                                                         onDownload={() =>
                                                             downloadDoc(
                                                                 menuDoc.id,
@@ -2834,8 +2834,8 @@ export function ProjectDocumentsView({ projectId }: Props) {
                                                         }}
                                                         newSubfolderLabel={
                                                             contextMenu.showFolderActions
-                                                                ? "New subfolder inside"
-                                                                : "New subfolder"
+                                                                ? "在其下新建子文件夹"
+                                                                : "新建子文件夹"
                                                         }
                                                         onRename={
                                                             contextMenu.showFolderActions &&
@@ -2859,7 +2859,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                                                                   }
                                                                 : undefined
                                                         }
-                                                        renameLabel="Rename folder"
+                                                        renameLabel="重命名文件夹"
                                                         onDelete={
                                                             contextMenu.showFolderActions &&
                                                             contextMenu.folderId
@@ -2869,7 +2869,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                                                                       )
                                                                 : undefined
                                                         }
-                                                        deleteLabel="Delete folder"
+                                                        deleteLabel="删除文件夹"
                                                     />
                                                 )}
                                             </div>
@@ -2888,12 +2888,12 @@ export function ProjectDocumentsView({ projectId }: Props) {
                     onClose={() => setAddDocsOpen(false)}
                     onSelect={handleDocsSelected}
                     breadcrumb={[
-                        "Projects",
+                        "项目",
                         project.name +
                             (project.cm_number
                                 ? ` (${project.cm_number})`
                                 : ""),
-                        "Add Documents",
+                        "添加文档",
                     ]}
                     projectId={projectId}
                 />
@@ -2962,6 +2962,6 @@ function hasFilenameExtensionChange(previous: string, next: string) {
 function extensionChangeWarning(filename: string) {
     const extension = filenameExtension(filename);
     return extension
-        ? `File extensions cannot be changed here. Keep ${extension} at the end of the name.`
-        : "File extensions cannot be changed here.";
+        ? `此处无法更改文件扩展名。请在名称末尾保留 ${extension}。`
+        : "此处无法更改文件扩展名。";
 }

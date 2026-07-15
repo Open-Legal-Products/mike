@@ -57,7 +57,7 @@ export function CitationQuotesHeader({
                 <div className="flex h-10 items-center justify-between px-2">
                     <div className="flex items-center gap-2">
                         <p className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
-                            <span>Citation</span>
+                            <span>引用</span>
                             {typeof citationRef === "number" && (
                                 <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-gray-200 px-1 text-[9px] font-medium text-gray-600">
                                     {citationRef}
@@ -69,7 +69,7 @@ export function CitationQuotesHeader({
                         {hasMultipleQuotes && (
                             <div className="flex items-center gap-1">
                                 <span className="mr-0.5 text-xs font-medium text-gray-500">
-                                    Quotes
+                                    引文
                                 </span>
                                 {quotes.map((quote, index) => (
                                     <button
@@ -122,7 +122,7 @@ export function CitationQuotesHeader({
                                         ? "text-gray-800"
                                         : "text-gray-500 hover:text-gray-700"
                                 }`}
-                                title="Minimize"
+                                title="最小化"
                             >
                                 <Minus className="h-3 w-3" />
                             </button>
@@ -137,7 +137,7 @@ export function CitationQuotesHeader({
                                         ? "text-gray-800"
                                         : "text-gray-500 hover:text-gray-700"
                                 }`}
-                                title="Single quote"
+                                title="单条引文"
                             >
                                 <RectangleHorizontal className="h-3 w-3" />
                             </button>
@@ -153,7 +153,7 @@ export function CitationQuotesHeader({
                                             ? "text-gray-800"
                                             : "text-gray-500 hover:text-gray-700"
                                     }`}
-                                    title="Quote list"
+                                    title="引文列表"
                                 >
                                     <Rows3 className="h-3 w-3" />
                                 </button>
@@ -203,7 +203,7 @@ export function CitationQuotesHeader({
                             ) : null
                         ) : (
                             <RelevantQuoteMessage>
-                                No relevant quotes.
+                                暂无相关引文。
                             </RelevantQuoteMessage>
                         )}
                     </div>

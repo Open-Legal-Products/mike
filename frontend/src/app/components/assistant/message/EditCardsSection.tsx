@@ -130,8 +130,8 @@ function BulkEditActions({
                         versionId: annotation.version_id ?? null,
                         message:
                             verb === "accept"
-                                ? "Couldn't save one or more accepts."
-                                : "Couldn't save one or more rejects.",
+                                ? "部分接受操作未能保存。"
+                                : "部分拒绝操作未能保存。",
                     });
                 }
                 done++;
@@ -186,7 +186,7 @@ function BulkEditActions({
                     disabled={!!busy}
                     className="ml-auto"
                 >
-                    View
+                    查看
                 </PillButton>
             )}
         </div>
@@ -257,7 +257,7 @@ export function EditCardsSection({
                 </p>
                 <button
                     onClick={() => setIsOpen((v) => !v)}
-                    aria-label={isOpen ? "Collapse edits" : "Expand edits"}
+                    aria-label={isOpen ? "收起编辑" : "展开编辑"}
                     className="shrink-0 rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition-colors"
                 >
                     <ChevronDown

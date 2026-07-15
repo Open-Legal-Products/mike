@@ -16,9 +16,8 @@ const ebGaramond = EB_Garamond({
 
 export const metadata: Metadata = {
     metadataBase: new URL("https://app.mikeoss.com"),
-    title: "Mike - AI Legal Platform",
     description:
-        "AI-powered legal document analysis and contract review platform.",
+        "AI 驱动的法律文档分析与合同审查平台。",
     icons: {
         icon: [
             { url: "/icon.svg", type: "image/svg+xml" },
@@ -29,24 +28,24 @@ export const metadata: Metadata = {
     openGraph: {
         type: "website",
         url: "https://app.mikeoss.com",
-        siteName: "Mike",
-        title: "Mike - AI Legal Platform",
+        siteName: "我的律师合伙人",
+        title: "我的律师合伙人 - AI 法律平台",
         description:
-            "AI-powered legal document analysis and contract review platform.",
+            "AI 驱动的法律文档分析与合同审查平台。",
         images: [
             {
                 url: "/link-image.jpg",
                 width: 1200,
                 height: 651,
-                alt: "Mike",
+                alt: "我的律师合伙人",
             },
         ],
     },
     twitter: {
         card: "summary_large_image",
-        title: "Mike - AI Legal Platform",
+        title: "我的律师合伙人 - AI 法律平台",
         description:
-            "AI-powered legal document analysis and contract review platform.",
+            "AI 驱动的法律文档分析与合同审查平台。",
         images: ["/link-image.jpg"],
     },
 };
@@ -57,7 +56,7 @@ export default function RootLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <html lang="en">
+        <html lang="zh-CN">
             <body
                 className={`${inter.variable} ${ebGaramond.variable} font-sans antialiased`}
             >

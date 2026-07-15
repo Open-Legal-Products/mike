@@ -168,7 +168,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                             className={`${DOC_COL_W} flex items-center gap-4 border-b border-r border-gray-200 py-2 pl-4 pr-2 text-xs font-medium text-gray-500`}
                         >
                             <SkeletonDot />
-                            <span>Document</span>
+                            <span>文档</span>
                         </div>
                         {Array.from({ length: SKELETON_COLS }).map((_, i) => (
                             <div
@@ -220,7 +220,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                     <div
                         className={`${DOC_COL_W} border-r border-gray-200 py-2 pl-4 pr-2 text-xs font-medium text-gray-500 select-none`}
                     >
-                        Document
+                        文档
                     </div>
                     <div className="flex-1" />
                 </div>
@@ -231,24 +231,24 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                     <div className="flex flex-1 flex-col items-start justify-center w-full max-w-xs mx-auto">
                         <Table2 className="h-8 w-8 text-gray-300 mb-4" />
                         <p className="text-2xl font-medium font-serif text-gray-900">
-                            Tabular Review
+                            表格审查
                         </p>
                         <p className="mt-1 text-xs text-gray-400 text-left">
-                            Add columns and documents to get started.
+                            添加列和文档以开始。
                         </p>
                         <div className="mt-4 flex items-center gap-2">
                             <button
                                 onClick={onAddColumn}
                                 className="inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-700 shadow-md"
                             >
-                                + Add Columns
+                                + 添加列
                             </button>
                             <button
                                 onClick={onAddDocuments}
                                 className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors shadow-sm"
                             >
                                 <Upload className="h-3.5 w-3.5" />
-                                Add Documents
+                                添加文档
                             </button>
                         </div>
                     </div>
@@ -277,7 +277,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                             onChange={toggleAll}
                             className={TABLE_CHECKBOX_CLASS}
                         />
-                        <span>Document</span>
+                        <span>文档</span>
                     </div>
                     {columns.map((col) => (
                         <div

@@ -25,9 +25,9 @@ export function AddUserInput({
     onAdd,
     validateEmail,
     busy = false,
-    placeholder = "Add by email...",
+    placeholder = "通过邮箱添加...",
     autoFocus = false,
-    submitLabel = "Add user",
+    submitLabel = "添加用户",
     className,
 }: AddUserInputProps) {
     const [input, setInput] = useState("");
@@ -66,7 +66,7 @@ export function AddUserInput({
             setError(
                 err instanceof Error
                     ? err.message
-                    : "Could not add this user. Try again.",
+                    : "无法添加该用户，请重试。",
             );
         } finally {
             setChecking(false);
@@ -113,7 +113,7 @@ export function AddUserInput({
                         {(busy || checking) && (
                             <Loader2 className="h-3 w-3 animate-spin" />
                         )}
-                        Add
+                        添加
                     </button>
                 )}
             </div>

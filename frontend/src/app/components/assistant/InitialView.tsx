@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { useUserProfile } from "@/app/contexts/UserProfileContext";
-import { MikeIcon } from "@/app/components/chat/mike-icon";
+import { PartnerIcon } from "@/app/components/chat/partner-icon";
 import { ChatInput } from "./ChatInput";
 import { SelectAssistantProjectModal } from "./SelectAssistantProjectModal";
 import type { Message } from "../shared/types";
@@ -25,7 +25,7 @@ export function InitialView({ onSubmit }: InitialViewProps) {
     const textRef = useRef<HTMLHeadingElement>(null);
 
     const username =
-        profile?.displayName?.trim() || user?.email?.split("@")[0] || "there";
+        profile?.displayName?.trim() || user?.email?.split("@")[0] || "您好";
 
     useLayoutEffect(() => {
         if (!profile || !textRef.current) return;
@@ -56,7 +56,7 @@ export function InitialView({ onSubmit }: InitialViewProps) {
                                     "transform 900ms cubic-bezier(0.25, 0.46, 0.45, 0.94)",
                             }}
                         >
-                            <MikeIcon size={ICON_SIZE} />
+                            <PartnerIcon size={ICON_SIZE} />
                         </div>
                         <h1
                             ref={textRef}
@@ -71,7 +71,7 @@ export function InitialView({ onSubmit }: InitialViewProps) {
                                     "transform 900ms cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 800ms ease-in-out 300ms",
                             }}
                         >
-                            Hi, {username}
+                            你好，{username}
                         </h1>
                     </div>
 
@@ -84,7 +84,7 @@ export function InitialView({ onSubmit }: InitialViewProps) {
 
                     <div className="text-center">
                         <p className="text-xs py-3 mb-3 text-gray-500">
-                            AI can make mistakes. Answers are not legal advice.
+                            AI 可能会出错。回答不构成法律意见。
                         </p>
                     </div>
                 </div>

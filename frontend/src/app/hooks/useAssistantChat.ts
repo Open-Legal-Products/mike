@@ -175,7 +175,7 @@ export function useAssistantChat({
     const cancelledEvents = cancelStreamingEvents(events);
     return [
       ...cancelledEvents,
-      { type: "content" as const, text: "Cancelled by user." },
+      { type: "content" as const, text: "用户已取消。" },
     ];
   };
 
@@ -219,7 +219,7 @@ export function useAssistantChat({
     finalizeStreamingContent();
     finalizeStreamingReasoning();
     // A real event, or a more specific placeholder such as
-    // tool_call_start, should replace any generic "Thinking..." line.
+    // tool_call_start, should replace any generic "思考中..." line.
     const next = eventsRef.current.filter((e) => !isStreamingPlaceholder(e));
     eventsRef.current = [...next, event];
     const snapshot = [...eventsRef.current];
@@ -918,7 +918,7 @@ export function useAssistantChat({
                       question:
                         typeof row.question === "string"
                           ? row.question
-                          : "Please choose an option.",
+                          : "请选择一个选项。",
                       options,
                       allow_other: row.allow_other !== false,
                       other_label:
@@ -1193,7 +1193,7 @@ export function useAssistantChat({
           replaceChatId(
             chatId,
             finalChatId,
-            message.content.trim().slice(0, 120) || "New Chat",
+            message.content.trim().slice(0, 120) || "新建对话",
           );
         }
         setCurrentChatId(finalChatId);
@@ -1241,13 +1241,13 @@ export function useAssistantChat({
             };
             return updated;
           }
-          eventsRef.current = [{ type: "content", text: "Cancelled by user." }];
+          eventsRef.current = [{ type: "content", text: "用户已取消。" }];
           return [
             ...prev,
             {
               role: "assistant",
               content: "",
-              events: [{ type: "content", text: "Cancelled by user." }],
+              events: [{ type: "content", text: "用户已取消。" }],
             },
           ];
         });

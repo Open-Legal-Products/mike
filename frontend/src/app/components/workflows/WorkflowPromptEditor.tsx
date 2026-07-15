@@ -371,7 +371,7 @@ export function WorkflowPromptEditor({
                                       .run()
                         }
                         active={!rawMode && activeFormatting.heading1}
-                        title="Heading 1"
+                        title="标题 1"
                     >
                         <Heading1 className="h-4 w-4" />
                     </AppToolbarButton>
@@ -386,7 +386,7 @@ export function WorkflowPromptEditor({
                                       .run()
                         }
                         active={!rawMode && activeFormatting.heading2}
-                        title="Heading 2"
+                        title="标题 2"
                     >
                         <Heading2 className="h-4 w-4" />
                     </AppToolbarButton>
@@ -401,7 +401,7 @@ export function WorkflowPromptEditor({
                                       .run()
                         }
                         active={!rawMode && activeFormatting.heading3}
-                        title="Heading 3"
+                        title="标题 3"
                     >
                         <Heading3 className="h-4 w-4" />
                     </AppToolbarButton>
@@ -413,7 +413,7 @@ export function WorkflowPromptEditor({
                                 : editor.chain().focus().toggleBold().run()
                         }
                         active={!rawMode && activeFormatting.bold}
-                        title="Bold"
+                        title="粗体"
                     >
                         <Bold className="h-4 w-4" />
                     </AppToolbarButton>
@@ -424,7 +424,7 @@ export function WorkflowPromptEditor({
                                 : editor.chain().focus().toggleItalic().run()
                         }
                         active={!rawMode && activeFormatting.italic}
-                        title="Italic"
+                        title="斜体"
                     >
                         <Italic className="h-4 w-4" />
                     </AppToolbarButton>
@@ -436,7 +436,7 @@ export function WorkflowPromptEditor({
                                 : editor.chain().focus().toggleBulletList().run()
                         }
                         active={!rawMode && activeFormatting.bulletList}
-                        title="Bullet list"
+                        title="无序列表"
                     >
                         <List className="h-4 w-4" />
                     </AppToolbarButton>
@@ -451,7 +451,7 @@ export function WorkflowPromptEditor({
                                       .run()
                         }
                         active={!rawMode && activeFormatting.orderedList}
-                        title="Numbered list"
+                        title="有序列表"
                     >
                         <ListOrdered className="h-4 w-4" />
                     </AppToolbarButton>
@@ -468,14 +468,14 @@ export function WorkflowPromptEditor({
                                 })
                             }
                             active={tablePickerOpen}
-                            title="Insert table"
+                            title="插入表格"
                         >
                             <Table2 className="h-4 w-4" />
                         </AppToolbarButton>
                         {tablePickerOpen && (
                             <div
                                 role="dialog"
-                                aria-label="Insert table"
+                                aria-label="插入表格"
                                 className="absolute left-0 top-full z-[250] mt-1 w-max rounded-md border border-gray-200 bg-white p-2 shadow-lg"
                             >
                                 <div
@@ -542,7 +542,7 @@ export function WorkflowPromptEditor({
                                 <div className="mt-2 text-center text-[11px] font-medium text-gray-500">
                                     {tablePickerSize
                                         ? `${tablePickerSize.rows} x ${tablePickerSize.cols}`
-                                        : "Select table size"}
+                                        : "选择表格大小"}
                                 </div>
                             </div>
                         )}
@@ -551,7 +551,7 @@ export function WorkflowPromptEditor({
                     <AppToolbarButton
                         onClick={handleRawToggle}
                         active={rawMode}
-                        title={rawMode ? "Show rich editor" : "Show raw Markdown"}
+                        title={rawMode ? "显示富文本编辑器" : "显示原始 Markdown"}
                     >
                         <Code2 className="h-4 w-4" />
                     </AppToolbarButton>
@@ -560,7 +560,7 @@ export function WorkflowPromptEditor({
             {readOnly && (
                 <div className="flex h-9 shrink-0 items-center justify-between bg-gray-50 px-5">
                     <span className="text-xs font-medium text-gray-500">
-                        Read-only
+                        只读
                     </span>
                     {editor && (
                         <AppToolbarButton
@@ -568,8 +568,8 @@ export function WorkflowPromptEditor({
                             active={rawMode}
                             title={
                                 rawMode
-                                    ? "Show rich editor"
-                                    : "Show raw Markdown"
+                                    ? "显示富文本编辑器"
+                                    : "显示原始 Markdown"
                             }
                         >
                             <Code2 className="h-4 w-4" />
@@ -592,7 +592,7 @@ export function WorkflowPromptEditor({
                         readOnly={readOnly}
                         spellCheck={false}
                         className="h-full min-h-full w-full resize-none bg-white px-5 py-4 font-mono text-xs leading-6 text-gray-800 outline-none placeholder:text-gray-400 read-only:cursor-default"
-                        aria-label="Raw Markdown"
+                        aria-label="原始 Markdown"
                     />
                 ) : (
                     <EditorContent editor={editor} />

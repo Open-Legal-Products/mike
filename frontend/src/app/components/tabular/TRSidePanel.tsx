@@ -230,7 +230,7 @@ export function TRSidePanel({
                                 }
                             }}
                             disabled={regenerating}
-                            title="Regenerate"
+                            title="重新生成"
                             className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40"
                         >
                             {regenerating ? (
@@ -266,7 +266,7 @@ export function TRSidePanel({
                         {cell.content?.flag && (
                             <div className="mb-5">
                                 <h4 className="mb-2 text-sm font-semibold tracking-wider font-sans">
-                                    Flag
+                                    标记
                                 </h4>
                                 <span
                                     className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${FLAG_BADGE[cell.content.flag] ?? FLAG_BADGE.grey}`}
@@ -280,7 +280,7 @@ export function TRSidePanel({
                         {/* Results */}
                         <div className="mb-6">
                             <h4 className="mb-2 text-sm font-semibold tracking-wider font-sans">
-                                Results
+                                结果
                             </h4>
                             <div className="text-xs leading-relaxed text-slate-600">
                                 <MarkdownContent
@@ -297,7 +297,7 @@ export function TRSidePanel({
                         {cell.content?.reasoning && (
                             <div>
                                 <h4 className="mb-2 text-sm font-semibold tracking-wider font-sans">
-                                    Reasoning
+                                    推理过程
                                 </h4>
                                 <div className="text-xs leading-relaxed text-slate-600">
                                     <MarkdownContent
@@ -337,7 +337,7 @@ function CitationBadge({
             type="button"
             data-page={citation.page}
             data-quote={citation.quote}
-            title={`Page ${citation.page}: "${citation.quote}"`}
+            title={`第 ${citation.page} 页： "${citation.quote}"`}
             onClick={() =>
                 onClick({ quote: citation.quote, page: citation.page })
             }

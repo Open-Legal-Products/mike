@@ -6,7 +6,7 @@ import { WarningPopup } from "../popups/WarningPopup";
 interface Props {
     open: boolean;
     onClose: () => void;
-    /** Short headline above the body, e.g. "Owner-only action". */
+    /** Short headline above the body, e.g. "仅所有者可操作". */
     title?: string;
     /** Sentence describing what the user tried to do. */
     action?: string;
@@ -25,7 +25,7 @@ interface Props {
 export function OwnerOnlyPopup({
     open,
     onClose,
-    title = "Owner-only action",
+    title = "仅所有者可操作",
     action,
     ownerEmail,
     message,
@@ -35,8 +35,8 @@ export function OwnerOnlyPopup({
     const body =
         message ??
         (action
-            ? `Only the project owner can ${action}.`
-            : "Only the project owner can perform this action.");
+            ? `仅项目所有者可以${action}。`
+            : "仅项目所有者可执行此操作。");
 
     return (
         <WarningPopup

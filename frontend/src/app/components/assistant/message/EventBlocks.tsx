@@ -8,7 +8,7 @@ import { FileTypeIcon } from "../../shared/FileTypeIcon";
 import { RESPONSE_GLASS_SURFACE, withoutMarkdownNode } from "./messageStyles";
 
 const THINKING_PHRASES = [
-    "Thinking...",
+    "思考中...",
     "Pondering...",
     "Analyzing...",
     "Reviewing...",
@@ -120,7 +120,7 @@ export function ReasoningBlock({
                 <span className="font-medium">
                     {isStreaming
                         ? THINKING_PHRASES[thinkingIndex]
-                        : "Thought process"}
+                        : "思考过程"}
                 </span>
                 {!isStreaming && (
                     <ChevronDown
@@ -166,7 +166,7 @@ export function ReasoningBlock({
                                     type="button"
                                     onClick={() => setIsExpanded(true)}
                                     className="absolute left-1/2 bottom-2 z-10 -translate-x-1/2 text-gray-400 transition-colors hover:text-gray-600"
-                                    aria-label="Expand thought process"
+                                    aria-label="展开思考过程"
                                 >
                                     <ChevronDown className="h-3.5 w-3.5" />
                                 </button>
@@ -178,7 +178,7 @@ export function ReasoningBlock({
                             type="button"
                             onClick={() => setIsExpanded(false)}
                             className="mx-auto mt-2 flex text-gray-400 transition-colors hover:text-gray-600"
-                            aria-label="Minimise thought process"
+                            aria-label="收起思考过程"
                         >
                             <ChevronDown className="h-3.5 w-3.5 rotate-180" />
                         </button>
@@ -208,7 +208,7 @@ export function DocReadBlock({
         >
             <div className="flex min-w-0 items-center gap-1.5">
                 <span className="shrink-0 font-medium">
-                    {isStreaming ? "Reading" : "Read"}
+                    {isStreaming ? "正在阅读" : "Read"}
                 </span>
                 {isStreaming ? (
                     <span className="flex min-w-0 items-center gap-1.5">
@@ -266,11 +266,11 @@ export function DocFindBlock({
             dotColor={totalMatches > 0 ? "green" : "gray"}
         >
             <span className="font-medium">
-                {isStreaming ? "Finding" : "Found"}
+                {isStreaming ? "正在查找" : "已找到"}
             </span>{" "}
             <span>
                 &ldquo;{query}&rdquo;{matchSuffix}
-                <span className="ml-1 text-gray-400">in {filename}</span>
+                <span className="ml-1 text-gray-400">于 {filename}</span>
                 {isStreaming && "..."}
             </span>
         </EventBlock>
@@ -293,7 +293,7 @@ export function DocCreatedBlock({
             dotColor="green"
         >
             <span className="font-medium">
-                {isStreaming ? "Creating" : "Created"}
+                {isStreaming ? "创建中" : "创建时间"}
             </span>{" "}
             <span>{isStreaming ? `${filename}...` : filename}</span>
         </EventBlock>
@@ -317,7 +317,7 @@ export function DocReplicatedBlock({
     isStreaming?: boolean;
     hasError?: boolean;
 }) {
-    const label = isStreaming ? "Replicating" : "Replicated";
+    const label = isStreaming ? "正在复制" : "已复制";
     const suffix =
         !isStreaming && count > 1
             ? ` ${count} times`
@@ -497,7 +497,7 @@ export function WorkflowAppliedBlock({
 }) {
     return (
         <EventBlock showConnector={showConnector} dotColor="green">
-            <span className="font-medium">Applied Workflow</span>{" "}
+            <span className="font-medium">已应用工作流</span>{" "}
             {onClick ? (
                 <button
                     onClick={onClick}
@@ -530,7 +530,7 @@ export function AskInputsBlock({
             dotColor={response ? "green" : "gray"}
         >
             <p className="font-medium text-gray-600">
-                {response ? "Asked for input" : "Asking for input"}
+                {response ? "已请求输入" : "正在请求输入"}
             </p>
             <div className="mt-2 space-y-2 text-gray-800">
                 {event.items.map((item, index) => {
@@ -544,21 +544,21 @@ export function AskInputsBlock({
                         const filenames = itemResponse.filenames;
                         return filenames.length
                             ? filenames.join(", ")
-                            : "No documents attached";
+                            : "未附加文档";
                     })();
                     return (
                         <div key={item.id}>
                             <p className="text-xs text-gray-500">
                                 {index + 1}.{" "}
                                 {item.kind === "choice"
-                                    ? "Question"
-                                    : "Documents"}
+                                    ? "问题"
+                                    : "文档"}
                             </p>
                             <p className="mt-0.5">
                                 {item.kind === "choice"
                                     ? item.question
                                     : item.document_types.join(", ") ||
-                                      "Documents requested"}
+                                      "已请求文档"}
                             </p>
                             {responseText !== null && (
                                 <p className="mt-0.5 text-gray-600">
@@ -632,7 +632,7 @@ export function CourtListenerBlock({
                         const label = [item.caseName, item.citation]
                             .filter(Boolean)
                             .join(", ");
-                        const primary = label || item.url || "Unknown case";
+                        const primary = label || item.url || "未知案例";
                         const searchText = item.query
                             ? `Searched for "${item.query}" in ${primary}${
                                   typeof item.totalMatches === "number"
@@ -693,7 +693,7 @@ export function DocEditedBlock({
             dotColor={hasError ? "red" : "green"}
         >
             <span className="font-medium">
-                {isStreaming ? "Editing" : hasError ? "Edit failed" : "Edited"}
+                {isStreaming ? "编辑中" : hasError ? "编辑失败" : "已编辑"}
             </span>{" "}
             <span>{isStreaming ? `${filename}...` : filename}</span>
         </EventBlock>

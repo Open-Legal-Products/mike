@@ -114,7 +114,7 @@ export function OpenSourceWorkflowModal({
             setError(
                 err instanceof Error
                     ? err.message
-                    : "Failed to submit workflow for review.",
+                    : "提交工作流审核失败。",
             );
         }
     }
@@ -128,12 +128,12 @@ export function OpenSourceWorkflowModal({
                 resetModalState();
             }}
             breadcrumbs={[
-                "Workflows",
+                "工作流",
                 submitted
-                    ? "Submitted"
+                    ? "已提交"
                     : pending
-                      ? "Update open-source submission"
-                      : "Open source",
+                      ? "更新开源提交"
+                      : "开源",
             ]}
             primaryAction={
                 submitted
@@ -141,11 +141,11 @@ export function OpenSourceWorkflowModal({
                     : {
                           label: loading
                               ? pending
-                                  ? "Updating..."
-                                  : "Submitting..."
+                                  ? "更新中..."
+                                  : "提交中..."
                               : pending
-                                ? "Update submission"
-                                : "Submit for review",
+                                ? "更新提交"
+                                : "提交审核",
                           onClick: () => void handleSubmit(),
                           disabled: loading || needsConsent,
                       }
@@ -157,25 +157,24 @@ export function OpenSourceWorkflowModal({
                         <Check className="h-6 w-6" />
                     </div>
                     <h3 className="text-2xl font-serif text-gray-950">
-                        Workflow submitted
+                        工作流已提交
                     </h3>
                     <p className="mt-3 max-w-sm text-xs leading-6 text-gray-600">
-                        Your workflow snapshot has been submitted for review.
-                        You&apos;ll be notified by email if it is accepted.
+                        工作流快照已提交审核。
+                        若被接受，我们将通过邮件通知您。
                     </p>
                     <p className="mt-6 text-xs font-medium text-gray-500">
-                        Closing in {closeCountdown}
+                        {closeCountdown} 秒后关闭
                     </p>
                 </div>
             ) : (
                 <div className="space-y-4 pb-2 text-sm text-gray-700">
                     <h3 className="text-2xl font-serif text-gray-950">
-                        Contribute to open source legal
+                        贡献开源法律工作流
                     </h3>
                     <p className="leading-6 text-xs text-gray-600">
-                        Submit a snapshot of this workflow for review. If
-                        accepted, it will be shared under the Apache License 2.0
-                        in the{" "}
+                        提交此工作流的快照以供审核。若获通过，将以 Apache License 2.0
+                        在{" "}
                         <a
                             href={WORKFLOWS_REPO_URL}
                             target="_blank"
@@ -184,19 +183,17 @@ export function OpenSourceWorkflowModal({
                         >
                             Open-Legal-Products/mike-workflows
                         </a>{" "}
-                        repo. You&apos;ll be notified by email if your workflow
-                        is accepted.
+                        仓库中共享。若工作流被接受，我们将通过邮件通知您。
                     </p>
                     {pending && (
                         <p className="rounded-xl border border-white/70 bg-white/55 px-3 py-2 text-xs leading-5 text-gray-600 shadow-[0_8px_24px_rgba(15,23,42,0.07),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-1px_0_rgba(255,255,255,0.55)] backdrop-blur-xl">
-                            You already have a pending submission. This will
-                            replace that pending snapshot.
+                            您已有待审核的提交。本次提交将替换该待审核快照。
                         </p>
                     )}
 
                     <div className="space-y-2 pt-2">
                         <ModalFieldLabel as="p">
-                            Contributor attribution
+                            贡献者署名
                         </ModalFieldLabel>
                         <ModalSegmentedToggle
                             value={contributorMode}
@@ -205,12 +202,12 @@ export function OpenSourceWorkflowModal({
                             options={[
                                 {
                                     value: "anonymous",
-                                    label: "Anonymous",
+                                    label: "匿名",
                                     icon: EyeOff,
                                 },
                                 {
                                     value: "named",
-                                    label: "Disclose details",
+                                    label: "公开详情",
                                     icon: User,
                                 },
                             ]}
@@ -219,7 +216,7 @@ export function OpenSourceWorkflowModal({
                             <div className="grid gap-x-4 gap-y-5 pt-4 sm:grid-cols-2">
                                 <div>
                                     <ModalFieldLabel htmlFor="open-source-contributor-name">
-                                        Full Name
+                                        姓名
                                     </ModalFieldLabel>
                                     <ModalTextInput
                                         id="open-source-contributor-name"
@@ -229,13 +226,13 @@ export function OpenSourceWorkflowModal({
                                                 event.target.value,
                                             )
                                         }
-                                        placeholder="Jane Doe"
+                                        placeholder="张三"
                                         disabled={loading}
                                     />
                                 </div>
                                 <div>
                                     <ModalFieldLabel htmlFor="open-source-contributor-organisation">
-                                        Organisation
+                                        所属机构
                                     </ModalFieldLabel>
                                     <ModalTextInput
                                         id="open-source-contributor-organisation"
@@ -245,13 +242,13 @@ export function OpenSourceWorkflowModal({
                                                 event.target.value,
                                             )
                                         }
-                                        placeholder="Acme LLP"
+                                        placeholder="某某律师事务所"
                                         disabled={loading}
                                     />
                                 </div>
                                 <div>
                                     <ModalFieldLabel htmlFor="open-source-contributor-role">
-                                        Role
+                                        职务
                                     </ModalFieldLabel>
                                     <ModalTextInput
                                         id="open-source-contributor-role"
@@ -261,13 +258,13 @@ export function OpenSourceWorkflowModal({
                                                 event.target.value,
                                             )
                                         }
-                                        placeholder="Senior Associate"
+                                        placeholder="高级律师"
                                         disabled={loading}
                                     />
                                 </div>
                                 <div>
                                     <ModalFieldLabel htmlFor="open-source-contributor-linkedin">
-                                        LinkedIn
+                                        领英
                                     </ModalFieldLabel>
                                     <ModalTextInput
                                         id="open-source-contributor-linkedin"
@@ -300,8 +297,7 @@ export function OpenSourceWorkflowModal({
                                             htmlFor="open-source-disclosure-consent"
                                             className="cursor-pointer"
                                         >
-                                            I consent to disclosing the personal
-                                            information above in the public
+                                            我同意在公开的
                                         </label>{" "}
                                         <a
                                             href={WORKFLOWS_REPO_URL}
@@ -315,8 +311,7 @@ export function OpenSourceWorkflowModal({
                                             htmlFor="open-source-disclosure-consent"
                                             className="cursor-pointer"
                                         >
-                                            GitHub repository and on the
-                                            mikeoss.com website.
+                                            GitHub 仓库及 mikeoss.com 网站上披露上述个人信息。
                                         </label>
                                     </p>
                                 </div>

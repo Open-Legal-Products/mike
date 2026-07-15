@@ -37,7 +37,7 @@ export function ModalSelect({
     value,
     options,
     onChange,
-    placeholder = "Select...",
+    placeholder = "请选择...",
     disabled = false,
     open,
     onOpenChange,

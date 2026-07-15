@@ -19,7 +19,7 @@ export type HeaderActionsMenuItem = {
 
 export function HeaderActionsMenu({
     items,
-    title = "Actions",
+    title = "操作",
 }: {
     items: HeaderActionsMenuItem[];
     title?: string;

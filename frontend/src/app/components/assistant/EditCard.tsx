@@ -306,7 +306,7 @@ export function EditCard({
                     onClick={() => handle("accept")}
                     disabled={inFlight || resolved}
                 >
-                    {status === "accepted" ? "Accepted" : "Accept"}
+                    {status === "accepted" ? "已接受" : "接受"}
                 </PillButton>
                 <PillButton
                     tone="white"
@@ -314,7 +314,7 @@ export function EditCard({
                     onClick={() => handle("reject")}
                     disabled={inFlight || resolved}
                 >
-                    {status === "rejected" ? "Rejected" : "Reject"}
+                    {status === "rejected" ? "已拒绝" : "拒绝"}
                 </PillButton>
                 {onViewClick && (
                     <PillButton
@@ -324,12 +324,12 @@ export function EditCard({
                         disabled={resolved}
                         title={
                             resolved
-                                ? "This change has been resolved and is no longer in the document."
+                                ? "此更改已处理，文档中不再包含该修订。"
                                 : undefined
                         }
                         className="ml-auto"
                     >
-                        View
+                        查看
                     </PillButton>
                 )}
             </div>

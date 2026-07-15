@@ -154,7 +154,7 @@ export function AddDocumentsModal({
             onClose={onClose}
             breadcrumbs={breadcrumb}
             secondaryAction={{
-                label: uploading ? "Uploading…" : "Upload",
+                label: uploading ? "上传中…" : "上传",
                 icon: uploading ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
@@ -171,7 +171,7 @@ export function AddDocumentsModal({
                 ) : null
             }
             primaryAction={{
-                label: uploading ? "Saving…" : "Confirm",
+                label: uploading ? "保存中…" : "确认",
                 onClick: handleConfirm,
                 disabled: selectedIds.size === 0 || uploading,
             }}
@@ -193,7 +193,7 @@ export function AddDocumentsModal({
                         type="button"
                         onClick={() => setUploadWarning(null)}
                         className="shrink-0 rounded p-0.5 text-black hover:bg-gray-100"
-                        aria-label="Dismiss warning"
+                        aria-label="关闭警告"
                     >
                         <X className="h-3.5 w-3.5" />
                     </button>
@@ -208,11 +208,11 @@ export function AddDocumentsModal({
                     selectedIds={selectedIds}
                     onChange={setSelectedIds}
                     allowMultiple={allowMultiple}
-                    emptyMessage="No documents yet"
+                    emptyMessage="暂无文档"
                     uploadingFilenames={uploadingFilenames}
                     searchable
                     searchAutoFocus
-                    searchNoResultsMessage="No matches found"
+                    searchNoResultsMessage="未找到匹配项"
                     showProjectTabs
                 />
             </div>

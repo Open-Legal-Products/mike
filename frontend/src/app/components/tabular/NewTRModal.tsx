@@ -230,8 +230,8 @@ export function NewTRModal({
         {
             value: "",
             label: loadingWorkflows
-                ? "Loading templates..."
-                : "No template - start from scratch",
+                ? "正在加载模板..."
+                : "不使用模板，从零开始",
         },
         ...workflows.map((workflow) => ({
             value: workflow.id,
@@ -245,7 +245,7 @@ export function NewTRModal({
                   project.name +
                   (project.cm_number ? ` (#${project.cm_number})` : ""),
           }))
-        : [{ value: "", label: "No projects found" }];
+        : [{ value: "", label: "暂无项目" }];
 
     // What to show in the directory depends on mode and toggle state
     const directoryStandalone = isProjectMode
@@ -269,11 +269,11 @@ export function NewTRModal({
     const breadcrumbs =
         isProjectMode && projectName
             ? [
-                  "Projects",
+                  "项目",
                   `${projectName}${projectCmNumber ? ` (#${projectCmNumber})` : ""}`,
-                  "New Tabular Review",
+                  "新建表格审查",
               ]
-            : ["Tabular Reviews", "New Tabular Review"];
+            : ["表格审查", "新建表格审查"];
 
     return (
         <Modal
@@ -281,12 +281,12 @@ export function NewTRModal({
             onClose={handleClose}
             breadcrumbs={[
                 ...breadcrumbs,
-                step === "details" ? "Details" : "Add Documents",
+                step === "details" ? "详情" : "添加文档",
             ]}
             secondaryAction={
                 step === "documents"
                     ? {
-                          label: uploading ? "Uploading..." : "Upload",
+                          label: uploading ? "上传中..." : "上传",
                           icon: uploading ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           ) : (
@@ -300,7 +300,7 @@ export function NewTRModal({
             cancelAction={
                 step === "documents"
                     ? {
-                          label: "Back",
+                          label: "返回",
                           onClick: () => setStep("details"),
                           disabled: uploading,
                       }
@@ -309,7 +309,7 @@ export function NewTRModal({
             primaryAction={
                 step === "details"
                     ? {
-                          label: "Next",
+                          label: "下一步",
                           type: "button",
                           onClick: (event) => {
                               event.preventDefault();
@@ -320,7 +320,7 @@ export function NewTRModal({
                               (underProject && !selectedProjectId),
                       }
                     : {
-                          label: "Create",
+                          label: "创建",
                           type: "submit",
                           form: formId,
                           name: "modalAction",
@@ -348,14 +348,14 @@ export function NewTRModal({
                     <div className="space-y-6">
                         <div>
                             <ModalFieldLabel htmlFor="new-tr-title">
-                                Review name
+                                审查名称
                             </ModalFieldLabel>
                             <ModalTextInput
                                 id="new-tr-title"
                                 type="text"
                                 value={title}
                                 onChange={(e) => setTitle(e.target.value)}
-                                placeholder="Review name"
+                                placeholder="审查名称"
                                 variant="minimal"
                                 className="placeholder:text-gray-400"
                                 autoFocus
@@ -365,7 +365,7 @@ export function NewTRModal({
                         {/* Workflow template */}
                         <div>
                             <ModalFieldLabel as="p">
-                                Workflow template
+                                工作流模板
                             </ModalFieldLabel>
                             <ModalSelect
                                 id="new-tr-workflow-template"
@@ -382,7 +382,7 @@ export function NewTRModal({
                         {!isProjectMode && (
                             <div className="space-y-3">
                                 <ModalFieldLabel as="p">
-                                    Project
+                                    项目
                                 </ModalFieldLabel>
                                 <button
                                     type="button"
@@ -405,7 +405,7 @@ export function NewTRModal({
                                         />
                                     </span>
                                     <span className="text-sm text-gray-600">
-                                        Create under a project
+                                        创建到项目下
                                     </span>
                                 </button>
 
@@ -419,7 +419,7 @@ export function NewTRModal({
                                                 void handleSelectProject(value);
                                             }
                                         }}
-                                        placeholder="Select project..."
+                                        placeholder="选择项目..."
                                         disabled={projects.length === 0}
                                     />
                                 )}
@@ -449,8 +449,8 @@ export function NewTRModal({
                                 onChange={setSelectedDocIds}
                                 emptyMessage={
                                     isProjectMode || underProject
-                                        ? "No ready documents in this project"
-                                        : "No documents yet"
+                                        ? "该项目中暂无可用文档"
+                                        : "暂无文档"
                                 }
                                 searchable
                                 searchAutoFocus

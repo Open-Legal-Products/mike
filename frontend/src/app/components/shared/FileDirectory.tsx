@@ -53,12 +53,12 @@ export function FileDirectory({
     onChange,
     allowMultiple = true,
     forceExpanded = false,
-    emptyMessage = "No documents yet",
+    emptyMessage = "暂无文档",
     uploadingFilenames = [],
     searchable = false,
-    searchPlaceholder = "Search...",
+    searchPlaceholder = "搜索...",
     searchAutoFocus = false,
-    searchNoResultsMessage = "No matches found",
+    searchNoResultsMessage = "未找到匹配项",
     showProjectTabs,
 }: FileDirectoryProps) {
     const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
@@ -252,7 +252,7 @@ export function FileDirectory({
                                         {filename}
                                     </span>
                                     <span className="shrink-0 text-gray-300">
-                                        Uploading
+                                        上传中
                                     </span>
                                 </div>
                             ))}
@@ -356,7 +356,7 @@ export function FileDirectory({
                                         <div>
                                             {docs.length === 0 ? (
                                                 <p className="pl-7 py-1 text-xs text-gray-400">
-                                                    Empty
+                                                    空
                                                 </p>
                                             ) : (
                                                 docs.map((doc) => {
@@ -426,7 +426,7 @@ export function FileDirectory({
                         !q &&
                         visibleDirectoryProjects.length === 0 && (
                             <p className="text-center text-sm text-gray-400 py-8">
-                                No projects yet
+                                暂无项目
                             </p>
                         )}
                 </div>
@@ -447,8 +447,8 @@ function FileDirectoryTabs({
             value={activeTab}
             onChange={onChange}
             options={[
-                { value: "files", label: "Files" },
-                { value: "projects", label: "Projects" },
+                { value: "files", label: "文件" },
+                { value: "projects", label: "项目" },
             ]}
             size="sm"
             className="self-start"

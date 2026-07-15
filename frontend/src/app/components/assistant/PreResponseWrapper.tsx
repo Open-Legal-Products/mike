@@ -39,8 +39,8 @@ export function PreResponseWrapper({
 
     const stepWord = `step${stepCount === 1 ? "" : "s"}`;
     const label = isStreaming
-        ? "Working"
-        : `Completed in ${stepCount} ${stepWord}`;
+        ? "处理中"
+        : `已完成，共 ${stepCount} 个步骤`;
 
     const buttonTextClass = compact ? "text-xs" : "text-sm";
     const childrenGapClass = compact ? "gap-2.5" : "gap-4";
