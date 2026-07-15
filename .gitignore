@@ -17,3 +17,12 @@ next-env.d.ts
 .DS_Store
 .vercel
 coverage
+
+# Agent / IDE tooling
+.agent_context/
+.claude/
+.multica/
+CLAUDE.md
+
+# PocketBase downloads
+pocketbase_0.39.6_darwin_arm64.zip
