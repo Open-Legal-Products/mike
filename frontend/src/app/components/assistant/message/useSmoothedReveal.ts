@@ -18,7 +18,15 @@ export function useSmoothedReveal(text: string, active: boolean): string {
 
     useEffect(() => {
         if (!active) {
+            // Snap to full text. We must update BOTH the float ref (used as the
+            // animation's resume point) and the rendered `revealedInt` state.
+            // If the stream ends while the reveal is still mid-animation — as
+            // Deep Research always does, delivering its entire report in a
+            // single content chunk at the very end — `revealedInt` would
+            // otherwise stay frozen at whatever partial prefix the animation
+            // had reached, permanently truncating the visible answer.
             revealedFloat.current = text.length;
+            setRevealedInt((cur) => (cur === text.length ? cur : text.length));
             return;
         }
 
@@ -57,4 +65,3 @@ export function useSmoothedReveal(text: string, active: boolean): string {
 
     return text.slice(0, Math.min(revealedInt, text.length));
 }
-
