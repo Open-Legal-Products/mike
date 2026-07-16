@@ -12,11 +12,38 @@ test("the public website is a separate build target", () => {
   const rootPackage = json("package.json");
   const websitePackage = json("website/package.json");
   assert.equal(existsSync(resolve(root, "website/.openai/hosting.json")), true);
+  assert.equal(existsSync(resolve(root, "website/build/sites-vite-plugin.ts")), true);
   assert.equal(websitePackage.name, "ross-ontario");
   assert.match(rootPackage.scripts["install:all"], /--prefix website/);
   assert.match(rootPackage.scripts.build, /build:website/);
   assert.match(rootPackage.scripts.lint, /lint:website/);
   assert.match(rootPackage.scripts.check, /test:website/);
+});
+
+test("the website build plugin is deliberately tracked", () => {
+  const ignoreRules = read(".gitignore");
+  assert.match(ignoreRules, /!website\/build\//);
+  assert.match(ignoreRules, /!website\/build\/sites-vite-plugin\.ts/);
+  assert.match(read("website/vite.config.ts"), /\.\/build\/sites-vite-plugin/);
+});
+
+test("website shell helpers survive browser uploads without executable modes", () => {
+  const wrappers = [
+    "website/scripts/build-verified.sh",
+    "website/scripts/install-ci.sh",
+    "website/scripts/validate-artifact.sh",
+  ];
+  for (const wrapper of wrappers) {
+    assert.match(
+      read(wrapper),
+      /exec bash "\$\{script_dir\}\/sites-env\.sh" -- bash "\$0" "\$@"/,
+      wrapper,
+    );
+  }
+  assert.match(
+    read("website/scripts/build-verified.sh"),
+    /bash "\$\{script_dir\}\/validate-artifact\.sh"/,
+  );
 });
 
 test("the public website derives identity and policy from central configuration", () => {
