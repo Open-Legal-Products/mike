@@ -37,7 +37,10 @@ node scripts/build-workflows.js
 
 ## Security
 
-Do not open a public issue for security vulnerabilities. Use [GitHub's private vulnerability reporting](https://github.com/willchen96/mike/security/advisories/new) instead.
+Do not open a public issue for security vulnerabilities. Use
+[ROSS private vulnerability reporting](https://github.com/ranade-oss/ROSS-RanadeOSS/security/advisories/new)
+instead. If an issue also affects upstream Mike, coordinate disclosure before
+opening an upstream report or pull request.
 
 We will aim to respond promptly and coordinate a disclosure timeline with you.
 

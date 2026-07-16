@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 180" role="img" aria-labelledby="title desc">
+  <title id="title">ROSS wordmark</title>
+  <desc id="desc">ROSS in navy lettering beside a navy icon with teal source lines, with Ranade OSS below.</desc>
+  <rect x="8" y="8" width="164" height="164" rx="32" fill="#102A43"/>
+  <path fill="#FFFFFF" d="M46 38h47c28 0 45 15 45 40 0 18-9 31-25 37l30 36h-32l-26-33H72v33H46V38Zm26 24v33h20c13 0 20-6 20-17s-7-16-20-16H72Z"/>
+  <rect x="49" y="153" width="40" height="7" rx="3.5" fill="#0F8B8D"/>
+  <rect x="95" y="153" width="40" height="7" rx="3.5" fill="#0F8B8D"/>
+  <text x="208" y="112" fill="#102A43" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="94" font-weight="750" letter-spacing="5">ROSS</text>
+  <text x="214" y="153" fill="#0F8B8D" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="27" font-weight="600" letter-spacing="6">RANADE OSS</text>
+</svg>

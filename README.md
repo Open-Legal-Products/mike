@@ -2,7 +2,17 @@
 
 ROSS (Ranade OSS, fork of Mike OSS) is a legal document assistant with a Next.js frontend, an Express backend, Supabase Auth/Postgres, and Cloudflare R2-compatible object storage.
 
-Website: [mikeoss.com](https://mikeoss.com)
+ROSS public website: planned; placeholder domains are recorded in
+`config/ross-brand.json` until approved.
+
+Upstream project: [Mike source](https://github.com/Open-Legal-Products/mike) and
+[Mike website](https://mikeoss.com). ROSS is independently developed and is not
+endorsed by the upstream maintainers, governments, courts, or source providers.
+See [NOTICE.md](NOTICE.md) for attribution and licence information.
+
+The current ROSS hosted-beta boundary permits synthetic or non-confidential
+materials only. Architecture decisions and their approval status are indexed in
+`docs/architecture/README.md`.
 
 ## Contents
 
@@ -146,7 +156,9 @@ Open `http://localhost:3000`.
 ## Useful Checks
 
 ```bash
-npm run build --prefix backend
-npm run build --prefix frontend
-npm run lint --prefix frontend
+npm run install:all
+npm run check
 ```
+
+Use `npm run lint:strict` to inspect the inherited frontend lint debt separately
+from the non-regression gate.

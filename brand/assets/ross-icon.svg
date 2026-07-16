@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">ROSS icon</title>
+  <desc id="desc">A white geometric letter R and two teal source lines on a navy rounded square.</desc>
+  <rect width="256" height="256" rx="48" fill="#102A43"/>
+  <path fill="#FFFFFF" d="M62 48h70c40 0 64 22 64 57 0 25-13 44-36 52l43 51h-45l-38-46H99v46H62V48Zm37 34v47h31c18 0 28-8 28-24s-10-23-28-23H99Z"/>
+  <rect x="66" y="220" width="58" height="10" rx="5" fill="#0F8B8D"/>
+  <rect x="132" y="220" width="58" height="10" rx="5" fill="#0F8B8D"/>
+</svg>

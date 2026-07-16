@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ross.example.invalid/schemas/ross-brand.schema.json",
+  "title": "ROSS brand and product configuration",
+  "type": "object",
+  "required": ["schemaVersion", "product", "urls", "identity", "policy", "attribution"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "product": {
+      "type": "object",
+      "required": ["name", "expandedName", "tagline", "description", "betaLabel", "legalOperator"],
+      "properties": {
+        "name": { "const": "ROSS" },
+        "expandedName": { "const": "Ranade OSS" },
+        "tagline": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "betaLabel": { "type": "string", "minLength": 1 },
+        "legalOperator": { "type": "string", "minLength": 1 },
+        "productOwner": { "type": "string", "minLength": 1 },
+        "technicalOwner": { "type": "string", "minLength": 1 },
+        "legalContentOwner": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "urls": {
+      "type": "object",
+      "required": ["website", "app", "api", "status", "support", "source", "upstreamSource", "upstreamWebsite"],
+      "properties": {
+        "website": { "type": "string", "format": "uri" },
+        "app": { "type": "string", "format": "uri" },
+        "api": { "type": "string", "format": "uri" },
+        "status": { "type": "string", "format": "uri" },
+        "support": { "type": "string", "format": "uri" },
+        "source": { "type": "string", "format": "uri" },
+        "upstreamSource": { "type": "string", "format": "uri" },
+        "upstreamWebsite": { "type": "string", "format": "uri" }
+      },
+      "additionalProperties": false
+    },
+    "identity": {
+      "type": "object",
+      "required": ["primaryColour", "primaryColourName", "accentColour", "accentColourName", "lightColour", "textColour", "fontStack", "icon", "wordmark", "favicon"],
+      "properties": {
+        "primaryColour": { "$ref": "#/$defs/hexColour" },
+        "primaryColourName": { "type": "string", "minLength": 1 },
+        "accentColour": { "$ref": "#/$defs/hexColour" },
+        "accentColourName": { "type": "string", "minLength": 1 },
+        "lightColour": { "$ref": "#/$defs/hexColour" },
+        "textColour": { "$ref": "#/$defs/hexColour" },
+        "fontStack": { "type": "string", "minLength": 1 },
+        "icon": { "type": "string", "pattern": "^brand/assets/.+\\.svg$" },
+        "wordmark": { "type": "string", "pattern": "^brand/assets/.+\\.svg$" },
+        "favicon": { "type": "string", "pattern": "^brand/assets/.+\\.svg$" }
+      },
+      "additionalProperties": false
+    },
+    "policy": {
+      "type": "object",
+      "required": ["defaultJurisdiction", "productionDataResidencyTarget", "previewData", "courtListenerPreserved", "canliiScrapingAllowed", "governmentAffiliation", "trademarkReview"],
+      "properties": {
+        "defaultJurisdiction": { "const": "CA-ON" },
+        "productionDataResidencyTarget": { "const": "Canada" },
+        "previewData": { "const": "synthetic-only" },
+        "courtListenerPreserved": { "const": true },
+        "canliiScrapingAllowed": { "const": false },
+        "governmentAffiliation": { "const": false },
+        "trademarkReview": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "attribution": {
+      "type": "object",
+      "required": ["short", "noticePath"],
+      "properties": {
+        "short": { "type": "string", "minLength": 1 },
+        "noticePath": { "const": "NOTICE.md" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "hexColour": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    }
+  },
+  "additionalProperties": false
+}
