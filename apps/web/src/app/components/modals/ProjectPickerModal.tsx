@@ -1,10 +1,14 @@
 "use client";
 
 import { useState, type ButtonHTMLAttributes, type ReactNode } from "react";
-import { Folder } from "lucide-react";
 import { SearchBar } from "@/app/components/ui/search-bar";
+import { ClosedProjectSvgIcon } from "@/app/components/shared/FolderSvgIcon";
 import type { Project } from "../shared/types";
 import { Modal } from "./Modal";
+import {
+    APP_SURFACE_ACTIVE_CLASS,
+    APP_SURFACE_HOVER_CLASS,
+} from "@/app/components/ui/liquid-surface";
 
 type PrimaryAction = Omit<
     ButtonHTMLAttributes<HTMLButtonElement>,
@@ -66,7 +70,7 @@ export function ProjectPickerModal({
                                 key={i}
                                 className="flex items-center gap-2 rounded-md px-2 py-2"
                             >
-                                <div className="h-3.5 w-3.5 rounded-full border border-gray-200 shrink-0" />
+                                <div className="h-3.5 w-3.5 rounded border border-gray-200 shrink-0" />
                                 <div className="h-3.5 w-3.5 rounded bg-gray-100 animate-pulse shrink-0" />
                                 <div
                                     className="h-3 rounded bg-gray-100 animate-pulse"
@@ -101,7 +105,7 @@ export function ProjectPickerModal({
                                                 isSelected ? null : project.id,
                                             )
                                         }
-                                        className={`w-full flex rounded-md items-center gap-2 px-2 py-2 text-xs transition-all text-left ${isSelected ? "bg-gray-100" : "hover:bg-gray-100/70"}`}
+                                        className={`w-full flex rounded-md items-center gap-2 px-2 py-2 text-xs transition-all text-left ${isSelected ? APP_SURFACE_ACTIVE_CLASS : APP_SURFACE_HOVER_CLASS}`}
                                     >
                                         <span
                                             className={`shrink-0 h-3.5 w-3.5 rounded border flex items-center justify-center ${isSelected ? "bg-gray-900 border-gray-900" : "border-gray-300"}`}
@@ -110,7 +114,7 @@ export function ProjectPickerModal({
                                                 <span className="h-1.5 w-1.5 rounded-sm bg-white" />
                                             )}
                                         </span>
-                                        <Folder className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                                        <ClosedProjectSvgIcon className="h-3.5 w-3.5 shrink-0" />
                                         <span
                                             className={`flex-1 truncate ${isSelected ? "text-gray-900" : "text-gray-700"}`}
                                         >

@@ -1,4 +1,5 @@
-import { File, FileChartPie, FileSpreadsheet, FileText } from "lucide-react";
+import Image from "next/image";
+import { File } from "lucide-react";
 
 import { cn } from "@/app/lib/utils";
 
@@ -35,17 +36,82 @@ export function FileTypeIcon({
     className?: string;
     muted?: boolean;
 }) {
-    const cls = cn(className, "shrink-0");
-    if (muted) return <File className={cn(cls, "text-gray-300")} />;
-    switch (fileTypeKind(fileType)) {
+    const cls = `${className} shrink-0`;
+    const kind = fileTypeKind(fileType);
+    if (muted) {
+        const src =
+            kind === "pdf"
+                ? "/icons/file-types/pdf.svg"
+                : kind === "word"
+                  ? "/icons/file-types/word.svg"
+                  : kind === "excel"
+                    ? "/icons/file-types/excel.svg"
+                    : kind === "ppt"
+                      ? "/icons/file-types/ppt.svg"
+                      : null;
+        return src ? (
+            <Image
+                src={src}
+                alt=""
+                aria-hidden="true"
+                width={64}
+                height={64}
+                unoptimized
+                className={`${cls} object-contain grayscale opacity-35`}
+            />
+        ) : (
+            <File className={`${cls} text-gray-300`} />
+        );
+    }
+    switch (kind) {
         case "pdf":
-            return <FileText className={cn(cls, "text-red-500")} />;
+            return (
+                <Image
+                    src="/icons/file-types/pdf.svg"
+                    alt=""
+                    aria-hidden="true"
+                    width={64}
+                    height={64}
+                    unoptimized
+                    className={`${cls} object-contain`}
+                />
+            );
         case "word":
-            return <File className={cn(cls, "text-blue-500")} />;
+            return (
+                <Image
+                    src="/icons/file-types/word.svg"
+                    alt=""
+                    aria-hidden="true"
+                    width={64}
+                    height={64}
+                    unoptimized
+                    className={`${cls} object-contain`}
+                />
+            );
         case "excel":
-            return <FileSpreadsheet className={cn(cls, "text-emerald-500")} />;
+            return (
+                <Image
+                    src="/icons/file-types/excel.svg"
+                    alt=""
+                    aria-hidden="true"
+                    width={64}
+                    height={64}
+                    unoptimized
+                    className={`${cls} object-contain`}
+                />
+            );
         case "ppt":
-            return <FileChartPie className={cn(cls, "text-red-500")} />;
+            return (
+                <Image
+                    src="/icons/file-types/ppt.svg"
+                    alt=""
+                    aria-hidden="true"
+                    width={64}
+                    height={64}
+                    unoptimized
+                    className={`${cls} object-contain`}
+                />
+            );
         default:
             return <File className={cn(cls, "text-gray-500")} />;
     }

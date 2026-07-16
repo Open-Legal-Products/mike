@@ -48,19 +48,16 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
         null,
     );
-    const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(
-        new Set(),
-    );
+    const [selectedDocuments, setSelectedDocuments] = useState<Document[]>([]);
     const [assistantPrompt, setAssistantPrompt] = useState("");
     const [saving, setSaving] = useState(false);
 
     const router = useRouter();
     const { saveChat, setNewChatMessages } = useChatHistoryContext();
-    const {
-        loading: dirLoading,
-        projects,
-        standaloneDocuments,
-    } = useDirectoryData(screen !== "select");
+    const { loading: dirLoading, projects } = useDirectoryData(
+        screen === "details",
+        "projects",
+    );
 
     useEffect(() => {
         if (workflow) {
@@ -83,7 +80,7 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
     function resetConfigureState() {
         setInProject(false);
         setSelectedProjectId(null);
-        setSelectedDocIds(new Set());
+        setSelectedDocuments([]);
         setAssistantPrompt("");
     }
 
@@ -106,16 +103,10 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
             const projectId = inProject ? selectedProjectId! : undefined;
             const chatId = await saveChat(projectId);
             if (!chatId) return;
-            const allDocs: Document[] = [
-                ...standaloneDocuments,
-                ...projects.flatMap((p) => p.documents || []),
-            ];
-            const files = allDocs
-                .filter((d) => selectedDocIds.has(d.id))
-                .map((d) => ({
-                    filename: d.filename,
-                    document_id: d.id,
-                }));
+            const files = selectedDocuments.map((document) => ({
+                filename: document.filename,
+                document_id: document.id,
+            }));
             const content = assistantPrompt.trim()
                 ? `implement workflow\n${assistantPrompt.trim()}`
                 : "implement workflow";
@@ -139,13 +130,7 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
     }
 
     async function handleCreateReview() {
-        const allDocs: Document[] = [
-            ...standaloneDocuments,
-            ...projects.flatMap((p) => p.documents || []),
-        ];
-        const docIds = allDocs
-            .filter((d) => selectedDocIds.has(d.id))
-            .map((d) => d.id);
+        const docIds = selectedDocuments.map((document) => document.id);
         const projectId = inProject ? selectedProjectId! : undefined;
 
         setSaving(true);
@@ -240,13 +225,6 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
                           disabled: saving,
                       }
             }
-            footerStatus={
-                screen === "documents" && selectedDocIds.size > 0 ? (
-                    <span className="text-xs text-gray-400">
-                        {selectedDocIds.size} selected
-                    </span>
-                ) : null
-            }
             primaryAction={
                 screen === "select"
                     ? {
@@ -272,7 +250,7 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
                             onClick: handleCreateReview,
                             disabled:
                                 saving ||
-                                selectedDocIds.size === 0 ||
+                                selectedDocuments.length === 0 ||
                                 (inProject && !selectedProjectId),
                         }
             }
@@ -308,7 +286,7 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
                                 onChange={(value) => {
                                     setInProject(value === "project");
                                     setSelectedProjectId(null);
-                                    setSelectedDocIds(new Set());
+                                    setSelectedDocuments([]);
                                 }}
                                 options={locationOptions}
                             />
@@ -325,7 +303,7 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
                                     options={projectOptions}
                                     onChange={(value) => {
                                         setSelectedProjectId(value || null);
-                                        setSelectedDocIds(new Set());
+                                        setSelectedDocuments([]);
                                     }}
                                     placeholder={
                                         dirLoading
@@ -364,25 +342,10 @@ export function UseWorkflowModal({ workflows, workflow, onClose, skipSelect = fa
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                     <div className="flex min-h-0 flex-1 flex-col">
                         <FileDirectory
-                            standaloneDocs={
-                                inProject ? projectDocs : standaloneDocuments
-                            }
-                            directoryProjects={
-                                inProject ? [] : projects
-                            }
-                            loading={dirLoading}
-                            selectedIds={selectedDocIds}
-                            onChange={setSelectedDocIds}
-                            allowMultiple
-                            forceExpanded={inProject}
-                            emptyMessage={
-                                inProject
-                                    ? "No documents in this project"
-                                    : "No documents yet"
-                            }
-                            searchable
-                            searchAutoFocus
-                            showProjectTabs={!inProject}
+                            documents={inProject ? projectDocs : undefined}
+                            selectedDocuments={selectedDocuments}
+                            onChange={setSelectedDocuments}
+                            showTabs={!inProject}
                         />
                     </div>
                 </div>

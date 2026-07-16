@@ -11,12 +11,14 @@ import {
 import {
     ArrowRight,
     Check,
-    FolderOpen,
     Library,
+    Loader2,
     Square,
+    Waypoints,
     X,
 } from "lucide-react";
 import { AddDocButton } from "./AddDocButton";
+import { UploadOverlay } from "./UploadOverlay";
 import { FileTypeIcon } from "../shared/FileTypeIcon";
 import { AddDocumentsModal } from "../modals/AddDocumentsModal";
 import { AssistantWorkflowModal } from "./AssistantWorkflowModal";
@@ -25,10 +27,24 @@ import { useSelectedModel } from "@/app/hooks/useSelectedModel";
 import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import { isModelAvailable } from "@/app/lib/modelAvailability";
 import type { Document, Message } from "../shared/types";
+import type { DirectoryTab } from "../shared/useDirectoryData";
 import { cn } from "@/app/lib/utils";
+import {
+    uploadProjectDocument,
+    uploadStandaloneDocument,
+} from "@/app/lib/mikeApi";
+import {
+    formatUnsupportedDocumentWarning,
+    partitionSupportedDocumentFiles,
+} from "@/app/lib/documentUploadValidation";
 
 export interface ChatInputHandle {
     addDoc: (doc: Document) => void;
+    startWorkflowDocumentSelection: (
+        workflow: { id: string; title: string },
+        prompt?: string,
+        options?: { initialDocumentTab?: DirectoryTab },
+    ) => void;
 }
 
 interface Props {
@@ -37,9 +53,10 @@ interface Props {
     isLoading: boolean;
     hideAddDocButton?: boolean;
     hideWorkflowButton?: boolean;
-    onProjectsClick?: () => void;
     projectName?: string;
     projectCmNumber?: string | null;
+    projectId?: string;
+    onDocumentsUploaded?: (documents: Document[]) => void;
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
@@ -49,9 +66,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
         isLoading,
         hideAddDocButton,
         hideWorkflowButton,
-        onProjectsClick,
         projectName,
         projectCmNumber,
+        projectId,
+        onDocumentsUploaded,
     }: Props,
     ref,
 ) {
@@ -68,7 +86,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
     const controlsRef = useRef<HTMLDivElement>(null);
     const [compactControls, setCompactControls] = useState(false);
     const [docSelectorOpen, setDocSelectorOpen] = useState(false);
+    const [docSelectorInitialTab, setDocSelectorInitialTab] =
+        useState<DirectoryTab>("files");
     const [workflowModalOpen, setWorkflowModalOpen] = useState(false);
+    const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+    const [uploadingFilenames, setUploadingFilenames] = useState<string[]>([]);
+    const [uploadWarning, setUploadWarning] = useState<string | null>(null);
+    const [droppedDocuments, setDroppedDocuments] = useState<Document[]>([]);
+    const dragDepthRef = useRef(0);
 
     useImperativeHandle(ref, () => ({
         addDoc: (doc: Document) => {
@@ -76,6 +101,19 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                 if (prev.some((d) => d.id === doc.id)) return prev;
                 return [...prev, doc];
             });
+        },
+        startWorkflowDocumentSelection: (workflow, prompt, options) => {
+            setSelectedWorkflow(workflow);
+            setDocSelectorInitialTab(options?.initialDocumentTab ?? "files");
+            if (prompt) {
+                setValue((current) => current || prompt);
+                requestAnimationFrame(() => {
+                    if (!textareaRef.current) return;
+                    textareaRef.current.style.height = "auto";
+                    textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+                });
+            }
+            setDocSelectorOpen(true);
         },
     }));
 
@@ -101,6 +139,102 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
         },
         [],
     );
+
+    const addAttachedDocuments = useCallback((documents: Document[]) => {
+        setAttachedDocs((prev) => {
+            const existing = new Set(prev.map((document) => document.id));
+            return [
+                ...prev,
+                ...documents.filter((document) => !existing.has(document.id)),
+            ];
+        });
+    }, []);
+
+    const handleDroppedFiles = useCallback(
+        async (files: File[]) => {
+            const { supported, unsupported } =
+                partitionSupportedDocumentFiles(files);
+            setUploadWarning(formatUnsupportedDocumentWarning(unsupported));
+            if (supported.length === 0) return;
+
+            setUploadingFilenames(supported.map((file) => file.name));
+            const results = await Promise.allSettled(
+                supported.map((file) =>
+                    projectId
+                        ? uploadProjectDocument(projectId, file)
+                        : uploadStandaloneDocument(file),
+                ),
+            );
+            const uploaded = results.flatMap((result) =>
+                result.status === "fulfilled" ? [result.value] : [],
+            );
+            if (uploaded.length > 0) {
+                addAttachedDocuments(uploaded);
+                setDroppedDocuments((prev) => {
+                    const existing = new Set(
+                        prev.map((document) => document.id),
+                    );
+                    return [
+                        ...prev,
+                        ...uploaded.filter(
+                            (document) => !existing.has(document.id),
+                        ),
+                    ];
+                });
+                onDocumentsUploaded?.(uploaded);
+            }
+            if (results.some((result) => result.status === "rejected")) {
+                setUploadWarning(
+                    uploaded.length > 0
+                        ? "Some documents could not be uploaded."
+                        : "Documents could not be uploaded. Please try again.",
+                );
+            }
+            setUploadingFilenames([]);
+        },
+        [addAttachedDocuments, onDocumentsUploaded, projectId],
+    );
+
+    useEffect(() => {
+        const hasFiles = (dataTransfer: DataTransfer | null) =>
+            !!dataTransfer && Array.from(dataTransfer.types).includes("Files");
+
+        const handleDragEnter = (event: DragEvent) => {
+            if (!hasFiles(event.dataTransfer)) return;
+            event.preventDefault();
+            dragDepthRef.current += 1;
+            setIsDraggingFiles(true);
+        };
+        const handleDragOver = (event: DragEvent) => {
+            if (!hasFiles(event.dataTransfer)) return;
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+        };
+        const handleDragLeave = (event: DragEvent) => {
+            if (!hasFiles(event.dataTransfer)) return;
+            dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+            if (dragDepthRef.current === 0) setIsDraggingFiles(false);
+        };
+        const handleDrop = (event: DragEvent) => {
+            if (!hasFiles(event.dataTransfer)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            dragDepthRef.current = 0;
+            setIsDraggingFiles(false);
+            void handleDroppedFiles(Array.from(event.dataTransfer?.files ?? []));
+        };
+
+        window.addEventListener("dragenter", handleDragEnter);
+        window.addEventListener("dragover", handleDragOver);
+        window.addEventListener("dragleave", handleDragLeave);
+        window.addEventListener("drop", handleDrop);
+        return () => {
+            window.removeEventListener("dragenter", handleDragEnter);
+            window.removeEventListener("dragover", handleDragOver);
+            window.removeEventListener("dragleave", handleDragLeave);
+            window.removeEventListener("drop", handleDrop);
+        };
+    }, [handleDroppedFiles]);
 
     const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setValue(e.target.value);
@@ -210,12 +344,28 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                         </div>
                     )}
 
+                    {uploadingFilenames.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5 px-2 pt-2">
+                            {uploadingFilenames.map((filename, index) => (
+                                <div
+                                    key={`${filename}-${index}`}
+                                    className="inline-flex items-center gap-1 rounded-[10px] bg-white/75 px-2 py-1 text-xs text-gray-600 shadow-[0_2px_6px_rgba(15,23,42,0.08)] backdrop-blur-xl"
+                                >
+                                    <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                    <span className="max-w-[140px] truncate">
+                                        {filename}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
                     {/* Input */}
                     <div className="px-4 pt-4">
                         <textarea
                             ref={textareaRef}
                             rows={1}
-                            placeholder="Ask a question about your documents..."
+                            placeholder="How can I help?"
                             value={value}
                             onChange={handleChange}
                             onKeyDown={handleKeyDown}
@@ -231,7 +381,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                         <div className="flex items-center gap-1">
                             {!hideAddDocButton && (
                                 <AddDocButton
-                                    onBrowseAll={() => setDocSelectorOpen(true)}
+                                    onBrowseAll={() => {
+                                        setDocSelectorInitialTab("files");
+                                        setDocSelectorOpen(true);
+                                    }}
                                     selectedDocIds={attachedDocs.map(
                                         (d) => d.id,
                                     )}
@@ -246,14 +399,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                                     className={cn(
                                         "flex items-center gap-1.5 rounded-lg px-2 h-8 text-sm transition-colors",
                                         selectedWorkflow
-                                            ? "text-blue-600 hover:bg-white/55"
-                                            : "text-gray-400 hover:bg-white/55 hover:text-gray-700",
+                                            ? "text-blue-600 hover:text-blue-700"
+                                            : "text-gray-400 hover:text-gray-700",
                                     )}
                                 >
                                     {selectedWorkflow ? (
                                         <Check className="h-3.5 w-3.5" />
                                     ) : (
-                                        <Library className="h-3.5 w-3.5" />
+                                        <Waypoints className="h-3.5 w-3.5" />
                                     )}
                                     <span
                                         className={
@@ -263,22 +416,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                                         }
                                     >
                                         Workflows
-                                    </span>
-                                </button>
-                            )}
-                            {onProjectsClick && (
-                                <button
-                                    type="button"
-                                    onClick={onProjectsClick}
-                                    aria-label="Open projects"
-                                    className={cn(
-                                        "flex items-center gap-1.5 rounded-lg px-2 h-8 text-sm text-gray-400 hover:text-gray-700 transition-colors",
-                                        "hover:bg-white/55",
-                                    )}
-                                >
-                                    <FolderOpen className="h-3.5 w-3.5" />
-                                    <span className="hidden sm:inline">
-                                        Projects
                                     </span>
                                 </button>
                             )}
@@ -316,9 +453,18 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
 
             <AddDocumentsModal
                 open={docSelectorOpen}
+                keepMounted
                 onClose={() => setDocSelectorOpen(false)}
                 onSelect={handleAddDocsFromSelector}
-                breadcrumb={["Assistant", "Add Documents"]}
+                initialSelectedDocuments={attachedDocs}
+                externalUploadedDocuments={droppedDocuments}
+                initialTab={docSelectorInitialTab}
+                projectId={projectId}
+                breadcrumb={
+                    selectedWorkflow
+                        ? ["Assistant", selectedWorkflow.title, "Add Documents"]
+                        : ["Assistant", "Add Documents"]
+                }
             />
             <AssistantWorkflowModal
                 open={workflowModalOpen}
@@ -332,6 +478,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                 }}
                 projectName={projectName}
                 projectCmNumber={projectCmNumber}
+            />
+            <UploadOverlay
+                open={isDraggingFiles}
+                warning={uploadWarning}
+                onWarningClose={() => setUploadWarning(null)}
             />
         </>
     );

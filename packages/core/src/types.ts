@@ -10,6 +10,16 @@ export interface Folder {
   updated_at: string;
 }
 
+export interface LibraryFolder {
+  id: string;
+  user_id: string;
+  library_kind: "file" | "template";
+  name: string;
+  parent_folder_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Project {
   id: string;
   user_id: string;
@@ -34,6 +44,8 @@ export interface Document {
   user_id?: string;
   project_id: string | null;
   folder_id?: string | null;
+  library_kind?: "file" | "template";
+  library_folder_id?: string | null;
   filename: string;
   owner_email?: string | null;
   owner_display_name?: string | null;
@@ -402,6 +414,11 @@ const PAGE_BREAK_SENTINEL = "[[PAGE_BREAK]]";
 export function isSpreadsheetFilename(filename: string): boolean {
   const ext = filename.split(".").pop()?.toLowerCase();
   return ext === "xlsx" || ext === "xlsm" || ext === "xls";
+}
+
+export function isDocxFilename(filename: string): boolean {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  return ext === "docx" || ext === "doc";
 }
 
 /**

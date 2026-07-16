@@ -95,6 +95,9 @@ export async function assignOrCopyDocument(
       .update({
         project_id: projectId,
         org_id: targetOrgId,
+        // A document that joins a project leaves the standalone Library, so
+        // its library folder placement no longer applies.
+        library_folder_id: null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", documentId)

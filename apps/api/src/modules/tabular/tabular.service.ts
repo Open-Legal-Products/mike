@@ -54,4 +54,5 @@ export {
     deleteTabularChat,
     getTabularChatMessages,
     listTabularChats,
+    renameTabularChat,
 } from "./tabular.chats";

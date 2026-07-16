@@ -67,6 +67,7 @@ type ProjectWorkspaceValue = {
     creatingReview: boolean;
     createChat: () => Promise<void>;
     openNewReview: () => void;
+    setAddDocumentsHeaderAction: (action: (() => void) | null) => void;
     setOwnerOnlyAction: React.Dispatch<React.SetStateAction<string | null>>;
 };
 
@@ -131,6 +132,8 @@ export function ProjectWorkspaceProvider({
     const [newTRModalOpen, setNewTRModalOpen] = useState(false);
     const [creatingChat, setCreatingChat] = useState(false);
     const [creatingReview, setCreatingReview] = useState(false);
+    const [addDocumentsHeaderAction, setAddDocumentsHeaderActionState] =
+        useState<{ action: (() => void) | null }>({ action: null });
 
     const segments = useSelectedLayoutSegments();
     const activeSection = activeSectionFromSegments(segments);
@@ -152,6 +155,13 @@ export function ProjectWorkspaceProvider({
         projectChatsPromiseRef.current = null;
         projectReviewsPromiseRef.current = null;
     }, [projectId]);
+
+    const setAddDocumentsHeaderAction = useCallback(
+        (action: (() => void) | null) => {
+            setAddDocumentsHeaderActionState({ action });
+        },
+        [],
+    );
 
     useEffect(() => {
         if (!showShell) {
@@ -378,6 +388,7 @@ export function ProjectWorkspaceProvider({
             creatingReview,
             createChat,
             openNewReview,
+            setAddDocumentsHeaderAction,
             setOwnerOnlyAction,
         }),
         [
@@ -399,6 +410,7 @@ export function ProjectWorkspaceProvider({
             creatingReview,
             createChat,
             openNewReview,
+            setAddDocumentsHeaderAction,
         ],
     );
 
@@ -416,6 +428,7 @@ export function ProjectWorkspaceProvider({
                 <ProjectPageHeader
                     project={project}
                     search={search}
+                    activeSection={activeSection}
                     creatingChat={creatingChat}
                     creatingReview={creatingReview}
                     docsCount={project?.documents?.length ?? 0}
@@ -427,6 +440,7 @@ export function ProjectWorkspaceProvider({
                     onOpenPeople={() => setPeopleModalOpen(true)}
                     onNewChat={() => void createChat()}
                     onNewReview={openNewReview}
+                    onAddDocuments={addDocumentsHeaderAction.action}
                 />
 
                 {children}
@@ -534,7 +548,7 @@ export function ProjectSectionToolbar({
         <TableToolbar
             items={[
                 { id: "documents", label: "Documents" },
-                { id: "assistant", label: "Assistant Chats" },
+                { id: "assistant", label: "Chats" },
                 { id: "reviews", label: "Tabular Reviews" },
             ]}
             active={activeSection}

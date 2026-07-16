@@ -12,6 +12,10 @@ import {
     formatLabel,
 } from "../tabular/columnFormat";
 import { TAG_COLORS } from "../tabular/pillUtils";
+import {
+    APP_SURFACE_ACTIVE_CLASS,
+    APP_SURFACE_HOVER_CLASS,
+} from "@/app/components/ui/liquid-surface";
 
 type WorkflowPreviewMode = "auto" | "prompt" | "columns";
 type MobilePickerPane = "list" | "details";
@@ -157,8 +161,8 @@ export function WorkflowPickerContent({
                                         }
                                         className={`flex min-w-0 w-full items-center gap-3 rounded-md px-3 py-2 text-left text-xs transition-all ${
                                             isSelected
-                                                ? "bg-gray-100 text-gray-900"
-                                                : "hover:bg-gray-100/70"
+                                                ? `${APP_SURFACE_ACTIVE_CLASS} text-gray-900`
+                                                : APP_SURFACE_HOVER_CLASS
                                         } ${disabled ? "cursor-not-allowed opacity-45" : ""}`}
                                     >
                                         <span
@@ -234,7 +238,7 @@ function WorkflowPreview({
                         <button
                             type="button"
                             onClick={onClear}
-                            className="rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-100/70 hover:text-gray-600"
+                            className={`rounded-md p-1 text-gray-400 transition-colors hover:text-gray-600 ${APP_SURFACE_HOVER_CLASS}`}
                         >
                             <X className="h-3.5 w-3.5" />
                         </button>
@@ -372,8 +376,8 @@ function WorkflowColumnPreview({ columns }: { columns: ColumnConfig[] }) {
                                 }
                                 className={`flex min-w-0 w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-xs transition-all ${
                                     isExpanded
-                                        ? "bg-gray-100"
-                                        : "hover:bg-gray-100/70"
+                                        ? APP_SURFACE_ACTIVE_CLASS
+                                        : APP_SURFACE_HOVER_CLASS
                                 }`}
                             >
                                 <FormatIcon

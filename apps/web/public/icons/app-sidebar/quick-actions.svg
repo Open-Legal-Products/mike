@@ -1,0 +1,30 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bolt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#60A5FA" stop-opacity="0.96"/>
+      <stop offset="0.5" stop-color="#2563EB" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#1D4ED8" stop-opacity="0.97"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.85"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#172554" stop-opacity="0.45"/>
+    </linearGradient>
+    <radialGradient id="sheen">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.6" stop-color="#FFFFFF" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="clipBolt">
+      <path d="M32.91 4.51 L9.79 35.53 Q8 37.94 11 37.94 L29.5 37.94 Q32 37.94 31.72 40.43 L29.64 58.92 Q29.3 61.9 31.09 59.49 L54.21 28.47 Q56 26.06 53 26.06 L34.5 26.06 Q32 26.06 32.28 23.58 L34.36 5.08 Q34.7 2.1 32.91 4.51 Z"/>
+    </clipPath>
+  </defs>
+
+  <path d="M32.91 4.51 L9.79 35.53 Q8 37.94 11 37.94 L29.5 37.94 Q32 37.94 31.72 40.43 L29.64 58.92 Q29.3 61.9 31.09 59.49 L54.21 28.47 Q56 26.06 53 26.06 L34.5 26.06 Q32 26.06 32.28 23.58 L34.36 5.08 Q34.7 2.1 32.91 4.51 Z"
+        fill="url(#bolt)" stroke="url(#rim)" stroke-width="1.5" stroke-linejoin="round"/>
+
+  <g clip-path="url(#clipBolt)">
+    <ellipse cx="30.5" cy="7.5" rx="11" ry="5" fill="url(#sheen)" opacity="0.4"/>
+    <ellipse cx="18" cy="33" rx="4" ry="8" fill="url(#sheen)" opacity="0.24" transform="rotate(-30 18 33)"/>
+  </g>
+</svg>

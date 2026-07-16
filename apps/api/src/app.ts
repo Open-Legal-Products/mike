@@ -10,6 +10,7 @@ import { projectsRouter } from "./modules/projects/projects.routes";
 import { orgsRouter } from "./modules/orgs/orgs.routes";
 import { projectChatRouter } from "./modules/project-chat/projectChat.routes";
 import { documentsRouter } from "./modules/documents/documents.routes";
+import { libraryRouter } from "./modules/library/library.routes";
 import { tabularRouter } from "./modules/tabular/tabular.routes";
 import { workflowsRouter } from "./modules/workflows/workflows.routes";
 import { userRouter } from "./modules/user/user.routes";
@@ -172,6 +173,7 @@ app.post("/tabular-review/:reviewId/generate", chatLimiter);
 app.post("/chat/create", chatCreateLimiter);
 app.post("/chat/:chatId/generate-title", chatCreateLimiter);
 app.post("/single-documents", uploadLimiter);
+app.post("/library/:kind/documents", uploadLimiter);
 app.post("/single-documents/:documentId/versions", uploadLimiter);
 app.put(
     "/single-documents/:documentId/versions/:versionId/file",
@@ -191,6 +193,7 @@ app.use("/projects", projectsRouter);
 app.use("/orgs", orgsRouter);
 app.use("/projects/:projectId/chat", projectChatRouter);
 app.use("/single-documents", documentsRouter);
+app.use("/library", libraryRouter);
 app.use("/tabular-review", tabularRouter);
 app.use("/workflows", workflowsRouter);
 app.use("/user", userRouter);

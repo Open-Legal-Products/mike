@@ -32,6 +32,11 @@ export async function createDocumentFromUpload(
     // a document pulled from iManage/NetDocuments is distinguishable from a
     // user upload (must be an allowed document_versions.source value).
     source?: string;
+    // Library placement for standalone (project_id === null) documents. The
+    // Library feature splits standalone docs into "file"/"template" collections
+    // and optional folders; project documents ignore these.
+    libraryKind?: "file" | "template";
+    libraryFolderId?: string | null;
   },
   db: Db,
   log: Log,
@@ -42,6 +47,8 @@ export async function createDocumentFromUpload(
 > {
   const { userId, projectId, filename, suffix, content } = params;
   const source = params.source ?? "upload";
+  const libraryKind = params.libraryKind ?? "file";
+  const libraryFolderId = params.libraryFolderId ?? null;
 
   const orgId = await resolveContentOrgId(db, { userId, projectId });
   // documents.filename is NOT NULL (baseline schema) and chatContext still
@@ -56,6 +63,8 @@ export async function createDocumentFromUpload(
       filename,
       status: "processing",
       org_id: orgId,
+      library_kind: libraryKind,
+      library_folder_id: libraryFolderId,
     })
     .select("*")
     .single();
@@ -186,6 +195,10 @@ export async function createDocumentFromUpload(
           filename,
           storage_path: key,
           pdf_storage_path: pdfStoragePath,
+          // Library clients read documents by folder_id; standalone library
+          // documents surface their library_folder_id under that alias.
+          folder_id:
+            (updated.library_folder_id as string | null | undefined) ?? null,
           file_type: suffix,
           size_bytes: content.byteLength,
           page_count: pageCount,

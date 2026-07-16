@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { MikeIcon } from "@/app/components/chat/mike-icon";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
     streamTabularChat,
     getTabularChats,
     getTabularChatMessages,
     deleteTabularChat,
+    renameTabularChat,
     mapTRMessages,
     type TRChat,
     type TRCitationAnnotation,
@@ -20,6 +20,7 @@ import {
     resolveEffectiveTabularModel,
     type ModelProvider,
 } from "@/app/lib/modelAvailability";
+import { LIQUID_PANEL_SURFACE_CLASS } from "@/app/components/ui/liquid-surface";
 import { cn } from "@/app/lib/utils";
 import type { TRMessage } from "./tr-chat-panel/types";
 import {
@@ -80,12 +81,20 @@ export function TRChatPanel({
     const [isResizing, setIsResizing] = useState(false);
     const [inputHeight, setInputHeight] = useState(96);
 
+    const resizeStartRef = useRef({ x: 0, width: 380 });
+
     useEffect(() => {
         if (!isResizing) return;
         const MIN_WIDTH = 280;
         const MAX_WIDTH = 800;
         function onMove(e: MouseEvent) {
-            setPanelWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, e.clientX)));
+            const delta = resizeStartRef.current.x - e.clientX;
+            setPanelWidth(
+                Math.min(
+                    MAX_WIDTH,
+                    Math.max(MIN_WIDTH, resizeStartRef.current.width + delta),
+                ),
+            );
         }
         function onUp() {
             setIsResizing(false);
@@ -375,15 +384,27 @@ export function TRChatPanel({
         setHistoryOpen(false);
     }
 
-    async function handleDeleteChat() {
-        if (!currentChatId) return;
-        const chatIdToDelete = currentChatId;
-        setChats((prev) => prev.filter((c) => c.id !== chatIdToDelete));
-        setCurrentChatId(null);
-        setCurrentChatTitle(null);
-        setMessages([]);
+    async function handleDeleteChat(chatId: string) {
+        setChats((prev) => prev.filter((c) => c.id !== chatId));
+        if (chatId === currentChatId) {
+            setCurrentChatId(null);
+            setCurrentChatTitle(null);
+            setMessages([]);
+        }
         try {
-            await deleteTabularChat(reviewId, chatIdToDelete);
+            await deleteTabularChat(reviewId, chatId);
+        } catch {
+            /* ignore */
+        }
+    }
+
+    async function handleRenameChat(chatId: string, title: string) {
+        setChats((prev) =>
+            prev.map((c) => (c.id === chatId ? { ...c, title } : c)),
+        );
+        if (chatId === currentChatId) setCurrentChatTitle(title);
+        try {
+            await renameTabularChat(reviewId, chatId, title);
         } catch {
             /* ignore */
         }
@@ -1049,22 +1070,32 @@ export function TRChatPanel({
 
     return (
         <div
-            style={{ width: panelWidth }}
+            style={
+                {
+                    "--tr-chat-panel-width": `${panelWidth}px`,
+                } as CSSProperties
+            }
             className={cn(
-                "shrink-0 flex flex-col border-r border-gray-200 h-full relative",
-                "bg-transparent",
+                "flex flex-col relative",
+                // Mobile: replaces the table, filling the row minus margins.
+                // md+: fixed width beside the table, top-aligned with it
+                // (below the toolbar).
+                "flex-1 min-w-0 mx-3 mb-3 md:flex-none md:w-[var(--tr-chat-panel-width)] md:mt-12 md:-ml-4 md:mr-6",
+                LIQUID_PANEL_SURFACE_CLASS,
+                "overflow-hidden",
             )}
         >
             {/* Resize handle */}
             <div
                 onMouseDown={(e) => {
                     e.preventDefault();
+                    resizeStartRef.current = { x: e.clientX, width: panelWidth };
                     setIsResizing(true);
                 }}
-                className={`absolute top-0 right-0 h-full w-1 cursor-col-resize z-20 transition-colors ${
+                className={`absolute top-0 left-0 h-full w-1 cursor-col-resize z-20 transition-colors hidden md:block ${
                     isResizing
-                        ? "bg-blue-500"
-                        : "bg-transparent hover:bg-blue-500"
+                        ? "bg-blue-400/70"
+                        : "bg-transparent hover:bg-blue-400/70"
                 }`}
             />
             {/* Header */}
@@ -1078,23 +1109,17 @@ export function TRChatPanel({
                 currentChatId={currentChatId}
                 onLoadChat={handleLoadChat}
                 onNewChat={handleNewChat}
+                onRenameChat={handleRenameChat}
                 onDeleteChat={handleDeleteChat}
+                hasMessages={messages.length > 0}
             />
 
             {/* Messages */}
             <div
                 ref={messagesContainerRef}
-                className="flex-1 overflow-y-auto px-4 pt-4 flex flex-col"
+                className="flex-1 overflow-y-auto px-4 pt-12 flex flex-col"
                 style={{ paddingBottom: Math.ceil(inputHeight + 16) }}
             >
-                {messages.length === 0 && !isLoadingMessages && (
-                    <div className="flex flex-1 flex-col items-center justify-center gap-2">
-                        <MikeIcon size={24} />
-                        <p className="text-gray-400 font-serif text-center">
-                            Ask a question about this tabular review.
-                        </p>
-                    </div>
-                )}
                 {isLoadingMessages && (
                     <div className="flex flex-col gap-4">
                         <div className="flex justify-end">
@@ -1140,6 +1165,12 @@ export function TRChatPanel({
                     </div>
                 )}
             </div>
+
+            {/* Top blur overlay — messages fade out under the header */}
+            <div className="pointer-events-none absolute top-0 left-0 right-2 z-[5] h-10 backdrop-blur-2xl bg-gradient-to-b from-white/80 to-transparent [mask-image:linear-gradient(to_bottom,black_65%,transparent)]" />
+
+            {/* Bottom blur overlay — messages fade out under the input */}
+            <div className="pointer-events-none absolute bottom-0 left-0 right-2 z-[5] h-32 backdrop-blur-2xl bg-gradient-to-t from-white/80 to-transparent [mask-image:linear-gradient(to_top,black_65%,transparent)]" />
 
             {/* Input */}
             <TRChatInput

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
     Check,
@@ -46,7 +46,9 @@ import {
 import { PeopleModal } from "@/app/components/modals/PeopleModal";
 import { OpenSourceWorkflowModal } from "@/app/components/workflows/OpenSourceWorkflowModal";
 import { PageHeader } from "@/app/components/shared/PageHeader";
+import { PillButton } from "@/app/components/ui/pill-button";
 import { NewWorkflowModal } from "@/app/components/workflows/NewWorkflowModal";
+import { TabularReviewSkeuoIcon } from "@/app/components/shared/AppSidebarSkeuoIcons";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import { downloadWorkflowZip } from "./workflowZipExport";
@@ -98,6 +100,9 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
     // Editor state
     const [promptMd, setPromptMd] = useState("");
     const [columns, setColumns] = useState<ColumnConfig[]>([]);
+    const searchParams = useSearchParams();
+    const previewEmptyStates = searchParams.get("emptyStates") === "1";
+    const visibleColumns = previewEmptyStates ? [] : columns;
 
     // Save status
     const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
@@ -550,7 +555,8 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                         {/* Toolbar */}
                         {!readOnly && (
                             <div className="flex items-center justify-between h-10 shrink-0 border-b border-gray-200 px-4 md:px-10">
-                                {selectedColIndices.length > 0 && (
+                                {visibleColumns.length > 0 &&
+                                    selectedColIndices.length > 0 && (
                                     <div ref={colActionsRef} className="relative">
                                         <button
                                             onClick={() => setColActionsOpen((v) => !v)}
@@ -579,7 +585,8 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                                         )}
                                     </div>
                                 )}
-                                {selectedColIndices.length === 0 && (
+                                {(visibleColumns.length === 0 ||
+                                    selectedColIndices.length === 0) && (
                                     <span aria-hidden="true" />
                                 )}
                                 <button
@@ -604,12 +611,12 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                         {/* Table header */}
                         <div className={`flex items-center h-8 pr-3 md:pr-10 border-b border-gray-200 text-xs text-gray-500 font-medium shrink-0 select-none ${readOnly ? "border-t" : ""}`}>
                             <div className={`sticky left-0 z-[60] ${NAME_COL_W} ${stickyCellBg} flex items-center gap-4 self-stretch pl-4 pr-2 text-left`}>
-                                {columns.length > 0 ? (
+                                {visibleColumns.length > 0 ? (
                                     <input
                                         type="checkbox"
-                                        checked={columns.length > 0 && selectedColIndices.length === columns.length}
-                                        ref={(el) => { if (el) el.indeterminate = selectedColIndices.length > 0 && selectedColIndices.length < columns.length; }}
-                                        onChange={() => setSelectedColIndices(selectedColIndices.length === columns.length ? [] : columns.map((c) => c.index))}
+                                        checked={selectedColIndices.length === visibleColumns.length}
+                                        ref={(el) => { if (el) el.indeterminate = selectedColIndices.length > 0 && selectedColIndices.length < visibleColumns.length; }}
+                                        onChange={() => setSelectedColIndices(selectedColIndices.length === visibleColumns.length ? [] : visibleColumns.map((c) => c.index))}
                                         className={`${CHECKBOX_GUTTER} rounded border-gray-200 cursor-pointer accent-black`}
                                     />
                                 ) : (
@@ -627,9 +634,9 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
 
                         {/* Rows */}
                         <div className="flex-1">
-                            {columns.length === 0 ? (
+                            {visibleColumns.length === 0 ? (
                                 <div className="flex flex-col items-start py-24 w-full max-w-xs mx-auto">
-                                    <Plus className="h-8 w-8 text-gray-300 mb-4" />
+                                    <TabularReviewSkeuoIcon className="mb-4 h-8 w-8" />
                                     <p className="text-2xl font-medium font-serif text-gray-900">
                                         Columns
                                     </p>
@@ -637,16 +644,19 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                                         Add columns to define what this tabular review workflow extracts from each document.
                                     </p>
                                     {!readOnly && (
-                                        <button
+                                        <PillButton
+                                            tone="black"
+                                            size="sm"
                                             onClick={() => setAddColumnOpen(true)}
-                                            className="mt-4 inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors shadow-md"
+                                            className="mt-4 px-3"
                                         >
-                                            + Add Column
-                                        </button>
+                                            <Plus className="h-3.5 w-3.5" />
+                                            Add Column
+                                        </PillButton>
                                     )}
                                 </div>
                             ) : (
-                                columns.map((col) => {
+                                visibleColumns.map((col) => {
                                     const FormatIcon = formatIcon(col.format ?? "text");
                                     const isChecked = selectedColIndices.includes(col.index);
                                     return (

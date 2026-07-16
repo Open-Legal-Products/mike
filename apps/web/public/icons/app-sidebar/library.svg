@@ -1,0 +1,99 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="leatherBrown" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4A2815"/>
+      <stop offset="0.18" stop-color="#8A5230"/>
+      <stop offset="0.52" stop-color="#A66A42"/>
+      <stop offset="0.82" stop-color="#744025"/>
+      <stop offset="1" stop-color="#351A0D"/>
+    </linearGradient>
+    <linearGradient id="leatherBlue" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#102B52"/>
+      <stop offset="0.18" stop-color="#235A96"/>
+      <stop offset="0.52" stop-color="#3678B9"/>
+      <stop offset="0.82" stop-color="#194A82"/>
+      <stop offset="1" stop-color="#0A203E"/>
+    </linearGradient>
+    <linearGradient id="leatherRed" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#54151A"/>
+      <stop offset="0.18" stop-color="#9C2930"/>
+      <stop offset="0.52" stop-color="#C44349"/>
+      <stop offset="0.82" stop-color="#812027"/>
+      <stop offset="1" stop-color="#3C0B10"/>
+    </linearGradient>
+    <linearGradient id="leatherGreen" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#09251B"/>
+      <stop offset="0.2" stop-color="#14533B"/>
+      <stop offset="0.5" stop-color="#287B58"/>
+      <stop offset="0.82" stop-color="#104730"/>
+      <stop offset="1" stop-color="#061B13"/>
+    </linearGradient>
+    <linearGradient id="spineGloss" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.08"/>
+      <stop offset="0.3" stop-color="#FFFFFF" stop-opacity="0.38"/>
+      <stop offset="0.58" stop-color="#FFFFFF" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.42"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F5E0C8" stop-opacity="0.65"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.1"/>
+      <stop offset="1" stop-color="#2A1508" stop-opacity="0.55"/>
+    </linearGradient>
+    <linearGradient id="gilt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F7DE9C"/>
+      <stop offset="0.5" stop-color="#D9A94E"/>
+      <stop offset="1" stop-color="#B07E2C"/>
+    </linearGradient>
+    <filter id="bookShadow" x="-30%" y="-10%" width="170%" height="130%">
+      <feDropShadow dx="1.2" dy="1.4" stdDeviation="1.1" flood-color="#111827" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <!-- brown book -->
+  <g filter="url(#bookShadow)">
+    <rect x="6" y="3.8" width="11" height="49.2" rx="3" fill="url(#leatherBrown)" stroke="url(#rim)" stroke-width="1.4"/>
+    <rect x="6.7" y="4.5" width="9.6" height="47.8" rx="2.4" fill="url(#spineGloss)"/>
+    <path d="M8.1 8V49" stroke="#F0C7A2" stroke-opacity="0.28" stroke-width="0.65"/>
+    <path d="M15.3 7.5V49.5" stroke="#241007" stroke-opacity="0.55" stroke-width="0.8"/>
+    <rect x="7.4" y="10.8" width="8.2" height="1.5" rx="0.75" fill="url(#gilt)" opacity="0.95"/>
+    <rect x="7.9" y="19" width="7.2" height="5" rx="1" fill="#3C2210" opacity="0.55"/>
+    <rect x="7.4" y="38" width="8.2" height="1.2" rx="0.6" fill="url(#gilt)" opacity="0.8"/>
+    <rect x="7.4" y="46.5" width="8.2" height="1.5" rx="0.75" fill="url(#gilt)" opacity="0.95"/>
+  </g>
+
+  <!-- blue book -->
+  <g filter="url(#bookShadow)">
+    <rect x="19" y="8" width="11.5" height="45" rx="3" fill="url(#leatherBlue)" stroke="url(#rim)" stroke-width="1.4"/>
+    <rect x="19.7" y="8.7" width="10.1" height="43.6" rx="2.4" fill="url(#spineGloss)"/>
+    <path d="M21.2 12V49" stroke="#B9DCFF" stroke-opacity="0.3" stroke-width="0.65"/>
+    <path d="M28.8 11.5V49.5" stroke="#071A31" stroke-opacity="0.62" stroke-width="0.8"/>
+    <rect x="20.5" y="14.6" width="8.5" height="1.5" rx="0.75" fill="url(#gilt)" opacity="0.95"/>
+    <rect x="21" y="22.6" width="7.5" height="5" rx="1" fill="#071D38" opacity="0.65"/>
+    <rect x="20.5" y="39.5" width="8.5" height="1.2" rx="0.6" fill="url(#gilt)" opacity="0.8"/>
+    <rect x="20.5" y="46.8" width="8.5" height="1.5" rx="0.75" fill="url(#gilt)" opacity="0.95"/>
+  </g>
+
+  <!-- red book -->
+  <g filter="url(#bookShadow)">
+    <rect x="32.5" y="5" width="11" height="48" rx="3" fill="url(#leatherRed)" stroke="url(#rim)" stroke-width="1.4"/>
+    <rect x="33.2" y="5.7" width="9.6" height="46.6" rx="2.4" fill="url(#spineGloss)"/>
+    <path d="M34.6 9V49" stroke="#FFD0D2" stroke-opacity="0.3" stroke-width="0.65"/>
+    <path d="M41.8 8.5V49.5" stroke="#35070B" stroke-opacity="0.62" stroke-width="0.8"/>
+    <rect x="33.9" y="11.6" width="8.2" height="1.5" rx="0.75" fill="url(#gilt)" opacity="0.95"/>
+    <rect x="34.4" y="19.6" width="7.2" height="5" rx="1" fill="#430B10" opacity="0.68"/>
+    <rect x="33.9" y="38.5" width="8.2" height="1.2" rx="0.6" fill="url(#gilt)" opacity="0.8"/>
+    <rect x="33.9" y="46.5" width="8.2" height="1.5" rx="0.75" fill="url(#gilt)" opacity="0.95"/>
+  </g>
+
+  <!-- green book, leaning against the red book -->
+  <g transform="rotate(-9 62.1 52)" filter="url(#bookShadow)">
+    <rect x="51.6" y="5.2" width="10.5" height="46.8" rx="3" fill="url(#leatherGreen)" stroke="url(#rim)" stroke-width="1.4"/>
+    <rect x="52.3" y="5.9" width="9.1" height="45.4" rx="2.4" fill="url(#spineGloss)"/>
+    <path d="M53.7 9.5V48.5" stroke="#FFFFFF" stroke-opacity="0.24" stroke-width="0.65"/>
+    <path d="M60.4 9V49" stroke="#000000" stroke-opacity="0.72" stroke-width="0.8"/>
+    <rect x="52.95" y="11.8" width="7.8" height="1.5" rx="0.75" fill="url(#gilt)" opacity="0.95"/>
+    <rect x="53.45" y="19.8" width="6.8" height="5" rx="1" fill="#052219" opacity="0.76"/>
+    <rect x="52.95" y="37.5" width="7.8" height="1.2" rx="0.6" fill="url(#gilt)" opacity="0.8"/>
+    <rect x="52.95" y="45.4" width="7.8" height="1.5" rx="0.75" fill="url(#gilt)" opacity="0.95"/>
+  </g>
+</svg>

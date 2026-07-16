@@ -9,11 +9,13 @@ import { FORMAT_OPTIONS, formatLabel, formatIcon } from "./columnFormat";
 import { TAG_COLORS } from "./pillUtils";
 import {
     DropdownMenu,
-    DropdownMenuContent,
     DropdownMenuRadioGroup,
-    DropdownMenuRadioItem,
     DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
+import {
+    LiquidDropdownContent,
+    LiquidDropdownRadioItem,
+} from "@/app/components/ui/liquid-dropdown";
 import { PillButton } from "@/app/components/ui/pill-button";
 
 // Liquid-glass field styling shared by the menu's inputs/controls, matching the
@@ -287,9 +289,9 @@ export function TREditColumnMenu({
                                     <ChevronDown className="h-3 w-3 text-gray-400" />
                                 </button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent
+                            <LiquidDropdownContent
                                 align="start"
-                                className="z-[50] border-white/70 bg-white/75 shadow-[0_8px_24px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-10px_24px_rgba(255,255,255,0.18)] backdrop-blur-2xl"
+                                className="z-[50]"
                                 style={{
                                     width: "var(--radix-dropdown-menu-trigger-width)",
                                 }}
@@ -303,17 +305,17 @@ export function TREditColumnMenu({
                                     }}
                                 >
                                     {FORMAT_OPTIONS.map((o) => (
-                                        <DropdownMenuRadioItem
+                                        <LiquidDropdownRadioItem
                                             key={o.value}
                                             value={o.value}
                                             className="text-xs"
                                         >
                                             <o.icon className="h-3 w-3 text-gray-400" />
                                             {o.label}
-                                        </DropdownMenuRadioItem>
+                                        </LiquidDropdownRadioItem>
                                     ))}
                                 </DropdownMenuRadioGroup>
-                            </DropdownMenuContent>
+                            </LiquidDropdownContent>
                         </DropdownMenu>
                     </div>
 
@@ -397,8 +399,9 @@ export function TREditColumnMenu({
                         >
                             Delete
                         </PillButton>
-                        <button
-                            type="button"
+                        <PillButton
+                            tone="black"
+                            size="sm"
                             onClick={handleSave}
                             disabled={
                                 saving ||
@@ -407,10 +410,10 @@ export function TREditColumnMenu({
                                 !name.trim() ||
                                 !prompt.trim()
                             }
-                            className="rounded-full border border-gray-700/40 bg-gray-950/88 px-3 py-1 text-xs font-medium text-white shadow-[0_3px_9px_rgba(15,23,42,0.16),inset_0_1px_0_rgba(255,255,255,0.22),inset_0_-4px_9px_rgba(15,23,42,0.2)] backdrop-blur-xl transition-colors hover:bg-gray-900/90 disabled:opacity-40"
+                            className="px-3"
                         >
                             {saving ? "Saving…" : "Save"}
-                        </button>
+                        </PillButton>
                     </div>
                     </div>,
                     document.body,

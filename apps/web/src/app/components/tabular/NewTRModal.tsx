@@ -5,8 +5,6 @@ import { Loader2, Upload } from "lucide-react";
 import type { Document, Project, Workflow } from "../shared/types";
 import {
     getProject,
-    listProjects,
-    listStandaloneDocuments,
     listWorkflows,
     uploadProjectDocument,
     uploadStandaloneDocument,
@@ -57,16 +55,10 @@ export function NewTRModal({
     const [projectDocs, setProjectDocs] = useState<Document[]>([]);
     const [loadingDocs, setLoadingDocs] = useState(false);
 
-    // Full directory (when underProject is false)
-    const [standaloneDocs, setStandaloneDocs] = useState<Document[]>([]);
-    const [directoryProjects, setDirectoryProjects] = useState<Project[]>(
+    const [extraStandaloneDocs, setExtraStandaloneDocs] = useState<Document[]>(
         [],
     );
-    const [loadingDirectory, setLoadingDirectory] = useState(false);
-
-    const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(
-        new Set(),
-    );
+    const [selectedDocuments, setSelectedDocuments] = useState<Document[]>([]);
     const [uploading, setUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -109,33 +101,8 @@ export function NewTRModal({
             .finally(() => setLoadingWorkflows(false));
 
         if (isProjectMode) {
-            setSelectedDocIds(
-                new Set((fixedProjectDocs ?? []).map((d) => d.id)),
-            );
-            return;
+            setSelectedDocuments(fixedProjectDocs ?? []);
         }
-
-        setLoadingDirectory(true);
-        // /projects only returns counts, not the documents array — fetch
-        // each project in parallel so FileDirectory can render the docs
-        // when the user expands a folder.
-        Promise.all([listStandaloneDocuments(), listProjects()])
-            .then(async ([docs, projs]) => {
-                setStandaloneDocs(
-                    [...docs].sort((a, b) =>
-                        (b.created_at ?? "").localeCompare(a.created_at ?? ""),
-                    ),
-                );
-                const fullProjects = await Promise.all(
-                    projs.map((p) => getProject(p.id)),
-                );
-                setDirectoryProjects(fullProjects);
-            })
-            .catch(() => {
-                setStandaloneDocs([]);
-                setDirectoryProjects([]);
-            })
-            .finally(() => setLoadingDirectory(false));
     }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (!open) return null;
@@ -146,9 +113,8 @@ export function NewTRModal({
         setUnderProject(false);
         setSelectedProjectId("");
         setProjectDocs([]);
-        setStandaloneDocs([]);
-        setDirectoryProjects([]);
-        setSelectedDocIds(new Set());
+        setExtraStandaloneDocs([]);
+        setSelectedDocuments([]);
         setSelectedWorkflowId(null);
         onClose();
     }
@@ -175,7 +141,9 @@ export function NewTRModal({
         onAdd(
             title.trim(),
             underProject ? selectedProjectId : undefined,
-            selectedDocIds.size > 0 ? [...selectedDocIds] : undefined,
+            selectedDocuments.length > 0
+                ? selectedDocuments.map((document) => document.id)
+                : undefined,
             selectedWorkflow?.columns_config ?? undefined,
         );
         handleClose();
@@ -184,7 +152,7 @@ export function NewTRModal({
     async function handleSelectProject(projectId: string) {
         setSelectedProjectId(projectId);
         setProjectDocs([]);
-        setSelectedDocIds(new Set());
+        setSelectedDocuments([]);
         setLoadingDocs(true);
         try {
             const proj = await getProject(projectId);
@@ -192,7 +160,7 @@ export function NewTRModal({
                 (d) => d.status === "ready",
             );
             setProjectDocs(docs);
-            setSelectedDocIds(new Set(docs.map((d) => d.id)));
+            setSelectedDocuments(docs);
         } finally {
             setLoadingDocs(false);
         }
@@ -213,11 +181,15 @@ export function NewTRModal({
             if (underProject && selectedProjectId) {
                 setProjectDocs((prev) => [...uploaded, ...prev]);
             } else {
-                setStandaloneDocs((prev) => [...uploaded, ...prev]);
+                setExtraStandaloneDocs((prev) => [...uploaded, ...prev]);
             }
-            uploaded.forEach((d) =>
-                setSelectedDocIds((prev) => new Set([...prev, d.id])),
-            );
+            setSelectedDocuments((prev) => [
+                ...prev,
+                ...uploaded.filter(
+                    (document) =>
+                        !prev.some((selected) => selected.id === document.id),
+                ),
+            ]);
         } catch (err) {
             console.error("Upload failed:", err);
         } finally {
@@ -248,23 +220,16 @@ export function NewTRModal({
         : [{ value: "", label: "No projects found" }];
 
     // What to show in the directory depends on mode and toggle state
-    const directoryStandalone = isProjectMode
+    const directoryDocuments = isProjectMode
         ? (fixedProjectDocs ?? [])
         : underProject
-          ? []
-          : standaloneDocs;
-    const directoryFolders = isProjectMode
-        ? []
-        : underProject
-          ? []
-          : directoryProjects;
-    const flatProjectDocs: Document[] =
-        !isProjectMode && underProject ? projectDocs : [];
+          ? projectDocs
+          : extraStandaloneDocs;
     const directoryLoading = isProjectMode
         ? false
         : underProject
           ? loadingDocs
-          : loadingDirectory;
+          : false;
     const showDirectory = isProjectMode || !underProject || !!selectedProjectId;
     const breadcrumbs =
         isProjectMode && projectName
@@ -392,7 +357,7 @@ export function NewTRModal({
                                         if (!next) {
                                             setSelectedProjectId("");
                                             setProjectDocs([]);
-                                            setSelectedDocIds(new Set());
+                                            setSelectedDocuments([]);
                                         }
                                     }}
                                     className="flex w-fit items-center gap-2.5"
@@ -430,31 +395,11 @@ export function NewTRModal({
                     <div className="flex min-h-0 flex-1 flex-col">
                         {showDirectory && (
                             <FileDirectory
-                                standaloneDocs={
-                                    isProjectMode
-                                        ? directoryStandalone
-                                        : underProject
-                                          ? flatProjectDocs
-                                          : directoryStandalone
-                                }
-                                directoryProjects={
-                                    isProjectMode
-                                        ? []
-                                        : underProject
-                                          ? []
-                                          : directoryFolders
-                                }
+                                documents={directoryDocuments}
                                 loading={directoryLoading}
-                                selectedIds={selectedDocIds}
-                                onChange={setSelectedDocIds}
-                                emptyMessage={
-                                    isProjectMode || underProject
-                                        ? "No ready documents in this project"
-                                        : "No documents yet"
-                                }
-                                searchable
-                                searchAutoFocus
-                                showProjectTabs={!isProjectMode && !underProject}
+                                selectedDocuments={selectedDocuments}
+                                onChange={setSelectedDocuments}
+                                showTabs={!isProjectMode && !underProject}
                             />
                         )}
                     </div>

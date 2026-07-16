@@ -79,8 +79,8 @@ export function useFetchSingleDoc(
                     if (!cancelled) setResult({ type: "spreadsheet", buffer });
                 } else {
                     // Drain the body so the connection is reusable, but the
-                    // bytes are useless to the PDF viewer — the caller will
-                    // fall back to DocxView, which fetches `/docx` itself.
+                    // bytes are useless to PDF/spreadsheet viewers. Callers
+                    // should route DOC/DOCX files to DocxView directly.
                     await response.arrayBuffer().catch(() => {});
                     if (!cancelled) setResult({ type: "docx" });
                 }

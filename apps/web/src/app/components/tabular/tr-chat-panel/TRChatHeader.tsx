@@ -1,14 +1,20 @@
 "use client";
 
 import type { RefObject } from "react";
-import {
-    Clock,
-    MessageSquarePlus,
-    ChevronLeft,
-    Trash2,
-} from "lucide-react";
+import { ChevronDown, Plus, X } from "lucide-react";
 import type { TRChat } from "@/app/lib/mikeApi";
+import { APP_SURFACE_HOVER_CLASS } from "@/app/components/ui/liquid-surface";
+import { LiquidDropdownSurface } from "@/app/components/ui/liquid-dropdown";
+import { cn } from "@/app/lib/utils";
 import { HistoryDropdown } from "./HistoryDropdown";
+
+// ---------------------------------------------------------------------------
+// Header pills (matches PageHeader action group styling)
+// ---------------------------------------------------------------------------
+
+const HEADER_PILL_CLASS =
+    "flex shrink-0 items-center gap-1 rounded-full border border-white/70 bg-app-surface px-1 py-0.5 shadow-[0_8px_24px_rgba(15,23,42,0.06)] backdrop-blur-2xl";
+const HEADER_PILL_BUTTON_CLASS = `flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:text-gray-900 ${APP_SURFACE_HOVER_CLASS}`;
 
 export function TRChatHeader({
     onClose,
@@ -20,7 +26,9 @@ export function TRChatHeader({
     currentChatId,
     onLoadChat,
     onNewChat,
+    onRenameChat,
     onDeleteChat,
+    hasMessages,
 }: {
     onClose: () => void;
     currentChatTitle: string | null;
@@ -31,76 +39,66 @@ export function TRChatHeader({
     currentChatId: string | null;
     onLoadChat: (chatId: string) => void;
     onNewChat: () => void;
-    onDeleteChat: () => void;
+    onRenameChat: (chatId: string, title: string) => void;
+    onDeleteChat: (chatId: string) => void;
+    hasMessages: boolean;
 }) {
     return (
-        <div className="flex items-center justify-between h-8 pr-2 border-b border-gray-200 shrink-0">
-            <div className="flex items-center gap-1 pl-2 pr-2 min-w-0">
-                <button
-                    onClick={onClose}
-                    title="Close"
-                    className="flex items-center justify-center h-7 w-7 shrink-0 rounded-md text-gray-600 hover:text-gray-900 transition-colors"
-                >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                </button>
-                <div
-                    onMouseEnter={(e) => {
-                        const el = e.currentTarget;
-                        const overflow = el.scrollWidth - el.clientWidth;
-                        if (overflow > 0)
-                            el.scrollTo({
-                                left: overflow,
-                                behavior: "smooth",
-                            });
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.scrollTo({
-                            left: 0,
-                            behavior: "smooth",
-                        });
-                    }}
-                    className="min-w-0 overflow-x-hidden whitespace-nowrap scrollbar-none"
-                >
-                    <span className="text-xs font-medium text-gray-700">
-                        {currentChatTitle ?? "New chat"}
-                    </span>
-                </div>
-            </div>
-            <div className="flex items-center">
-                <div ref={historyRef} className="relative">
+        <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between gap-2 px-2 py-2">
+            {/* Title pill — opens chat history */}
+            <div ref={historyRef} className="relative shrink min-w-0">
+                <div className={cn(HEADER_PILL_CLASS, "min-w-0")}>
                     <button
                         onClick={() => setHistoryOpen((v) => !v)}
                         title="Chat history"
-                        className={`flex items-center justify-center h-7 w-7 rounded-md transition-colors ${historyOpen ? "text-gray-900" : "text-gray-600 hover:text-gray-900"}`}
+                        className={`flex h-5 min-w-0 items-center gap-1 rounded-full px-1.5 text-gray-700 transition-colors ${APP_SURFACE_HOVER_CLASS}`}
                     >
-                        <Clock className="h-3.5 w-3.5" />
+                        <span className="min-w-0 truncate text-xs font-medium">
+                            {currentChatTitle ?? "New chat"}
+                        </span>
+                        <ChevronDown
+                            className={cn(
+                                "h-3 w-3 shrink-0 text-gray-400 transition-transform duration-200",
+                                historyOpen && "rotate-180",
+                            )}
+                        />
                     </button>
-                    {historyOpen && (
-                        <div className="absolute top-full right-0 mt-1 w-64 rounded-lg border border-gray-100 bg-white shadow-lg z-50 overflow-hidden">
-                            <HistoryDropdown
-                                chats={chats}
-                                currentChatId={currentChatId}
-                                onLoad={onLoadChat}
-                            />
-                        </div>
-                    )}
                 </div>
-                <button
-                    onClick={onNewChat}
-                    title="New chat"
-                    className="flex items-center justify-center h-7 w-7 rounded-md text-gray-600 hover:text-gray-900 transition-colors"
-                >
-                    <MessageSquarePlus className="h-3.5 w-3.5" />
-                </button>
-                {currentChatId && (
-                    <button
-                        onClick={onDeleteChat}
-                        title="Delete chat"
-                        className="flex items-center justify-center h-7 w-7 rounded-md text-gray-600 hover:text-red-600 transition-colors"
-                    >
-                        <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                {historyOpen && (
+                    <LiquidDropdownSurface className="absolute top-full left-0 z-50 mt-2 w-64 overflow-hidden">
+                        <HistoryDropdown
+                            chats={chats}
+                            currentChatId={currentChatId}
+                            onLoad={onLoadChat}
+                            onRename={onRenameChat}
+                            onDelete={onDeleteChat}
+                        />
+                    </LiquidDropdownSurface>
                 )}
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+                {/* New chat circle — only once a chat has started */}
+                {hasMessages && (
+                    <div className={cn(HEADER_PILL_CLASS, "px-0.5")}>
+                        <button
+                            onClick={onNewChat}
+                            title="New chat"
+                            className={HEADER_PILL_BUTTON_CLASS}
+                        >
+                            <Plus className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                )}
+                {/* Close circle */}
+                <div className={cn(HEADER_PILL_CLASS, "px-0.5")}>
+                    <button
+                        onClick={onClose}
+                        title="Close"
+                        className={HEADER_PILL_BUTTON_CLASS}
+                    >
+                        <X className="h-3.5 w-3.5" />
+                    </button>
+                </div>
             </div>
         </div>
     );

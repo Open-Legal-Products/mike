@@ -1,8 +1,6 @@
 "use client";
 
 import {
-    Fragment,
-    isValidElement,
     useEffect,
     useRef,
     useState,
@@ -10,9 +8,14 @@ import {
     type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeft, Loader2, Plus, Search, Trash2 } from "lucide-react";
+import { ChevronLeft, Loader2, Plus, Search } from "lucide-react";
 import { usePageChrome } from "@/app/contexts/PageChromeContext";
 import { cn } from "@/app/lib/utils";
+import {
+    APP_SURFACE_ACTIVE_CLASS,
+    APP_SURFACE_HOVER_CLASS,
+    APP_SURFACE_PRESSED_CLASS,
+} from "@/app/components/ui/liquid-surface";
 
 export interface PageHeaderBreadcrumb {
     label?: ReactNode;
@@ -24,13 +27,12 @@ export interface PageHeaderBreadcrumb {
 }
 
 type PageHeaderButtonAction = {
-    type?: "button";
+    type?: never;
     icon?: ReactNode;
     label?: ReactNode;
     onClick?: () => void;
     disabled?: boolean;
     title?: string;
-    variant?: "default" | "danger";
     iconOnly?: boolean;
     tooltip?: ReactNode;
 };
@@ -40,14 +42,6 @@ type PageHeaderSearchAction = {
     value: string;
     onChange: (value: string) => void;
     placeholder?: string;
-};
-
-type PageHeaderDeleteAction = {
-    type: "delete";
-    onClick?: () => void;
-    disabled?: boolean;
-    loading?: boolean;
-    title?: string;
 };
 
 type PageHeaderNewAction = {
@@ -66,23 +60,22 @@ type PageHeaderCustomAction = {
 export type PageHeaderAction =
     | PageHeaderButtonAction
     | PageHeaderSearchAction
-    | PageHeaderDeleteAction
     | PageHeaderNewAction
-    | PageHeaderCustomAction
-    | ReactNode;
+    | PageHeaderCustomAction;
+
+type MaybePageHeaderAction = PageHeaderAction | null | false | undefined;
 
 type PageHeaderActionGroup =
-    | PageHeaderAction[]
+    | MaybePageHeaderAction[]
     | {
-          actions: PageHeaderAction[];
+          actions: MaybePageHeaderAction[];
       };
 
 interface PageHeaderProps {
     children?: ReactNode;
-    actions?: PageHeaderAction[];
+    actions?: MaybePageHeaderAction[];
     actionGroups?: PageHeaderActionGroup[];
     shrink?: boolean;
-    className?: string;
     breadcrumbs?: PageHeaderBreadcrumb[];
     loading?: boolean;
 }
@@ -92,7 +85,6 @@ export function PageHeader({
     actions,
     actionGroups,
     shrink = false,
-    className,
     breadcrumbs,
     loading = false,
 }: PageHeaderProps) {
@@ -104,7 +96,7 @@ export function PageHeader({
     );
     const actionsDisabled =
         loading || !!breadcrumbs?.some((item) => item.loading);
-    const actionItems = actions?.filter(Boolean) ?? [];
+    const actionItems = actions?.filter(isPresentAction) ?? [];
     const groupedActionItems = (
         actionGroups
             ?.map(normalizeActionGroup)
@@ -117,10 +109,9 @@ export function PageHeader({
         <div
             className={cn(
                 "flex items-center justify-between",
-                "px-4 md:px-10",
+                "mx-4 md:mx-6",
                 "min-h-[76px] pb-4 pt-5.5",
                 shrink && "shrink-0",
-                className,
             )}
         >
             {headerContent}
@@ -163,16 +154,15 @@ function PageHeaderActionGroups({
                     key={groupIndex}
                     className={cn(
                         "flex shrink-0 items-center gap-2",
-                        "rounded-full border border-white/70 bg-white px-1 py-1 shadow-[0_8px_24px_rgba(15,23,42,0.06)] backdrop-blur-2xl",
+                        "rounded-full border border-white/70 bg-app-surface px-1 py-1 shadow-[0_8px_24px_rgba(15,23,42,0.06)] backdrop-blur-2xl",
                     )}
                 >
                     {group.actions.map((action, index) => (
-                        <Fragment key={index}>
-                            <PageHeaderActionRenderer
-                                action={action}
-                                disabled={actionsDisabled}
-                            />
-                        </Fragment>
+                        <PageHeaderActionRenderer
+                            key={index}
+                            action={action}
+                            disabled={actionsDisabled}
+                        />
                     ))}
                 </div>
             ))}
@@ -183,12 +173,16 @@ function PageHeaderActionGroups({
 function normalizeActionGroup(group: PageHeaderActionGroup) {
     if (Array.isArray(group)) {
         return {
-            actions: group.filter(Boolean),
+            actions: group.filter(isPresentAction),
         };
     }
     return {
-        actions: group.actions.filter(Boolean),
+        actions: group.actions.filter(isPresentAction),
     };
+}
+
+function isPresentAction(action: MaybePageHeaderAction): action is PageHeaderAction {
+    return Boolean(action);
 }
 
 function PageHeaderActionRenderer({
@@ -198,27 +192,10 @@ function PageHeaderActionRenderer({
     action: PageHeaderAction;
     disabled: boolean;
 }) {
-    if (!isPageHeaderActionObject(action)) {
-        return disabled ? (
-            <span className="inline-flex h-7 items-center opacity-40 pointer-events-none">
-                {action}
-            </span>
-        ) : (
-            <>{action}</>
-        );
-    }
-
     switch (action.type) {
         case "search":
             return (
                 <PageHeaderSearchActionControl
-                    action={action}
-                    disabled={disabled}
-                />
-            );
-        case "delete":
-            return (
-                <PageHeaderDeleteActionControl
                     action={action}
                     disabled={disabled}
                 />
@@ -241,7 +218,6 @@ function PageHeaderActionRenderer({
                     {action.render}
                 </span>
             );
-        case "button":
         default:
             return (
                 <PageHeaderButtonActionControl
@@ -250,12 +226,6 @@ function PageHeaderActionRenderer({
                 />
             );
     }
-}
-
-function isPageHeaderActionObject(
-    action: PageHeaderAction,
-): action is Exclude<PageHeaderAction, ReactNode> {
-    return !!action && typeof action === "object" && !isValidElement(action);
 }
 
 function PageHeaderButtonActionControl({
@@ -273,7 +243,6 @@ function PageHeaderButtonActionControl({
                 disabled={disabled || action.disabled}
                 title={action.title}
                 aria-label={action.title}
-                variant={action.variant}
                 iconOnly={iconOnly}
             >
                 {action.icon}
@@ -313,32 +282,6 @@ function PageHeaderNewActionControl({
     );
 }
 
-function PageHeaderDeleteActionControl({
-    action,
-    disabled,
-}: {
-    action: PageHeaderDeleteAction;
-    disabled: boolean;
-}) {
-    const title = action.title ?? "Delete";
-    return (
-        <PageHeaderActionButton
-            onClick={action.onClick}
-            disabled={disabled || action.disabled || action.loading}
-            title={title}
-            aria-label={title}
-            iconOnly
-            variant="danger"
-        >
-            {action.loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-                <Trash2 className="h-4 w-4" />
-            )}
-        </PageHeaderActionButton>
-    );
-}
-
 function PageHeaderSearchActionControl({
     action,
     disabled,
@@ -370,7 +313,7 @@ function PageHeaderSearchActionControl({
                             className:
                                 "cursor-text justify-start gap-2 px-3 text-gray-700 hover:text-gray-700",
                         }),
-                        "w-56 bg-gray-100 sm:w-80",
+                        `w-56 sm:w-80 ${APP_SURFACE_ACTIVE_CLASS}`,
                     )}
                 >
                     <Search className="h-3.5 w-3.5 text-gray-400 shrink-0" />
@@ -403,40 +346,35 @@ type PageHeaderActionButtonProps = Omit<
     ButtonHTMLAttributes<HTMLButtonElement>,
     "className"
 > & {
-    variant?: "default" | "danger";
     iconOnly?: boolean;
 };
 
 type PageHeaderActionControlClassNameOptions = {
-    variant?: "default" | "danger";
     iconOnly?: boolean;
     disabled?: boolean;
     className?: string;
 };
 
 function pageHeaderActionControlClassName({
-    variant = "default",
     iconOnly = false,
     disabled = false,
     className,
 }: PageHeaderActionControlClassNameOptions = {}) {
     return cn(
-        "flex h-7 items-center justify-center rounded-full text-sm transition-colors hover:bg-gray-100 active:bg-gray-100 disabled:cursor-default disabled:text-gray-300 disabled:hover:bg-transparent disabled:hover:text-gray-300",
+        "flex h-7 items-center justify-center rounded-full text-sm transition-colors disabled:cursor-default disabled:text-gray-300 disabled:hover:bg-transparent disabled:hover:text-gray-300",
+        APP_SURFACE_HOVER_CLASS,
+        APP_SURFACE_PRESSED_CLASS,
         iconOnly
             ? "w-7"
             : "w-7 gap-1.5 px-0 sm:w-auto sm:px-3",
         disabled ? "cursor-default" : "cursor-pointer",
-        "hover:bg-gray-100 active:bg-gray-100",
-        variant === "danger"
-            ? "text-gray-500 hover:text-red-600"
-            : "text-gray-500 hover:text-gray-900",
+        "text-gray-500 hover:text-gray-900",
         className,
     );
 }
 
 function PageHeaderActionButton({
     children,
-    variant = "default",
     iconOnly = false,
     disabled,
     ...props
@@ -445,7 +383,6 @@ function PageHeaderActionButton({
         <button
             disabled={disabled}
             className={pageHeaderActionControlClassName({
-                variant,
                 iconOnly,
                 disabled,
             })}

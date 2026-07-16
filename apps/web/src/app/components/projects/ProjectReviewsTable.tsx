@@ -1,36 +1,45 @@
 "use client";
 
-import { type Dispatch, type SetStateAction } from "react";
-import { Table2 } from "lucide-react";
+import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { Plus } from "lucide-react";
 import {
     RowActionMenuItems,
     RowActions,
 } from "@/app/components/shared/RowActions";
 import {
     TABLE_CHECKBOX_CLASS,
-    TABLE_STICKY_CELL_BG,
     SkeletonDot,
     SkeletonLine,
     TableBody,
     TableCell,
     TableEmptyState,
+    TableFilters,
+    type TableFilterOption,
     TableHeaderCell,
     TableHeaderRow,
     TablePrimaryCell,
     TableRow,
     TableScrollArea,
+    type TableSortDirection,
     TableStickyCell,
 } from "@/app/components/shared/TablePrimitive";
+import { PillButton } from "@/app/components/ui/pill-button";
+import { TabularReviewSkeuoIcon } from "@/app/components/shared/AppSidebarSkeuoIcons";
 import type { Document, TabularReview } from "@/app/components/shared/types";
 import { formatDate } from "./ProjectPageParts";
+
+type ProjectReviewSortKey = "name" | "columns" | "documents" | "created";
+
+const SORT_OPTIONS: TableFilterOption<TableSortDirection>[] = [
+    { value: "asc", label: "Ascending" },
+    { value: "desc", label: "Descending" },
+];
 
 export function ProjectReviewsTable({
     docs,
     reviews,
     filteredReviews,
     selectedReviewIds,
-    allReviewsSelected,
-    someReviewsSelected,
     creatingReview,
     currentUserId,
     onCreateReview,
@@ -57,6 +66,115 @@ export function ProjectReviewsTable({
     setSelectedReviewIds: Dispatch<SetStateAction<string[]>>;
     loading?: boolean;
 }) {
+    const [sort, setSort] = useState<{
+        key: ProjectReviewSortKey;
+        direction: TableSortDirection;
+    } | null>(null);
+
+    function clearSelection() {
+        setSelectedReviewIds([]);
+    }
+
+    function handleSortChange(
+        key: ProjectReviewSortKey,
+        direction: TableSortDirection | null,
+    ) {
+        setSort(direction ? { key, direction } : null);
+        clearSelection();
+    }
+
+    const visibleReviews = useMemo(() => {
+        if (!sort) return filteredReviews;
+
+        return [...filteredReviews].sort((a, b) => {
+            const multiplier = sort.direction === "asc" ? 1 : -1;
+
+            if (sort.key === "columns") {
+                return (
+                    ((a.columns_config?.length ?? 0) -
+                        (b.columns_config?.length ?? 0)) *
+                    multiplier
+                );
+            }
+
+            if (sort.key === "documents") {
+                return (
+                    ((a.document_count ?? 0) - (b.document_count ?? 0)) *
+                    multiplier
+                );
+            }
+
+            if (sort.key === "created") {
+                return (
+                    (new Date(a.created_at).getTime() -
+                        new Date(b.created_at).getTime()) *
+                    multiplier
+                );
+            }
+
+            return (
+                (a.title ?? "Untitled Review").localeCompare(
+                    b.title ?? "Untitled Review",
+                ) * multiplier
+            );
+        });
+    }, [filteredReviews, sort]);
+
+    const allVisibleReviewsSelected =
+        visibleReviews.length > 0 &&
+        visibleReviews.every((review) => selectedReviewIds.includes(review.id));
+    const someVisibleReviewsSelected =
+        !allVisibleReviewsSelected &&
+        visibleReviews.some((review) => selectedReviewIds.includes(review.id));
+    const nameSortDirection = sort?.key === "name" ? sort.direction : null;
+    const columnsSortDirection =
+        sort?.key === "columns" ? sort.direction : null;
+    const documentsSortDirection =
+        sort?.key === "documents" ? sort.direction : null;
+    const createdSortDirection =
+        sort?.key === "created" ? sort.direction : null;
+    const nameFilterButton = (
+        <TableFilters
+            label="Sort by review name"
+            value={nameSortDirection}
+            allLabel="Default Order"
+            widthClassName="w-40"
+            align="right"
+            options={SORT_OPTIONS}
+            onChange={(direction) => handleSortChange("name", direction)}
+        />
+    );
+    const columnsFilterButton = (
+        <TableFilters
+            label="Sort by columns"
+            value={columnsSortDirection}
+            allLabel="Default Order"
+            widthClassName="w-40"
+            options={SORT_OPTIONS}
+            onChange={(direction) => handleSortChange("columns", direction)}
+        />
+    );
+    const documentsFilterButton = (
+        <TableFilters
+            label="Sort by documents"
+            value={documentsSortDirection}
+            allLabel="Default Order"
+            widthClassName="w-40"
+            options={SORT_OPTIONS}
+            onChange={(direction) => handleSortChange("documents", direction)}
+        />
+    );
+    const createdFilterButton = (
+        <TableFilters
+            label="Sort by created date"
+            value={createdSortDirection}
+            allLabel="Default Order"
+            widthClassName="w-40"
+            options={SORT_OPTIONS}
+            onChange={(direction) => handleSortChange("created", direction)}
+        />
+    );
+
     return (
         <TableScrollArea
             ariaLabel="Tabular reviews"
@@ -64,29 +182,48 @@ export function ProjectReviewsTable({
                 <TableHeaderRow className="pr-8 md:pr-8">
                     <TableStickyCell header>
                         {loading ? (
-                            <SkeletonDot />
+                            <SkeletonDot className="mr-4" />
                         ) : (
                             <input
                                 type="checkbox"
-                                checked={allReviewsSelected}
+                                checked={allVisibleReviewsSelected}
                                 ref={(el) => {
-                                    if (el) el.indeterminate = someReviewsSelected;
+                                    if (el)
+                                        el.indeterminate =
+                                            someVisibleReviewsSelected;
                                 }}
                                 onChange={() => {
-                                    if (allReviewsSelected) setSelectedReviewIds([]);
+                                    if (allVisibleReviewsSelected)
+                                        setSelectedReviewIds([]);
                                     else
                                         setSelectedReviewIds(
-                                            filteredReviews.map((r) => r.id),
+                                            visibleReviews.map((r) => r.id),
                                         );
                                 }}
                                 className={TABLE_CHECKBOX_CLASS}
                             />
                         )}
-                        <span>Name</span>
+                        <span className="mr-1">Name</span>
+                        {!loading && nameFilterButton}
                     </TableStickyCell>
-                    <TableHeaderCell className="ml-auto w-24">Columns</TableHeaderCell>
-                    <TableHeaderCell className="w-24">Documents</TableHeaderCell>
-                    <TableHeaderCell className="w-32">Created</TableHeaderCell>
+                    <TableHeaderCell className="ml-auto w-24">
+                        <div className="flex items-center gap-1">
+                            <span>Columns</span>
+                            {!loading && columnsFilterButton}
+                        </div>
+                    </TableHeaderCell>
+                    <TableHeaderCell className="w-24">
+                        <div className="flex items-center gap-1">
+                            <span>Documents</span>
+                            {!loading && documentsFilterButton}
+                        </div>
+                    </TableHeaderCell>
+                    <TableHeaderCell className="w-32">
+                        <div className="flex items-center gap-1">
+                            <span>Created</span>
+                            {!loading && createdFilterButton}
+                        </div>
+                    </TableHeaderCell>
                     <TableHeaderCell className="w-8" />
                 </TableHeaderRow>
             }
@@ -95,29 +232,34 @@ export function ProjectReviewsTable({
                 <ProjectReviewsLoadingRows />
             ) : reviews.length === 0 ? (
                 <TableEmptyState>
-                    <Table2 className="h-8 w-8 text-gray-300 mb-4" />
+                    <TabularReviewSkeuoIcon className="mb-4 h-8 w-8" />
                     <p className="text-2xl font-medium font-serif text-gray-900">
                         Tabular Reviews
                     </p>
                     <p className="mt-1 text-xs text-gray-400 max-w-xs">
                         Extract data from project documents into tables using AI.
                     </p>
-                    <button
+                    <PillButton
+                        tone="black"
+                        size="sm"
                         onClick={onCreateReview}
                         disabled={creatingReview || docs.length === 0}
-                        className="mt-4 inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors shadow-md disabled:opacity-40"
+                        className="mt-4 px-3"
                     >
-                        + Create New
-                    </button>
+                        <Plus className="h-3.5 w-3.5" />
+                        Create
+                    </PillButton>
                 </TableEmptyState>
             ) : (
                 <TableBody>
-                    {filteredReviews.map((review) => (
+                    {visibleReviews.map((review) => (
                         <TableRow
                             key={review.id}
-                            rightClickDropdown={(close) => (
+                            selected={selectedReviewIds.includes(review.id)}
+                            rightClickDropdown={(close, menuProps) => (
                                 <RowActionMenuItems
                                     onClose={close}
+                                    surfaceProps={menuProps}
                                     onEditDetails={() => {
                                         if (
                                             currentUserId &&
@@ -137,11 +279,6 @@ export function ProjectReviewsTable({
                             className="pr-8 md:pr-8"
                         >
                             <TablePrimaryCell
-                                bgClassName={
-                                    selectedReviewIds.includes(review.id)
-                                        ? "bg-gray-50"
-                                        : TABLE_STICKY_CELL_BG
-                                }
                                 selected={selectedReviewIds.includes(review.id)}
                                 onSelectionChange={() =>
                                     setSelectedReviewIds((prev) =>
@@ -208,8 +345,8 @@ function ProjectReviewsLoadingRows() {
                     className="pr-8 md:pr-8"
                 >
                     <TableStickyCell hover={false}>
-                        <div className="flex min-w-0 items-center gap-4">
-                            <SkeletonDot />
+                        <div className="flex min-w-0 items-center">
+                            <SkeletonDot className="mr-4" />
                             <SkeletonLine
                                 className={`h-3.5 ${titleWidths[i - 1]}`}
                             />

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { X } from "lucide-react";
@@ -28,6 +29,12 @@ interface ModalProps {
     primaryAction?: ModalAction;
     secondaryAction?: ModalAction;
     cancelAction?: ModalAction | false;
+    /**
+     * Keep the modal (and its children's state) mounted while closed,
+     * rendering it hidden instead of unmounting. Lets content like loaded
+     * directory listings survive close/reopen cycles.
+     */
+    keepMounted?: boolean;
 }
 
 const sizeClassName: Record<ModalSize, string> = {
@@ -49,7 +56,12 @@ export function Modal({
     primaryAction,
     secondaryAction,
     cancelAction,
+    keepMounted = false,
 }: ModalProps) {
+    // Portals can't render during SSR, so a keep-mounted modal only renders
+    // (hidden) after the first client mount.
+    const [hasMounted, setHasMounted] = useState(false);
+    useEffect(() => setHasMounted(true), []);
     const hasHeader = breadcrumbs?.length;
     const hasFooter =
         footerStatus ||
@@ -58,13 +70,14 @@ export function Modal({
         cancelAction;
     const resolvedCancelAction = cancelAction;
 
-    if (!open) return null;
+    if (!open && (!keepMounted || !hasMounted)) return null;
 
     return createPortal(
         <div
             className={cn(
                 "fixed inset-0 z-[200] flex items-center justify-center px-4",
                 "bg-white/10 backdrop-blur-[2px]",
+                !open && "hidden",
             )}
             onClick={onClose}
         >

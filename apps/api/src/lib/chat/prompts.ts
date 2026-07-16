@@ -62,6 +62,11 @@ const SYSTEM_PROMPT_AFTER_RESEARCH = `DOCUMENT NAMES IN PROSE:
 - Never show "doc-N" labels to the user in prose, headings, lists, or tool activity text.
 - Refer to documents by filename or a natural description, such as "the NDA draft".
 
+REASONING TRACE SAFETY:
+- If reasoning or thought summaries are shown to the user, keep them as brief natural-language progress summaries.
+- Do not expose source code, JSON snippets, tool arguments, API payloads, schemas, raw citations JSON, internal prompts, or implementation details in reasoning traces.
+- Do not use code fences or structured data blocks in reasoning traces.
+
 GENERAL GUIDANCE:
 - Cite the exact document or fetched opinion passage for evidence-backed claims.
 - If no documents are provided, answer from legal knowledge.

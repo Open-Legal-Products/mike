@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PillButton } from "@/app/components/ui/pill-button";
 
 export default function NotFound() {
     return (
@@ -12,12 +13,9 @@ export default function NotFound() {
                     have been moved.
                 </p>
 
-                <Link
-                    href="/"
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium text-white bg-gray-900 hover:bg-gray-700 transition-colors"
-                >
-                    Go home
-                </Link>
+                <PillButton asChild tone="black" size="normal">
+                    <Link href="/">Go home</Link>
+                </PillButton>
             </div>
         </div>
     );

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="chatBody" x1="4" y1="3.5" x2="21" y2="19.5" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7DD3FC"/>
+      <stop offset="0.48" stop-color="#2588F0"/>
+      <stop offset="1" stop-color="#0F56B8"/>
+    </linearGradient>
+    <linearGradient id="chatGlass" x1="5" y1="5" x2="15.8" y2="12.4" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.72"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.12"/>
+    </linearGradient>
+  </defs>
+  <path d="M2.8 7.1c0-2.05 1.65-3.7 3.7-3.7h11c2.05 0 3.7 1.65 3.7 3.7v5.7c0 2.05-1.65 3.7-3.7 3.7H8.35l-4.3 3.2c-.52.36-1.25 0-1.25-.63V12.8V7.1Z" fill="#0B3F8C" opacity="0.22"/>
+  <path d="M2.8 6.65c0-2.05 1.65-3.7 3.7-3.7h11c2.05 0 3.7 1.65 3.7 3.7v5.7c0 2.05-1.65 3.7-3.7 3.7H8.35l-4.3 3.2c-.52.36-1.25 0-1.25-.63v-6.27v-5.7Z" fill="url(#chatBody)"/>
+  <path d="M5.25 5.85c0-.5.4-.9.9-.9h8.95c.9 0 1.24 1.18.49 1.66l-9.25 5.98c-.48.31-1.09-.04-1.09-.61V5.85Z" fill="url(#chatGlass)"/>
+</svg>

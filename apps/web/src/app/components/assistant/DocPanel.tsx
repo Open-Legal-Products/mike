@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { supabase } from "@/app/lib/supabase";
+import { PillButton } from "@/app/components/ui/pill-button";
 import { PdfView } from "../shared/views/PdfView";
 import { DocxView } from "../shared/views/DocxView";
 import { SpreadsheetView } from "../shared/views/SpreadsheetView";
@@ -17,6 +18,7 @@ import {
     formatCitationPage,
     formatCitationQuotePage,
     getDocumentCitationQuotes,
+    isDocxFilename,
     isSpreadsheetFilename,
 } from "../shared/types";
 import type {
@@ -25,11 +27,6 @@ import type {
     DocumentCitation,
     EditAnnotation,
 } from "../shared/types";
-
-function isDocxFilename(name: string): boolean {
-    const ext = name.split(".").pop()?.toLowerCase();
-    return ext === "docx" || ext === "doc";
-}
 
 /**
  * Discriminated-union describing what the panel is showing above the viewer.
@@ -386,17 +383,13 @@ function DownloadButton({
 
     const spinning = busy || isReloading;
     return (
-        <button
-            onClick={handleClick}
-            disabled={spinning}
-            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
+        <PillButton tone="white" onClick={handleClick} disabled={spinning}>
             {spinning ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
                 <Download className="h-3.5 w-3.5" />
             )}
             Download
-        </button>
+        </PillButton>
     );
 }

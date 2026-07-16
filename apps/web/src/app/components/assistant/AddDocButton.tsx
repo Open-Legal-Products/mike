@@ -19,8 +19,8 @@ export function AddDocButton({
             onClick={onBrowseAll}
             className={`flex items-center gap-1 px-2 h-8 rounded-lg text-sm transition-colors cursor-pointer ${
                 selectedDocIds.length > 0
-                    ? "text-black hover:bg-gray-100"
-                    : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                    ? "text-gray-700 hover:text-gray-900"
+                    : "text-gray-400 hover:text-gray-700"
             }`}
             title="Add documents"
             aria-label="Add documents"

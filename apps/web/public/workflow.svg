@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <defs>
+    <linearGradient id="nodePurple" x1="4" y1="4" x2="10" y2="10" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#C9B9FF"/>
+      <stop offset="1" stop-color="#6A55E8"/>
+    </linearGradient>
+    <linearGradient id="nodeCyan" x1="14" y1="4" x2="20" y2="10" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8DE2FF"/>
+      <stop offset="1" stop-color="#0E8DD0"/>
+    </linearGradient>
+    <linearGradient id="nodeOrange" x1="8" y1="14" x2="16" y2="20" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFD88A"/>
+      <stop offset="1" stop-color="#EA6F2F"/>
+    </linearGradient>
+  </defs>
+  <path d="M8.55 8.35c2.44 1.3 4.46 1.3 6.9 0M8.25 9.1c1.15 2.95 2.05 4.45 3.75 6.4M15.75 9.1c-1.15 2.95-2.05 4.45-3.75 6.4" stroke="#617187" stroke-width="1.45" stroke-linecap="round" opacity="0.72"/>
+  <circle cx="6.8" cy="7.25" r="3.45" fill="#3B2E99" opacity="0.2"/>
+  <circle cx="17.2" cy="7.25" r="3.45" fill="#075985" opacity="0.2"/>
+  <rect x="8.35" y="14.05" width="7.3" height="6.05" rx="2.05" fill="#9A3412" opacity="0.2"/>
+  <circle cx="6.8" cy="6.9" r="3.35" fill="url(#nodePurple)"/>
+  <circle cx="17.2" cy="6.9" r="3.35" fill="url(#nodeCyan)"/>
+  <rect x="8.35" y="13.65" width="7.3" height="6.05" rx="2.05" fill="url(#nodeOrange)"/>
+  <path d="M5.75 5.9h2.1M16.15 5.9h2.1M10.65 15.75h2.7" stroke="#FFFFFF" stroke-width="0.9" stroke-linecap="round" opacity="0.86"/>
+</svg>

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { SiteLogo } from "@/app/components/site-logo";
-import { Button } from "@/app/components/ui/button";
+import { PillButton } from "@/app/components/ui/pill-button";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { supabase } from "@/app/lib/supabase";
 import {
@@ -187,11 +187,12 @@ export default function VerifyMfaPage() {
                         >
                             Cancel
                         </button>
-                        <Button
+                        <PillButton
+                            tone="black"
+                            size="normal"
                             type="button"
                             onClick={() => void verify()}
                             disabled={!canVerify}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-full border border-gray-700/40 bg-gray-950/88 px-4 py-1.5 text-sm font-medium text-white shadow-[0_3px_9px_rgba(15,23,42,0.16),inset_0_1px_0_rgba(255,255,255,0.22),inset_0_-4px_9px_rgba(15,23,42,0.2)] backdrop-blur-xl transition-all hover:bg-gray-900/90 hover:text-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
                         >
                             {verifying ? (
                                 <span className="inline-flex items-center gap-1.5">
@@ -201,7 +202,7 @@ export default function VerifyMfaPage() {
                             ) : (
                                 "Verify"
                             )}
-                        </Button>
+                        </PillButton>
                     </div>
                 </div>
             </div>

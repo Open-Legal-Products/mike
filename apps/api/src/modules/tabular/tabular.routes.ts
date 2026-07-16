@@ -34,6 +34,7 @@ import {
     prepareTabularChat,
     prepareTabularGenerate,
     regenerateTabularCell,
+    renameTabularChat,
     updateTabularReview,
 } from "./tabular.service";
 
@@ -512,6 +513,25 @@ tabularRouter.delete(
         const { chatId } = req.params;
         const db = createServerSupabase();
         const result = await deleteTabularChat(db, { chatId, userId });
+        if (!result.ok)
+            return void res.status(500).json({ detail: result.detail });
+        res.status(204).send();
+    },
+);
+
+// PATCH /tabular-review/:reviewId/chats/:chatId — rename a chat
+tabularRouter.patch(
+    "/:reviewId/chats/:chatId",
+    requireAuth,
+    async (req, res) => {
+        const userId = res.locals.userId as string;
+        const { chatId } = req.params;
+        const title =
+            typeof req.body?.title === "string" ? req.body.title.trim() : "";
+        if (!title)
+            return void res.status(400).json({ detail: "Title is required" });
+        const db = createServerSupabase();
+        const result = await renameTabularChat(db, { chatId, userId, title });
         if (!result.ok)
             return void res.status(500).json({ detail: result.detail });
         res.status(204).send();

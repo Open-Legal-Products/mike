@@ -7,6 +7,7 @@ import type {
     Citation,
     Document,
     Folder,
+    LibraryFolder,
     Message,
     OpenSourceWorkflowContributorMode,
     OpenSourceWorkflowResponse,
@@ -990,6 +991,137 @@ export async function renameChat(chatId: string, title: string): Promise<void> {
 
 export async function deleteChat(chatId: string): Promise<void> {
     await apiRequest(`/chat/${chatId}`, { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------------------
+// Library (files + templates)
+// ---------------------------------------------------------------------------
+
+export type LibraryKind = "files" | "templates";
+
+export interface LibraryCollection {
+    documents: Document[];
+    folders: LibraryFolder[];
+}
+
+export async function getLibrary(
+    kind: LibraryKind,
+): Promise<LibraryCollection> {
+    return apiRequest<LibraryCollection>(`/library/${kind}`);
+}
+
+export async function uploadLibraryDocument(
+    kind: LibraryKind,
+    file: File,
+): Promise<Document> {
+    return uploadLibraryDocumentWithConfig(clientConfig, kind, file);
+}
+
+async function uploadLibraryDocumentWithConfig(
+    config: ResolvedMikeApiClientConfig,
+    kind: LibraryKind,
+    file: File,
+): Promise<Document> {
+    const authHeaders = await getAuthHeader(config);
+    const form = new FormData();
+    form.append("file", file);
+    const response = await config.fetchImpl(
+        apiUrl(`/library/${kind}/documents`, config),
+        {
+            method: "POST",
+            headers: { ...authHeaders },
+            body: form,
+        },
+    );
+    if (!response.ok) throw new Error(await response.text());
+    return response.json() as Promise<Document>;
+}
+
+export async function createLibraryFolder(
+    kind: LibraryKind,
+    name: string,
+    parentFolderId?: string | null,
+): Promise<LibraryFolder> {
+    return apiRequest<LibraryFolder>(`/library/${kind}/folders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            name,
+            parent_folder_id: parentFolderId ?? null,
+        }),
+    });
+}
+
+export async function renameLibraryFolder(
+    kind: LibraryKind,
+    folderId: string,
+    name: string,
+): Promise<LibraryFolder> {
+    return apiRequest<LibraryFolder>(`/library/${kind}/folders/${folderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+    });
+}
+
+export async function deleteLibraryFolder(
+    kind: LibraryKind,
+    folderId: string,
+): Promise<void> {
+    await apiRequest(`/library/${kind}/folders/${folderId}`, {
+        method: "DELETE",
+    });
+}
+
+export async function moveLibraryFolder(
+    kind: LibraryKind,
+    folderId: string,
+    parentFolderId: string | null,
+): Promise<LibraryFolder> {
+    return apiRequest<LibraryFolder>(`/library/${kind}/folders/${folderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parent_folder_id: parentFolderId }),
+    });
+}
+
+export async function moveLibraryDocument(
+    kind: LibraryKind,
+    documentId: string,
+    folderId: string | null,
+): Promise<Document> {
+    return apiRequest<Document>(
+        `/library/${kind}/documents/${documentId}/folder`,
+        {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ folder_id: folderId }),
+        },
+    );
+}
+
+export async function renameLibraryDocument(
+    kind: LibraryKind,
+    documentId: string,
+    filename: string,
+): Promise<Document> {
+    return apiRequest<Document>(`/library/${kind}/documents/${documentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename }),
+    });
+}
+
+export async function renameTabularChat(
+    reviewId: string,
+    chatId: string,
+    title: string,
+): Promise<void> {
+    await apiRequest(`/tabular-review/${reviewId}/chats/${chatId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+    });
 }
 
 export async function generateChatTitle(

@@ -402,6 +402,27 @@ create table if not exists public.project_subfolders (
 create index if not exists idx_project_subfolders_project
   on public.project_subfolders(project_id);
 
+-- Library folders organise a user's standalone documents into "file" /
+-- "template" collections. user_id is a uuid FK (fork hardening — upstream
+-- used bare text), matching project_subfolders and documents.
+create table if not exists public.library_folders (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  library_kind text not null default 'file',
+  name text not null,
+  parent_folder_id uuid references public.library_folders(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint library_folders_kind_check
+    check (library_kind in ('file', 'template'))
+);
+
+create index if not exists idx_library_folders_user_kind
+  on public.library_folders(user_id, library_kind);
+
+create index if not exists idx_library_folders_parent
+  on public.library_folders(parent_folder_id);
+
 create table if not exists public.documents (
   id uuid primary key default gen_random_uuid(),
   project_id uuid references public.projects(id) on delete cascade,
@@ -417,8 +438,12 @@ create table if not exists public.documents (
   structure_tree jsonb,
   status text not null default 'pending',
   folder_id uuid references public.project_subfolders(id) on delete set null,
+  library_kind text not null default 'file',
+  library_folder_id uuid references public.library_folders(id) on delete set null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  constraint documents_library_kind_check
+    check (library_kind in ('file', 'template'))
 );
 
 create index if not exists idx_documents_user_project
@@ -426,6 +451,10 @@ create index if not exists idx_documents_user_project
 
 create index if not exists idx_documents_project_folder
   on public.documents(project_id, folder_id);
+
+create index if not exists idx_documents_library_kind_folder
+  on public.documents(user_id, library_kind, library_folder_id)
+  where project_id is null;
 
 create index if not exists idx_documents_org
   on public.documents(org_id);
@@ -1312,6 +1341,7 @@ revoke all on public.teams from anon, authenticated;
 revoke all on public.team_members from anon, authenticated;
 revoke all on public.projects from anon, authenticated;
 revoke all on public.project_subfolders from anon, authenticated;
+revoke all on public.library_folders from anon, authenticated;
 revoke all on public.documents from anon, authenticated;
 revoke all on public.document_versions from anon, authenticated;
 revoke all on public.document_chunks from anon, authenticated;

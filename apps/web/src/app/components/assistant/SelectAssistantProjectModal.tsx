@@ -16,7 +16,7 @@ export function SelectAssistantProjectModal({ open, onClose }: Props) {
     const [creating, setCreating] = useState(false);
     const router = useRouter();
     const { saveChat } = useChatHistoryContext();
-    const { loading, projects } = useDirectoryData(open);
+    const { loading, projects } = useDirectoryData(open, "projects");
 
     useEffect(() => {
         if (!open) return;

@@ -36,20 +36,30 @@ describe("fileTypeKind", () => {
 
 describe("FileTypeIcon", () => {
     const svgOf = (container: HTMLElement) => container.querySelector("svg");
+    const imgOf = (container: HTMLElement) => container.querySelector("img");
 
-    it("renders a red PDF icon", () => {
+    it("renders the PDF icon image", () => {
         const { container } = render(<FileTypeIcon fileType="pdf" />);
-        expect(svgOf(container)).toHaveClass("text-red-500");
+        expect(imgOf(container)).toHaveAttribute(
+            "src",
+            expect.stringContaining("/icons/file-types/pdf.svg"),
+        );
     });
 
-    it("renders a blue Word icon", () => {
+    it("renders the Word icon image", () => {
         const { container } = render(<FileTypeIcon fileType="deck.docx" />);
-        expect(svgOf(container)).toHaveClass("text-blue-500");
+        expect(imgOf(container)).toHaveAttribute(
+            "src",
+            expect.stringContaining("/icons/file-types/word.svg"),
+        );
     });
 
-    it("renders an emerald Excel icon", () => {
+    it("renders the Excel icon image", () => {
         const { container } = render(<FileTypeIcon fileType="xlsx" />);
-        expect(svgOf(container)).toHaveClass("text-emerald-500");
+        expect(imgOf(container)).toHaveAttribute(
+            "src",
+            expect.stringContaining("/icons/file-types/excel.svg"),
+        );
     });
 
     it("renders a grey icon for unknown types", () => {
@@ -57,20 +67,26 @@ describe("FileTypeIcon", () => {
         expect(svgOf(container)).toHaveClass("text-gray-500");
     });
 
-    it("renders a muted grey placeholder regardless of kind", () => {
+    it("renders a muted grayscale image for a known kind", () => {
         const { container } = render(<FileTypeIcon fileType="pdf" muted />);
+        const img = imgOf(container);
+        expect(img).toHaveClass("grayscale");
+        expect(img).toHaveClass("opacity-35");
+    });
+
+    it("renders a muted grey placeholder for unknown types", () => {
+        const { container } = render(<FileTypeIcon fileType={null} muted />);
         const svg = svgOf(container);
         expect(svg).toHaveClass("text-gray-300");
-        expect(svg).not.toHaveClass("text-red-500");
     });
 
     it("always applies shrink-0 and merges a custom className", () => {
         const { container } = render(
             <FileTypeIcon fileType="pdf" className="h-6 w-6" />,
         );
-        const svg = svgOf(container);
-        expect(svg).toHaveClass("shrink-0");
-        expect(svg).toHaveClass("h-6");
-        expect(svg).toHaveClass("w-6");
+        const img = imgOf(container);
+        expect(img).toHaveClass("shrink-0");
+        expect(img).toHaveClass("h-6");
+        expect(img).toHaveClass("w-6");
     });
 });

@@ -4,13 +4,16 @@ import { type CSSProperties, useRef, useState } from "react";
 import {
     CornerDownRight,
     Loader2,
-    MessageSquare,
     Pencil,
-    Table2,
+    Plus,
     Trash2,
+    Upload,
     Users,
 } from "lucide-react";
-import { PageHeader } from "@/app/components/shared/PageHeader";
+import {
+    PageHeader,
+    type PageHeaderAction,
+} from "@/app/components/shared/PageHeader";
 import { FileTypeIcon } from "@/app/components/shared/FileTypeIcon";
 import type { Project } from "@/app/components/shared/types";
 import type { DocumentVersion } from "@/app/lib/mikeApi";
@@ -32,7 +35,7 @@ export const NAME_COL_W = TABLE_PRIMARY_CELL_WIDTH_CLASS;
 export const DOC_NAME_COL_W =
     "w-[292px] sm:w-[332px] md:w-[392px] lg:w-[452px] xl:w-[532px] 2xl:w-[592px] shrink-0";
 
-const TREE_CONTROL_WIDTH_PX = 32;
+const TREE_CONTROL_WIDTH_PX = 29;
 const TREE_NAME_PADDING_PX = 16;
 
 export function treeNameCellStyle(depth: number): CSSProperties | undefined {
@@ -349,6 +352,7 @@ export function DocVersionHistory({
 export function ProjectPageHeader({
     project,
     search,
+    activeSection,
     creatingChat,
     creatingReview,
     docsCount,
@@ -360,9 +364,11 @@ export function ProjectPageHeader({
     onOpenPeople,
     onNewChat,
     onNewReview,
+    onAddDocuments,
 }: {
     project: Project | null;
     search: string;
+    activeSection: ProjectWorkspaceSection;
     creatingChat: boolean;
     creatingReview: boolean;
     docsCount: number;
@@ -374,7 +380,43 @@ export function ProjectPageHeader({
     onOpenPeople: () => void;
     onNewChat: () => void;
     onNewReview: () => void;
+    onAddDocuments?: (() => void) | null;
 }) {
+    const sectionAction: PageHeaderAction =
+        activeSection === "documents"
+            ? {
+                  onClick: onAddDocuments ?? undefined,
+                  disabled: !onAddDocuments,
+                  icon: <Upload className="h-4 w-4" />,
+                  label: <span className="hidden sm:inline">Documents</span>,
+                  title: "Add documents",
+              }
+            : activeSection === "assistant"
+              ? {
+                    onClick: onNewChat,
+                    disabled: creatingChat,
+                    icon: creatingChat ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                        <Plus className="h-4 w-4" />
+                    ),
+                    label: <span className="hidden sm:inline">Chat</span>,
+                    title: "Create chat",
+                }
+              : {
+                    onClick: onNewReview,
+                    disabled: docsCount === 0 || creatingReview,
+                    icon: creatingReview ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                        <Plus className="h-4 w-4" />
+                    ),
+                    label: <span className="hidden sm:inline">Review</span>,
+                    title: "Create review",
+                    tooltip:
+                        docsCount === 0 ? "Upload a document first" : null,
+                };
+
     return (
         <PageHeader
             breadcrumbs={[
@@ -431,42 +473,7 @@ export function ProjectPageHeader({
                         ),
                     },
                 ],
-                {
-                    actions: [
-                        {
-                            onClick: onNewChat,
-                            disabled: creatingChat,
-                            icon: creatingChat ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                                <MessageSquare className="h-4 w-4" />
-                            ),
-                            label: (
-                                <span className="hidden sm:inline">
-                                    New Chat
-                                </span>
-                            ),
-                        },
-                        {
-                            onClick: onNewReview,
-                            disabled: docsCount === 0 || creatingReview,
-                            icon: creatingReview ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                                <Table2 className="h-4 w-4" />
-                            ),
-                            label: (
-                                <span className="hidden sm:inline">
-                                    New Review
-                                </span>
-                            ),
-                            tooltip:
-                                docsCount === 0
-                                    ? "Upload a document first"
-                                    : null,
-                        },
-                    ],
-                },
+                [sectionAction],
             ]}
         />
     );

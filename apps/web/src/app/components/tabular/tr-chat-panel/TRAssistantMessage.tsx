@@ -7,8 +7,11 @@ import type { TRCitationAnnotation } from "@/app/lib/mikeApi";
 import { PreResponseWrapper } from "../../assistant/PreResponseWrapper";
 import type { TRMessage } from "./types";
 import { preprocessTRCitations } from "./helpers";
-import { ReasoningBlock } from "./ReasoningBlock";
-import { DocReadBlock } from "./DocReadBlock";
+import {
+    DocReadBlock,
+    EventBlock,
+    ReasoningBlock,
+} from "../../assistant/message/EventBlocks";
 import { TRResponseStatus } from "./TRResponseStatus";
 
 type TREventGroup =
@@ -68,13 +71,23 @@ export function TRAssistantMessage({
         return false;
     };
 
-    const renderPreEvent = (event: AssistantEvent, key: number) => {
+    const renderPreEvent = (
+        event: AssistantEvent,
+        index: number,
+        allEvents: AssistantEvent[],
+        key: number,
+    ) => {
+        const nextEvent = allEvents[index + 1];
+        const showConnector =
+            nextEvent !== undefined && nextEvent.type !== "content";
+
         if (event.type === "reasoning") {
             return (
                 <ReasoningBlock
                     key={key}
                     text={event.text}
                     isStreaming={!!event.isStreaming && !!msg.isStreaming}
+                    showConnector={showConnector}
                 />
             );
         }
@@ -82,20 +95,18 @@ export function TRAssistantMessage({
             return (
                 <DocReadBlock
                     key={key}
-                    label={event.filename}
+                    filename={event.filename}
                     isStreaming={event.isStreaming}
+                    showConnector={showConnector}
+                    showFileIcon={false}
                 />
             );
         }
         if (event.type === "thinking") {
             return (
-                <div
-                    key={key}
-                    className="flex items-center text-sm text-gray-400 ml-1"
-                >
-                    <div className="w-1.5 h-1.5 rounded-full border border-gray-400 border-t-transparent animate-spin shrink-0" />
-                    <span className="ml-2">Thinking...</span>
-                </div>
+                <EventBlock key={key} showConnector={showConnector} isStreaming>
+                    <span>Thinking...</span>
+                </EventBlock>
             );
         }
         return null;
@@ -197,7 +208,12 @@ export function TRAssistantMessage({
                                 compact
                             >
                                 {g.events.map((event, i) =>
-                                    renderPreEvent(event, g.indices[i]),
+                                    renderPreEvent(
+                                        event,
+                                        i,
+                                        g.events,
+                                        g.indices[i],
+                                    ),
                                 )}
                             </PreResponseWrapper>
                         );

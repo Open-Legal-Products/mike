@@ -114,10 +114,18 @@ export async function createVersionFromDocument(
     };
   const sourceDoc = sourceAccess.doc;
 
+  // The source is consumed (moved) into the target when both live in the same
+  // project, or when both are standalone Library documents owned by the caller
+  // — the Library "combine as versions" flow moves one standalone doc onto
+  // another rather than duplicating it.
   const willDeleteSource =
-    sourceDoc.project_id &&
-    targetDoc.project_id &&
-    sourceDoc.project_id === targetDoc.project_id;
+    (sourceDoc.project_id &&
+      targetDoc.project_id &&
+      sourceDoc.project_id === targetDoc.project_id) ||
+    (!sourceDoc.project_id &&
+      !targetDoc.project_id &&
+      sourceDoc.user_id === userId &&
+      targetDoc.user_id === userId);
   if (willDeleteSource && !sourceAccess.isOwner) {
     return {
       ok: false,

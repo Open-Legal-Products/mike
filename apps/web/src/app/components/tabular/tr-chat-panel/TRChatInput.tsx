@@ -73,20 +73,20 @@ export function TRChatInput({
         <div
             ref={rootRef}
             className={cn(
-                "absolute bottom-0 left-0 right-0 px-4 pb-3",
+                "absolute bottom-0 left-0 right-0 z-10 px-3 pb-3",
                 "bg-transparent",
             )}
         >
             <div
                 className={cn(
                     "pt-2 pb-1.5 flex flex-col gap-1",
-                    "rounded-[18px] border border-white/65 bg-white/60 shadow-[0_6px_18px_rgba(15,23,42,0.16),inset_0_1px_0_rgba(255,255,255,0.85),inset_0_-6px_14px_rgba(255,255,255,0.18)] backdrop-blur-2xl",
+                    "rounded-xl border border-white/65 bg-white/60 shadow-[0_4px_10px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.85),inset_0_-6px_14px_rgba(255,255,255,0.18)] backdrop-blur-2xl",
                 )}
             >
                 <textarea
                     ref={textareaRef}
                     rows={1}
-                    placeholder="Ask a question about your documents..."
+                    placeholder="How can I help?"
                     value={value}
                     onChange={(e) => {
                         setValue(e.target.value);
@@ -100,7 +100,7 @@ export function TRChatInput({
                     }}
                     className="w-full resize-none text-sm bg-transparent outline-none placeholder:text-gray-400 leading-6 max-h-48 overflow-hidden border-0 p-0 pl-3 pr-2 pt-0.5"
                 />
-                <div className="flex items-center justify-between pl-1 pr-2">
+                <div className="flex items-center justify-end gap-1.5 pl-1 pr-2">
                     <ModelToggle
                         value={model}
                         onChange={onModelChange}

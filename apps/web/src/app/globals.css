@@ -11,9 +11,26 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@layer utilities {
+    .white-liquid-glass {
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        background: rgba(255, 255, 255, 0.65);
+        box-shadow:
+            0 -1px 6px rgba(15, 23, 42, 0.034),
+            0 4px 9px rgba(15, 23, 42, 0.074),
+            inset 0 1px 0 rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(40px);
+    }
+}
+
 @theme inline {
     --color-background: var(--background);
     --color-foreground: var(--foreground);
+    --color-app-background: var(--app-background);
+    --color-app-surface: var(--app-surface);
+    --color-app-surface-hover: var(--app-surface-hover);
+    --color-app-surface-active: var(--app-surface-active);
+    --color-app-floating: var(--app-floating);
     --font-sans:
         Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
         "Segoe UI", sans-serif;
@@ -62,6 +79,11 @@
 :root {
     --radius: 0.625rem;
     --color-azure: 0, 136, 255;
+    --app-background: #f9fafb;
+    --app-surface: #fdfdfe;
+    --app-surface-hover: #f9fafb;
+    --app-surface-active: #eff0f3;
+    --app-floating: #fefefe;
     --background: oklch(0.985 0 0);
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);

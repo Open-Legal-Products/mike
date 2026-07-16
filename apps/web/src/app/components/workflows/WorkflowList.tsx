@@ -1,12 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-    Library,
-    Table2,
-    MessageSquare,
+    Plus,
     User,
     ChevronDown,
 } from "lucide-react";
@@ -27,16 +25,21 @@ import { TableToolbar } from "../shared/TableToolbar";
 import { RowActionMenuItems, RowActions } from "../shared/RowActions";
 import { MikeIcon } from "@/app/components/chat/mike-icon";
 import { PageHeader } from "@/app/components/shared/PageHeader";
-import { workflowDetailPath } from "./workflowRoutes";
+import { PillButton } from "@/app/components/ui/pill-button";
+import { TabPillButton } from "@/app/components/ui/tab-pill-button";
+import {
+    LiquidDropdownButton,
+    LiquidDropdownSurface,
+} from "@/app/components/ui/liquid-dropdown";
 import { toastError } from "@/lib/toast";
 import {
-    GLASS_DROPDOWN,
-    GLASS_MENU_ITEM,
-    HeaderFilterDropdown,
-} from "../shared/HeaderFilterDropdown";
+    ChatSkeuoIcon,
+    TabularReviewSkeuoIcon,
+    WorkflowSkeuoIcon,
+} from "@/app/components/shared/AppSidebarSkeuoIcons";
+import { workflowDetailPath } from "./workflowRoutes";
 import {
     TABLE_CHECKBOX_CLASS,
-    TABLE_STICKY_CELL_BG,
     SkeletonDot,
     SkeletonLine,
     TableBody,
@@ -44,19 +47,28 @@ import {
     TableEmptyState,
     TableHeaderCell,
     TableHeaderRow,
+    TableFilters,
+    type TableFilterOption,
     TablePrimaryCell,
     TableRow,
     TableScrollArea,
+    type TableSortDirection,
     TableStickyCell,
 } from "../shared/TablePrimitive";
 
-type WorkflowScope = "all" | "system" | "user" | "shared";
+type WorkflowSourceFilter = "system" | "user" | "shared";
+type WorkflowListTab = "all" | "assistant" | "tabular" | "system";
+type WorkflowSortKey = "name" | "type";
 
-const WORKFLOW_SCOPES: { id: WorkflowScope; label: string }[] = [
+const WORKFLOW_TABS: { id: WorkflowListTab; label: string }[] = [
     { id: "all", label: "All" },
-    { id: "user", label: "User" },
-    { id: "shared", label: "Shared with me" },
+    { id: "assistant", label: "Assistant" },
+    { id: "tabular", label: "Tabular" },
     { id: "system", label: "System" },
+];
+const SORT_OPTIONS: TableFilterOption<TableSortDirection>[] = [
+    { value: "asc", label: "Ascending" },
+    { value: "desc", label: "Descending" },
 ];
 
 const isDev = process.env.NODE_ENV !== "production";
@@ -67,20 +79,29 @@ const devLog = (...args: Parameters<typeof console.log>) => {
 export function WorkflowList() {
     const router = useRouter();
     const queryClient = useQueryClient();
+    const searchParams = useSearchParams();
     const [selected, setSelected] = useState<Workflow | null>(null);
-    const [activeScope, setActiveScope] = useState<WorkflowScope>("all");
     const [newModalOpen, setNewModalOpen] = useState(false);
     const [editingWorkflow, setEditingWorkflow] = useState<Workflow | null>(
         null,
     );
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [actionsOpen, setActionsOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState<WorkflowListTab>("all");
     const [practiceFilter, setPracticeFilter] = useState<string | null>(null);
-    const [typeFilter, setTypeFilter] = useState<Workflow["metadata"]["type"] | null>(
+    const [jurisdictionFilter, setJurisdictionFilter] = useState<string | null>(
         null,
     );
+    const [languageFilter, setLanguageFilter] = useState<string | null>(null);
+    const [sourceFilter, setSourceFilter] =
+        useState<WorkflowSourceFilter | null>(null);
+    const [sort, setSort] = useState<{
+        key: WorkflowSortKey;
+        direction: TableSortDirection;
+    } | null>(null);
     const [search, setSearch] = useState("");
     const actionsRef = useRef<HTMLDivElement>(null);
+    const previewEmptyStates = searchParams.get("emptyStates") === "1";
 
     // Cached read of the workflows list (React Query). Mirrors the previous
     // load-on-mount: `loading` while the first fetch is in flight, and an error
@@ -91,6 +112,8 @@ export function WorkflowList() {
     const workflows = workflowsQuery.data?.custom ?? [];
     const hiddenSystemIds = workflowsQuery.data?.hiddenBuiltinIds ?? [];
     const loading = workflowsQuery.isLoading;
+    const effectiveLoading = loading && !previewEmptyStates;
+    const visibleWorkflows = previewEmptyStates ? [] : workflows;
 
     useEffect(() => {
         if (workflowsQuery.error) {
@@ -141,11 +164,11 @@ export function WorkflowList() {
         return () => document.removeEventListener("mousedown", handleClick);
     }, [actionsOpen]);
 
-    const systemWorkflows = workflows.filter((wf) => wf.is_system);
-    const userWorkflows = workflows.filter(
+    const systemWorkflows = visibleWorkflows.filter((wf) => wf.is_system);
+    const userWorkflows = visibleWorkflows.filter(
         (wf) => !wf.is_system && wf.is_owner !== false,
     );
-    const sharedWorkflows = workflows.filter(
+    const sharedWorkflows = visibleWorkflows.filter(
         (wf) => !wf.is_system && wf.is_owner === false,
     );
     const hiddenSystem = systemWorkflows.filter((wf) =>
@@ -157,24 +180,48 @@ export function WorkflowList() {
     const systemRows = [...visibleSystem, ...hiddenSystem];
     const activeRows = [...userWorkflows, ...sharedWorkflows, ...visibleSystem];
     const allRows = [...userWorkflows, ...sharedWorkflows, ...systemRows];
-    const byScope =
-        activeScope === "all"
+    const tabRows =
+        activeTab === "all"
             ? activeRows
-            : activeScope === "system"
-            ? systemRows
-            : activeScope === "user"
-              ? userWorkflows
-              : sharedWorkflows;
+            : activeTab === "system"
+              ? systemRows
+              : activeRows.filter((workflow) => workflow.metadata.type === activeTab);
+    const sourceRows =
+        sourceFilter === null
+            ? tabRows
+            : tabRows.filter(
+                  (workflow) => getWorkflowSource(workflow) === sourceFilter,
+              );
     const practices = Array.from(
         new Set(
-            byScope.map((wf) => wf.metadata.practice).filter((p): p is string => !!p),
+            sourceRows.map((wf) => wf.metadata.practice).filter((p): p is string => !!p),
+        ),
+    ).sort();
+    const jurisdictions = Array.from(
+        new Set(
+            allRows
+                .flatMap((wf) => wf.metadata.jurisdictions ?? [])
+                .filter((jurisdiction): jurisdiction is string => !!jurisdiction),
+        ),
+    ).sort();
+    const languages = Array.from(
+        new Set(
+            allRows
+                .map((wf) => wf.metadata.language)
+                .filter((language): language is string => !!language),
         ),
     ).sort();
     const q = search.toLowerCase();
-    const filtered = byScope
+    const filtered = sourceRows
         .filter((wf) => !practiceFilter || wf.metadata.practice === practiceFilter)
-        .filter((wf) => !typeFilter || wf.metadata.type === typeFilter)
-        .filter((wf) => !q || wf.metadata.title.toLowerCase().includes(q));
+        .filter(
+            (wf) =>
+                !jurisdictionFilter ||
+                wf.metadata.jurisdictions?.includes(jurisdictionFilter),
+        )
+        .filter((wf) => !languageFilter || wf.metadata.language === languageFilter)
+        .filter((wf) => !q || wf.metadata.title.toLowerCase().includes(q))
+        .sort((a, b) => compareWorkflows(a, b, sort));
 
     const allSelected =
         filtered.length > 0 &&
@@ -198,18 +245,36 @@ export function WorkflowList() {
         setActionsOpen(false);
     }
 
-    function handleScopeChange(scope: WorkflowScope) {
-        setActiveScope(scope);
-        clearSelection();
-    }
-
-    function handleTypeFilterChange(value: Workflow["metadata"]["type"] | null) {
-        setTypeFilter(value);
+    function handleTabChange(tab: WorkflowListTab) {
+        setActiveTab(tab);
         clearSelection();
     }
 
     function handlePracticeFilterChange(value: string | null) {
         setPracticeFilter(value);
+        clearSelection();
+    }
+
+    function handleJurisdictionFilterChange(value: string | null) {
+        setJurisdictionFilter(value);
+        clearSelection();
+    }
+
+    function handleLanguageFilterChange(value: string | null) {
+        setLanguageFilter(value);
+        clearSelection();
+    }
+
+    function handleSourceFilterChange(value: WorkflowSourceFilter | null) {
+        setSourceFilter(value);
+        clearSelection();
+    }
+
+    function handleSortChange(
+        key: WorkflowSortKey,
+        direction: TableSortDirection | null,
+    ) {
+        setSort(direction ? { key, direction } : null);
         clearSelection();
     }
 
@@ -292,34 +357,39 @@ export function WorkflowList() {
 
     const getTypeMeta = (type: Workflow["metadata"]["type"]) =>
         type === "tabular"
-            ? { label: "Tabular", Icon: Table2, className: "text-violet-700" }
+            ? { label: "Tabular", Icon: TabularReviewSkeuoIcon }
             : {
                   label: "Assistant",
-                  Icon: MessageSquare,
-                  className: "text-blue-700",
+                  Icon: ChatSkeuoIcon,
               };
-
-    const typeFilterButton = (
-        <HeaderFilterDropdown
-            label="Filter by type"
-            value={typeFilter}
-            allLabel="All Types"
+    const nameSortDirection =
+        sort?.key === "name" ? sort.direction : null;
+    const typeSortDirection =
+        sort?.key === "type" ? sort.direction : null;
+    const nameFilterButton = (
+        <TableFilters
+            label="Sort by name"
+            value={nameSortDirection}
+            allLabel="Default Order"
             widthClassName="w-40"
-            options={(["assistant", "tabular"] as const).map((type) => {
-                const { label, Icon, className } = getTypeMeta(type);
-                return {
-                    value: type,
-                    label,
-                    icon: Icon,
-                    className,
-                };
-            })}
-            onChange={handleTypeFilterChange}
+            align="right"
+            options={SORT_OPTIONS}
+            onChange={(direction) => handleSortChange("name", direction)}
+        />
+    );
+    const typeFilterButton = (
+        <TableFilters
+            label="Sort by type"
+            value={typeSortDirection}
+            allLabel="Default Order"
+            widthClassName="w-40"
+            options={SORT_OPTIONS}
+            onChange={(direction) => handleSortChange("type", direction)}
         />
     );
 
     const practiceFilterButton = (
-        <HeaderFilterDropdown
+        <TableFilters
             label="Filter by practice"
             value={practiceFilter}
             allLabel="All Practices"
@@ -328,6 +398,50 @@ export function WorkflowList() {
                 label: practice,
             }))}
             onChange={handlePracticeFilterChange}
+        />
+    );
+
+    const jurisdictionFilterButton = (
+        <TableFilters
+            label="Filter by jurisdiction"
+            value={jurisdictionFilter}
+            allLabel="All Jurisdictions"
+            widthClassName="w-48"
+            options={jurisdictions.map((jurisdiction) => ({
+                value: jurisdiction,
+                label: jurisdiction,
+            }))}
+            onChange={handleJurisdictionFilterChange}
+        />
+    );
+
+    const languageFilterButton = (
+        <TableFilters
+            label="Filter by language"
+            value={languageFilter}
+            allLabel="All Languages"
+            widthClassName="w-44"
+            options={languages.map((language) => ({
+                value: language,
+                label: language,
+            }))}
+            onChange={handleLanguageFilterChange}
+        />
+    );
+
+    const sourceOptions: TableFilterOption<WorkflowSourceFilter>[] = [
+        { value: "system", label: "System" },
+        { value: "user", label: "User" },
+        { value: "shared", label: "Shared with me" },
+    ];
+    const sourceFilterButton = (
+        <TableFilters
+            label="Filter by source"
+            value={sourceFilter}
+            allLabel="All Sources"
+            widthClassName="w-44"
+            options={sourceOptions}
+            onChange={handleSourceFilterChange}
         />
     );
 
@@ -346,22 +460,21 @@ export function WorkflowList() {
     const toolbarActions =
         selectedIds.length > 0 ? (
             <div ref={actionsRef} className="relative">
-                <button
+                <TabPillButton
                     onClick={() => setActionsOpen((v) => !v)}
-                    className="flex items-center gap-1 text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
                 >
                     Actions
                     <ChevronDown className="h-3.5 w-3.5" />
-                </button>
+                </TabPillButton>
                 {actionsOpen && (
-                    <div className={`absolute top-full right-0 mt-1 z-[100] w-36 overflow-hidden ${GLASS_DROPDOWN}`}>
+                    <LiquidDropdownSurface className="absolute top-full right-0 mt-1 z-[100] w-36 overflow-hidden">
                         {selectedOnlyHiddenSystem ? (
-                            <button
+                            <LiquidDropdownButton
                                 onClick={handleBulkUnhide}
-                                className={`w-full px-3 py-1.5 text-left text-xs text-gray-700 ${GLASS_MENU_ITEM}`}
+                                className="w-full px-3 py-1.5 text-left text-gray-700"
                             >
                                 Activate
-                            </button>
+                            </LiquidDropdownButton>
                         ) : (
                             <button
                                 onClick={handleBulkRemove}
@@ -370,7 +483,7 @@ export function WorkflowList() {
                                 {selectedOnlySystem ? "Deactivate" : "Delete"}
                             </button>
                         )}
-                    </div>
+                    </LiquidDropdownSurface>
                 )}
             </div>
         ) : undefined;
@@ -401,9 +514,9 @@ export function WorkflowList() {
             </PageHeader>
 
             <TableToolbar
-                items={WORKFLOW_SCOPES}
-                active={activeScope}
-                onChange={handleScopeChange}
+                items={WORKFLOW_TABS}
+                active={activeTab}
+                onChange={handleTabChange}
                 actions={toolbarActions}
             />
 
@@ -413,8 +526,8 @@ export function WorkflowList() {
                 header={
                     <TableHeaderRow>
                         <TableStickyCell header>
-                            {loading ? (
-                                <SkeletonDot />
+                            {effectiveLoading ? (
+                                <SkeletonDot className="mr-4" />
                             ) : (
                                 <input
                                     type="checkbox"
@@ -426,29 +539,45 @@ export function WorkflowList() {
                                     className={TABLE_CHECKBOX_CLASS}
                                 />
                             )}
-                            <span>Name</span>
+                            <span className="mr-1">Name</span>
+                            {!loading && nameFilterButton}
                         </TableStickyCell>
                         <TableHeaderCell className="ml-auto w-28">
                             <div className="flex items-center gap-1">
                                 <span>Type</span>
-                                {typeFilterButton}
+                                {!loading && typeFilterButton}
                             </div>
                         </TableHeaderCell>
                         <TableHeaderCell className="w-40">
                             <div className="flex items-center gap-1">
                                 <span>Practice</span>
-                                {practiceFilterButton}
+                                {!loading && practiceFilterButton}
                             </div>
                         </TableHeaderCell>
-                        <TableHeaderCell className="w-40">Jurisdiction</TableHeaderCell>
-                        <TableHeaderCell className="w-28">Language</TableHeaderCell>
-                        <TableHeaderCell className="w-44">Source</TableHeaderCell>
+                        <TableHeaderCell className="w-40">
+                            <div className="flex items-center gap-1">
+                                <span>Jurisdiction</span>
+                                {!loading && jurisdictionFilterButton}
+                            </div>
+                        </TableHeaderCell>
+                        <TableHeaderCell className="w-28">
+                            <div className="flex items-center gap-1">
+                                <span>Language</span>
+                                {!loading && languageFilterButton}
+                            </div>
+                        </TableHeaderCell>
+                        <TableHeaderCell className="w-44">
+                            <div className="flex items-center gap-1">
+                                <span>Source</span>
+                                {!loading && sourceFilterButton}
+                            </div>
+                        </TableHeaderCell>
                         <TableHeaderCell className="w-8" />
                     </TableHeaderRow>
                 }
             >
 
-                    {loading ? (
+                    {effectiveLoading ? (
                         <TableBody>
                             {[1, 2, 3].map((i) => (
                                 <TableRow
@@ -458,8 +587,8 @@ export function WorkflowList() {
                                     <TableStickyCell
                                         hover={false}
                                     >
-                                        <div className="flex items-center gap-4">
-                                            <SkeletonDot />
+                                        <div className="flex items-center">
+                                            <SkeletonDot className="mr-4" />
                                             <SkeletonLine className="h-3.5 w-48" />
                                         </div>
                                     </TableStickyCell>
@@ -487,9 +616,9 @@ export function WorkflowList() {
                         </TableBody>
                     ) : filtered.length === 0 ? (
                         <TableEmptyState>
-                            {activeScope === "user" ? (
+                            {sourceFilter === "user" ? (
                                 <>
-                                    <Library className="h-8 w-8 text-gray-300 mb-4" />
+                                    <WorkflowSkeuoIcon className="mb-4 h-8 w-8" />
                                     <p className="text-2xl font-medium font-serif text-gray-900">
                                         User Workflows
                                     </p>
@@ -498,16 +627,19 @@ export function WorkflowList() {
                                         review templates tailored to your
                                         practice.
                                     </p>
-                                    <button
+                                    <PillButton
+                                        tone="black"
+                                        size="sm"
                                         onClick={() => setNewModalOpen(true)}
-                                        className="mt-4 inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors shadow-md"
+                                        className="mt-4 px-3"
                                     >
-                                        + Create New
-                                    </button>
+                                        <Plus className="h-3.5 w-3.5" />
+                                        Create
+                                    </PillButton>
                                 </>
-                            ) : activeScope === "shared" ? (
+                            ) : sourceFilter === "shared" ? (
                                 <>
-                                    <Library className="h-8 w-8 text-gray-300 mb-4" />
+                                    <WorkflowSkeuoIcon className="mb-4 h-8 w-8" />
                                     <p className="text-2xl font-medium font-serif text-gray-900">
                                         Shared Workflows
                                     </p>
@@ -518,7 +650,7 @@ export function WorkflowList() {
                                 </>
                             ) : (
                                 <>
-                                    <Library className="h-8 w-8 text-gray-300 mb-4" />
+                                    <WorkflowSkeuoIcon className="mb-4 h-8 w-8" />
                                     <p className="text-2xl font-medium font-serif text-gray-900">
                                         Workflows
                                     </p>
@@ -533,19 +665,18 @@ export function WorkflowList() {
                         <TableBody>
                             {filtered.map((wf) => {
                             const isHiddenSystem = hiddenSystemIds.includes(wf.id);
-                            const rowBg = selectedIds.includes(wf.id)
-                                ? "bg-gray-50"
-                                : TABLE_STICKY_CELL_BG;
                             return (
                             <TableRow
                                 key={wf.id}
+                                selected={selectedIds.includes(wf.id)}
                                 className={isHiddenSystem ? "opacity-45" : undefined}
                                 rightClickDropdown={
                                     wf.is_system
                                         ? isHiddenSystem
-                                            ? (close) => (
+                                            ? (close, menuProps) => (
                                                   <RowActionMenuItems
                                                       onClose={close}
+                                                      surfaceProps={menuProps}
                                                       onUnhide={() =>
                                                           handleUnhideWorkflow(
                                                               wf.id,
@@ -553,9 +684,10 @@ export function WorkflowList() {
                                                       }
                                                   />
                                               )
-                                            : (close) => (
+                                            : (close, menuProps) => (
                                                   <RowActionMenuItems
                                                       onClose={close}
+                                                      surfaceProps={menuProps}
                                                       onHide={() =>
                                                           handleHideWorkflow(
                                                               wf.id,
@@ -565,9 +697,10 @@ export function WorkflowList() {
                                               )
                                         : wf.is_owner === false
                                           ? undefined
-                                          : (close) => (
+                                          : (close, menuProps) => (
                                                 <RowActionMenuItems
                                                     onClose={close}
+                                                    surfaceProps={menuProps}
                                                     onEditDetails={() =>
                                                         setEditingWorkflow(wf)
                                                     }
@@ -589,20 +722,18 @@ export function WorkflowList() {
                                 onClick={() => setSelected(wf)}
                             >
                                 <TablePrimaryCell
-                                    bgClassName={rowBg}
                                     selected={selectedIds.includes(wf.id)}
                                     onSelectionChange={() => toggleOne(wf.id)}
                                     label={wf.metadata.title}
                                 />
                                 <TableCell className="ml-auto w-28">
                                     {(() => {
-                                        const { label, Icon, className } =
-                                            getTypeMeta(wf.metadata.type);
+                                        const { label, Icon } = getTypeMeta(
+                                            wf.metadata.type,
+                                        );
                                         return (
                                             <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700">
-                                                <Icon
-                                                    className={`h-3.5 w-3.5 ${className}`}
-                                                />
+                                                <Icon className="h-4 w-4 shrink-0" />
                                                 {label}
                                             </span>
                                         );
@@ -747,6 +878,35 @@ export function WorkflowList() {
 
 function getSharedByLabel(workflow: Workflow) {
     return workflow.shared_by_name?.trim() || "Shared";
+}
+
+function getWorkflowSource(workflow: Workflow): WorkflowSourceFilter {
+    if (workflow.is_system) return "system";
+    return workflow.is_owner === false ? "shared" : "user";
+}
+
+function compareWorkflows(
+    a: Workflow,
+    b: Workflow,
+    sort: { key: WorkflowSortKey; direction: TableSortDirection } | null,
+) {
+    if (!sort) return 0;
+
+    const direction = sort.direction === "asc" ? 1 : -1;
+    const aValue =
+        sort.key === "name"
+            ? a.metadata.title
+            : a.metadata.type === "tabular"
+              ? "Tabular"
+              : "Assistant";
+    const bValue =
+        sort.key === "name"
+            ? b.metadata.title
+            : b.metadata.type === "tabular"
+              ? "Tabular"
+              : "Assistant";
+
+    return aValue.localeCompare(bValue) * direction;
 }
 
 // Liquid-glass treatment shared by every practice dot: a top inset highlight

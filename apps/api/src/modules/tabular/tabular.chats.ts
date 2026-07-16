@@ -51,6 +51,21 @@ export async function deleteTabularChat(
     return { ok: true };
 }
 
+export async function renameTabularChat(
+    db: Db,
+    args: { chatId: string; userId: string; title: string },
+): Promise<{ ok: true } | { ok: false; detail: string }> {
+    const { chatId, userId, title } = args;
+    // Owner-only rename — mirrors the delete rule above.
+    const { error } = await db
+        .from("tabular_review_chats")
+        .update({ title: title.slice(0, 200) })
+        .eq("id", chatId)
+        .eq("user_id", userId);
+    if (error) return { ok: false, detail: error.message };
+    return { ok: true };
+}
+
 export async function getTabularChatMessages(
     db: Db,
     args: {

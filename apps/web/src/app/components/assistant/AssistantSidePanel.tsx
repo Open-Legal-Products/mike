@@ -18,6 +18,7 @@ import {
     type CaseTab,
 } from "./CaseLawPanel";
 import { cn } from "@/app/lib/utils";
+import { LIQUID_PANEL_SURFACE_CLASS } from "@/app/components/ui/liquid-surface";
 
 // ---------------------------------------------------------------------------
 // Tab data
@@ -196,7 +197,8 @@ export function AssistantSidePanel({
             ref={panelRef}
             className={cn(
                 "relative flex h-full w-full shrink-0 flex-col md:my-3 md:mr-3 md:h-[calc(100%-1.5rem)] md:w-[var(--assistant-panel-width)]",
-                "rounded-2xl border border-white/70 bg-white shadow-[0_6px_18px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-10px_24px_rgba(255,255,255,0.18),inset_1px_0_0_rgba(255,255,255,0.5)] backdrop-blur-2xl overflow-hidden",
+                LIQUID_PANEL_SURFACE_CLASS,
+                "overflow-hidden",
             )}
             style={{
                 "--assistant-panel-width": `${panelWidth}px`,

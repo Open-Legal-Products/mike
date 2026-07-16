@@ -31,6 +31,8 @@ describe("HistoryDropdown", () => {
                 chats={chats}
                 currentChatId="chat-current"
                 onLoad={vi.fn()}
+                onRename={vi.fn()}
+                onDelete={vi.fn()}
             />,
         );
         expect(screen.getByText("Liability questions")).toBeInTheDocument();
@@ -44,6 +46,8 @@ describe("HistoryDropdown", () => {
                 chats={[chats[0]]}
                 currentChatId="chat-current"
                 onLoad={vi.fn()}
+                onRename={vi.fn()}
+                onDelete={vi.fn()}
             />,
         );
         expect(screen.getByText("No previous chats.")).toBeInTheDocument();

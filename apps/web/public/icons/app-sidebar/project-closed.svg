@@ -1,0 +1,42 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="back" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5B6472"/>
+      <stop offset="1" stop-color="#2F3947"/>
+    </linearGradient>
+    <linearGradient id="front" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#B6BCC6" stop-opacity="0.96"/>
+      <stop offset="0.48" stop-color="#596272" stop-opacity="0.96"/>
+      <stop offset="1" stop-color="#424C5A" stop-opacity="0.98"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.75"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#1F2937" stop-opacity="0.46"/>
+    </linearGradient>
+    <linearGradient id="rimBack" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.65"/>
+      <stop offset="0.4" stop-color="#FFFFFF" stop-opacity="0.1"/>
+      <stop offset="1" stop-color="#1F2937" stop-opacity="0.5"/>
+    </linearGradient>
+    <radialGradient id="sheen">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.6" stop-color="#FFFFFF" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="clipFront">
+      <path d="M11.5 19.5 H52.5 C55 19.5 57 21.5 57 24 L56.35 49.4 C56.28 51.95 54.15 54 51.6 54 H12.4 C9.85 54 7.72 51.95 7.65 49.4 L7 24 C7 21.5 9 19.5 11.5 19.5 Z"/>
+    </clipPath>
+  </defs>
+
+  <path d="M8 47 V15 C8 12.2 10.2 10 13 10 H23 C24.4 10 25.7 10.6 26.7 11.6 L31 16 H51 C53.8 16 56 18.2 56 21 V47 C56 49.8 53.8 52 51 52 H13 C10.2 52 8 49.8 8 47 Z"
+        fill="url(#back)" stroke="url(#rimBack)" stroke-width="1.5"/>
+
+  <path d="M11.5 19.5 H52.5 C55 19.5 57 21.5 57 24 L56.35 49.4 C56.28 51.95 54.15 54 51.6 54 H12.4 C9.85 54 7.72 51.95 7.65 49.4 L7 24 C7 21.5 9 19.5 11.5 19.5 Z"
+        fill="url(#front)" stroke="url(#rim)" stroke-width="1.5"/>
+
+  <g clip-path="url(#clipFront)">
+    <ellipse cx="32" cy="23" rx="26" ry="6" fill="url(#sheen)" opacity="0.45"/>
+    <ellipse cx="11.5" cy="37" rx="4" ry="11" fill="url(#sheen)" opacity="0.26"/>
+  </g>
+</svg>

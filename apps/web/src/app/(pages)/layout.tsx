@@ -100,7 +100,7 @@ export default function MikeLayout({
                         },
                     }}
                 >
-                    <div className="h-dvh flex flex-col bg-gray-50/80">
+                    <div className="h-dvh flex flex-col bg-app-background">
                         <ApiKeyBanner />
                         <div className="flex-1 flex min-w-0 overflow-visible">
                             <AppSidebar
@@ -112,7 +112,7 @@ export default function MikeLayout({
                                 <div className="relative z-20 flex md:hidden items-center gap-3 overflow-visible px-4 pt-3 pb-2 shrink-0">
                                     <button
                                         onClick={handleSidebarToggle}
-                                        className="flex h-9 w-9 items-center justify-center rounded-full bg-white/70 text-gray-700 shadow-[0_8px_24px_rgba(15,23,42,0.12)] ring-1 ring-white/70 backdrop-blur-md transition-all hover:bg-white/90 active:scale-95"
+                                        className="flex h-9 w-9 items-center justify-center rounded-full bg-app-surface text-gray-700 shadow-[0_8px_24px_rgba(15,23,42,0.12)] ring-1 ring-white/70 backdrop-blur-md transition-all hover:bg-app-floating active:scale-95"
                                         title="Open sidebar"
                                         aria-label="Open sidebar"
                                     >

@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { FolderOpen, ChevronDown } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 import { updateProject, deleteProject } from "@/app/lib/mikeApi";
 import {
     projectsQueryKey,
@@ -22,20 +22,28 @@ import {
 import { PageHeader } from "@/app/components/shared/PageHeader";
 import { toastError } from "@/lib/toast";
 import {
+    ClosedProjectSvgIcon,
+    OpenProjectSvgIcon,
+} from "@/app/components/shared/FolderSvgIcon";
+import {
     TABLE_CHECKBOX_CLASS,
-    TABLE_STICKY_CELL_BG,
     SkeletonDot,
     SkeletonLine,
     TableBody,
     TableCell,
     TableEmptyState,
+    TableFilters,
+    type TableFilterOption,
     TableHeaderCell,
     TableHeaderRow,
     TablePrimaryCell,
     TableRow,
     TableScrollArea,
+    type TableSortDirection,
     TableStickyCell,
 } from "@/app/components/shared/TablePrimitive";
+import { PillButton } from "@/app/components/ui/pill-button";
+import { TabPillButton } from "@/app/components/ui/tab-pill-button";
 
 function formatDate(iso: string) {
     return new Date(iso).toLocaleDateString(undefined, {
@@ -55,17 +63,36 @@ function getProjectOwnerLabel(project: Project, currentUserId?: string | null) {
 }
 
 type ProjectFilter = "all" | "mine" | "shared-with-me";
+type ProjectSortKey =
+    | "name"
+    | "cm"
+    | "files"
+    | "chats"
+    | "reviews"
+    | "created";
+
+const SORT_OPTIONS: TableFilterOption<TableSortDirection>[] = [
+    { value: "asc", label: "Ascending" },
+    { value: "desc", label: "Descending" },
+];
 
 export function ProjectsOverview() {
     const [modalOpen, setModalOpen] = useState(false);
     const [detailsProject, setDetailsProject] = useState<Project | null>(null);
     const [activeFilter, setActiveFilter] = useState<ProjectFilter>("all");
+    const [practiceFilter, setPracticeFilter] = useState<string | null>(null);
+    const [ownerFilter, setOwnerFilter] = useState<string | null>(null);
+    const [sort, setSort] = useState<{
+        key: ProjectSortKey;
+        direction: TableSortDirection;
+    } | null>(null);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [actionsOpen, setActionsOpen] = useState(false);
     const [search, setSearch] = useState("");
     const [ownerOnlyAction, setOwnerOnlyAction] = useState<string | null>(null);
     const actionsRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { user, isAuthenticated, authLoading } = useAuth();
     const queryClient = useQueryClient();
 
@@ -78,6 +105,15 @@ export function ProjectsOverview() {
     // fetching its first page — equivalent to the old `loading` flag.
     const loading = authLoading || projectsQuery.isLoading;
     const loadError = projectsQuery.isError ? "Could not load projects." : null;
+
+    // olp "emptyStates" preview mode: `?emptyStates=1` renders the empty-state
+    // UI against our real data source without waiting on a fetch.
+    const previewEmptyStates = searchParams.get("emptyStates") === "1";
+    const effectiveLoading = loading && !previewEmptyStates;
+    const visibleProjects = useMemo(
+        () => (previewEmptyStates ? [] : projects),
+        [previewEmptyStates, projects],
+    );
 
     useEffect(() => {
         if (projectsQuery.error) {
@@ -112,19 +148,111 @@ export function ProjectsOverview() {
     }, [actionsOpen]);
 
     const q = search.toLowerCase();
-    const filtered = (
-        activeFilter === "all"
-            ? projects
-            : activeFilter === "mine"
-              ? projects.filter((p) => p.is_owner ?? p.user_id === user?.id)
-              : projects.filter((p) => !(p.is_owner ?? p.user_id === user?.id))
-    ).filter(
-        (p) =>
-            !q ||
-            p.name.toLowerCase().includes(q) ||
-            (p.cm_number ?? "").toLowerCase().includes(q) ||
-            (p.practice ?? "").toLowerCase().includes(q),
+    const practices = useMemo(
+        () =>
+            Array.from(
+                new Set(
+                    visibleProjects
+                        .map((project) => project.practice?.trim())
+                        .filter((practice): practice is string => !!practice),
+                ),
+            ).sort((a, b) => a.localeCompare(b)),
+        [visibleProjects],
     );
+    const ownerOptions = useMemo(
+        () =>
+            Array.from(
+                new Set(
+                    visibleProjects.map((project) =>
+                        getProjectOwnerLabel(project, user?.id),
+                    ),
+                ),
+            )
+                .sort((a, b) => a.localeCompare(b))
+                .map((owner) => ({ value: owner, label: owner })),
+        [visibleProjects, user?.id],
+    );
+    const filtered = useMemo(() => {
+        const rows = (
+            activeFilter === "all"
+                ? visibleProjects
+                : activeFilter === "mine"
+                  ? visibleProjects.filter(
+                        (p) => p.is_owner ?? p.user_id === user?.id,
+                    )
+                  : visibleProjects.filter(
+                        (p) => !(p.is_owner ?? p.user_id === user?.id),
+                    )
+        )
+            .filter(
+                (p) =>
+                    !q ||
+                    p.name.toLowerCase().includes(q) ||
+                    (p.cm_number ?? "").toLowerCase().includes(q) ||
+                    (p.practice ?? "").toLowerCase().includes(q),
+            )
+            .filter(
+                (p) =>
+                    !practiceFilter ||
+                    (p.practice?.trim() ?? "") === practiceFilter,
+            )
+            .filter(
+                (p) =>
+                    !ownerFilter ||
+                    getProjectOwnerLabel(p, user?.id) === ownerFilter,
+            );
+
+        if (!sort) return rows;
+
+        return [...rows].sort((a, b) => {
+            const multiplier = sort.direction === "asc" ? 1 : -1;
+
+            if (sort.key === "cm") {
+                return (
+                    (a.cm_number ?? "").localeCompare(b.cm_number ?? "") *
+                    multiplier
+                );
+            }
+
+            if (sort.key === "files") {
+                return (
+                    ((a.document_count ?? 0) - (b.document_count ?? 0)) *
+                    multiplier
+                );
+            }
+
+            if (sort.key === "chats") {
+                return (
+                    ((a.chat_count ?? 0) - (b.chat_count ?? 0)) * multiplier
+                );
+            }
+
+            if (sort.key === "reviews") {
+                return (
+                    ((a.review_count ?? 0) - (b.review_count ?? 0)) *
+                    multiplier
+                );
+            }
+
+            if (sort.key === "created") {
+                return (
+                    (new Date(a.created_at).getTime() -
+                        new Date(b.created_at).getTime()) *
+                    multiplier
+                );
+            }
+
+            return a.name.localeCompare(b.name) * multiplier;
+        });
+    }, [
+        activeFilter,
+        ownerFilter,
+        practiceFilter,
+        q,
+        sort,
+        user?.id,
+        visibleProjects,
+    ]);
 
     const allSelected =
         filtered.length > 0 &&
@@ -146,11 +274,125 @@ export function ProjectsOverview() {
         );
     }
 
+    function clearSelection() {
+        setSelectedIds([]);
+        setActionsOpen(false);
+    }
+
+    function handlePracticeFilterChange(value: string | null) {
+        setPracticeFilter(value);
+        clearSelection();
+    }
+
+    function handleOwnerFilterChange(value: string | null) {
+        setOwnerFilter(value);
+        clearSelection();
+    }
+
+    function handleSortChange(
+        key: ProjectSortKey,
+        direction: TableSortDirection | null,
+    ) {
+        setSort(direction ? { key, direction } : null);
+        clearSelection();
+    }
+
     const filters: { id: ProjectFilter; label: string }[] = [
         { id: "all", label: "All" },
         { id: "mine", label: "Mine" },
         { id: "shared-with-me", label: "Shared with me" },
     ];
+    const nameSortDirection = sort?.key === "name" ? sort.direction : null;
+    const cmSortDirection = sort?.key === "cm" ? sort.direction : null;
+    const filesSortDirection = sort?.key === "files" ? sort.direction : null;
+    const chatsSortDirection = sort?.key === "chats" ? sort.direction : null;
+    const reviewsSortDirection =
+        sort?.key === "reviews" ? sort.direction : null;
+    const createdSortDirection =
+        sort?.key === "created" ? sort.direction : null;
+    const nameFilterButton = (
+        <TableFilters
+            label="Sort by project name"
+            value={nameSortDirection}
+            allLabel="Default Order"
+            widthClassName="w-40"
+            align="right"
+            options={SORT_OPTIONS}
+            onChange={(direction) => handleSortChange("name", direction)}
+        />
+    );
+    const cmFilterButton = (
+        <TableFilters
+            label="Sort by CM"
+            value={cmSortDirection}
+            allLabel="Default Order"
+            widthClassName="w-40"
+            options={SORT_OPTIONS}
+            onChange={(direction) => handleSortChange("cm", direction)}
+        />
+    );
+    const practiceFilterButton = (
+        <TableFilters
+            label="Filter by practice"
+            value={practiceFilter}
+            allLabel="All Practices"
+            options={practices.map((practice) => ({
+                value: practice,
+                label: practice,
+            }))}
+            onChange={handlePracticeFilterChange}
+        />
+    );
+    const ownerFilterButton = (
+        <TableFilters
+            label="Filter by owner"
+            value={ownerFilter}
+            allLabel="All Owners"
+            widthClassName="w-44"
+            options={ownerOptions}
+            onChange={handleOwnerFilterChange}
+        />
+    );
+    const filesFilterButton = (
+        <TableFilters
+            label="Sort by files"
+            value={filesSortDirection}
+            allLabel="Default Order"
+            widthClassName="w-40"
+            options={SORT_OPTIONS}
+            onChange={(direction) => handleSortChange("files", direction)}
+        />
+    );
+    const chatsFilterButton = (
+        <TableFilters
+            label="Sort by chats"
+            value={chatsSortDirection}
+            allLabel="Default Order"
+            widthClassName="w-40"
+            options={SORT_OPTIONS}
+            onChange={(direction) => handleSortChange("chats", direction)}
+        />
+    );
+    const reviewsFilterButton = (
+        <TableFilters
+            label="Sort by tabular reviews"
+            value={reviewsSortDirection}
+            allLabel="Default Order"
+            widthClassName="w-40"
+            options={SORT_OPTIONS}
+            onChange={(direction) => handleSortChange("reviews", direction)}
+        />
+    );
+    const createdFilterButton = (
+        <TableFilters
+            label="Sort by created date"
+            value={createdSortDirection}
+            allLabel="Default Order"
+            widthClassName="w-40"
+            options={SORT_OPTIONS}
+            onChange={(direction) => handleSortChange("created", direction)}
+        />
+    );
 
     async function handleProjectDetailsSave(values: {
         name: string;
@@ -218,34 +460,30 @@ export function ProjectsOverview() {
         }
     }
 
-    const toolbarActions = (
-        <>
-            {selectedIds.length > 0 && (
-                <div ref={actionsRef} className="relative">
-                    <button
-                        onClick={() => setActionsOpen((v) => !v)}
-                        className="flex items-center gap-1 text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
-                    >
-                        Actions
-                        <ChevronDown className="h-3.5 w-3.5" />
-                    </button>
-                    {actionsOpen && (
-                        // Must clear TablePrimitive's sticky header (z-[70]),
-                        // which otherwise covers this menu and swallows the
-                        // click. WorkflowList's menu uses the same z-[100].
-                        <div className="absolute top-full right-0 mt-1 w-36 rounded-lg border border-gray-100 bg-white shadow-lg z-[100] overflow-hidden">
-                            <button
-                                onClick={handleDeleteSelected}
-                                className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 transition-colors"
-                            >
-                                Delete
-                            </button>
-                        </div>
-                    )}
-                </div>
-            )}
-        </>
-    );
+    const toolbarActions =
+        selectedIds.length > 0 ? (
+            <div ref={actionsRef} className="relative">
+                <TabPillButton
+                    onClick={() => setActionsOpen((v) => !v)}
+                >
+                    Actions
+                    <ChevronDown className="h-3.5 w-3.5" />
+                </TabPillButton>
+                {actionsOpen && (
+                    // Must clear TablePrimitive's sticky header (z-[70]),
+                    // which otherwise covers this menu and swallows the
+                    // click. WorkflowList's menu uses the same z-[100].
+                    <div className="absolute top-full right-0 mt-1 w-36 rounded-lg border border-gray-100 bg-white shadow-lg z-[100] overflow-hidden">
+                        <button
+                            onClick={handleDeleteSelected}
+                            className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                            Delete
+                        </button>
+                    </div>
+                )}
+            </div>
+        ) : undefined;
 
     return (
         <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -276,7 +514,7 @@ export function ProjectsOverview() {
                 active={activeFilter}
                 onChange={(nextFilter) => {
                     setActiveFilter(nextFilter);
-                    setSelectedIds([]);
+                    clearSelection();
                 }}
                 actions={toolbarActions}
             />
@@ -287,8 +525,8 @@ export function ProjectsOverview() {
                 header={
                     <TableHeaderRow>
                         <TableStickyCell header>
-                            {loading ? (
-                                <SkeletonDot />
+                            {effectiveLoading ? (
+                                <SkeletonDot className="mr-4" />
                             ) : (
                                 <input
                                     type="checkbox"
@@ -300,23 +538,56 @@ export function ProjectsOverview() {
                                     className={TABLE_CHECKBOX_CLASS}
                                 />
                             )}
-                            <span>Name</span>
+                            <span className="mr-1">Name</span>
+                            {!loading && nameFilterButton}
                         </TableStickyCell>
-                        <TableHeaderCell className="ml-auto w-32">CM</TableHeaderCell>
-                        <TableHeaderCell className="w-36">Practice</TableHeaderCell>
-                        <TableHeaderCell className="w-32">Owner</TableHeaderCell>
-                        <TableHeaderCell className="w-24">Files</TableHeaderCell>
-                        <TableHeaderCell className="w-24">Chats</TableHeaderCell>
-                        <TableHeaderCell className="w-36">
-                            Tabular Reviews
+                        <TableHeaderCell className="ml-auto w-32">
+                            <div className="flex items-center gap-1">
+                                <span>CM</span>
+                                {!loading && cmFilterButton}
+                            </div>
                         </TableHeaderCell>
-                        <TableHeaderCell className="w-32">Created</TableHeaderCell>
+                        <TableHeaderCell className="w-36">
+                            <div className="flex items-center gap-1">
+                                <span>Practice</span>
+                                {!loading && practiceFilterButton}
+                            </div>
+                        </TableHeaderCell>
+                        <TableHeaderCell className="w-32">
+                            <div className="flex items-center gap-1">
+                                <span>Owner</span>
+                                {!loading && ownerFilterButton}
+                            </div>
+                        </TableHeaderCell>
+                        <TableHeaderCell className="w-24">
+                            <div className="flex items-center gap-1">
+                                <span>Files</span>
+                                {!loading && filesFilterButton}
+                            </div>
+                        </TableHeaderCell>
+                        <TableHeaderCell className="w-24">
+                            <div className="flex items-center gap-1">
+                                <span>Chats</span>
+                                {!loading && chatsFilterButton}
+                            </div>
+                        </TableHeaderCell>
+                        <TableHeaderCell className="w-36">
+                            <div className="flex items-center gap-1">
+                                <span>Tabular Reviews</span>
+                                {!loading && reviewsFilterButton}
+                            </div>
+                        </TableHeaderCell>
+                        <TableHeaderCell className="w-32">
+                            <div className="flex items-center gap-1">
+                                <span>Created</span>
+                                {!loading && createdFilterButton}
+                            </div>
+                        </TableHeaderCell>
                         <TableHeaderCell className="w-8" />
                     </TableHeaderRow>
                 }
             >
-
-                {loading ? (
+                {effectiveLoading ? (
                     <TableBody>
                         {[1, 2, 3].map((i) => (
                             <TableRow
@@ -327,7 +598,8 @@ export function ProjectsOverview() {
                                     hover={false}
                                     bgClassName="bg-transparent"
                                 >
-                                    <SkeletonDot />
+                                    <SkeletonDot className="mr-4" />
+                                    <div className="mr-2 h-4 w-4 shrink-0 rounded bg-gray-100 animate-pulse" />
                                     <SkeletonLine className="h-3.5 w-48" />
                                 </TableStickyCell>
                                 <TableCell className="ml-auto w-32">
@@ -357,7 +629,7 @@ export function ProjectsOverview() {
                     </TableBody>
                 ) : loadError ? (
                     <TableEmptyState>
-                        <FolderOpen className="h-8 w-8 text-gray-300 mb-4" />
+                        <OpenProjectSvgIcon className="mb-4 h-8 w-8" />
                         <p className="text-2xl font-medium font-serif text-gray-900">
                             Projects
                         </p>
@@ -369,7 +641,7 @@ export function ProjectsOverview() {
                     <TableEmptyState>
                         {activeFilter === "all" || activeFilter === "mine" ? (
                             <>
-                                <FolderOpen className="h-8 w-8 text-gray-300 mb-4" />
+                                <OpenProjectSvgIcon className="mb-4 h-8 w-8" />
                                 <p className="text-2xl font-medium font-serif text-gray-900">
                                     Projects
                                 </p>
@@ -377,12 +649,15 @@ export function ProjectsOverview() {
                                     Group documents into a project to run chats
                                     and tabular reviews across them.
                                 </p>
-                                <button
+                                <PillButton
+                                    tone="black"
+                                    size="sm"
                                     onClick={() => setModalOpen(true)}
-                                    className="mt-4 inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors shadow-md"
+                                    className="mt-4 px-3"
                                 >
-                                    + Create New
-                                </button>
+                                    <Plus className="h-3.5 w-3.5" />
+                                    Create
+                                </PillButton>
                             </>
                         ) : (
                             <p className="text-sm text-gray-400">
@@ -393,18 +668,17 @@ export function ProjectsOverview() {
                 ) : (
                     <TableBody>
                         {filtered.map((project) => {
-                            const rowBg = selectedIds.includes(project.id)
-                                ? "bg-gray-50"
-                                : TABLE_STICKY_CELL_BG;
                             return (
                             <TableRow
                                 key={project.id}
+                                selected={selectedIds.includes(project.id)}
                                 rightClickDropdown={
                                     (project.is_owner ??
                                         project.user_id === user?.id)
-                                        ? (close) => (
+                                        ? (close, menuProps) => (
                                               <RowActionMenuItems
                                                   onClose={close}
+                                                  surfaceProps={menuProps}
                                                   onEditDetails={() => {
                                                       setDetailsProject(project);
                                                   }}
@@ -430,13 +704,16 @@ export function ProjectsOverview() {
                             >
                                 {/* Project Name */}
                                 <TablePrimaryCell
-                                    bgClassName={rowBg}
                                     selected={selectedIds.includes(project.id)}
                                     onSelectionChange={() =>
                                         toggleOne(project.id)
                                     }
-                                    label={project.name}
-                                />
+                                >
+                                    <ClosedProjectSvgIcon className="mr-2 h-4 w-4 shrink-0" />
+                                    <span className="min-w-0 flex-1 truncate text-sm text-gray-800">
+                                        {project.name}
+                                    </span>
+                                </TablePrimaryCell>
 
                                 <TableCell className="ml-auto w-32">
                                     {project.cm_number ?? (

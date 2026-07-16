@@ -1,73 +1,155 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getProject, listProjects, listStandaloneDocuments } from "@/app/lib/mikeApi";
-import type { Document, Project } from "./types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+    getLibrary,
+    getProject,
+    listProjects,
+} from "@/app/lib/mikeApi";
+import type { Document, LibraryFolder, Project } from "./types";
 
-const CACHE_TTL_MS = 30_000;
+export type DirectoryTab = "files" | "templates" | "projects";
 
-interface DirectoryCache {
-    standaloneDocuments: Document[];
-    projects: Project[];
-    fetchedAt: number;
+const EMPTY_LOADING: Record<DirectoryTab, boolean> = {
+    files: false,
+    templates: false,
+    projects: false,
+};
+
+const EMPTY_LOADED: Record<DirectoryTab, boolean> = {
+    files: false,
+    templates: false,
+    projects: false,
+};
+
+function sortDocuments(docs: Document[]) {
+    return [...docs].sort((a, b) =>
+        (b.created_at ?? "").localeCompare(a.created_at ?? ""),
+    );
 }
 
-let cache: DirectoryCache | null = null;
-
-export function invalidateDirectoryCache() {
-    cache = null;
+async function loadFiles() {
+    const files = await getLibrary("files");
+    return {
+        documents: sortDocuments(files.documents),
+        folders: files.folders,
+    };
 }
 
-export function useDirectoryData(enabled: boolean) {
-    const [loading, setLoading] = useState(true);
+async function loadTemplates() {
+    const templates = await getLibrary("templates");
+    return {
+        documents: sortDocuments(templates.documents),
+        folders: templates.folders,
+    };
+}
+
+async function loadProjects() {
+    const projects = await listProjects();
+    const fullProjects = await Promise.all(
+        projects.map((project) => getProject(project.id)),
+    );
+    const projectCounts = new Map(
+        projects.map((project) => [project.id, project.document_count ?? 0]),
+    );
+    return fullProjects.map((project) => ({
+        ...project,
+        document_count:
+            project.documents?.length ?? projectCounts.get(project.id) ?? 0,
+    }));
+}
+
+export function useDirectoryData(
+    enabled: boolean,
+    initialTab: DirectoryTab = "files",
+) {
     const [standaloneDocuments, setStandaloneDocuments] = useState<Document[]>([]);
+    const [templateDocuments, setTemplateDocuments] = useState<Document[]>([]);
+    const [fileFolders, setFileFolders] = useState<LibraryFolder[]>([]);
+    const [templateFolders, setTemplateFolders] = useState<LibraryFolder[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
+    const [loadingTabs, setLoadingTabs] =
+        useState<Record<DirectoryTab, boolean>>(EMPTY_LOADING);
+    const loadingTabsRef = useRef<Record<DirectoryTab, boolean>>({
+        ...EMPTY_LOADING,
+    });
+    const loadedTabsRef = useRef<Record<DirectoryTab, boolean>>({
+        ...EMPTY_LOADED,
+    });
+
+    const loadTab = useCallback(
+        async (tab: DirectoryTab) => {
+            if (
+                !enabled ||
+                loadingTabsRef.current[tab] ||
+                loadedTabsRef.current[tab]
+            ) {
+                return;
+            }
+
+            loadingTabsRef.current = {
+                ...loadingTabsRef.current,
+                [tab]: true,
+            };
+            setLoadingTabs((prev) => ({ ...prev, [tab]: true }));
+            try {
+                if (tab === "files") {
+                    const files = await loadFiles();
+                    setStandaloneDocuments(files.documents);
+                    setFileFolders(files.folders);
+                } else if (tab === "templates") {
+                    const templates = await loadTemplates();
+                    setTemplateDocuments(templates.documents);
+                    setTemplateFolders(templates.folders);
+                } else {
+                    setProjects(await loadProjects());
+                }
+                loadedTabsRef.current = {
+                    ...loadedTabsRef.current,
+                    [tab]: true,
+                };
+            } catch {
+                if (tab === "files") {
+                    setStandaloneDocuments([]);
+                    setFileFolders([]);
+                } else if (tab === "templates") {
+                    setTemplateDocuments([]);
+                    setTemplateFolders([]);
+                } else {
+                    setProjects([]);
+                }
+            } finally {
+                loadingTabsRef.current = {
+                    ...loadingTabsRef.current,
+                    [tab]: false,
+                };
+                setLoadingTabs((prev) => ({ ...prev, [tab]: false }));
+            }
+        },
+        [enabled],
+    );
 
     useEffect(() => {
         if (!enabled) return;
+        let cancelled = false;
+        queueMicrotask(() => {
+            if (cancelled) return;
+            void loadTab(initialTab);
+        });
 
-        const now = Date.now();
-        if (cache && now - cache.fetchedAt < CACHE_TTL_MS) {
-            setStandaloneDocuments(cache.standaloneDocuments);
-            setProjects(cache.projects);
-            setLoading(false);
-            return;
-        }
+        return () => {
+            cancelled = true;
+        };
+    }, [enabled, initialTab, loadTab]);
 
-        setLoading(true);
-        Promise.all([listProjects(), listStandaloneDocuments()])
-            .then(([ps, ds]) => {
-                const sorted = [...ds].sort((a, b) =>
-                    (b.created_at ?? "").localeCompare(a.created_at ?? ""),
-                );
-                return Promise.all(ps.map((p) => getProject(p.id))).then(
-                    (fullProjects) => {
-                        const projectCounts = new Map(
-                            ps.map((p) => [p.id, p.document_count ?? 0]),
-                        );
-                        const projectsWithCounts = fullProjects.map((project) => ({
-                            ...project,
-                            document_count:
-                                project.documents?.length ??
-                                projectCounts.get(project.id) ??
-                                0,
-                        }));
-                        cache = {
-                            standaloneDocuments: sorted,
-                            projects: projectsWithCounts,
-                            fetchedAt: Date.now(),
-                        };
-                        setStandaloneDocuments(sorted);
-                        setProjects(projectsWithCounts);
-                    },
-                );
-            })
-            .catch(() => {
-                setStandaloneDocuments([]);
-                setProjects([]);
-            })
-            .finally(() => setLoading(false));
-    }, [enabled]);
-
-    return { loading, standaloneDocuments, projects };
+    return {
+        loading: loadingTabs[initialTab],
+        loadingTabs,
+        standaloneDocuments,
+        templateDocuments,
+        fileFolders,
+        templateFolders,
+        projects,
+        loadTab,
+    };
 }

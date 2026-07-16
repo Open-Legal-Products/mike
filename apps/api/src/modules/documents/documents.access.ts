@@ -81,6 +81,9 @@ export async function listSingleDocuments(
     .select("*")
     .eq("user_id", userId)
     .is("project_id", null)
+    // Standalone documents list is the "files" library; templates live in
+    // their own collection. Legacy rows with a null library_kind are files.
+    .or("library_kind.eq.file,library_kind.is.null")
     .order("created_at", { ascending: false });
   if (error) return { ok: false, detail: error.message };
   const docs: {

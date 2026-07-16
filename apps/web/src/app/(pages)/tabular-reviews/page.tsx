@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Table2 } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 import {
     RowActionMenuItems,
     RowActions,
@@ -27,31 +27,38 @@ import { useAuth } from "@/app/contexts/AuthContext";
 import { PageHeader } from "@/app/components/shared/PageHeader";
 import { toastError } from "@/lib/toast";
 import {
-    GLASS_DROPDOWN,
-    HeaderFilterDropdown,
-} from "@/app/components/shared/HeaderFilterDropdown";
-import {
     TABLE_CHECKBOX_CLASS,
-    TABLE_STICKY_CELL_BG,
     SkeletonDot,
     SkeletonLine,
     TableBody,
     TableCell,
     TableEmptyState,
+    TableFilters,
+    type TableFilterOption,
     TableHeaderCell,
     TableHeaderRow,
     TablePrimaryCell,
     TableRow,
     TableScrollArea,
+    type TableSortDirection,
     TableStickyCell,
 } from "@/app/components/shared/TablePrimitive";
+import { PillButton } from "@/app/components/ui/pill-button";
+import { TabPillButton } from "@/app/components/ui/tab-pill-button";
+import { TabularReviewSkeuoIcon } from "@/app/components/shared/AppSidebarSkeuoIcons";
+import { LiquidDropdownSurface } from "@/app/components/ui/liquid-dropdown";
 
 type ReviewScope = "all" | "in-project" | "standalone";
+type ReviewSortKey = "name" | "columns" | "documents" | "created";
 
 const REVIEW_SCOPES: { id: ReviewScope; label: string }[] = [
     { id: "all", label: "All" },
     { id: "in-project", label: "In Project" },
     { id: "standalone", label: "Standalone" },
+];
+const SORT_OPTIONS: TableFilterOption<TableSortDirection>[] = [
+    { value: "asc", label: "Ascending" },
+    { value: "desc", label: "Descending" },
 ];
 
 function formatDate(iso: string) {
@@ -70,12 +77,17 @@ export default function TabularReviewsPage() {
     );
     const [activeScope, setActiveScope] = useState<ReviewScope>("all");
     const [projectFilter, setProjectFilter] = useState<string | null>(null);
+    const [sort, setSort] = useState<{
+        key: ReviewSortKey;
+        direction: TableSortDirection;
+    } | null>(null);
     const [search, setSearch] = useState("");
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [actionsOpen, setActionsOpen] = useState(false);
     const [ownerOnlyAction, setOwnerOnlyAction] = useState<string | null>(null);
     const actionsRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { user } = useAuth();
     const queryClient = useQueryClient();
 
@@ -88,6 +100,15 @@ export default function TabularReviewsPage() {
     const reviews = reviewsQuery.data ?? [];
     const projects = projectsQuery.data ?? [];
     const loading = reviewsQuery.isLoading || projectsQuery.isLoading;
+
+    // olp "emptyStates" preview mode: `?emptyStates=1` renders the empty-state
+    // UI against our real data source without waiting on a fetch.
+    const previewEmptyStates = searchParams.get("emptyStates") === "1";
+    const effectiveLoading = loading && !previewEmptyStates;
+    const visibleReviews = useMemo(
+        () => (previewEmptyStates ? [] : reviews),
+        [previewEmptyStates, reviews],
+    );
 
     // Mutations update the cached reviews list in place (preserving the old
     // optimistic UX) instead of holding a second copy in component state.
@@ -118,15 +139,56 @@ export default function TabularReviewsPage() {
         return () => document.removeEventListener("mousedown", handleClick);
     }, [actionsOpen]);
 
+    const projectNameById = useMemo(
+        () => new Map(projects.map((project) => [project.id, project.name])),
+        [projects],
+    );
     const q = search.toLowerCase();
-    const filtered = reviews
-        .filter((r) => {
-            if (activeScope === "in-project") return !!r.project_id;
-            if (activeScope === "standalone") return !r.project_id;
-            return true;
-        })
-        .filter((r) => !projectFilter || r.project_id === projectFilter)
-        .filter((r) => !q || (r.title ?? "").toLowerCase().includes(q));
+    const filtered = useMemo(() => {
+        const rows = visibleReviews
+            .filter((r) => {
+                if (activeScope === "in-project") return !!r.project_id;
+                if (activeScope === "standalone") return !r.project_id;
+                return true;
+            })
+            .filter((r) => !projectFilter || r.project_id === projectFilter)
+            .filter((r) => !q || (r.title ?? "").toLowerCase().includes(q));
+
+        if (!sort) return rows;
+
+        return [...rows].sort((a, b) => {
+            const multiplier = sort.direction === "asc" ? 1 : -1;
+
+            if (sort.key === "columns") {
+                return (
+                    ((a.columns_config?.length ?? 0) -
+                        (b.columns_config?.length ?? 0)) *
+                    multiplier
+                );
+            }
+
+            if (sort.key === "documents") {
+                return (
+                    ((a.document_count ?? 0) - (b.document_count ?? 0)) *
+                    multiplier
+                );
+            }
+
+            if (sort.key === "created") {
+                return (
+                    (new Date(a.created_at).getTime() -
+                        new Date(b.created_at).getTime()) *
+                    multiplier
+                );
+            }
+
+            return (
+                (a.title ?? "Untitled Review").localeCompare(
+                    b.title ?? "Untitled Review",
+                ) * multiplier
+            );
+        });
+    }, [activeScope, projectFilter, q, sort, visibleReviews]);
 
     const allSelected =
         filtered.length > 0 &&
@@ -143,6 +205,24 @@ export default function TabularReviewsPage() {
         setSelectedIds((prev) =>
             prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
         );
+    }
+
+    function clearSelection() {
+        setSelectedIds([]);
+        setActionsOpen(false);
+    }
+
+    function handleProjectFilterChange(value: string | null) {
+        setProjectFilter(value);
+        clearSelection();
+    }
+
+    function handleSortChange(
+        key: ReviewSortKey,
+        direction: TableSortDirection | null,
+    ) {
+        setSort(direction ? { key, direction } : null);
+        clearSelection();
     }
 
     const handleNewReview = async (
@@ -234,7 +314,7 @@ export default function TabularReviewsPage() {
     }
 
     const projectFilterButton = (
-        <HeaderFilterDropdown
+        <TableFilters
             label="Filter by project"
             value={projectFilter}
             allLabel="All Projects"
@@ -242,29 +322,76 @@ export default function TabularReviewsPage() {
                 value: project.id,
                 label: project.name,
             }))}
-            onChange={setProjectFilter}
+            onChange={handleProjectFilterChange}
+        />
+    );
+    const nameSortDirection = sort?.key === "name" ? sort.direction : null;
+    const columnsSortDirection =
+        sort?.key === "columns" ? sort.direction : null;
+    const documentsSortDirection =
+        sort?.key === "documents" ? sort.direction : null;
+    const createdSortDirection =
+        sort?.key === "created" ? sort.direction : null;
+    const nameFilterButton = (
+        <TableFilters
+            label="Sort by review name"
+            value={nameSortDirection}
+            allLabel="Default Order"
+            widthClassName="w-40"
+            align="right"
+            options={SORT_OPTIONS}
+            onChange={(direction) => handleSortChange("name", direction)}
+        />
+    );
+    const columnsFilterButton = (
+        <TableFilters
+            label="Sort by columns"
+            value={columnsSortDirection}
+            allLabel="Default Order"
+            widthClassName="w-40"
+            options={SORT_OPTIONS}
+            onChange={(direction) => handleSortChange("columns", direction)}
+        />
+    );
+    const documentsFilterButton = (
+        <TableFilters
+            label="Sort by documents"
+            value={documentsSortDirection}
+            allLabel="Default Order"
+            widthClassName="w-40"
+            options={SORT_OPTIONS}
+            onChange={(direction) => handleSortChange("documents", direction)}
+        />
+    );
+    const createdFilterButton = (
+        <TableFilters
+            label="Sort by created date"
+            value={createdSortDirection}
+            allLabel="Default Order"
+            widthClassName="w-40"
+            options={SORT_OPTIONS}
+            onChange={(direction) => handleSortChange("created", direction)}
         />
     );
 
     const toolbarActions =
         selectedIds.length > 0 ? (
             <div ref={actionsRef} className="relative">
-                <button
+                <TabPillButton
                     onClick={() => setActionsOpen((v) => !v)}
-                    className="flex items-center gap-1 text-xs font-medium text-gray-700 hover:text-gray-900 transition-colors"
                 >
                     Actions
                     <ChevronDown className="h-3.5 w-3.5" />
-                </button>
+                </TabPillButton>
                 {actionsOpen && (
-                    <div className={`absolute top-full right-0 mt-1 z-[100] w-36 overflow-hidden ${GLASS_DROPDOWN}`}>
+                    <LiquidDropdownSurface className="absolute top-full right-0 mt-1 z-[100] w-36 overflow-hidden">
                         <button
                             onClick={handleDeleteSelected}
                             className="w-full px-3 py-1.5 text-left text-xs text-red-600 transition-colors hover:bg-red-500/10"
                         >
                             Delete
                         </button>
-                    </div>
+                    </LiquidDropdownSurface>
                 )}
             </div>
         ) : undefined;
@@ -297,7 +424,10 @@ export default function TabularReviewsPage() {
             <TableToolbar
                 items={REVIEW_SCOPES}
                 active={activeScope}
-                onChange={setActiveScope}
+                onChange={(scope) => {
+                    setActiveScope(scope);
+                    clearSelection();
+                }}
                 actions={toolbarActions}
             />
 
@@ -307,8 +437,8 @@ export default function TabularReviewsPage() {
                 header={
                     <TableHeaderRow>
                         <TableStickyCell header>
-                            {loading ? (
-                                <SkeletonDot />
+                            {effectiveLoading ? (
+                                <SkeletonDot className="mr-4" />
                             ) : (
                                 <input
                                     type="checkbox"
@@ -320,25 +450,38 @@ export default function TabularReviewsPage() {
                                     className={TABLE_CHECKBOX_CLASS}
                                 />
                             )}
-                            <span>Name</span>
+                            <span className="mr-1">Name</span>
+                            {!loading && nameFilterButton}
                         </TableStickyCell>
                         <TableHeaderCell className="ml-auto w-24">
-                            Columns
+                            <div className="flex items-center gap-1">
+                                <span>Columns</span>
+                                {!loading && columnsFilterButton}
+                            </div>
                         </TableHeaderCell>
-                        <TableHeaderCell className="w-24">Documents</TableHeaderCell>
+                        <TableHeaderCell className="w-24">
+                            <div className="flex items-center gap-1">
+                                <span>Documents</span>
+                                {!loading && documentsFilterButton}
+                            </div>
+                        </TableHeaderCell>
                         <TableHeaderCell className="w-40">
                             <div className="flex items-center gap-1">
                                 <span>Project</span>
-                                {projectFilterButton}
+                                {!loading && projectFilterButton}
                             </div>
                         </TableHeaderCell>
-                        <TableHeaderCell className="w-32">Created</TableHeaderCell>
+                        <TableHeaderCell className="w-32">
+                            <div className="flex items-center gap-1">
+                                <span>Created</span>
+                                {!loading && createdFilterButton}
+                            </div>
+                        </TableHeaderCell>
                         <TableHeaderCell className="w-8" />
                     </TableHeaderRow>
                 }
             >
-
-                {loading ? (
+                {effectiveLoading ? (
                     <TableBody>
                         {[1, 2, 3].map((i) => (
                             <TableRow
@@ -349,7 +492,7 @@ export default function TabularReviewsPage() {
                                     hover={false}
                                     bgClassName="bg-transparent"
                                 >
-                                    <SkeletonDot />
+                                    <SkeletonDot className="mr-4" />
                                     <SkeletonLine className="h-3.5 w-48" />
                                 </TableStickyCell>
                                 <TableCell className="ml-auto w-24">
@@ -372,7 +515,7 @@ export default function TabularReviewsPage() {
                     <TableEmptyState>
                         {activeScope === "all" && !projectFilter ? (
                             <>
-                                <Table2 className="h-8 w-8 text-gray-300 mb-4" />
+                                <TabularReviewSkeuoIcon className="mb-4 h-8 w-8" />
                                 <p className="text-2xl font-medium font-serif text-gray-900">
                                     Tabular Reviews
                                 </p>
@@ -380,13 +523,16 @@ export default function TabularReviewsPage() {
                                     Extract data from documents into tables
                                     using AI.
                                 </p>
-                                <button
+                                <PillButton
+                                    tone="black"
+                                    size="sm"
                                     onClick={() => setNewTROpen(true)}
                                     disabled={creating}
-                                    className="mt-4 inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 transition-colors shadow-md disabled:opacity-40"
+                                    className="mt-4 px-3"
                                 >
-                                    + Create New
-                                </button>
+                                    <Plus className="h-3.5 w-3.5" />
+                                    Create
+                                </PillButton>
                             </>
                         ) : (
                             <p className="text-sm text-gray-400">
@@ -397,18 +543,17 @@ export default function TabularReviewsPage() {
                 ) : (
                     <TableBody>
                         {filtered.map((review) => {
-                            const project = projects.find(
-                                (p) => p.id === review.project_id,
-                            );
-                            const rowBg = selectedIds.includes(review.id)
-                                ? "bg-gray-50"
-                                : TABLE_STICKY_CELL_BG;
+                            const projectName = review.project_id
+                                ? projectNameById.get(review.project_id)
+                                : null;
                             return (
                                 <TableRow
                                     key={review.id}
-                                    rightClickDropdown={(close) => (
+                                    selected={selectedIds.includes(review.id)}
+                                    rightClickDropdown={(close, menuProps) => (
                                         <RowActionMenuItems
                                             onClose={close}
+                                            surfaceProps={menuProps}
                                             onEditDetails={() => {
                                                 requestReviewDetails(review);
                                             }}
@@ -443,7 +588,6 @@ export default function TabularReviewsPage() {
                                     }}
                                 >
                                     <TablePrimaryCell
-                                        bgClassName={rowBg}
                                         selected={selectedIds.includes(
                                             review.id,
                                         )}
@@ -461,8 +605,8 @@ export default function TabularReviewsPage() {
                                         {review.document_count ?? 0}
                                     </TableCell>
                                     <TableCell className="w-40 pr-2">
-                                        {project ? (
-                                            project.name
+                                        {projectName ? (
+                                            projectName
                                         ) : (
                                             <span className="text-gray-300">
                                                 —

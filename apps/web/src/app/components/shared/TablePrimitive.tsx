@@ -5,23 +5,146 @@ import {
     useRef,
     useState,
     type HTMLAttributes,
-    type MouseEvent,
+    type ComponentType,
+    type MouseEvent as ReactMouseEvent,
     type ReactNode,
+    type RefObject,
 } from "react";
+import { createPortal } from "react-dom";
+import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/app/lib/utils";
 import {
-    CLOSE_ROW_ACTIONS_EVENT,
-    closeRowActionMenus,
-} from "@/app/components/shared/RowActions";
-import { GLASS_DROPDOWN } from "@/app/components/shared/HeaderFilterDropdown";
+    DropdownMenu,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/app/components/ui/dropdown-menu";
+import {
+    LiquidDropdownContent,
+    LiquidDropdownItem,
+} from "@/app/components/ui/liquid-dropdown";
+import {
+    APP_SURFACE_ACTIVE_CLASS,
+    APP_SURFACE_GROUP_HOVER_CLASS,
+    APP_SURFACE_HOVER_CLASS,
+    LIQUID_TABLE_SURFACE_CLASS,
+} from "@/app/components/ui/liquid-surface";
 
-export const TABLE_STICKY_CELL_BG = "bg-[#fafbfc]";
+export const CLOSE_ROW_ACTIONS_EVENT = "mike:close-row-actions";
+
+export function closeRowActionMenus() {
+    document.dispatchEvent(new Event(CLOSE_ROW_ACTIONS_EVENT));
+}
+
+function canPortalToDocument() {
+    return typeof document !== "undefined";
+}
+
+export const TABLE_STICKY_CELL_BG = "bg-app-surface";
 export const TABLE_PRIMARY_CELL_WIDTH_CLASS =
     "w-[248px] sm:w-[292px] md:w-[332px] shrink-0";
 export const TABLE_CHECKBOX_CLASS =
-    "h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-pointer accent-black";
+    "mr-4 h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-pointer accent-black";
 
 type DivProps = HTMLAttributes<HTMLDivElement>;
+
+export type TableFilterOption<T extends string> = {
+    value: T;
+    label: string;
+    icon?: ComponentType<{ className?: string }>;
+    className?: string;
+};
+
+export type TableSortDirection = "asc" | "desc";
+
+export function TableFilters<T extends string>({
+    label,
+    value,
+    allLabel,
+    options,
+    onChange,
+    widthClassName = "w-52",
+    align = "left",
+}: {
+    label: string;
+    value: T | null;
+    allLabel: string;
+    options: TableFilterOption<T>[];
+    onChange: (value: T | null) => void;
+    widthClassName?: string;
+    /**
+     * Which side the menu opens toward. "left" (default) anchors the menu's
+     * right edge to the button and extends leftward; "right" anchors the menu's
+     * left edge to the button and extends rightward.
+     */
+    align?: "left" | "right";
+}) {
+    const [open, setOpen] = useState(false);
+    const selected = options.find((option) => option.value === value);
+
+    return (
+        <DropdownMenu open={open} onOpenChange={setOpen}>
+            <DropdownMenuTrigger asChild>
+                <button
+                    aria-label={label}
+                    title={selected?.label ?? label}
+                    className={`flex h-[18px] w-[22px] items-center justify-center rounded-sm transition-colors ${
+                        value
+                            ? `text-gray-700 ${APP_SURFACE_HOVER_CLASS} hover:text-gray-900`
+                            : `text-gray-400 ${APP_SURFACE_HOVER_CLASS} hover:text-gray-700`
+                    }`}
+                >
+                    <ChevronDown
+                        className={`h-3 w-3 transition-transform ${
+                            open ? "rotate-180" : ""
+                        }`}
+                    />
+                </button>
+            </DropdownMenuTrigger>
+            <LiquidDropdownContent
+                align={align === "right" ? "start" : "end"}
+                className={`z-[120] overflow-hidden ${widthClassName}`}
+            >
+                <LiquidDropdownItem
+                    onSelect={() => onChange(null)}
+                    className="flex w-full items-center justify-between px-3 py-2"
+                >
+                    {allLabel}
+                    {!value && <Check className="h-3.5 w-3.5 text-gray-400" />}
+                </LiquidDropdownItem>
+                {options.length > 0 && (
+                    <DropdownMenuSeparator className="-mx-1 my-1 bg-white/60" />
+                )}
+                {options.map((option) => {
+                    const Icon = option.icon;
+
+                    return (
+                        <LiquidDropdownItem
+                            key={option.value}
+                            onSelect={() => onChange(option.value)}
+                            className="flex w-full items-center justify-between px-3 py-2"
+                        >
+                            <span
+                                className={`truncate pr-2 ${
+                                    Icon
+                                        ? "inline-flex items-center gap-1.5 font-medium"
+                                        : ""
+                                } ${option.className ?? ""}`}
+                            >
+                                {Icon && (
+                                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                                )}
+                                {option.label}
+                            </span>
+                            {value === option.value && (
+                                <Check className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                            )}
+                        </LiquidDropdownItem>
+                    );
+                })}
+            </LiquidDropdownContent>
+        </DropdownMenu>
+    );
+}
 
 export function SkeletonLine({ className }: { className?: string }) {
     return (
@@ -45,40 +168,44 @@ export function SkeletonDot({ className }: { className?: string }) {
 export function TableScrollArea({
     children,
     className,
-    innerClassName,
     header,
+    scrollRef,
+    onScroll,
     ariaLabel,
 }: DivProps & {
-    innerClassName?: string;
     header?: ReactNode;
+    scrollRef?: RefObject<HTMLDivElement | null>;
+    // Preserve the fork's table-role accessibility on olp's liquid-surface layout.
     ariaLabel?: string;
 }) {
-    const bodyRef = useRef<HTMLDivElement>(null);
-    const headerRef = useRef<HTMLDivElement>(null);
-
-    function syncHeader() {
-        if (headerRef.current && bodyRef.current) {
-            headerRef.current.scrollLeft = bodyRef.current.scrollLeft;
-        }
-    }
+    const headerViewportRef = useRef<HTMLDivElement>(null);
 
     return (
         <div
-            role="table"
+            role={ariaLabel ? "table" : undefined}
             aria-label={ariaLabel}
-            className={cn("w-full min-h-0 flex-1 flex flex-col overflow-hidden", className)}
+            className={cn("mx-4 mb-2 min-h-0 min-w-0 flex-1 rounded-2xl md:mx-6 md:mb-3", className)}
         >
-            {header !== undefined && (
-                <div ref={headerRef} className="shrink-0 overflow-hidden">
-                    {header}
-                </div>
-            )}
-            <div
-                ref={bodyRef}
-                className="min-h-0 flex-1 overflow-auto"
-                onScroll={header !== undefined ? syncHeader : undefined}
-            >
-                <div className={cn("flex min-h-full min-w-max flex-col", innerClassName)}>
+            <div className={cn("flex h-full min-h-0 min-w-0 flex-col overflow-hidden", LIQUID_TABLE_SURFACE_CLASS)}>
+                {header && (
+                    <div
+                        ref={headerViewportRef}
+                        className="min-w-0 shrink-0 overflow-hidden"
+                    >
+                        {header}
+                    </div>
+                )}
+                <div
+                    ref={scrollRef}
+                    className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto overscroll-x-none"
+                    onScroll={(event) => {
+                        if (headerViewportRef.current) {
+                            headerViewportRef.current.scrollLeft =
+                                event.currentTarget.scrollLeft;
+                        }
+                        onScroll?.(event);
+                    }}
+                >
                     {children}
                 </div>
             </div>
@@ -89,9 +216,8 @@ export function TableScrollArea({
 export function TableHeaderRow({ children, className, ...props }: DivProps) {
     return (
         <div
-            role="row"
             className={cn(
-                "sticky top-0 z-[70] flex h-8 items-center border-b border-gray-200 bg-[#fafbfc] pr-3 text-xs font-medium text-gray-500 select-none md:pr-10",
+                "z-[70] flex h-10 min-w-max items-center bg-app-surface pr-3 text-xs font-medium text-gray-500 select-none backdrop-blur-xl",
                 className,
             )}
             {...props}
@@ -105,12 +231,16 @@ export function TableRow({
     children,
     className,
     interactive = true,
+    selected = false,
     onContextMenu,
     rightClickDropdown,
     ...props
 }: DivProps & {
     interactive?: boolean;
-    rightClickDropdown?: ReactNode | ((close: () => void) => ReactNode);
+    selected?: boolean;
+    rightClickDropdown?:
+        | ReactNode
+        | ((close: () => void, menuProps: DivProps) => ReactNode);
 }) {
     const [menuCoords, setMenuCoords] = useState<{
         top: number;
@@ -140,7 +270,7 @@ export function TableRow({
         setMenuCoords(null);
     }
 
-    function handleContextMenu(e: MouseEvent<HTMLDivElement>) {
+    function handleContextMenu(e: ReactMouseEvent<HTMLDivElement>) {
         onContextMenu?.(e);
         if (!rightClickDropdown || e.defaultPrevented) return;
         e.preventDefault();
@@ -156,10 +286,13 @@ export function TableRow({
     return (
         <>
             <div
-                role="row"
                 className={cn(
-                    "group flex h-10 items-center border-b border-gray-50 pr-3 transition-colors md:pr-10",
-                    interactive && "cursor-pointer hover:bg-gray-100",
+                    "group flex h-10 min-w-max items-center pr-3 transition-colors",
+                    interactive && "cursor-pointer",
+                    interactive &&
+                        !selected &&
+                        APP_SURFACE_HOVER_CLASS,
+                    selected && APP_SURFACE_ACTIVE_CLASS,
                     className,
                 )}
                 onContextMenu={handleContextMenu}
@@ -167,22 +300,24 @@ export function TableRow({
             >
                 {children}
             </div>
-            {menuCoords && rightClickDropdown && (
-                <div
-                    style={{
-                        position: "fixed",
-                        top: menuCoords.top,
-                        left: menuCoords.left,
-                    }}
-                    className={`z-[120] w-48 overflow-hidden ${GLASS_DROPDOWN}`}
-                    onClick={(e) => e.stopPropagation()}
-                    onContextMenu={(e) => e.preventDefault()}
-                >
-                    {typeof rightClickDropdown === "function"
-                        ? rightClickDropdown(closeRightClickDropdown)
-                        : rightClickDropdown}
-                </div>
-            )}
+            {menuCoords &&
+                rightClickDropdown &&
+                canPortalToDocument() &&
+                createPortal(
+                    typeof rightClickDropdown === "function"
+                        ? rightClickDropdown(closeRightClickDropdown, {
+                              style: {
+                                  position: "fixed",
+                                  top: menuCoords.top,
+                                  left: menuCoords.left,
+                              },
+                              className: "z-[120]",
+                              onClick: (e) => e.stopPropagation(),
+                              onContextMenu: (e) => e.preventDefault(),
+                          })
+                        : rightClickDropdown,
+                    document.body,
+                )}
         </>
     );
 }
@@ -202,15 +337,14 @@ export function TableStickyCell({
 }) {
     return (
         <div
-            role={header ? "columnheader" : "cell"}
             className={cn(
-                "sticky left-0 z-[60] flex gap-4 pl-4 pr-2 text-left",
+                "sticky left-0 z-[60] flex pl-4 pr-2 text-left",
                 widthClassName,
                 bgClassName,
                 header
                     ? "z-[80] items-center self-stretch"
                     : "py-2 transition-colors",
-                !header && hover && "group-hover:bg-gray-100",
+                !header && hover && APP_SURFACE_GROUP_HOVER_CLASS,
                 className,
             )}
         >
@@ -273,10 +407,13 @@ export function TablePrimaryCell({
     return (
         <TableStickyCell
             widthClassName={widthClassName}
-            bgClassName={bgClassName}
+            bgClassName={
+                selected ? APP_SURFACE_ACTIVE_CLASS : bgClassName
+            }
             className={className}
+            hover={!selected}
         >
-            <div className="flex min-w-0 items-center gap-4">
+            <div className="flex min-w-0 items-center">
                 <input
                     type="checkbox"
                     checked={selected}
@@ -294,8 +431,7 @@ export function TablePrimaryCell({
 export function TableHeaderCell({ children, className, ...props }: DivProps) {
     return (
         <div
-            role="columnheader"
-            className={cn("shrink-0 text-left", className)}
+            className={cn("flex shrink-0 items-center text-left", className)}
             {...props}
         >
             {children}
@@ -306,7 +442,6 @@ export function TableHeaderCell({ children, className, ...props }: DivProps) {
 export function TableCell({ children, className, ...props }: DivProps) {
     return (
         <div
-            role="cell"
             className={cn("shrink-0 truncate text-sm text-gray-500", className)}
             {...props}
         >
@@ -317,7 +452,7 @@ export function TableCell({ children, className, ...props }: DivProps) {
 
 export function TableBody({ children, className, ...props }: DivProps) {
     return (
-        <div role="rowgroup" className={cn("flex-1", className)} {...props}>
+        <div className={cn("flex-1", className)} {...props}>
             {children}
         </div>
     );
