@@ -1,0 +1,133 @@
+version: 1
+captured_at: 2026-07-15
+repository: ranade-oss/ROSS-RanadeOSS
+baseline_commit: ba02044812da7548103e24e7675fca1dec62310d
+upstream_project: Open-Legal-Products/mike
+default_branch: main
+product_boundary: docs/product-boundary.md
+
+preservation_policy:
+  mode: additive
+  rule: Preserve inherited Mike functionality unless an approved change expressly says otherwise.
+  us_research: Keep CourtListener available as an optional provider.
+  test_data: Use synthetic or non-confidential materials only.
+
+runtime:
+  node: ">=20"
+  frontend: Next.js
+  backend: Express and TypeScript
+  auth_database: Supabase Auth and PostgreSQL
+  object_storage: S3-compatible
+  document_conversion: LibreOffice
+
+capabilities:
+  - id: authentication
+    status: inherited
+    surfaces: [signup, login, logout, session, email-confirmation, password-reset, mfa]
+  - id: account
+    status: inherited
+    surfaces: [profile, models, api-keys, features, connectors, privacy-data, security]
+  - id: assistant
+    status: inherited
+    surfaces: [chat, streaming, cancellation, history, titles, attachments, citations]
+  - id: projects
+    status: inherited
+    surfaces: [create, update, delete, documents, folders, sharing, project-chat]
+  - id: documents
+    status: inherited
+    surfaces: [upload, validation, conversion, preview, versions, edits, tracked-changes, download, delete]
+  - id: generated-documents
+    status: inherited
+    surfaces: [docx, xlsx, pptx]
+  - id: tabular-review
+    status: inherited
+    surfaces: [create, columns, generate, chat, citations, sharing, excel-export, delete]
+  - id: workflows
+    status: inherited
+    surfaces: [system, create, edit, use, hide, share, export, open-source-submission]
+  - id: us-legal-research
+    status: inherited
+    provider: CourtListener
+    surfaces: [citation-verification, case-fetch, passage-search, opinion-read, case-panel]
+  - id: mcp-connectors
+    status: inherited
+    surfaces: [create, oauth, tools, invoke, audit, revoke]
+  - id: user-data
+    status: inherited
+    surfaces: [export, content-deletion, account-deletion]
+  - id: support
+    status: inherited
+    surfaces: [contact-form, transactional-email]
+
+frontend_routes:
+  - /
+  - /login
+  - /signup
+  - /verify-mfa
+  - /support
+  - /assistant
+  - /assistant/chat/[id]
+  - /projects
+  - /projects/[id]
+  - /projects/[id]/assistant
+  - /projects/[id]/assistant/chat/[chatId]
+  - /projects/[id]/tabular-reviews
+  - /projects/[id]/tabular-reviews/[reviewId]
+  - /tabular-reviews
+  - /tabular-reviews/[id]
+  - /workflows
+  - /workflows/assistant/[id]
+  - /workflows/tabular-review/[id]
+  - /account
+  - /account/api-keys
+  - /account/connectors
+  - /account/features
+  - /account/models
+  - /account/privacy-data
+  - /account/security
+
+api_mounts:
+  - /health
+  - /chat
+  - /projects
+  - /projects/:projectId/chat
+  - /single-documents
+  - /tabular-review
+  - /workflows
+  - /user
+  - /users
+  - /download
+  - /case-law
+
+database_tables:
+  - user_profiles
+  - user_api_keys
+  - user_mcp_connectors
+  - user_mcp_oauth_tokens
+  - user_mcp_oauth_states
+  - user_mcp_connector_tools
+  - user_mcp_tool_audit_logs
+  - projects
+  - project_subfolders
+  - documents
+  - document_versions
+  - document_edits
+  - workflows
+  - hidden_workflows
+  - workflow_shares
+  - chats
+  - chat_messages
+  - tabular_reviews
+  - tabular_cells
+  - tabular_review_chats
+  - tabular_review_chat_messages
+  - courtlistener_citation_index
+  - courtlistener_opinion_cluster_index
+
+baseline_gaps:
+  - No public ROSS marketing website is present in this repository.
+  - The inherited application has no complete automated product test suite.
+  - Strict frontend lint reports 25 errors and 42 warnings at the pinned baseline commit.
+  - Legal research is coupled to the U.S.-specific CourtListener provider.
+  - Ontario and Canadian source coverage has not yet been implemented.
+  - Production acceptance of privileged client material is outside the approved beta boundary.

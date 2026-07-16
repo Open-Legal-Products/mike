@@ -1,0 +1,22 @@
+{
+  "captured_at": "2026-07-15",
+  "baseline_commit": "ba02044812da7548103e24e7675fca1dec62310d",
+  "error_ceiling": 25,
+  "warning_ceiling": 42,
+  "allowed_error_groups": {
+    "src/app/components/assistant/CaseLawPanel.tsx::react-hooks/set-state-in-effect": 4,
+    "src/app/components/assistant/ChatView.tsx::react-hooks/set-state-in-effect": 3,
+    "src/app/components/assistant/ChatView.tsx::@typescript-eslint/no-explicit-any": 5,
+    "src/app/components/assistant/CitationQuotesHeader.tsx::react-hooks/set-state-in-effect": 1,
+    "src/app/components/assistant/PreResponseWrapper.tsx::react-hooks/set-state-in-effect": 1,
+    "src/app/components/shared/MfaLoginGate.tsx::react-hooks/set-state-in-effect": 2,
+    "src/app/components/shared/useDirectoryData.ts::react-hooks/set-state-in-effect": 1,
+    "src/app/components/shared/views/PdfView.tsx::react-hooks/immutability": 1,
+    "src/app/components/tabular/TRChatPanel.tsx::react-hooks/set-state-in-effect": 1,
+    "src/app/components/tabular/TRSidePanel.tsx::react/no-unescaped-entities": 2,
+    "src/app/contexts/ChatHistoryContext.tsx::react-hooks/set-state-in-effect": 1,
+    "src/app/hooks/useFetchDocxBytes.ts::react-hooks/set-state-in-effect": 1,
+    "src/app/hooks/useSelectedModel.ts::react-hooks/set-state-in-effect": 1,
+    "src/app/support/page.tsx::react/no-unescaped-entities": 1
+  }
+}
