@@ -65,6 +65,11 @@ import {
 import { DocumentSidePanel } from "@/app/components/shared/DocumentSidePanel";
 import { LibrarySkeuoIcon } from "@/app/components/shared/AppSidebarSkeuoIcons";
 import {
+    APP_SURFACE_ACTIVE_CLASS,
+    APP_SURFACE_GROUP_HOVER_CLASS,
+    APP_SURFACE_HOVER_CLASS,
+} from "@/app/components/ui/liquid-surface";
+import {
     TABLE_CHECKBOX_CLASS,
     TableFilters,
     TableHeaderCell,
@@ -271,9 +276,6 @@ export function DocTable({
     const [addDocsOpen, setAddDocsOpen] = useState(false);
     const { user } = useAuth();
     const stickyCellBg = "bg-app-surface";
-    const activeRowBg = "bg-app-surface-active";
-    const surfaceHoverBg = "hover:bg-app-surface-hover";
-    const surfaceGroupHoverBg = "group-hover:bg-app-surface-hover";
     const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
     const [viewingDocVersion, setViewingDocVersion] = useState<{
         id: string;
@@ -1434,6 +1436,7 @@ export function DocTable({
                     const isUploadingVersion = uploadingVersionDocIds.has(
                         doc.id,
                     );
+                    const isSelected = selectedDocIds.includes(doc.id);
                     const isDeletingDoc = deletingDocIds.has(doc.id);
                     if (isDeletingDoc) {
                         return renderDocumentActivityRow({
@@ -1447,6 +1450,7 @@ export function DocTable({
                     return (
                         <div key={`doc-${doc.id}`}>
                             <div
+                                data-document-row
                                 draggable={renamingDocumentId !== doc.id}
                                 onDragStart={(e) => {
                                     if (renamingDocumentId === doc.id) {
@@ -1487,18 +1491,18 @@ export function DocTable({
                                         showFolderActions: false,
                                     });
                                 }}
-                                className={`group flex h-10 min-w-max items-center pr-8 ${surfaceHoverBg} cursor-pointer transition-colors ${isVersionDragOver ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : ""}`}
+                                className={`group flex h-10 min-w-max items-center pr-8 cursor-pointer transition-colors ${isVersionDragOver ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : isSelected ? APP_SURFACE_ACTIVE_CLASS : APP_SURFACE_HOVER_CLASS}`}
                             >
                                 {(() => {
                                     const rowBg = isVersionDragOver
                                         ? "bg-blue-50"
-                                        : selectedDocIds.includes(doc.id)
-                                          ? activeRowBg
+                                        : isSelected
+                                          ? APP_SURFACE_ACTIVE_CLASS
                                           : stickyCellBg;
                                     return (
                                         <>
                                             <div
-                                                className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${rowBg} py-2 pl-4 pr-2 transition-colors ${isVersionDragOver ? "" : surfaceGroupHoverBg}`}
+                                                className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${rowBg} py-2 pl-4 pr-2 transition-colors ${isVersionDragOver || isSelected ? "" : APP_SURFACE_GROUP_HOVER_CLASS}`}
                                                 style={treeNameCellStyle(depth)}
                                             >
                                                 <div className="flex items-center">
@@ -1632,7 +1636,7 @@ export function DocTable({
                                                                 doc.id,
                                                             )
                                                         }
-                                                        className="flex items-center gap-1 rounded px-1 py-0.5 hover:bg-app-surface-hover transition-colors"
+                                                        className={`flex items-center gap-1 rounded px-1 py-0.5 transition-colors ${APP_SURFACE_HOVER_CLASS}`}
                                                     >
                                                         <span>
                                                             {versionNumber}
@@ -1815,10 +1819,10 @@ export function DocTable({
                                         showFolderActions: true,
                                     });
                                 }}
-                                className={`group flex h-10 min-w-max items-center pr-8 ${surfaceHoverBg} cursor-pointer transition-colors ${isRenaming ? "" : "select-none"} ${dragOverFolderId === folder.id ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : ""}`}
+                                className={`group flex h-10 min-w-max items-center pr-8 ${APP_SURFACE_HOVER_CLASS} cursor-pointer transition-colors ${isRenaming ? "" : "select-none"} ${dragOverFolderId === folder.id ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : ""}`}
                             >
                                 <div
-                                    className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} py-2 pl-4 pr-2 ${dragOverFolderId === folder.id ? "bg-blue-50" : stickyCellBg} transition-colors ${dragOverFolderId === folder.id ? "" : surfaceGroupHoverBg}`}
+                                    className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} py-2 pl-4 pr-2 ${dragOverFolderId === folder.id ? "bg-blue-50" : stickyCellBg} transition-colors ${dragOverFolderId === folder.id ? "" : APP_SURFACE_GROUP_HOVER_CLASS}`}
                                     style={treeNameCellStyle(depth)}
                                 >
                                     <div className="flex items-center">
@@ -2557,6 +2561,10 @@ export function DocTable({
                                                         uploadingVersionDocIds.has(
                                                             doc.id,
                                                         );
+                                                    const isSelected =
+                                                        selectedDocIds.includes(
+                                                            doc.id,
+                                                        );
                                                     const isDeletingDoc =
                                                         deletingDocIds.has(
                                                             doc.id,
@@ -2578,6 +2586,7 @@ export function DocTable({
                                                     return (
                                                         <div key={doc.id}>
                                                             <div
+                                                                data-document-row
                                                                 draggable={
                                                                     renamingDocumentId !==
                                                                     doc.id
@@ -2652,10 +2661,10 @@ export function DocTable({
                                                                         },
                                                                     );
                                                                 }}
-                                                                className={`group flex h-10 min-w-max items-center pr-8 ${surfaceHoverBg} cursor-pointer transition-colors ${isVersionDragOver ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : ""}`}
+                                                                className={`group flex h-10 min-w-max items-center pr-8 cursor-pointer transition-colors ${isVersionDragOver ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : isSelected ? APP_SURFACE_ACTIVE_CLASS : APP_SURFACE_HOVER_CLASS}`}
                                                             >
                                                                 <div
-                                                                    className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${isVersionDragOver ? "bg-blue-50" : selectedDocIds.includes(doc.id) ? activeRowBg : stickyCellBg} py-2 pl-4 pr-2 transition-colors ${isVersionDragOver ? "" : surfaceGroupHoverBg}`}
+                                                                    className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${isVersionDragOver ? "bg-blue-50" : isSelected ? APP_SURFACE_ACTIVE_CLASS : stickyCellBg} py-2 pl-4 pr-2 transition-colors ${isVersionDragOver || isSelected ? "" : APP_SURFACE_GROUP_HOVER_CLASS}`}
                                                                 >
                                                                     <div className="flex items-center">
                                                                         {isProcessing ||
@@ -2806,7 +2815,7 @@ export function DocTable({
                                                                                     doc.id,
                                                                                 )
                                                                             }
-                                                                            className="flex items-center gap-1 rounded px-1 py-0.5 hover:bg-app-surface-hover transition-colors"
+                                                                            className={`flex items-center gap-1 rounded px-1 py-0.5 transition-colors ${APP_SURFACE_HOVER_CLASS}`}
                                                                         >
                                                                             <span>
                                                                                 {

@@ -97,7 +97,13 @@ export function TRView({ reviewId, projectId }: Props) {
     const { user } = useAuth();
     const [expandedCell, setExpandedCell] = useState<TabularCell | null>(null);
     const [expandedCellCitation, setExpandedCellCitation] = useState<
-        { quote: string; page: number } | undefined
+        {
+            quote: string;
+            page?: number;
+            sheet?: string;
+            cell?: string;
+            citationRef: number;
+        } | undefined
     >(undefined);
     const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
     const [actionsOpen, setActionsOpen] = useState(false);
@@ -981,9 +987,22 @@ export function TRView({ reviewId, projectId }: Props) {
                                     setExpandedCell(cell);
                                     setExpandedCellCitation(undefined);
                                 }}
-                                onCitationClick={(cell, page, quote) => {
+                                onCitationClick={(
+                                    cell,
+                                    page,
+                                    quote,
+                                    citationRef,
+                                    sheet,
+                                    citationCell,
+                                ) => {
                                     setExpandedCell(cell);
-                                    setExpandedCellCitation({ quote, page });
+                                    setExpandedCellCitation({
+                                        quote,
+                                        page,
+                                        sheet,
+                                        cell: citationCell,
+                                        citationRef,
+                                    });
                                 }}
                                 onUpdateColumn={handleUpdateColumn}
                                 onDeleteColumn={handleDeleteColumn}
@@ -1025,18 +1044,19 @@ export function TRView({ reviewId, projectId }: Props) {
                         <TRSidePanel
                             cell={expandedCell}
                             document={expandedDoc}
+                            documents={filteredDocuments}
                             column={expandedCol}
                             columns={columns}
                             onClose={() => {
                                 setExpandedCell(null);
                                 setExpandedCellCitation(undefined);
                             }}
-                            onNavigate={(columnIndex) => {
+                            onNavigate={(documentId, columnIndex) => {
                                 const nextCell = cells.find(
-                                    (c) =>
-                                        c.document_id ===
-                                            expandedCell.document_id &&
-                                        c.column_index === columnIndex,
+                                    (candidate) =>
+                                        candidate.document_id ===
+                                            documentId &&
+                                        candidate.column_index === columnIndex,
                                 );
                                 if (nextCell) {
                                     setExpandedCell(nextCell);
@@ -1052,6 +1072,9 @@ export function TRView({ reviewId, projectId }: Props) {
                             displayDocument={expandedCellCitation !== undefined}
                             citationQuote={expandedCellCitation?.quote}
                             citationPage={expandedCellCitation?.page}
+                            citationSheet={expandedCellCitation?.sheet}
+                            citationCell={expandedCellCitation?.cell}
+                            citationRef={expandedCellCitation?.citationRef}
                         />
                     );
                 })()}

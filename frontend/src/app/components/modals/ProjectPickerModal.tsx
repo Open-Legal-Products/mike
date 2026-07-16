@@ -5,6 +5,10 @@ import { SearchBar } from "@/app/components/ui/search-bar";
 import { ClosedProjectSvgIcon } from "@/app/components/shared/FolderSvgIcon";
 import type { Project } from "../shared/types";
 import { Modal } from "./Modal";
+import {
+    APP_SURFACE_ACTIVE_CLASS,
+    APP_SURFACE_HOVER_CLASS,
+} from "@/app/components/ui/liquid-surface";
 
 type PrimaryAction = Omit<
     ButtonHTMLAttributes<HTMLButtonElement>,
@@ -101,7 +105,7 @@ export function ProjectPickerModal({
                                                 isSelected ? null : project.id,
                                             )
                                         }
-                                        className={`w-full flex rounded-md items-center gap-2 px-2 py-2 text-xs transition-all text-left ${isSelected ? "bg-gray-100" : "hover:bg-gray-100/70"}`}
+                                        className={`w-full flex rounded-md items-center gap-2 px-2 py-2 text-xs transition-all text-left ${isSelected ? APP_SURFACE_ACTIVE_CLASS : APP_SURFACE_HOVER_CLASS}`}
                                     >
                                         <span
                                             className={`shrink-0 h-3.5 w-3.5 rounded border flex items-center justify-center ${isSelected ? "bg-gray-900 border-gray-900" : "border-gray-300"}`}

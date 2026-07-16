@@ -11,6 +11,11 @@ import { createPortal } from "react-dom";
 import { ChevronLeft, Loader2, Plus, Search } from "lucide-react";
 import { usePageChrome } from "@/app/contexts/PageChromeContext";
 import { cn } from "@/app/lib/utils";
+import {
+    APP_SURFACE_ACTIVE_CLASS,
+    APP_SURFACE_HOVER_CLASS,
+    APP_SURFACE_PRESSED_CLASS,
+} from "@/app/components/ui/liquid-surface";
 
 export interface PageHeaderBreadcrumb {
     label?: ReactNode;
@@ -308,7 +313,7 @@ function PageHeaderSearchActionControl({
                             className:
                                 "cursor-text justify-start gap-2 px-3 text-gray-700 hover:text-gray-700",
                         }),
-                        "w-56 bg-app-surface-active sm:w-80",
+                        `w-56 sm:w-80 ${APP_SURFACE_ACTIVE_CLASS}`,
                     )}
                 >
                     <Search className="h-3.5 w-3.5 text-gray-400 shrink-0" />
@@ -356,7 +361,9 @@ function pageHeaderActionControlClassName({
     className,
 }: PageHeaderActionControlClassNameOptions = {}) {
     return cn(
-        "flex h-7 items-center justify-center rounded-full text-sm transition-colors hover:bg-app-surface-hover active:bg-app-surface-active disabled:cursor-default disabled:text-gray-300 disabled:hover:bg-transparent disabled:hover:text-gray-300",
+        "flex h-7 items-center justify-center rounded-full text-sm transition-colors disabled:cursor-default disabled:text-gray-300 disabled:hover:bg-transparent disabled:hover:text-gray-300",
+        APP_SURFACE_HOVER_CLASS,
+        APP_SURFACE_PRESSED_CLASS,
         iconOnly
             ? "w-7"
             : "w-7 gap-1.5 px-0 sm:w-auto sm:px-3",

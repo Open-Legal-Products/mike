@@ -29,6 +29,7 @@ import {
 } from "@/app/components/documents/DocTable";
 import { TabPillButton } from "@/app/components/ui/tab-pill-button";
 import { ProjectSectionToolbar, useProjectWorkspace } from "./ProjectWorkspace";
+import { APP_SURFACE_HOVER_CLASS } from "@/app/components/ui/liquid-surface";
 
 interface Props {
     projectId: string;
@@ -139,7 +140,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                                     setActionsOpen(false);
                                     void selectionActions.onDownload();
                                 }}
-                                className="w-full px-3 py-1.5 text-left text-xs text-gray-600 transition-colors hover:bg-app-surface-hover"
+                                className={`w-full px-3 py-1.5 text-left text-xs text-gray-600 transition-colors ${APP_SURFACE_HOVER_CLASS}`}
                             >
                                 Download
                             </button>
@@ -149,7 +150,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                                         setActionsOpen(false);
                                         void selectionActions.onRemoveFromFolder();
                                     }}
-                                    className="w-full px-3 py-1.5 text-left text-xs text-gray-600 transition-colors hover:bg-app-surface-hover"
+                                    className={`w-full px-3 py-1.5 text-left text-xs text-gray-600 transition-colors ${APP_SURFACE_HOVER_CLASS}`}
                                 >
                                     Remove from subfolder
                                 </button>

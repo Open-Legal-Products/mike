@@ -8,7 +8,6 @@ import {
 } from "@/app/components/shared/RowActions";
 import {
     TABLE_CHECKBOX_CLASS,
-    TABLE_STICKY_CELL_BG,
     SkeletonDot,
     SkeletonLine,
     TableBody,
@@ -255,6 +254,7 @@ export function ProjectReviewsTable({
                     {visibleReviews.map((review) => (
                         <TableRow
                             key={review.id}
+                            selected={selectedReviewIds.includes(review.id)}
                             rightClickDropdown={(close, menuProps) => (
                                 <RowActionMenuItems
                                     onClose={close}
@@ -278,11 +278,6 @@ export function ProjectReviewsTable({
                             className="pr-8 md:pr-8"
                         >
                             <TablePrimaryCell
-                                bgClassName={
-                                    selectedReviewIds.includes(review.id)
-                                        ? "bg-gray-50"
-                                        : TABLE_STICKY_CELL_BG
-                                }
                                 selected={selectedReviewIds.includes(review.id)}
                                 onSelectionChange={() =>
                                     setSelectedReviewIds((prev) =>

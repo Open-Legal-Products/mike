@@ -22,6 +22,11 @@ import {
 } from "../shared/TablePrimitive";
 import { PillButton } from "@/app/components/ui/pill-button";
 import { TabularReviewSkeuoIcon } from "@/app/components/shared/AppSidebarSkeuoIcons";
+import {
+    APP_SURFACE_ACTIVE_CLASS,
+    APP_SURFACE_GROUP_HOVER_CLASS,
+    APP_SURFACE_HOVER_CLASS,
+} from "@/app/components/ui/liquid-surface";
 
 const SKELETON_COLS = 4;
 const SKELETON_ROWS = 5;
@@ -30,7 +35,6 @@ const COL_W = "w-[300px] shrink-0";
 const DOC_COL_W = "w-[332px] shrink-0";
 const TR_STICKY_CELL_BG = "bg-app-surface";
 const TR_HEADER_BG = "bg-app-surface";
-const TR_ACTIVE_ROW_BG = "bg-app-surface-active";
 
 // Pixel widths matching the CSS constants above
 const DOC_COL_W_PX = 332;
@@ -54,7 +58,14 @@ interface Props {
     highlightedCell?: { colIdx: number; rowIdx: number } | null;
     onSelectionChange: (ids: string[]) => void;
     onExpand: (cell: TabularCell) => void;
-    onCitationClick: (cell: TabularCell, page: number, quote: string) => void;
+    onCitationClick: (
+        cell: TabularCell,
+        page: number | undefined,
+        quote: string,
+        citationRef: number,
+        sheet?: string,
+        citationCell?: string,
+    ) => void;
     onUpdateColumn: (col: ColumnConfig) => void;
     onDeleteColumn: (colIndex: number) => void;
     onAddColumn: () => void;
@@ -186,7 +197,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                     {Array.from({ length: SKELETON_ROWS }).map((_, row) => (
                         <div
                             key={row}
-                            className="flex h-10"
+                            className="flex h-8"
                             style={{ minWidth: skeletonContentWidth }}
                         >
                             <div className={`sticky left-0 z-[60] ${DOC_COL_W} ${TR_STICKY_CELL_BG} flex items-center border-b border-r border-gray-200 py-2 pl-4 pr-2`}>
@@ -324,7 +335,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                     {uploadingFilenames.map((filename) => (
                     <div
                         key={`uploading-${filename}`}
-                        className="flex h-10"
+                        className="flex h-8"
                         style={{ minWidth: totalContentWidth }}
                     >
                         <div
@@ -352,20 +363,21 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                     </div>
                     ))}
                     {documents.map((doc, docIdx) => {
-                    const rowBg = selectedDocIds.includes(doc.id)
-                        ? TR_ACTIVE_ROW_BG
-                        : "bg-transparent";
-                    const stickyRowBg = selectedDocIds.includes(doc.id)
-                        ? TR_ACTIVE_ROW_BG
+                    const isSelected = selectedDocIds.includes(doc.id);
+                    const rowBg = isSelected
+                        ? APP_SURFACE_ACTIVE_CLASS
+                        : APP_SURFACE_HOVER_CLASS;
+                    const stickyRowBg = isSelected
+                        ? APP_SURFACE_ACTIVE_CLASS
                         : TR_STICKY_CELL_BG;
                     return (
                         <div
                             key={doc.id}
-                            className={`flex ${rowBg}`}
+                            className={`group flex transition-colors ${rowBg}`}
                             style={{ minWidth: totalContentWidth }}
                         >
                             <div
-                                className={`sticky left-0 z-[60] ${DOC_COL_W} border-b border-r border-gray-200 py-2 pl-4 pr-2 text-xs text-gray-800 flex items-center ${stickyRowBg}`}
+                                className={`sticky left-0 z-[60] ${DOC_COL_W} border-b border-r border-gray-200 py-2 pl-4 pr-2 text-xs text-gray-800 flex items-center transition-colors ${stickyRowBg} ${isSelected ? "" : APP_SURFACE_GROUP_HOVER_CLASS}`}
                             >
                                 <input
                                     type="checkbox"
@@ -402,11 +414,17 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                                                 onCitationClick={(
                                                     page,
                                                     quote,
+                                                    citationRef,
+                                                    sheet,
+                                                    citationCell,
                                                 ) =>
                                                     onCitationClick(
                                                         cell,
                                                         page,
                                                         quote,
+                                                        citationRef,
+                                                        sheet,
+                                                        citationCell,
                                                     )
                                                 }
                                             />

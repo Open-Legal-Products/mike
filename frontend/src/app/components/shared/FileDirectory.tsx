@@ -12,6 +12,10 @@ import { SearchBar } from "@/app/components/ui/search-bar";
 import { TabPillButton } from "@/app/components/ui/tab-pill-button";
 import { SkeletonLine } from "./TablePrimitive";
 import { useDirectoryData, type DirectoryTab } from "./useDirectoryData";
+import {
+    APP_SURFACE_ACTIVE_CLASS,
+    APP_SURFACE_HOVER_CLASS,
+} from "@/app/components/ui/liquid-surface";
 
 const DIRECTORY_GRID_CLASS =
     "grid grid-cols-[14px_14px_minmax(0,1fr)_48px_84px_64px] items-center gap-2";
@@ -294,7 +298,9 @@ export function FileDirectory({
                 onClick={() => toggle(doc)}
                 style={{ paddingLeft: indentedRowPadding(depth) }}
                 className={`w-full rounded-md ${DIRECTORY_GRID_CLASS} py-2 pr-2 text-xs transition-all text-left  ${
-                    selected ? "bg-gray-100" : "hover:bg-gray-100/70"
+                    selected
+                        ? APP_SURFACE_ACTIVE_CLASS
+                        : APP_SURFACE_HOVER_CLASS
                 }`}
             >
                 <span
@@ -344,7 +350,7 @@ export function FileDirectory({
                         type="button"
                         onClick={() => toggleLibraryFolder(folder.id)}
                         style={{ paddingLeft: indentedRowPadding(depth) }}
-                        className={`w-full rounded-md ${DIRECTORY_GRID_CLASS} py-2 pr-2 text-xs transition-all text-left hover:bg-gray-100/70`}
+                        className={`w-full rounded-md ${DIRECTORY_GRID_CLASS} py-2 pr-2 text-xs transition-all text-left ${APP_SURFACE_HOVER_CLASS}`}
                     >
                         <span
                             role="checkbox"
@@ -597,7 +603,7 @@ export function FileDirectory({
                                         onClick={() =>
                                             toggleFolder(project.id)
                                         }
-                                        className={`w-full rounded-md ${DIRECTORY_GRID_CLASS} px-2 py-2 text-xs transition-all text-left hover:bg-gray-100/70`}
+                                        className={`w-full rounded-md ${DIRECTORY_GRID_CLASS} px-2 py-2 text-xs transition-all text-left ${APP_SURFACE_HOVER_CLASS}`}
                                     >
                                         <span
                                             role="checkbox"
@@ -672,8 +678,8 @@ export function FileDirectory({
                                                             }
                                                             className={`w-full rounded-md ${DIRECTORY_GRID_CLASS} py-2 pl-7 pr-2 text-xs transition-all text-left  ${
                                                                 selected
-                                                                    ? "bg-gray-100"
-                                                                    : "hover:bg-gray-100/70"
+                                                                    ? APP_SURFACE_ACTIVE_CLASS
+                                                                    : APP_SURFACE_HOVER_CLASS
                                                             }`}
                                                         >
                                                             <span

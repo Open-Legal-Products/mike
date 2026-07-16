@@ -95,17 +95,17 @@ export function CitationQuotesHeader({
                                     citationText ??
                                     ""
                                 }
-                                className="rounded-sm bg-white px-2 h-6 text-gray-600 shadow-[0_1px_3px_rgba(0,0,0,0.22)] hover:bg-gray-50"
+                                className="rounded-full bg-white px-2 h-6 text-gray-600 shadow-[0_1px_3px_rgba(0,0,0,0.22)] hover:bg-gray-50"
                                 showText
                             />
                         )}
                         <div
-                            className={`relative flex h-6 items-center justify-start gap-1 rounded-sm bg-gray-200 p-1 ${
+                            className={`relative flex h-6 items-center justify-start gap-1 rounded-full bg-gray-200 p-1 ${
                                 hasMultipleQuotes ? "w-16" : "w-11"
                             }`}
                         >
                             <div
-                                className={`absolute top-1 h-4 w-4 rounded bg-white shadow-sm transition-all ${
+                                className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-all ${
                                     !isExpanded
                                         ? "left-1"
                                         : hasMultipleQuotes &&
@@ -117,7 +117,7 @@ export function CitationQuotesHeader({
                             <button
                                 type="button"
                                 onClick={() => setIsExpanded(false)}
-                                className={`relative z-10 flex h-4 w-4 items-center justify-center rounded ${
+                                className={`relative z-10 flex h-4 w-4 items-center justify-center rounded-full ${
                                     !isExpanded
                                         ? "text-gray-800"
                                         : "text-gray-500 hover:text-gray-700"
@@ -132,7 +132,7 @@ export function CitationQuotesHeader({
                                     setIsExpanded(true);
                                     setViewMode("single");
                                 }}
-                                className={`relative z-10 flex h-4 w-4 items-center justify-center rounded ${
+                                className={`relative z-10 flex h-4 w-4 items-center justify-center rounded-full ${
                                     isExpanded && viewMode === "single"
                                         ? "text-gray-800"
                                         : "text-gray-500 hover:text-gray-700"
@@ -148,7 +148,7 @@ export function CitationQuotesHeader({
                                         setIsExpanded(true);
                                         setViewMode("list");
                                     }}
-                                    className={`relative z-10 flex h-4 w-4 items-center justify-center rounded ${
+                                    className={`relative z-10 flex h-4 w-4 items-center justify-center rounded-full ${
                                         isExpanded && viewMode === "list"
                                             ? "text-gray-800"
                                             : "text-gray-500 hover:text-gray-700"

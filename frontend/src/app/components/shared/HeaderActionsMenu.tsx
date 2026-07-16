@@ -10,6 +10,7 @@ import {
     LiquidDropdownItem,
 } from "@/app/components/ui/liquid-dropdown";
 import { cn } from "@/app/lib/utils";
+import { APP_SURFACE_HOVER_CLASS } from "@/app/components/ui/liquid-surface";
 
 export type HeaderActionsMenuItem = {
     label: string;
@@ -33,7 +34,8 @@ export function HeaderActionsMenu({
                     type="button"
                     className={cn(
                         "inline-flex h-7 w-7 items-center justify-center rounded-full text-gray-600 transition-all",
-                        "hover:bg-gray-100 hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-300",
+                        APP_SURFACE_HOVER_CLASS,
+                        "hover:text-gray-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-300",
                     )}
                     aria-label={title}
                     title={title}

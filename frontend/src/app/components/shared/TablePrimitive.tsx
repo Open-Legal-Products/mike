@@ -22,7 +22,12 @@ import {
     LiquidDropdownContent,
     LiquidDropdownItem,
 } from "@/app/components/ui/liquid-dropdown";
-import { LIQUID_TABLE_SURFACE_CLASS } from "@/app/components/ui/liquid-surface";
+import {
+    APP_SURFACE_ACTIVE_CLASS,
+    APP_SURFACE_GROUP_HOVER_CLASS,
+    APP_SURFACE_HOVER_CLASS,
+    LIQUID_TABLE_SURFACE_CLASS,
+} from "@/app/components/ui/liquid-surface";
 
 export const CLOSE_ROW_ACTIONS_EVENT = "mike:close-row-actions";
 
@@ -84,8 +89,8 @@ export function TableFilters<T extends string>({
                     title={selected?.label ?? label}
                     className={`flex h-[18px] w-[22px] items-center justify-center rounded-sm transition-colors ${
                         value
-                            ? "text-gray-700 hover:bg-app-surface-hover hover:text-gray-900"
-                            : "text-gray-400 hover:bg-app-surface-hover hover:text-gray-700"
+                            ? `text-gray-700 ${APP_SURFACE_HOVER_CLASS} hover:text-gray-900`
+                            : `text-gray-400 ${APP_SURFACE_HOVER_CLASS} hover:text-gray-700`
                     }`}
                 >
                     <ChevronDown
@@ -219,11 +224,13 @@ export function TableRow({
     children,
     className,
     interactive = true,
+    selected = false,
     onContextMenu,
     rightClickDropdown,
     ...props
 }: DivProps & {
     interactive?: boolean;
+    selected?: boolean;
     rightClickDropdown?:
         | ReactNode
         | ((close: () => void, menuProps: DivProps) => ReactNode);
@@ -274,7 +281,11 @@ export function TableRow({
             <div
                 className={cn(
                     "group flex h-10 min-w-max items-center pr-3 transition-colors",
-                    interactive && "cursor-pointer hover:bg-app-surface-hover",
+                    interactive && "cursor-pointer",
+                    interactive &&
+                        !selected &&
+                        APP_SURFACE_HOVER_CLASS,
+                    selected && APP_SURFACE_ACTIVE_CLASS,
                     className,
                 )}
                 onContextMenu={handleContextMenu}
@@ -326,7 +337,7 @@ export function TableStickyCell({
                 header
                     ? "z-[80] items-center self-stretch"
                     : "py-2 transition-colors",
-                !header && hover && "group-hover:bg-app-surface-hover",
+                !header && hover && APP_SURFACE_GROUP_HOVER_CLASS,
                 className,
             )}
         >
@@ -389,8 +400,11 @@ export function TablePrimaryCell({
     return (
         <TableStickyCell
             widthClassName={widthClassName}
-            bgClassName={bgClassName}
+            bgClassName={
+                selected ? APP_SURFACE_ACTIVE_CLASS : bgClassName
+            }
             className={className}
+            hover={!selected}
         >
             <div className="flex min-w-0 items-center">
                 <input

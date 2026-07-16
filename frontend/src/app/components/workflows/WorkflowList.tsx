@@ -35,7 +35,6 @@ import {
 import { workflowDetailPath } from "./workflowRoutes";
 import {
     TABLE_CHECKBOX_CLASS,
-    TABLE_STICKY_CELL_BG,
     SkeletonDot,
     SkeletonLine,
     TableBody,
@@ -626,12 +625,10 @@ export function WorkflowList() {
                         <TableBody>
                             {filtered.map((wf) => {
                             const isHiddenSystem = hiddenSystemIds.includes(wf.id);
-                            const rowBg = selectedIds.includes(wf.id)
-                                ? "bg-gray-50"
-                                : TABLE_STICKY_CELL_BG;
                             return (
                             <TableRow
                                 key={wf.id}
+                                selected={selectedIds.includes(wf.id)}
                                 className={isHiddenSystem ? "opacity-45" : undefined}
                                 rightClickDropdown={
                                     wf.is_system
@@ -685,7 +682,6 @@ export function WorkflowList() {
                                 onClick={() => setSelected(wf)}
                             >
                                 <TablePrimaryCell
-                                    bgClassName={rowBg}
                                     selected={selectedIds.includes(wf.id)}
                                     onSelectionChange={() => toggleOne(wf.id)}
                                     label={wf.metadata.title}

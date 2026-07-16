@@ -7,12 +7,13 @@ import {
     DropdownMenuRadioItem,
 } from "@/app/components/ui/dropdown-menu";
 import { cn } from "@/app/lib/utils";
+import { APP_SURFACE_HOVER_CLASS } from "@/app/components/ui/liquid-surface";
 
 const LIQUID_DROPDOWN_CLASS =
     "rounded-2xl border border-white/70 bg-app-surface shadow-[0_8px_24px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-10px_24px_rgba(255,255,255,0.18)] backdrop-blur-2xl";
 
 const LIQUID_DROPDOWN_ITEM_CLASS =
-    "cursor-pointer text-xs text-gray-600 transition-colors hover:bg-app-surface-hover focus:bg-app-surface-hover focus:text-gray-800";
+    `cursor-pointer text-xs text-gray-600 transition-colors ${APP_SURFACE_HOVER_CLASS} focus:bg-app-surface-hover focus:text-gray-800`;
 
 export function LiquidDropdownContent({
     className,

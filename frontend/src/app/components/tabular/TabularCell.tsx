@@ -14,7 +14,13 @@ interface Props {
     column?: ColumnConfig;
     closeSignal?: number;
     onExpand: () => void;
-    onCitationClick?: (page: number, quote: string) => void;
+    onCitationClick?: (
+        page: number | undefined,
+        quote: string,
+        citationRef: number,
+        sheet?: string,
+        cell?: string,
+    ) => void;
 }
 
 const FLAG_STYLES = {
@@ -63,7 +69,13 @@ function CellMarkdown({
     citations: ParsedCitation[];
     pills: string[];
     column?: ColumnConfig;
-    onCitationClick?: (page: number, quote: string) => void;
+    onCitationClick?: (
+        page: number | undefined,
+        quote: string,
+        citationRef: number,
+        sheet?: string,
+        cell?: string,
+    ) => void;
     onExpand: () => void;
     inline?: boolean;
 }) {
@@ -108,13 +120,16 @@ function CellMarkdown({
                         if (citation) {
                             return (
                                 <span
-                                    title={`Page ${citation.page}: "${citation.quote}"`}
+                                    title={`${formatCitationLocation(citation)}: "${citation.quote}"`}
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         if (onCitationClick) {
                                             onCitationClick(
                                                 citation.page,
                                                 citation.quote,
+                                                idx + 1,
+                                                citation.sheet,
+                                                citation.cell,
                                             );
                                         } else {
                                             onExpand();
@@ -154,6 +169,13 @@ function CellMarkdown({
             {text}
         </ReactMarkdown>
     );
+}
+
+function formatCitationLocation(citation: ParsedCitation): string {
+    if (citation.sheet && citation.cell) {
+        return `${citation.sheet}!${citation.cell}`;
+    }
+    return `Page ${citation.page ?? 1}`;
 }
 
 export function TabularCell({
@@ -210,9 +232,15 @@ export function TabularCell({
     const firstLine = processed.split("\n").find((l) => l.trim()) ?? processed;
     const collapsedDisplay = firstLine.replace(/^[-*•]\s+/, "");
 
-    function handleCitationClickInOverlay(page: number, quote: string) {
+    function handleCitationClickInOverlay(
+        page: number | undefined,
+        quote: string,
+        citationRef: number,
+        sheet?: string,
+        citationCell?: string,
+    ) {
         setInlineExpanded(false);
-        onCitationClick?.(page, quote);
+        onCitationClick?.(page, quote, citationRef, sheet, citationCell);
     }
 
     function handleSeeDetails() {

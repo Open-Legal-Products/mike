@@ -25,7 +25,6 @@ import {
 } from "@/app/components/shared/FolderSvgIcon";
 import {
     TABLE_CHECKBOX_CLASS,
-    TABLE_STICKY_CELL_BG,
     SkeletonDot,
     SkeletonLine,
     TableBody,
@@ -660,12 +659,10 @@ export function ProjectsOverview() {
                 ) : (
                     <TableBody>
                         {filtered.map((project) => {
-                            const rowBg = selectedIds.includes(project.id)
-                                ? "bg-gray-50"
-                                : TABLE_STICKY_CELL_BG;
                             return (
                             <TableRow
                                 key={project.id}
+                                selected={selectedIds.includes(project.id)}
                                 rightClickDropdown={
                                     (project.is_owner ??
                                         project.user_id === user?.id)
@@ -698,7 +695,6 @@ export function ProjectsOverview() {
                             >
                                 {/* Project Name */}
                                 <TablePrimaryCell
-                                    bgClassName={rowBg}
                                     selected={selectedIds.includes(project.id)}
                                     onSelectionChange={() =>
                                         toggleOne(project.id)

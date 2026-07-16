@@ -8,7 +8,6 @@ import {
 } from "@/app/components/shared/RowActions";
 import {
     TABLE_CHECKBOX_CLASS,
-    TABLE_STICKY_CELL_BG,
     SkeletonDot,
     SkeletonLine,
     TableBody,
@@ -249,6 +248,7 @@ export function ProjectAssistantTable({
                     {visibleChats.map((chat) => (
                         <TableRow
                             key={chat.id}
+                            selected={selectedChatIds.includes(chat.id)}
                             rightClickDropdown={(close, menuProps) => (
                                 <RowActionMenuItems
                                     onClose={close}
@@ -276,11 +276,6 @@ export function ProjectAssistantTable({
                             className="pr-8 md:pr-8"
                         >
                             <TablePrimaryCell
-                                bgClassName={
-                                    selectedChatIds.includes(chat.id)
-                                        ? "bg-gray-50"
-                                        : TABLE_STICKY_CELL_BG
-                                }
                                 selected={selectedChatIds.includes(chat.id)}
                                 onSelectionChange={() =>
                                     setSelectedChatIds((prev) =>

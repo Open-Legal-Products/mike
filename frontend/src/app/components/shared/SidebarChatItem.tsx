@@ -16,6 +16,10 @@ import { OwnerOnlyPopup } from "@/app/components/popups/OwnerOnlyPopup";
 import type { Chat } from "@/app/components/shared/types";
 import { ChatSkeuoIcon } from "@/app/components/shared/AppSidebarSkeuoIcons";
 import { cn } from "@/app/lib/utils";
+import {
+    APP_SURFACE_ACTIVE_CLASS,
+    APP_SURFACE_HOVER_CLASS,
+} from "@/app/components/ui/liquid-surface";
 
 interface Props {
     chat: Chat;
@@ -55,8 +59,8 @@ export function SidebarChatItem({ chat, isActive, onSelect, projectName }: Props
             className={cn(
                 "group relative flex h-8 w-full items-center rounded-md transition-colors",
                 isActive
-                    ? "bg-gray-200/60 pr-1"
-                    : "pr-3 hover:bg-gray-100 hover:pr-1",
+                    ? `${APP_SURFACE_ACTIVE_CLASS} pr-1`
+                    : `pr-3 ${APP_SURFACE_HOVER_CLASS} hover:pr-1`,
             )}
         >
             {isRenaming ? (

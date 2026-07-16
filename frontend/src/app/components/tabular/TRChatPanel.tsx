@@ -42,7 +42,11 @@ import {
     type ModelProvider,
 } from "@/app/lib/modelAvailability";
 import type { ApiKeyState } from "@/app/lib/mikeApi";
-import { LIQUID_PANEL_SURFACE_CLASS } from "@/app/components/ui/liquid-surface";
+import {
+    APP_SURFACE_ACTIVE_CLASS,
+    APP_SURFACE_HOVER_CLASS,
+    LIQUID_PANEL_SURFACE_CLASS,
+} from "@/app/components/ui/liquid-surface";
 import {
     LiquidDropdownButton,
     LiquidDropdownSurface,
@@ -637,7 +641,7 @@ function HistoryDropdown({
                                             setRenamingChatId(null);
                                     }}
                                     onBlur={() => commitRename(chat.id)}
-                                    className="w-full rounded-lg bg-app-surface-active px-2 py-1.5 text-xs text-gray-700 outline-none"
+                                    className={`w-full rounded-lg px-2 py-1.5 text-xs text-gray-700 outline-none ${APP_SURFACE_ACTIVE_CLASS}`}
                                 />
                             );
                         }
@@ -669,7 +673,7 @@ function HistoryDropdown({
                                     }}
                                     title="Chat options"
                                     className={cn(
-                                        "absolute right-1.5 flex h-5 w-5 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-app-surface-hover hover:text-gray-700",
+                                        `absolute right-1.5 flex h-5 w-5 items-center justify-center rounded-full text-gray-400 transition-colors hover:text-gray-700 ${APP_SURFACE_HOVER_CLASS}`,
                                         menu?.chatId === chat.id
                                             ? "opacity-100"
                                             : "opacity-0 group-hover:opacity-100",
@@ -741,8 +745,7 @@ function findLastContentIndex(events: AssistantEvent[]): number {
 
 const HEADER_PILL_CLASS =
     "flex shrink-0 items-center gap-1 rounded-full border border-white/70 bg-app-surface px-1 py-0.5 shadow-[0_8px_24px_rgba(15,23,42,0.06)] backdrop-blur-2xl";
-const HEADER_PILL_BUTTON_CLASS =
-    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-app-surface-hover hover:text-gray-900";
+const HEADER_PILL_BUTTON_CLASS = `flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:text-gray-900 ${APP_SURFACE_HOVER_CLASS}`;
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -1795,7 +1798,7 @@ export function TRChatPanel({
                         <button
                             onClick={() => setHistoryOpen((v) => !v)}
                             title="Chat history"
-                            className="flex h-5 min-w-0 items-center gap-1 rounded-full px-1.5 text-gray-700 transition-colors hover:bg-app-surface-hover"
+                            className={`flex h-5 min-w-0 items-center gap-1 rounded-full px-1.5 text-gray-700 transition-colors ${APP_SURFACE_HOVER_CLASS}`}
                         >
                             <span className="min-w-0 truncate text-xs font-medium">
                                 {currentChatTitle ?? "New chat"}

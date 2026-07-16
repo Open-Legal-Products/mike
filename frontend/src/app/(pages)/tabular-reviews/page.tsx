@@ -23,7 +23,6 @@ import { useAuth } from "@/app/contexts/AuthContext";
 import { PageHeader } from "@/app/components/shared/PageHeader";
 import {
     TABLE_CHECKBOX_CLASS,
-    TABLE_STICKY_CELL_BG,
     SkeletonDot,
     SkeletonLine,
     TableBody,
@@ -519,12 +518,10 @@ export default function TabularReviewsPage() {
                             const projectName = review.project_id
                                 ? projectNameById.get(review.project_id)
                                 : null;
-                            const rowBg = selectedIds.includes(review.id)
-                                ? "bg-gray-50"
-                                : TABLE_STICKY_CELL_BG;
                             return (
                                 <TableRow
                                     key={review.id}
+                                    selected={selectedIds.includes(review.id)}
                                     rightClickDropdown={(close, menuProps) => (
                                         <RowActionMenuItems
                                             onClose={close}
@@ -563,7 +560,6 @@ export default function TabularReviewsPage() {
                                     }}
                                 >
                                     <TablePrimaryCell
-                                        bgClassName={rowBg}
                                         selected={selectedIds.includes(
                                             review.id,
                                         )}

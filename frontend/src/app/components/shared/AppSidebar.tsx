@@ -27,6 +27,10 @@ import {
 import { listProjects } from "@/app/lib/mikeApi";
 import type { Project } from "@/app/components/shared/types";
 import { cn } from "@/app/lib/utils";
+import {
+    APP_SURFACE_ACTIVE_CLASS,
+    APP_SURFACE_HOVER_CLASS,
+} from "@/app/components/ui/liquid-surface";
 
 const NAV_ITEMS = [
     { href: "/assistant", label: "Assistant", icon: ChatSkeuoIcon },
@@ -176,7 +180,8 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                         onClick={handleToggle}
                         className={cn(
                             "h-9 w-9 p-2.5 items-center flex transition-colors",
-                            "rounded-md hover:bg-gray-100",
+                            "rounded-md",
+                            APP_SURFACE_HOVER_CLASS,
                         )}
                         title={isOpen ? "Close sidebar" : "Open sidebar"}
                     >
@@ -201,8 +206,8 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                 className={cn(
                                     "w-full h-9 flex items-center gap-3 px-2.5 py-2 rounded-md transition-colors text-left",
                                     isActive
-                                        ? "bg-app-surface-active text-gray-900"
-                                        : "text-gray-700 hover:bg-gray-100",
+                                        ? `${APP_SURFACE_ACTIVE_CLASS} text-gray-900`
+                                        : `text-gray-700 ${APP_SURFACE_HOVER_CLASS}`,
                                     !isOpen ? "hidden md:flex" : "flex",
                                 )}
                             >
@@ -301,8 +306,8 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                                         className={cn(
                                                             "flex h-8 w-full items-center gap-2 rounded-md px-2.5 py-1 text-left text-xs transition-colors",
                                                             isActive
-                                                                ? "bg-app-surface-active text-gray-900"
-                                                                : "text-gray-700 hover:bg-gray-100",
+                                                                ? `${APP_SURFACE_ACTIVE_CLASS} text-gray-900`
+                                                                : `text-gray-700 ${APP_SURFACE_HOVER_CLASS}`,
                                                         )}
                                                     >
                                                         <ProjectSvgIcon
@@ -409,7 +414,7 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                                     onClick={loadMoreChats}
                                                     className={cn(
                                                         "flex h-8 w-full items-center justify-start rounded-md px-3 text-left text-xs font-medium text-gray-500 transition-colors hover:text-gray-700",
-                                                        "hover:bg-gray-100",
+                                                        APP_SURFACE_HOVER_CLASS,
                                                     )}
                                                 >
                                                     Load more
@@ -436,8 +441,8 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                     "rounded-xl border-white/60",
                                     !isOpen ? "hidden md:flex" : "",
                                     pathname === "/account" || isDropdownOpen
-                                        ? "bg-app-surface-active"
-                                        : "hover:bg-gray-100",
+                                        ? APP_SURFACE_ACTIVE_CLASS
+                                        : APP_SURFACE_HOVER_CLASS,
                                 )}
                                 title={!isOpen ? user.email : undefined}
                             >
