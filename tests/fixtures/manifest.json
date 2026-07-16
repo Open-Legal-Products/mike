@@ -1,0 +1,13 @@
+{
+  "synthetic_only": true,
+  "files": [
+    {
+      "path": "tests/fixtures/documents/synthetic-ontario-services-agreement.txt",
+      "purpose": "Document ingestion, editing, retrieval, and export tests"
+    },
+    {
+      "path": "tests/fixtures/documents/synthetic-ontario-demand-letter.md",
+      "purpose": "Chat, drafting, citation, and workflow tests"
+    }
+  ]
+}

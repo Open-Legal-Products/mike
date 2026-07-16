@@ -1,0 +1,23 @@
+{
+  "name": "ross-ranade-oss",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Repository-level verification commands for ROSS.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "install:all": "npm ci --prefix backend && npm ci --prefix frontend",
+    "test": "npm run test:baseline",
+    "test:baseline": "node --test tests/baseline/*.test.mjs",
+    "test:e2e": "node --test tests/e2e/*.test.mjs",
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "npm run build --prefix backend",
+    "build:frontend": "node scripts/build-frontend.mjs",
+    "lint": "npm run lint:baseline",
+    "lint:baseline": "node scripts/lint-baseline.mjs",
+    "lint:strict": "npm run lint --prefix frontend",
+    "check": "npm run test:baseline && npm run build && npm run lint"
+  },
+  "license": "AGPL-3.0-only"
+}

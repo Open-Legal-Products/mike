@@ -12,7 +12,10 @@ Thanks for helping improve Mike. Please keep contributions small, focused, and e
 
 ## Before Opening a PR
 
-- Run the relevant build or test command for the area you changed.
+- Install all dependencies from the repository root with `npm run install:all`.
+- Run the baseline contract tests with `npm test`.
+- Run the full local verification suite with `npm run check`.
+- If deployed test URLs are available, run `ROSS_E2E_API_URL=... ROSS_E2E_APP_URL=... npm run test:e2e`.
 - Check `git diff` and remove unrelated changes.
 - Write a concise Markdown PR description with:
     - summary
