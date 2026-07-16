@@ -19,6 +19,25 @@ test("the public website is a separate build target", () => {
   assert.match(rootPackage.scripts.check, /test:website/);
 });
 
+test("website shell helpers survive browser uploads without executable modes", () => {
+  const wrappers = [
+    "website/scripts/build-verified.sh",
+    "website/scripts/install-ci.sh",
+    "website/scripts/validate-artifact.sh",
+  ];
+  for (const wrapper of wrappers) {
+    assert.match(
+      read(wrapper),
+      /exec bash "\$\{script_dir\}\/sites-env\.sh" -- bash "\$0" "\$@"/,
+      wrapper,
+    );
+  }
+  assert.match(
+    read("website/scripts/build-verified.sh"),
+    /bash "\$\{script_dir\}\/validate-artifact\.sh"/,
+  );
+});
+
 test("the public website derives identity and policy from central configuration", () => {
   const central = json("config/ross-brand.json");
   const siteConfig = read("website/app/site-config.ts");
