@@ -14,6 +14,7 @@ import { downloadsRouter } from "./routes/downloads";
 import { caseLawRouter } from "./routes/caseLaw";
 import { legalSourcesRouter } from "./routes/legalSources";
 import { loadRuntimeConfig } from "./config/runtime";
+import { enforceHostedDataBoundary } from "./middleware/dataBoundary";
 
 const app = express();
 const runtime = loadRuntimeConfig();
@@ -128,6 +129,7 @@ app.use(
 );
 
 app.use(generalLimiter);
+app.use(enforceHostedDataBoundary(runtime));
 
 app.post("/chat", chatLimiter);
 app.post("/projects/:projectId/chat", chatLimiter);
@@ -167,7 +169,13 @@ app.use("/case-law", caseLawRouter);
 app.use("/legal-sources", legalSourcesRouter);
 
 app.get("/health", (_req, res) =>
-  res.json({ ok: true, service: "ross-api", environment: runtime.environment }),
+  res.json({
+    ok: true,
+    service: "ross-api",
+    environment: runtime.environment,
+    hostedMode: runtime.hostedMode,
+    dataBoundaryVersion: runtime.dataBoundaryVersion,
+  }),
 );
 
 app.listen(PORT, () => {

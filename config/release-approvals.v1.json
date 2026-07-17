@@ -1,0 +1,37 @@
+{
+  "version": "1.0.0-draft",
+  "releaseId": "unassigned",
+  "status": "blocked-awaiting-independent-review",
+  "approvals": {
+    "legalContent": {
+      "status": "pending",
+      "approver": null,
+      "date": null,
+      "evidence": null
+    },
+    "privacy": {
+      "status": "pending",
+      "approver": null,
+      "date": null,
+      "evidence": null
+    },
+    "security": {
+      "status": "pending",
+      "approver": null,
+      "date": null,
+      "evidence": null
+    },
+    "accessibility": {
+      "status": "pending",
+      "approver": null,
+      "date": null,
+      "evidence": null
+    },
+    "productOwner": {
+      "status": "pending",
+      "approver": null,
+      "date": null,
+      "evidence": null
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "status": "current-state and proposed schedule; production enforcement not approved",
+  "reviewedAt": "2026-07-16",
+  "records": [
+    {
+      "class": "account and profile",
+      "currentRule": "retained until account deletion",
+      "proposedRule": "operator decision required",
+      "automated": "partial",
+      "legalHold": "not implemented"
+    },
+    {
+      "class": "projects, chats, workflows, reviews",
+      "currentRule": "user deletion and account deletion available",
+      "proposedRule": "operator decision required",
+      "automated": "partial",
+      "legalHold": "not implemented"
+    },
+    {
+      "class": "document objects and versions",
+      "currentRule": "deletion/soft-deletion paths exist; backup expiry unverified",
+      "proposedRule": "operator and backup decision required",
+      "automated": "partial",
+      "legalHold": "not implemented"
+    },
+    {
+      "class": "security audit metadata",
+      "currentRule": "indefinite until operator policy",
+      "proposedRule": "365 days unless incident/legal requirement needs longer",
+      "automated": "no",
+      "legalHold": "not implemented"
+    },
+    {
+      "class": "privacy breach records",
+      "currentRule": "runbook only",
+      "proposedRule": "at least two years if PIPEDA applies, subject to counsel",
+      "automated": "no",
+      "legalHold": "manual"
+    },
+    {
+      "class": "raw model streams",
+      "currentRule": "forbidden outside local development",
+      "proposedRule": "never enabled in hosted mode",
+      "automated": "startup enforced",
+      "legalHold": "not applicable"
+    },
+    {
+      "class": "provider, email, connector, infrastructure logs and backups",
+      "currentRule": "configuration-specific and unapproved",
+      "proposedRule": "must be entered before provider approval",
+      "automated": "unknown",
+      "legalHold": "unknown"
+    }
+  ]
+}

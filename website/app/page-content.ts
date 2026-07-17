@@ -4,25 +4,53 @@ export type PublicPage = {
   summary: string;
   status: string;
   sections: { title: string; body: string }[];
-  review: string;
+  governance: {
+    owner: string;
+    reviewer: string | null;
+    reviewStatus: "engineering-reviewed" | "independent-review-required";
+    effectiveDate: string | null;
+    lastReviewedDate: string | null;
+    nextReviewDate: string;
+  };
 };
+
+const engineeringReviewed = (owner: string): PublicPage["governance"] => ({
+  owner,
+  reviewer: "ROSS engineering review",
+  reviewStatus: "engineering-reviewed",
+  effectiveDate: "2026-07-16",
+  lastReviewedDate: "2026-07-16",
+  nextReviewDate: "2026-08-16",
+});
+
+const independentReviewRequired = (
+  owner: string,
+): PublicPage["governance"] => ({
+  owner,
+  reviewer: null,
+  reviewStatus: "independent-review-required",
+  effectiveDate: null,
+  lastReviewedDate: null,
+  nextReviewDate: "2026-08-16",
+});
 
 export const publicPages: Record<string, PublicPage> = {
   ontario: {
     title: "Ontario and Canadian capability",
     eyebrow: "Jurisdiction plan",
     summary:
-      "ROSS will add verified Ontario and binding federal primary law without removing inherited U.S. research.",
-    status: "Source integrations are planned, not yet live.",
-    review: "Legal-content owner: TBD · Review required before coverage claims",
+      "ROSS adds an Ontario-first, provider-neutral research foundation without removing inherited optional U.S. research.",
+    status:
+      "Engineering integrations are implemented; live availability, completeness, and legal-content approval are not claimed.",
+    governance: independentReviewRequired("Legal-content owner — unassigned"),
     sections: [
       {
-        title: "Planned foundation",
-        body: "Provider-neutral records will separate jurisdiction, court, authority level, document type, source version, provider, canonical URL, retrieval time, and verification state.",
+        title: "Implemented foundation",
+        body: "Provider-neutral records separate jurisdiction, court, authority level, document type, source version, provider, canonical URL, retrieval time, and verification state.",
       },
       {
         title: "Authorized sources",
-        body: "The approved direction is A2AJ, official government and court sources, and negotiated or licensed providers. ROSS will not scrape CanLII contrary to its terms or without permission.",
+        body: "The implemented connectors use A2AJ, official government sources, optional CourtListener for U.S. research, and a disabled licensed-provider boundary. ROSS does not scrape CanLII; its connector requires a separately approved licence and transport.",
       },
       {
         title: "Visible gaps",
@@ -35,8 +63,9 @@ export const publicPages: Record<string, PublicPage> = {
     eyebrow: "Preserved Mike capabilities",
     summary:
       "ROSS keeps the inherited assistant, project, document, tabular-review, workflow, sharing, connector, and self-hosting surfaces under regression protection.",
-    status: "Ontario-specific defaults and research are future packages.",
-    review: "Product owner: TBD · Last reviewed 2026-07-15",
+    status:
+      "Inherited capability preservation is automated; end-to-end product coverage remains incomplete.",
+    governance: engineeringReviewed("ROSS product maintainers"),
     sections: [
       {
         title: "Work with matters and documents",
@@ -59,8 +88,9 @@ export const publicPages: Record<string, PublicPage> = {
       "Five versioned Ontario workflow drafts are available for transparent review while the inherited Mike workflow library remains intact.",
     status:
       "Drafts await independent Ontario lawyer review and are not approved for production use.",
-    review:
-      "Workflow owner: TBD · Reviewer and review date intentionally unset",
+    governance: independentReviewRequired(
+      "Ontario workflow owner — unassigned",
+    ),
     sections: [
       {
         title: "Catalogue requirements",
@@ -74,20 +104,22 @@ export const publicPages: Record<string, PublicPage> = {
   },
   coverage: {
     title: "Source coverage",
-    eyebrow: "Machine-readable status planned",
+    eyebrow: "Generated source registry",
     summary:
       "Coverage must describe what ROSS can retrieve and verify without implying completeness, official status, or currentness that the evidence does not support.",
-    status: "Foundation only — coverage registry not implemented.",
-    review:
-      "Legal-content and technical owners: TBD · Review before source launch",
+    status:
+      "Generated from the implemented provider registry; runtime health and comprehensive coverage remain unverified.",
+    governance: independentReviewRequired(
+      "Legal-content and technical owners — unassigned",
+    ),
     sections: [
       {
         title: "Decisions",
-        body: "CourtListener remains available for optional U.S. research. A2AJ, official sources, and licensed providers are the approved Ontario and Canadian direction.",
+        body: "A2AJ is implemented for Canadian decision discovery and unofficial text, subject to its runtime-reported datasets and availability. CourtListener remains available for optional U.S. research. CanLII remains disabled without a separately approved licensed transport.",
       },
       {
         title: "Legislation",
-        body: "Ontario e-Laws and federal Justice Laws sources are planned with version, currency, consolidation, amendment, and canonical-link metadata.",
+        body: "Ontario e-Laws and federal Justice Laws connectors are implemented with source, currency, consolidation, amendment, canonical-link, and reproduction metadata. Historical-version retrieval is explicitly limited.",
       },
       {
         title: "Decisions and noting-up",
@@ -102,8 +134,7 @@ export const publicPages: Record<string, PublicPage> = {
       "ROSS is an independently developed modified fork of Mike. Its source and architecture decisions are public.",
     status:
       "Self-hosting documentation and production runbooks remain in development.",
-    review:
-      "Release owner: TBD · Licence review required before public service",
+    governance: independentReviewRequired("Release owner — unassigned"),
     sections: [
       {
         title: "Corresponding source",
@@ -125,8 +156,8 @@ export const publicPages: Record<string, PublicPage> = {
     summary:
       "ROSS is not yet approved for real confidential or privileged client material in an operator-hosted service.",
     status:
-      "Threat model, privacy assessment, retention schedule, vendor inventory, and independent review remain open.",
-    review: "Security owner: TBD · Technical and legal review required",
+      "Engineering threat model, incident plan, data inventory, retention schedule, and vendor inventory exist; independent security and privacy review remains open.",
+    governance: independentReviewRequired("Security owner — unassigned"),
     sections: [
       {
         title: "Current beta boundary",
@@ -143,31 +174,44 @@ export const publicPages: Record<string, PublicPage> = {
     ],
   },
   privacy: {
-    title: "Privacy notice — placeholder",
+    title: "Privacy notice — controlled-beta draft",
     eyebrow: "Legal review required",
     summary:
-      "This scaffold does not collect form submissions, run analytics, authenticate visitors, or load application data.",
-    status: "Not a production privacy notice.",
-    review: "Privacy owner and operator: TBD · Effective date not set",
+      "The public site does not intentionally collect form submissions, run product analytics, authenticate visitors, or load application data; hosting-level request records may still be processed.",
+    status:
+      "Independent privacy/legal review, operator identity, effective date, vendor terms, and complaint contact are required before this notice can take effect.",
+    governance: independentReviewRequired(
+      "Privacy owner and legal operator — unassigned",
+    ),
     sections: [
       {
         title: "Public website",
-        body: "The scaffold serves public content only. Hosting-level request logs may still exist and must be documented before publication.",
+        body: "The site serves public content only and has no first-party form or analytics integration. Its hosting service may process network identifiers, request metadata, security events, and necessary cookies or tokens; the selected operator must publish the actual hosting terms, purposes, locations, access, and retention.",
       },
       {
         title: "Hosted application",
-        body: "The planned invitation-only beta is limited to synthetic or non-confidential material. A complete data inventory and retention schedule are required before launch.",
+        body: "The invitation-only hosted application is restricted to synthetic or affirmatively non-confidential material. It may process account, configuration, project, prompt, file, generated-content, source-query, connector, security, and support data as described in the engineering inventory. No real client or privileged material is approved.",
+      },
+      {
+        title: "Choices, access, and deletion",
+        body: "The inherited application includes account export, content deletion, and account deletion surfaces. Applicable legal rights, verification steps, response periods, appeals, and the privacy contact cannot be finalized until the operator and governing privacy obligations are determined.",
+      },
+      {
+        title: "Retention and disclosure",
+        body: "Draft retention periods and deletion triggers exist, but infrastructure, backups, provider retention, lawful disclosure, cross-border processing, and contract terms are not approved. The effective notice must identify each actual subprocessor and material transfer.",
       },
     ],
   },
   terms: {
-    title: "Terms of service — placeholder",
+    title: "Hosted-service terms — legal draft",
     eyebrow: "Legal review required",
     summary:
       "No hosted-service terms have been approved and this page does not create a production service offering.",
     status:
       "Operator, service scope, jurisdiction, support, suspension, liability, and change terms remain open.",
-    review: "Operator and legal reviewer: TBD",
+    governance: independentReviewRequired(
+      "Legal operator and legal reviewer — unassigned",
+    ),
     sections: [
       {
         title: "Current effect",
@@ -177,15 +221,25 @@ export const publicPages: Record<string, PublicPage> = {
         title: "Professional responsibility",
         body: "Future terms must preserve the user’s responsibility to verify sources, protect information, supervise work, and exercise independent professional judgment.",
       },
+      {
+        title: "No legal service or authority guarantee",
+        body: "ROSS is software, not a lawyer, law firm, court, government service, comprehensive citator, or substitute for professional judgment. A hosted agreement must define service availability, source limits, beta changes, support, suspension, termination, warranties, liability, and dispute terms before it can bind anyone.",
+      },
+      {
+        title: "Open-source code",
+        body: "Repository use is governed by AGPL-3.0 and applicable notices. A hosted-service agreement cannot remove recipients’ rights under the code licence or replace the corresponding-source obligation for a network deployment.",
+      },
     ],
   },
   "acceptable-use": {
-    title: "Acceptable use — placeholder",
+    title: "Acceptable use — controlled-beta draft",
     eyebrow: "Controlled beta",
     summary:
       "ROSS is intended for lawful professional work by approved beta participants using synthetic or non-confidential materials.",
     status: "Enforcement controls and final policy remain open.",
-    review: "Operator, security, and legal reviewers: TBD",
+    governance: independentReviewRequired(
+      "Operator, security, and legal reviewers — unassigned",
+    ),
     sections: [
       {
         title: "Prohibited during beta",
@@ -195,6 +249,10 @@ export const publicPages: Record<string, PublicPage> = {
         title: "Report concerns",
         body: "Security issues belong in private vulnerability reporting. Other concerns will use the contact workflow after it is implemented.",
       },
+      {
+        title: "Source and system integrity",
+        body: "Do not bypass access controls, probe another user’s matter, upload malware, abuse source providers, scrape prohibited services, inject instructions intended to exfiltrate secrets, or represent unverified output as an official or human-reviewed source.",
+      },
     ],
   },
   accessibility: {
@@ -203,10 +261,10 @@ export const publicPages: Record<string, PublicPage> = {
     summary:
       "New ROSS public surfaces target accessible semantics, keyboard operation, visible focus, contrast, zoom, and reduced-motion support.",
     status: "Formal conformance has not been audited or claimed.",
-    review: "Accessibility owner: TBD · Manual review pending",
+    governance: independentReviewRequired("Accessibility owner — unassigned"),
     sections: [
       {
-        title: "Built into the scaffold",
+        title: "Built into the public site",
         body: "The site includes a skip link, semantic landmarks, labelled navigation, keyboard-visible focus, responsive layouts, and reduced-motion handling.",
       },
       {
@@ -217,11 +275,14 @@ export const publicPages: Record<string, PublicPage> = {
   },
   contact: {
     title: "Contact ROSS",
-    eyebrow: "Channels pending",
+    eyebrow: "Verified channels",
     summary:
-      "Support, privacy, security, licensing, partnership, and general-inquiry routes will remain separated.",
-    status: "No contact form or production mailbox is active in this scaffold.",
-    review: "Operator and support owner: TBD",
+      "Security-sensitive reports use private GitHub vulnerability reporting; other operational and legal contact channels are not yet approved.",
+    status:
+      "Do not send client information or confidential facts through a public issue or unapproved mailbox.",
+    governance: independentReviewRequired(
+      "Legal operator and support owner — unassigned",
+    ),
     sections: [
       {
         title: "Security",
@@ -229,7 +290,7 @@ export const publicPages: Record<string, PublicPage> = {
       },
       {
         title: "Other enquiries",
-        body: "Placeholder addresses are intentionally non-deliverable until the operator, retention, routing, spam protection, and privacy notice are approved.",
+        body: "The repository issue tracker may be used for non-sensitive software defects and feature discussion. Privacy, legal, licensing, partnership, and support mailboxes remain intentionally unpublished until the operator, retention, routing, access, and privacy terms are approved.",
       },
     ],
   },
@@ -238,8 +299,9 @@ export const publicPages: Record<string, PublicPage> = {
     eyebrow: "Ranade OSS",
     summary:
       "ROSS is an Ontario-focused, open-source legal workspace in development and a modified fork of Mike.",
-    status: "The legal operator and accountable owners remain TBD.",
-    review: "Product owner: TBD · Name and trademark review open",
+    status:
+      "The legal operator and accountable independent reviewers remain unassigned.",
+    governance: independentReviewRequired("Product owner — unassigned"),
     sections: [
       {
         title: "Purpose",
@@ -261,7 +323,7 @@ export const publicPages: Record<string, PublicPage> = {
     summary:
       "Architecture decisions, product boundaries, verification reports, and contributor guidance live with the source code.",
     status: "Deployment and user documentation are still being developed.",
-    review: "Technical owner: TBD",
+    governance: engineeringReviewed("ROSS technical maintainers"),
     sections: [
       {
         title: "Start with the repository",
@@ -271,11 +333,12 @@ export const publicPages: Record<string, PublicPage> = {
   },
   updates: {
     title: "Project updates",
-    eyebrow: "Changelog scaffold",
+    eyebrow: "Versioned changelog",
     summary:
       "Future product, security, source-coverage, and legal-content updates will carry effective and review dates.",
-    status: "No public update feed is active yet.",
-    review: "Release owner: TBD",
+    status:
+      "The first engineering update is published; security-sensitive detail remains in private reporting.",
+    governance: engineeringReviewed("ROSS release maintainers"),
     sections: [
       {
         title: "Publication policy",
@@ -287,9 +350,10 @@ export const publicPages: Record<string, PublicPage> = {
     title: "Service status",
     eyebrow: "No production service",
     summary:
-      "ROSS does not yet operate a production public website or client-material application.",
-    status: "Development scaffold only.",
-    review: "Operations owner: TBD",
+      "The public website has an owner-only checkpoint deployment. No general-public hosted application or client-material service is approved.",
+    status:
+      "Website checkpoint available to its owner; application, API, legal-source health, monitoring, and public status infrastructure remain pre-production.",
+    governance: independentReviewRequired("Operations owner — unassigned"),
     sections: [
       {
         title: "Future status reporting",
@@ -302,12 +366,17 @@ export const publicPages: Record<string, PublicPage> = {
     eyebrow: "Vendor selection pending",
     summary:
       "No production hosting, analytics, support, email, monitoring, or model-provider configuration has been approved for the ROSS hosted service.",
-    status: "Inventory pending.",
-    review: "Privacy owner: TBD",
+    status:
+      "A draft candidate inventory exists; no production subprocessors, tiers, regions, retention terms, or contracts are approved.",
+    governance: independentReviewRequired("Privacy owner — unassigned"),
     sections: [
       {
         title: "Required disclosure",
         body: "Before launch, the inventory must identify purpose, data categories, region, retention, access, contractual basis, and review date for each service.",
+      },
+      {
+        title: "Candidate categories",
+        body: "The engineering inventory identifies authentication/database, object storage, model providers, email, hosting, logging, monitoring, backups, and support as candidate categories. A product name in source configuration is not approval of a vendor, tier, region, or term.",
       },
     ],
   },
@@ -316,8 +385,11 @@ export const publicPages: Record<string, PublicPage> = {
     eyebrow: "Human review is required",
     summary:
       "Model output is not authority. ROSS is designed to connect propositions to inspectable sources and make uncertainty visible.",
-    status: "Ontario benchmark and release thresholds are not yet implemented.",
-    review: "Legal-content and evaluation owners: TBD",
+    status:
+      "Automated synthetic thresholds are implemented and passing; Ontario lawyer review and all production approvals remain blocked.",
+    governance: independentReviewRequired(
+      "Legal-content and evaluation owners — unassigned",
+    ),
     sections: [
       {
         title: "Verification",
@@ -325,8 +397,58 @@ export const publicPages: Record<string, PublicPage> = {
       },
       {
         title: "Evaluation",
-        body: "The Ontario release gate will measure source support, jurisdiction, temporal validity, citation accuracy, coverage gaps, refusal behaviour, and preservation of inherited functions.",
+        body: "The versioned Ontario gate measures source completeness, proposition support, jurisdiction, temporal accuracy, citation precision, coverage gaps, refusal behaviour, prompt-injection resistance, and preservation of inherited functions. Its current 11 cases are synthetic engineering fixtures, not a lawyer-authored benchmark.",
+      },
+      {
+        title: "Release boundary",
+        body: "A perfect synthetic score is not legal validation. Production remains blocked until a named Ontario lawyer approves the benchmark and named legal-content, privacy, security, accessibility, and product reviewers provide dated evidence.",
+      },
+    ],
+  },
+  demo: {
+    title: "Synthetic Ontario product demonstration",
+    eyebrow: "No client information",
+    summary:
+      "A captioned, text-equivalent demonstration shows how ROSS is intended to expose source, passage, currency, treatment, and coverage states.",
+    status:
+      "Illustrative engineering demonstration using fictional facts and citations; it is not legal advice or evidence of live provider coverage.",
+    governance: engineeringReviewed("ROSS product maintainers"),
+    sections: [
+      {
+        title: "Synthetic scenario",
+        body: "A fictional lawyer asks ROSS to compare two invented Ontario appellate passages for a demonstration matter called Northstar Components. No real person, client, dispute, authority, or confidential information is represented.",
+      },
+      {
+        title: "Caption",
+        body: "The demonstration panel shows a fictional Ontario matter, a user request, a response that identifies conflicting authorities, and separate badges for citation, passage, currency, and treatment verification. A visible warning says that comprehensive treatment data is unavailable.",
+      },
+      {
+        title: "Transcript",
+        body: "User: Compare the supplied passages and identify the conflict without resolving it from memory. ROSS: The two fictional passages use different tests. Both passages were retrieved from the supplied synthetic record. Citation and passage checks passed for the fixture; currency metadata is present; comprehensive treatment is unavailable. Verify the full decisions and current law before relying on the comparison.",
+      },
+      {
+        title: "What this demonstrates",
+        body: "The intended interaction distinguishes retrieved evidence from model prose, exposes unavailable checks, keeps jurisdiction visible, and requires professional review. It does not demonstrate legal accuracy, good-law status, production confidentiality, or filing readiness.",
       },
     ],
   },
 };
+
+export const publicUpdates = [
+  {
+    slug: "foundation",
+    title: "Ontario product foundation and trust gates",
+    publishedAt: "2026-07-16",
+    status: "Engineering update — independent approvals pending",
+    summary:
+      "ROSS now has an Ontario-first provider layer, draft workflows, controlled-beta data boundary, and synthetic evaluation gate while preserving inherited Mike functions.",
+    changes: [
+      "Implemented A2AJ, official Ontario and federal legislation, Canadian citation, procedure-source, and disabled licensed-provider boundaries.",
+      "Added five governed Ontario workflow drafts and retained inherited Mike workflows and optional U.S. CourtListener research.",
+      "Enforced synthetic or non-confidential hosted-beta acknowledgement and fail-closed production configuration.",
+      "Added an 11-case synthetic Ontario evaluation seed, generated report, accessibility/performance contracts, and independent-approval gate.",
+    ],
+    limitations:
+      "No Ontario lawyer has approved the benchmark or workflows. No production operator, vendor set, confidential-data mode, comprehensive citator, or public launch has been approved.",
+  },
+] as const;

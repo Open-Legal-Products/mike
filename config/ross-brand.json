@@ -39,7 +39,7 @@
     "defaultJurisdiction": "CA-ON",
     "productionDataResidencyTarget": "Canada",
     "previewData": "synthetic-only",
-    "coverageStatus": "foundation-only",
+    "coverageStatus": "partial",
     "courtListenerPreserved": true,
     "canliiScrapingAllowed": false,
     "governmentAffiliation": false,

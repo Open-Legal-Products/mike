@@ -20,6 +20,7 @@ import type {
     TabularReview,
     TabularReviewDetailOut,
 } from "@/app/components/shared/types";
+import { dataBoundaryHeaders } from "@/app/lib/dataBoundary";
 
 // Server-side shape before mapping
 interface ServerMessage {
@@ -81,6 +82,7 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
         headers: {
             Accept: "application/json",
             ...authHeaders,
+            ...dataBoundaryHeaders(),
             ...(initHeaders as Record<string, string> | undefined),
         },
     });
@@ -255,6 +257,17 @@ export interface UserLookupResult {
 
 export async function getUserProfile(): Promise<UserProfile> {
     return apiRequest<UserProfile>("/user/profile");
+}
+
+export async function recordDataBoundaryAcknowledgement(payload: {
+    version: string;
+    acknowledgement: "synthetic-or-non-confidential";
+}): Promise<{ ok: true; boundaryVersion: string; acknowledgedAt: string }> {
+    return apiRequest("/user/data-boundary/acknowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
 }
 
 export async function lookupUserByEmail(
@@ -612,7 +625,7 @@ export async function uploadDocumentVersion(
         `${API_BASE}/single-documents/${documentId}/versions`,
         {
             method: "POST",
-            headers: { ...authHeaders },
+            headers: { ...authHeaders, ...dataBoundaryHeaders() },
             body: form,
         },
     );
@@ -634,7 +647,7 @@ export async function replaceDocumentVersionFile(
         `${API_BASE}/single-documents/${documentId}/versions/${versionId}/file`,
         {
             method: "PUT",
-            headers: { ...authHeaders },
+            headers: { ...authHeaders, ...dataBoundaryHeaders() },
             body: form,
         },
     );
@@ -698,7 +711,7 @@ export async function uploadProjectDocument(
         `${API_BASE}/projects/${projectId}/documents`,
         {
             method: "POST",
-            headers: { ...authHeaders },
+            headers: { ...authHeaders, ...dataBoundaryHeaders() },
             body: form,
         },
     );
@@ -714,7 +727,7 @@ export async function uploadStandaloneDocument(
     form.append("file", file);
     const response = await fetch(`${API_BASE}/single-documents`, {
         method: "POST",
-        headers: { ...authHeaders },
+        headers: { ...authHeaders, ...dataBoundaryHeaders() },
         body: form,
     });
     if (!response.ok) throw new Error(await response.text());
@@ -747,6 +760,7 @@ export async function downloadDocumentsZip(
         headers: {
             "Content-Type": "application/json",
             ...authHeaders,
+            ...dataBoundaryHeaders(),
         },
         body: JSON.stringify({ document_ids: documentIds }),
     });
@@ -902,6 +916,8 @@ export async function streamChat(payload: {
             "Content-Type": "application/json",
             Accept: "text/event-stream",
             ...authHeaders,
+            ...dataBoundaryHeaders(),
+            ...dataBoundaryHeaders(),
         },
         body: JSON.stringify(body),
         signal,
@@ -1061,7 +1077,7 @@ export async function streamTabularGeneration(
     const authHeaders = await getAuthHeader();
     return fetch(`${API_BASE}/tabular-review/${reviewId}/generate`, {
         method: "POST",
-        headers: { ...authHeaders },
+        headers: { ...authHeaders, ...dataBoundaryHeaders() },
     });
 }
 
@@ -1075,7 +1091,11 @@ export async function streamTabularChat(
     const authHeaders = await getAuthHeader();
     return fetch(`${API_BASE}/tabular-review/${reviewId}/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders },
+        headers: {
+            "Content-Type": "application/json",
+            ...authHeaders,
+            ...dataBoundaryHeaders(),
+        },
         body: JSON.stringify({
             messages,
             chat_id: chat_id ?? undefined,

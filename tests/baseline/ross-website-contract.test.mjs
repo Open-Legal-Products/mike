@@ -12,7 +12,10 @@ test("the public website is a separate build target", () => {
   const rootPackage = json("package.json");
   const websitePackage = json("website/package.json");
   assert.equal(existsSync(resolve(root, "website/.openai/hosting.json")), true);
-  assert.equal(existsSync(resolve(root, "website/build/sites-vite-plugin.ts")), true);
+  assert.equal(
+    existsSync(resolve(root, "website/build/sites-vite-plugin.ts")),
+    true,
+  );
   assert.equal(websitePackage.name, "ross-ontario");
   assert.match(rootPackage.scripts["install:all"], /--prefix website/);
   assert.match(rootPackage.scripts.build, /build:website/);
@@ -49,10 +52,13 @@ test("website shell helpers survive browser uploads without executable modes", (
 test("the public website derives identity and policy from central configuration", () => {
   const central = json("config/ross-brand.json");
   const siteConfig = read("website/app/site-config.ts");
-  assert.match(siteConfig, /\.\.\/\.\.\/config\/ross-brand\.json/);
+  const generatedBrand = read("website/app/generated-brand-config.ts");
+  assert.match(siteConfig, /\.\/generated-brand-config/);
+  assert.match(generatedBrand, /"name": "ROSS"/);
+  assert.match(generatedBrand, /"coverageStatus": "partial"/);
   assert.equal(central.product.name, "ROSS");
   assert.equal(central.product.legalOperator, "TBD");
-  assert.equal(central.policy.coverageStatus, "foundation-only");
+  assert.equal(central.policy.coverageStatus, "partial");
   assert.deepEqual(central.socialLinks, []);
   assert.match(central.urls.security, /security\/advisories\/new$/);
 });
@@ -60,9 +66,24 @@ test("the public website derives identity and policy from central configuration"
 test("the website scaffold exposes every governed public route", () => {
   const content = read("website/app/page-content.ts");
   const requiredKeys = [
-    "ontario", "features", "workflows", "coverage", "open-source", "security",
-    "privacy", "terms", "acceptable-use", "accessibility", "contact", "about",
-    "docs", "updates", "status", "subprocessors", "responsible-ai",
+    "ontario",
+    "features",
+    "workflows",
+    "coverage",
+    "open-source",
+    "security",
+    "privacy",
+    "terms",
+    "acceptable-use",
+    "accessibility",
+    "contact",
+    "about",
+    "docs",
+    "updates",
+    "status",
+    "subprocessors",
+    "responsible-ai",
+    "demo",
   ];
   for (const key of requiredKeys) {
     assert.match(content, new RegExp(`[\"']?${key}[\"']?\\s*:`), key);
@@ -80,8 +101,8 @@ test("the public site communicates beta limits and does not use application data
     read("website/app/site-shell.tsx"),
   ].join("\n");
   assert.match(publicSurface, /synthetic or non-confidential/i);
-  assert.match(publicSurface, /not live yet/i);
-  assert.match(publicSurface, /Operator: TBD/);
+  assert.match(publicSurface, /live availability[\s\S]*not verified/i);
+  assert.match(publicSurface, /Operator: \{siteConfig\.operator\}/);
   assert.doesNotMatch(publicSurface, /supabase/i);
 
   const robots = read("website/app/robots.ts");
