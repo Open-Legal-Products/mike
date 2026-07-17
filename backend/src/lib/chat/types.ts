@@ -57,6 +57,32 @@ export type ChatMessage = {
   workflow?: { id: string; title: string };
 };
 
+/**
+ * Result of server-side verification of a document quote against the extracted
+ * source text.
+ * - `verified`   — the quote was found and is character-identical to the source.
+ * - `repaired`   — the quote was found under whitespace/case/punctuation-tolerant
+ *                  matching but drifted from the source; `source_excerpt` holds the
+ *                  exact source text and has been swapped into the displayed quote.
+ * - `unverified` — no tolerant match; the model's quote is preserved but untrusted.
+ *
+ * A MISSING status (undefined) must be treated as untrusted by the UI — some
+ * paths (tabular, abort/error persistence) do not run verification.
+ */
+export type CitationVerificationStatus = "verified" | "unverified" | "repaired";
+
+/**
+ * Per-quote verification result. `start_char`/`end_char` index into the
+ * EXTRACTED source text (not the raw file bytes) and are only present for
+ * single-segment quotes that matched.
+ */
+export type QuoteVerification = {
+  status: CitationVerificationStatus;
+  start_char?: number;
+  end_char?: number;
+  source_excerpt?: string;
+};
+
 // ---------------------------------------------------------------------------
 // Doc resolution helpers (used by citations + documentOps)
 // ---------------------------------------------------------------------------
