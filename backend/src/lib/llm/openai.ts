@@ -6,9 +6,9 @@ import type {
   StreamChatParams,
   StreamChatResult,
 } from "./types";
+import { openAIResponsesUrl } from "./baseUrl";
 import { createRawLlmStreamRecorder, logRawLlmStream } from "./rawStreamLog";
 
-const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const MAX_OUTPUT_TOKENS = 16384;
 const COURTLISTENER_CITATION_REMINDER_TOOL_NAMES = new Set([
   "courtlistener_find_in_case",
@@ -173,7 +173,7 @@ async function createResponse(params: {
   apiKey: string;
   signal?: AbortSignal;
 }): Promise<Response> {
-  const response = await fetch(OPENAI_RESPONSES_URL, {
+  const response = await fetch(openAIResponsesUrl(), {
     method: "POST",
     headers: {
       Authorization: `Bearer ${params.apiKey}`,

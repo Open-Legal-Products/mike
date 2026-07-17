@@ -23,10 +23,12 @@ export * from "./models";
  * Register a third-party LLM provider so it is available via
  * streamChatWithTools() and completeText().
  *
- * OpenAI-compatible providers can be added the same way — call
- * registerProvider()/registerApiKeyProvider(), no core edits.
+ * Local models via Ollama are built in but opt-in: set ENABLE_OLLAMA=true (see
+ * setupOllamaFromEnv below). Other OpenAI-compatible providers can be added the
+ * same way — call registerProvider()/registerApiKeyProvider(), no core edits.
  */
 export { registerProvider } from "./registry";
+import { setupOllamaFromEnv } from "./providers/ollama";
 
 // ---------------------------------------------------------------------------
 // Register built-in providers
@@ -35,8 +37,16 @@ export { registerProvider } from "./registry";
 // test files mock e.g. "../claude" before this module loads, so the mocked
 // function is captured here and ends up in the registry.
 
-/** Register the built-in LLM providers (claude/gemini/openai). */
-export function registerBuiltinProviders(): void {
+/**
+ * Register the built-in LLM providers (claude/gemini/openai), plus local
+ * (Ollama) models when opted in via ENABLE_OLLAMA.
+ *
+ * Reads process.env by default and is exported so it can be exercised against
+ * a controlled env.
+ */
+export function registerBuiltinProviders(
+    env: NodeJS.ProcessEnv = process.env,
+): void {
     registerProvider({
         id: "claude",
         matchesModel: (m) => m.startsWith("claude"),
@@ -58,6 +68,11 @@ export function registerBuiltinProviders(): void {
         complete: completeOpenAIText,
         models: { main: OPENAI_MAIN_MODELS, mid: OPENAI_MID_MODELS, low: OPENAI_LOW_MODELS },
     });
+
+    // Local models — opt-in via ENABLE_OLLAMA.
+    if (setupOllamaFromEnv(env)) {
+        console.log("[llm] Ollama provider enabled (ENABLE_OLLAMA=true)");
+    }
 }
 
 registerBuiltinProviders();
