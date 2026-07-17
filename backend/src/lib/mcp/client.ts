@@ -218,15 +218,32 @@ function truthyAnnotation(
 export function toolRequiresConfirmation(
     annotations: Record<string, unknown> | null | undefined,
 ) {
-    // Gate only genuinely destructive tools behind human confirmation. We do
-    // NOT gate on openWorldHint (almost every useful connector — Gmail, Slack,
-    // GitHub — is "open world", so gating on it disables everything), and we
-    // require readOnlyHint to be *explicitly* false rather than merely absent
-    // (a missing hint must not be treated the same as readOnlyHint:false).
-    return (
-        truthyAnnotation(annotations, "destructiveHint") ||
-        annotations?.readOnlyHint === false
-    );
+    // Fail-safe confirmation policy for a legal product.
+    //
+    // Tool annotations (readOnlyHint / destructiveHint / openWorldHint) are
+    // ADVISORY and entirely controlled by the external MCP server — they are a
+    // hint, not a guarantee. For legal data the cost of silently running an
+    // unvetted side-effecting tool (exfiltrating a privileged document,
+    // mutating a matter, hitting an unknown external system) far outweighs the
+    // friction of one extra confirmation click. So the default flips toward
+    // safety: a tool requires confirmation UNLESS it is POSITIVELY known-safe.
+    //
+    // Known-safe means all three of:
+    //   - readOnlyHint === true      (server explicitly claims it only reads)
+    //   - NOT destructiveHint        (not flagged as destructive)
+    //   - NOT openWorldHint          (does not reach an open/unbounded world —
+    //                                 e.g. arbitrary external network/systems)
+    //
+    // Anything absent or ambiguous (no hints at all, readOnlyHint merely
+    // missing rather than true, an open-world reader, etc.) is treated as
+    // untrusted and gated. This is the inverse of the previous policy, which
+    // trusted a tool unless it explicitly declared itself destructive/mutating;
+    // that let a poorly- or maliciously-annotated tool run unconfirmed.
+    const knownSafe =
+        annotations?.readOnlyHint === true &&
+        !truthyAnnotation(annotations, "destructiveHint") &&
+        !truthyAnnotation(annotations, "openWorldHint");
+    return !knownSafe;
 }
 
 function toToolSummary(row: ToolCacheRow): McpToolSummary {

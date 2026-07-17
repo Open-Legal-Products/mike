@@ -112,10 +112,25 @@ app.use(
   }),
 );
 
+const allowedOrigins = new Set<string>([
+  process.env.FRONTEND_URL ?? "http://localhost:3000",
+]);
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL ?? "http://localhost:3000",
+    origin: (origin, callback) => {
+      // Allow server-to-server requests (no Origin header) and any
+      // explicitly listed origin. A disallowed origin resolves to `false`
+      // (cors omits the Access-Control-Allow-Origin header and the browser
+      // blocks the response) rather than calling back with an Error —
+      // throwing here would propagate to Express's default handler and turn
+      // every disallowed cross-origin request, including preflight, into an
+      // HTTP 500.
+      callback(null, !origin || allowedOrigins.has(origin));
+    },
     credentials: true,
+    allowedHeaders: ["Authorization", "Content-Type"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   }),
 );
 
