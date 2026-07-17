@@ -5,7 +5,6 @@ import type {
   StreamChatResult,
   NormalizedToolCall,
   NormalizedToolResult,
-  Provider,
 } from "./types";
 import { toClaudeTools } from "./tools";
 import { createRawLlmStreamRecorder, logRawLlmStream } from "./rawStreamLog";
@@ -23,7 +22,11 @@ type NativeMessage = {
 const MAX_TOKENS = 16384;
 
 export type AnthropicMessagesAdapterConfig = {
-  provider: Extract<Provider, "claude" | "opencode-go">;
+  // The two providers that speak Anthropic's Messages wire format. Spelled as
+  // a literal union rather than Extract<Provider, ...>: Provider is now an
+  // open string type (see types.ts), and Extract over `string` collapses to
+  // `never`. This union is a property of THIS adapter, not of the registry.
+  provider: "claude" | "opencode-go";
   label: string;
   model: string;
   apiKey: string;

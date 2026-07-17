@@ -1,7 +1,7 @@
-import type { Provider } from "./types";
+import { findProviderForModel, allRegisteredModels } from "./registry";
 
 // ---------------------------------------------------------------------------
-// Canonical model IDs
+// Canonical model IDs (built-in providers)
 // ---------------------------------------------------------------------------
 // Main-chat tier (top-end) — user picks one of these per message.
 export const CLAUDE_MAIN_MODELS = [
@@ -86,6 +86,18 @@ export const OPENCODE_GO_MESSAGES_MODEL_IDS: ReadonlySet<string> = new Set([
     "qwen3.6-plus",
 ]);
 
+// Derived (not hand-maintained) fallback set for resolveModel().
+// Built by spreading the *_MODELS arrays above, so adding a model to any
+// of those arrays automatically includes it here — no second edit site.
+//
+// Why keep this alongside allRegisteredModels()?  Two reasons:
+//   1. Test isolation: models.test.ts imports models.ts directly without
+//      importing index.ts, so no providers are registered and the registry
+//      is empty.  ALL_MODELS provides the fallback in that case.
+//   2. External providers registered via registerProvider() appear in
+//      allRegisteredModels() but NOT here — that's intentional.
+//      resolveModel() checks both, so external models are always accepted
+//      once their provider is registered.
 const ALL_MODELS = new Set<string>([
     ...CLAUDE_MAIN_MODELS,
     ...GEMINI_MAIN_MODELS,
@@ -102,7 +114,19 @@ const ALL_MODELS = new Set<string>([
 // Provider inference
 // ---------------------------------------------------------------------------
 
-export function providerForModel(model: string): Provider {
+/**
+ * Maps a model ID to its provider string.
+ *
+ * Registered providers are checked first so that externally registered
+ * adapters (Ollama, Bedrock, Azure) override the built-in prefix matching
+ * below — no edits to this file required to support a new provider.
+ *
+ * The prefix fallback keeps this function usable in test contexts that don't
+ * import index.ts and therefore don't trigger provider registration.
+ */
+export function providerForModel(model: string): string {
+    const registered = findProviderForModel(model);
+    if (registered) return registered.id;
     if (model.startsWith("ollama")) return "ollama";
     if (model.startsWith("openrouter/")) return "openrouter";
     if (model.startsWith("vercel/")) return "vercel";
@@ -121,6 +145,14 @@ export const LEGACY_MODEL_IDS: Record<string, string> = {
     "gpt-5.4-lite": "gpt-5.4-mini",
 };
 
+/**
+ * Returns id if it is a recognised model, otherwise returns fallback.
+ *
+ * Legacy ids are canonicalised first, then checked against the live registry
+ * (which includes externally registered models) and, as a fallback for test
+ * contexts where no providers have been registered, the static ALL_MODELS set
+ * plus the built-in dynamic-id shapes.
+ */
 export function resolveModel(
     id: string | null | undefined,
     fallback: string,
@@ -128,7 +160,8 @@ export function resolveModel(
     const canonical = id ? (LEGACY_MODEL_IDS[id] ?? id) : id;
     if (
         canonical &&
-        (ALL_MODELS.has(canonical) ||
+        (allRegisteredModels().has(canonical) ||
+            ALL_MODELS.has(canonical) ||
             canonical.startsWith("ollama/") ||
             /^(?:openrouter|vercel)\/[^\s/]+\/[^\s]+$/.test(canonical) ||
             // OpenCode Go's catalog ids are single-segment ("glm-5"), not the
