@@ -11,6 +11,7 @@ import {
     AssistantStreamError,
     buildCancelledAssistantMessage,
     extractCitations,
+    generateSpotlightNonce,
     isAbortError,
     runLLMStream,
     stripTransientAssistantEvents,
@@ -547,12 +548,17 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         api_keys: apiKeys,
         legal_research_us: legalResearchUs,
     } = await getUserModelSettings(userId, db);
+    // Per-request spotlighting nonce: the same nonce fences the untrusted
+    // content in the system prompt (filenames, workflow titles) and the
+    // document bodies returned by tools during the stream.
+    const nonce = generateSpotlightNonce();
     const apiMessages = buildMessages(
         enrichedMessages,
         docAvailability,
         undefined,
         undefined,
         legalResearchUs,
+        nonce,
     );
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
@@ -592,6 +598,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             apiKeys,
             signal: streamAbort.signal,
             projectId: resolvedProjectId,
+            nonce,
         });
 
         devLog("[chat/stream] LLM stream finished", {
