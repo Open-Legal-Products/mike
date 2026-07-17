@@ -1,0 +1,76 @@
+{
+  "status": "no hosted production subprocessors approved",
+  "reviewedAt": "2026-07-16",
+  "entries": [
+    {
+      "category": "authentication/database",
+      "candidate": "Supabase-compatible deployment",
+      "productTier": null,
+      "region": null,
+      "retention": null,
+      "trainingUse": null,
+      "contract": null,
+      "approved": false
+    },
+    {
+      "category": "object storage",
+      "candidate": "S3/R2-compatible deployment",
+      "productTier": null,
+      "region": null,
+      "retention": null,
+      "trainingUse": null,
+      "contract": null,
+      "approved": false
+    },
+    {
+      "category": "model provider",
+      "candidate": "Anthropic configuration",
+      "productTier": null,
+      "region": null,
+      "retention": null,
+      "trainingUse": null,
+      "contract": null,
+      "approved": false
+    },
+    {
+      "category": "model provider",
+      "candidate": "Google configuration",
+      "productTier": null,
+      "region": null,
+      "retention": null,
+      "trainingUse": null,
+      "contract": null,
+      "approved": false
+    },
+    {
+      "category": "model provider",
+      "candidate": "OpenAI configuration",
+      "productTier": null,
+      "region": null,
+      "retention": null,
+      "trainingUse": null,
+      "contract": null,
+      "approved": false
+    },
+    {
+      "category": "email",
+      "candidate": "Resend-compatible deployment",
+      "productTier": null,
+      "region": null,
+      "retention": null,
+      "trainingUse": null,
+      "contract": null,
+      "approved": false
+    },
+    {
+      "category": "hosting/logging/monitoring/backups/support",
+      "candidate": null,
+      "productTier": null,
+      "region": null,
+      "retention": null,
+      "trainingUse": null,
+      "contract": null,
+      "approved": false
+    }
+  ]
+}

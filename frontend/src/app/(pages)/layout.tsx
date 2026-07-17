@@ -8,6 +8,7 @@ import { ChatHistoryProvider } from "@/app/contexts/ChatHistoryContext";
 import { SidebarContext } from "@/app/contexts/SidebarContext";
 import { PageChromeContext } from "@/app/contexts/PageChromeContext";
 import { AppSidebar } from "@/app/components/shared/AppSidebar";
+import { DataBoundaryGate } from "@/app/components/shared/DataBoundaryGate";
 
 export default function MikeLayout({
     children,
@@ -85,6 +86,7 @@ export default function MikeLayout({
     if (!isAuthenticated) return null;
 
     return (
+        <DataBoundaryGate>
         <ChatHistoryProvider>
             <PageChromeContext.Provider value={{ mobileActionsContainer }}>
                 <SidebarContext.Provider
@@ -133,5 +135,6 @@ export default function MikeLayout({
                 </SidebarContext.Provider>
             </PageChromeContext.Provider>
         </ChatHistoryProvider>
+        </DataBoundaryGate>
     );
 }

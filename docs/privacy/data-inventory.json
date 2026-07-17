@@ -1,0 +1,88 @@
+{
+  "status": "controlled-beta engineering inventory; independent review required",
+  "reviewedAt": "2026-07-16",
+  "prohibitedData": [
+    "real client material",
+    "privileged or confidential information",
+    "regulated or proprietary information",
+    "production credentials in user content"
+  ],
+  "systems": [
+    {
+      "system": "browser",
+      "data": ["session", "display preferences", "beta acknowledgement"],
+      "purpose": "authenticated interaction",
+      "location": "user device",
+      "productionApproval": false
+    },
+    {
+      "system": "authentication and database",
+      "data": [
+        "account identifiers",
+        "profile",
+        "projects",
+        "chats",
+        "workflow metadata",
+        "audit metadata"
+      ],
+      "purpose": "identity and application records",
+      "location": "vendor and region TBD",
+      "productionApproval": false
+    },
+    {
+      "system": "object storage",
+      "data": ["synthetic or non-confidential files and versions"],
+      "purpose": "document workspace",
+      "location": "vendor and region TBD",
+      "productionApproval": false
+    },
+    {
+      "system": "API and converter",
+      "data": ["request metadata", "in-memory file and document content"],
+      "purpose": "authorization, conversion, generation",
+      "location": "vendor and region TBD",
+      "productionApproval": false
+    },
+    {
+      "system": "model provider",
+      "data": [
+        "selected prompt context",
+        "selected synthetic or non-confidential document content"
+      ],
+      "purpose": "generation and extraction",
+      "location": "configuration-specific and TBD",
+      "productionApproval": false
+    },
+    {
+      "system": "legal-source providers",
+      "data": ["legal queries", "citations", "public source identifiers"],
+      "purpose": "research and verification",
+      "location": "provider-specific",
+      "productionApproval": false
+    },
+    {
+      "system": "MCP connectors",
+      "data": ["explicit tool inputs and returned content"],
+      "purpose": "user-configured integration",
+      "location": "connector-specific",
+      "productionApproval": false
+    },
+    {
+      "system": "email and support",
+      "data": ["email address", "transaction metadata", "support content"],
+      "purpose": "account and support communication",
+      "location": "vendor and region TBD",
+      "productionApproval": false
+    },
+    {
+      "system": "logs and backups",
+      "data": [
+        "allowlisted operational/security metadata",
+        "encrypted backup copies TBD"
+      ],
+      "purpose": "security, reliability, recovery",
+      "location": "vendor and region TBD",
+      "productionApproval": false
+    }
+  ]
+}

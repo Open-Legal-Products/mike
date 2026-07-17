@@ -34,7 +34,10 @@ test("landing page renders the accurate beta and source boundary", async () => {
   assert.match(html, developmentPreviewMeta);
   assert.match(html, /Ontario-first legal work/);
   assert.match(html, /synthetic or non-confidential materials only/i);
-  assert.match(html, /Ontario source integrations are not live yet/i);
+  assert.match(
+    html,
+    /live availability and comprehensive Ontario coverage are not verified/i,
+  );
   assert.match(html, /href="\/coverage"/);
   assert.match(
     html,
@@ -63,14 +66,17 @@ test("required public routes render without authentication", async () => {
     "/status",
     "/subprocessors",
     "/responsible-ai",
+    "/demo",
   ];
 
   for (const route of routes) {
     const { response, html } = await render(route);
+    const normalized = html.replaceAll("<!-- -->", "");
     assert.equal(response.status, 200, route);
     assert.match(html, /Skip to main content/, route);
-    assert.match(html, /Operator: TBD/, route);
+    assert.match(normalized, /Operator: TBD/, route);
     assert.match(html, /Modified from/, route);
+    assert.match(normalized, /Next review<\/dt><dd>2026-08-16/, route);
   }
 });
 
@@ -89,6 +95,51 @@ test("Ontario workflow catalogue exposes governed drafts and app deep links", as
     entry.html,
     /Citation and passage verification remain separate/i,
   );
+});
+
+test("coverage is generated from implemented provider boundaries without claiming live completeness", async () => {
+  const { response, html } = await render("/coverage");
+  assert.equal(response.status, 200);
+  assert.match(html, /Sanitized public legal-source registry/);
+  assert.match(html, /A2AJ Canadian decisions/);
+  assert.match(html, /Ontario e-Laws/);
+  assert.match(html, /Justice Laws Canada/);
+  assert.match(html, /CourtListener/);
+  assert.match(html, /Disabled; no licence or transport approved/);
+  assert.match(html, /does not establish live provider health/i);
+  assert.doesNotMatch(html, /CANLII_API_KEY|COURTLISTENER_API_TOKEN/);
+});
+
+test("the product demonstration is fictional, captioned, and text-equivalent", async () => {
+  const { response, html } = await render("/demo");
+  assert.equal(response.status, 200);
+  assert.match(html, /Northstar Components — synthetic matter/);
+  assert.match(html, /Fictional demonstration only/);
+  assert.match(html, /No real authority, party, matter, or client information/);
+  assert.match(html, /Transcript/);
+  assert.match(html, /Treatment unavailable/);
+});
+
+test("legal notices are complete drafts with explicit non-effective governance", async () => {
+  for (const route of ["/privacy", "/terms", "/acceptable-use"]) {
+    const { response, html } = await render(route);
+    assert.equal(response.status, 200, route);
+    assert.match(html, /independent-review-required/, route);
+    assert.match(html, /Not effective/, route);
+    assert.match(html, /Reviewer[\s\S]*Not assigned/, route);
+    assert.doesNotMatch(html, /title>[^<]*placeholder/i, route);
+  }
+});
+
+test("the first dated update and governed metadata render", async () => {
+  const catalogue = await render("/updates");
+  assert.match(catalogue.html, /Ontario product foundation and trust gates/);
+  const update = await render("/updates/foundation");
+  const normalized = update.html.replaceAll("<!-- -->", "");
+  assert.equal(update.response.status, 200);
+  assert.match(normalized, /Published 2026-07-16/);
+  assert.match(update.html, /What remains blocked/);
+  assert.match(update.html, /No Ontario lawyer has approved/);
 });
 
 test("unknown routes return the custom not-found page", async () => {

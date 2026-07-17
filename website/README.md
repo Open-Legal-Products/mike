@@ -6,23 +6,26 @@ isolated from the authenticated application in `../frontend` and the API in
 
 ## Current mode
 
-The site is a development scaffold for an invitation-only beta using synthetic
-or non-confidential materials only. It does not authenticate visitors, load
-application or client data, collect form submissions, or run analytics.
+The site is a governed public-content build for an invitation-only beta using
+synthetic or non-confidential materials only. It does not authenticate visitors,
+load application or client data, collect form submissions, or run product
+analytics.
 
-The production operator, domains, hosting vendors, legal notices, source
-coverage, contact channels, and security claims remain explicit blockers.
+An owner-only checkpoint is deployed through Sites. The production operator,
+public access decision, final domains, hosting/vendor disclosures, effective
+legal notices, contact channels, and independent reviews remain explicit
+blockers.
 
 ## Commands
 
 From this directory:
 
-~~~bash
+```bash
 npm ci
 npm run dev
 npm run lint
 npm test
-~~~
+```
 
 `npm test` builds and validates the deployable artifact before testing the
 landing page, required public routes, and custom not-found response.
@@ -30,12 +33,15 @@ landing page, required public routes, and custom not-found response.
 ## Structure
 
 - `app/page.tsx` — original ROSS landing page
-- `app/[...slug]/page.tsx` — governed public placeholder routes
+- `app/[...slug]/page.tsx` — governed public pages, generated coverage, demo,
+  workflows, and updates
 - `app/page-content.ts` — version-controlled copy and review metadata
+- `app/generated-public-coverage.ts` — generated sanitized provider coverage
 - `app/site-config.ts` — typed public-site configuration
 - `app/site-shell.tsx` — shared header and footer
 - `app/globals.css` — responsive design and accessibility foundations
-- `tests/rendered-html.test.mjs` — built-artifact route tests
+- `tests/*.test.mjs` — built-artifact route, content, link, semantic
+  accessibility, and performance-budget tests
 - `.openai/hosting.json` — isolated public-site hosting identity
 
 ## Boundaries

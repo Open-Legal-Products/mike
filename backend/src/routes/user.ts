@@ -41,6 +41,8 @@ import {
     userExportFilename,
 } from "../lib/userDataExport";
 import { findProfileUserByEmail } from "../lib/userLookup";
+import { loadRuntimeConfig } from "../config/runtime";
+import { recordSecurityAuditEvent } from "../lib/securityAudit";
 
 export const userRouter = Router();
 
@@ -689,6 +691,65 @@ userRouter.post("/profile", requireAuth, async (_req, res) => {
     if (error) return void res.status(500).json({ detail: error.message });
     res.json({ ok: true });
 });
+
+// POST /user/data-boundary/acknowledge
+userRouter.post(
+    "/data-boundary/acknowledge",
+    requireAuth,
+    async (req, res) => {
+        const runtime = loadRuntimeConfig();
+        const version =
+            typeof req.body?.version === "string" ? req.body.version : "";
+        const acknowledgement =
+            typeof req.body?.acknowledgement === "string"
+                ? req.body.acknowledgement
+                : "";
+        if (
+            version !== runtime.dataBoundaryVersion ||
+            acknowledgement !== "synthetic-or-non-confidential"
+        )
+            return void res.status(400).json({
+                detail: "The current controlled-beta boundary must be acknowledged exactly.",
+                boundaryVersion: runtime.dataBoundaryVersion,
+            });
+
+        const userId = String(res.locals.userId ?? "");
+        const db = createServerSupabase();
+        const ensureError = await ensureProfileRow(db, userId);
+        if (ensureError)
+            return void res.status(500).json({ detail: ensureError.message });
+        const acknowledgedAt = new Date().toISOString();
+        const { error } = await db
+            .from("user_profiles")
+            .update({
+                beta_data_boundary_version: version,
+                beta_data_boundary_acknowledged_at: acknowledgedAt,
+                updated_at: acknowledgedAt,
+            })
+            .eq("user_id", userId);
+        if (error)
+            return void res.status(500).json({ detail: error.message });
+        try {
+            await recordSecurityAuditEvent({
+                db,
+                actorUserId: userId,
+                eventType: "beta.data_boundary_acknowledged",
+                resourceType: "policy",
+                resourceId: version,
+                metadata: {
+                    boundaryVersion: version,
+                    hostedMode: runtime.hostedMode,
+                    result: "accepted",
+                },
+            });
+        } catch {
+            return void res.status(500).json({
+                detail: "The acknowledgement could not be audited. Try again.",
+            });
+        }
+        res.json({ ok: true, boundaryVersion: version, acknowledgedAt });
+    },
+);
 
 // GET /user/lookup?email=person@example.com
 userRouter.get("/lookup", requireAuth, async (req, res) => {

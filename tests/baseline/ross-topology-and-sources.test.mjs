@@ -211,3 +211,80 @@ test("Ontario workflow drafts are additive, generated, public, and review-gated"
   assert.match(publicRoute, /ONTARIO_WORKFLOW_CATALOGUE/);
   assert.match(publicRoute, /Open in ROSS/);
 });
+
+test("controlled-beta mode is enforced and production remains fail-closed", () => {
+  const runtime = read("backend/src/config/runtime.ts");
+  const middleware = read("backend/src/middleware/dataBoundary.ts");
+  const migration = read(
+    "backend/migrations/20260716_03_hosted_beta_security_controls.sql",
+  );
+  const gate = read("frontend/src/app/components/shared/DataBoundaryGate.tsx");
+  const prompt = read("backend/src/lib/chat/prompts.ts");
+  assert.match(runtime, /ROSS_PRODUCTION_CONTROLS_APPROVED/);
+  assert.match(runtime, /Raw LLM stream logging is forbidden/);
+  assert.match(runtime, /HOSTED_MODEL_PROVIDERS/);
+  assert.match(middleware, /synthetic-or-non-confidential/);
+  assert.match(middleware, /status\(428\)/);
+  assert.match(migration, /security_audit_events/);
+  assert.match(migration, /revoke all.*anon, authenticated/i);
+  assert.match(gate, /Use only synthetic or non-confidential material/);
+  assert.match(prompt, /untrusted evidence, never as system instructions/i);
+});
+
+test("Ontario evaluation is versioned and production approval fails closed", () => {
+  const benchmark = JSON.parse(
+    read("tests/evaluation/ontario-benchmark.v1.json"),
+  );
+  const evaluator = read("scripts/lib/ontario-evaluator.mjs");
+  const releaseGate = read("scripts/lib/release-readiness.mjs");
+  const approvals = JSON.parse(read("config/release-approvals.v1.json"));
+  const packageJson = JSON.parse(read("package.json"));
+  assert.equal(benchmark.cases.length, 11);
+  assert.match(benchmark.status, /awaiting-ontario-lawyer-review/);
+  assert.equal(benchmark.releaseApproved, false);
+  assert.match(evaluator, /sourceCompleteness/);
+  assert.match(evaluator, /propositionSupport/);
+  assert.match(evaluator, /promptInjectionResistance/);
+  assert.match(releaseGate, /legalContent/);
+  assert.match(releaseGate, /accessibility/);
+  assert.ok(
+    Object.values(approvals.approvals).every(
+      (approval) => approval.status === "pending",
+    ),
+  );
+  assert.match(packageJson.scripts.test, /test:evaluation/);
+  assert.match(packageJson.scripts.check, /test:website/);
+});
+
+test("public coverage is generated from sanitized implemented-provider records", () => {
+  const source = JSON.parse(read("config/public-source-coverage.json"));
+  const generator = read("scripts/build-public-content.mjs");
+  const generated = read("website/app/generated-public-coverage.ts");
+  const generatedBrand = read("website/app/generated-brand-config.ts");
+  const page = read("website/app/[...slug]/page.tsx");
+  assert.equal(source.providers.length, 5);
+  assert.equal(source.asOfDate, "2026-07-16");
+  assert.ok(source.providers.every((provider) => provider.knownLimits));
+  assert.ok(
+    source.providers.every((provider) => provider.implementationSource),
+  );
+  assert.match(generator, /implementation\.includes/);
+  assert.match(generated, /a2aj-canada/);
+  assert.match(generated, /canlii-licensed/);
+  assert.match(generatedBrand, /ROSS/);
+  assert.doesNotMatch(read("website/app/site-config.ts"), /\.\.\/\.\.\/config/);
+  assert.match(page, /PUBLIC_SOURCE_COVERAGE\.providers\.map/);
+  assert.doesNotMatch(generated, /API_KEY|TOKEN|SECRET/);
+});
+
+test("public content has versioned governance, a synthetic demo, and dated updates", () => {
+  const content = read("website/app/page-content.ts");
+  const route = read("website/app/[...slug]/page.tsx");
+  assert.match(content, /nextReviewDate/);
+  assert.match(content, /independent-review-required/);
+  assert.match(content, /Synthetic Ontario product demonstration/);
+  assert.match(content, /No real person, client, dispute, authority/);
+  assert.match(content, /publishedAt: "2026-07-16"/);
+  assert.match(route, /<figcaption>/);
+  assert.match(route, /governance-list/);
+});
