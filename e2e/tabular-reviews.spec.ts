@@ -133,7 +133,12 @@ async function createReview(
         const respP = page
             .waitForResponse(isCreateReviewPost, { timeout: 30_000 })
             .catch(() => null);
-        await page.getByRole("button", { name: "Create", exact: true }).click();
+        // The modal footer's submit button and the page's own "Create" CTA both
+        // read "Create"; scope to the modal's submit (button[name="modalAction"]
+        // value="create-review") to avoid a strict-mode ambiguity.
+        await page
+            .locator('button[name="modalAction"][value="create-review"]')
+            .click();
         const resp = await respP;
         if (resp && resp.ok()) {
             review = (await resp.json()) as { id: string };
