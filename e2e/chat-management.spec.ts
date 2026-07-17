@@ -9,6 +9,7 @@
  * Test user: e2e@mike.local / E2eTestPass1!
  */
 import { test, expect, type Page } from "@playwright/test";
+import { hasLlmKey, LLM_SKIP_REASON } from "./llm";
 
 /* ─── Helpers ────────────────────────────────────────────────────────────────── */
 
@@ -112,6 +113,7 @@ test("cold-load: direct URL to a chat triggers the getChat history load", async 
 /* ─── Test 2: rename a chat from sidebar ────────────────────────────────────── */
 
 test("rename chat: sidebar rename interaction updates the title", async ({ page }) => {
+    test.skip(!hasLlmKey, LLM_SKIP_REASON);
     // REGRESSION: fails if the renameChat API call or the optimistic title update in
     // ChatHistoryContext.renameChatFn / SidebarChatItem.handleRenameSave is removed.
 
@@ -203,6 +205,7 @@ test("rename chat: sidebar rename interaction updates the title", async ({ page 
 /* ─── Test 3: delete a chat from sidebar ────────────────────────────────────── */
 
 test("delete chat: sidebar delete action removes the chat from history", async ({ page }) => {
+    test.skip(!hasLlmKey, LLM_SKIP_REASON);
     // REGRESSION: fails if the deleteChat API call or the optimistic list removal in
     // ChatHistoryContext.deleteChatFn (filter by chatId) is removed.
 
@@ -315,6 +318,7 @@ test("delete chat: sidebar delete action removes the chat from history", async (
 /* ─── Test 4: project assistant — create new chat ───────────────────────────── */
 
 test("project assistant: create a new chat and submit a question", async ({ page }) => {
+    test.skip(!hasLlmKey, LLM_SKIP_REASON);
     // REGRESSION: fails if the project chat creation route is broken — specifically if
     // handleNewChat() in ProjectPage.tsx (lines 515-519) fails to call saveChat() or
     // router.push to /projects/[id]/assistant/chat/[chatId]. (Verified by temporarily

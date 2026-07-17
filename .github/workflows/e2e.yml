@@ -38,6 +38,11 @@ jobs:
       # Defaults match e2e/auth.setup.ts; overriding the password here would break
       # the valid-login specs, so only the base URL is pinned.
       PLAYWRIGHT_BASE_URL: http://localhost:3000
+      # Exposed to the Playwright process (not just backend/.env) so the LLM-gated
+      # specs can skip themselves when no key is present — see e2e/llm.ts. When the
+      # secret is set they run and must pass; when absent they skip, so a keyless
+      # run (e.g. a fork PR) is still green on the other ~20 specs.
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -104,28 +109,42 @@ jobs:
         uses: supabase/setup-cli@v1
         with:
           version: latest
-      - name: Init + start Supabase, load schema
+      - name: Init + start Supabase, load schema + migrations
         run: |
           supabase init --force --with-vscode-settings=false || supabase init --force
           supabase start
           DB_URL=$(supabase status -o json | jq -r '.DB_URL')
-          # README: "For a new Supabase database ... run backend/schema.sql". The
-          # schema file already includes the latest shape, so no migrations are
-          # replayed on a fresh CI database.
+          # 1) Base schema. README: "For a new Supabase database ... run
+          # backend/schema.sql". It is meant to be the latest shape but in practice
+          # lags the migrations (e.g. it is missing workflow_open_source_submissions,
+          # which GET /workflows/:id queries — a 500 that breaks the workflow specs).
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f backend/schema.sql
-          # schema.sql revokes client grants (anon/authenticated) on purpose, but
-          # it assumes a HOSTED Supabase project where service_role already holds
-          # full table access. On a fresh CLI stack loaded via psql, service_role
-          # gets no grants on the newly-created public tables, so the backend —
-          # which queries exclusively as service_role (lib/supabase.ts) — 500s with
-          # "permission denied for table user_profiles" on the first write. Restore
-          # the production grant posture so the API behaves as it does in prod.
+          # 2) Apply every dated migration on top. They are written to be safe to
+          # re-run (IF NOT EXISTS / ADD COLUMN IF NOT EXISTS), so the ones already
+          # in schema.sql are no-ops and the newer ones fill the gaps. Verified on a
+          # fresh CLI DB: all migrations apply with zero errors. Kept fail-tolerant
+          # so one non-idempotent migration can't wedge the whole gate — mismatches
+          # surface as a spec failure downstream, not an opaque CI abort.
+          for m in $(ls backend/migrations/*.sql | sort); do
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -f "$m" >/dev/null 2>&1 \
+              || echo "::warning::migration returned a non-zero status (already applied?): $m"
+          done
+          # 3) schema.sql revokes client grants (anon/authenticated) on purpose, but
+          # assumes a HOSTED Supabase where service_role already holds full table
+          # access. On a fresh CLI stack loaded via psql, service_role gets no grants
+          # on the new public tables, so the backend — which queries exclusively as
+          # service_role (lib/supabase.ts) — 500s with "permission denied for table
+          # user_profiles" on the first write. Grant AFTER migrations so the tables
+          # they add are covered too.
           psql "$DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
           GRANT USAGE ON SCHEMA public TO service_role;
           GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
           GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
           GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO service_role;
           SQL
+          # 4) PostgREST cached its schema when `supabase start` booted it (before
+          # the DDL above). Tell it to reload so the new tables/grants are visible.
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -c "NOTIFY pgrst, 'reload schema';"
 
       - name: Wire env from Supabase
         run: |
@@ -161,17 +180,29 @@ jobs:
             echo "R2_BUCKET_NAME=mike"
             echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}"
           } >> backend/.env
-          # Frontend reads NEXT_PUBLIC_* at dev-server boot.
+          # next build inlines NEXT_PUBLIC_* at build time, so these must be set
+          # before the "Build web" step below.
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
             echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=$ANON_KEY"
             echo "NEXT_PUBLIC_API_BASE_URL=http://localhost:3001"
           } > frontend/.env.local
 
+      # Serve a PRODUCTION build, not `next dev`. Two reasons the dev server makes
+      # this suite flaky: (1) its on-demand route compilation makes the first hit
+      # of each page arbitrarily slow (20s waitForResponse assertions time out),
+      # and (2) its hydration-error overlay injects DOM (nextjs__container_errors…)
+      # that pollutes text locators — e.g. getByText('All') matched the overlay's
+      # "Call Stack"/"…fallback" text and failed strict mode. A production build has
+      # neither: no overlay, no JIT compile. Verified locally — flipping dev→start
+      # took the suite from intermittent overlay/timeout failures to green.
+      - name: Build web (production)
+        run: npm run build --prefix frontend
+
       - name: Start backend API
         run: npm run dev --prefix backend &
-      - name: Start web
-        run: npm run dev --prefix frontend &
+      - name: Start web (production server)
+        run: npm run start --prefix frontend &
 
       - name: Wait for servers
         run: npx wait-on http://localhost:3001/health http://localhost:3000 --timeout 120000

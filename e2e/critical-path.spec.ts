@@ -7,6 +7,7 @@
  * Prerequisite: auth.setup.ts has already saved the session to e2e/.auth/user.json
  */
 import { test, expect, type Page } from "@playwright/test";
+import { hasLlmKey, LLM_SKIP_REASON } from "./llm";
 import path from "path";
 
 const PDF_FIXTURE = path.join(__dirname, "fixtures/test.pdf");
@@ -53,6 +54,7 @@ test("authenticated user lands on the assistant page", async ({ page }) => {
 test("create project, upload PDF, ask a question and receive a response", async ({
     page,
 }) => {
+    test.skip(!hasLlmKey, LLM_SKIP_REASON);
     /* This end-to-end flow (create + upload + navigate + chat) is throttled by
        the local Supabase stack and needs far more than the 30s default. The
        per-test `{ timeout }` option that test() accepts is silently ignored by
