@@ -25,6 +25,7 @@ import {
 } from "../../lib/chat";
 import { generateSpotlightNonce, spotlight } from "../../lib/chatContext";
 import { completeText } from "../../lib/llm";
+import { resolveDemoFallback } from "./demoFallback";
 import { getUserModelSettings } from "../../lib/userSettings";
 import { checkProjectAccess } from "../../lib/access";
 import { safeErrorLog } from "../../lib/safeError";
@@ -369,8 +370,12 @@ export async function generateChatTitle(
             args.userId,
             db,
         );
+        // Same keyless-demo fallback the streaming route applies: without it, a
+        // demo-mode chat 500s here when title_model dispatches to a real
+        // provider with no key configured.
+        const effectiveTitleModel = resolveDemoFallback(title_model, api_keys);
         const titleText = await completeText({
-            model: title_model,
+            model: effectiveTitleModel,
             user: `Generate a concise title (3–6 words) for a chat in an AI Legal Platform that starts with this message. The title should describe the topic or document — do NOT include words like "Legal Assistant", "AI", "Chat", or any similar prefix. If there is not enough information to generate a title, return exactly "${TITLE_FALLBACK}". Return only the title, no quotes or punctuation.\n\nMessage: ${args.message.slice(0, 500)}`,
             maxTokens: 64,
             apiKeys: api_keys,
