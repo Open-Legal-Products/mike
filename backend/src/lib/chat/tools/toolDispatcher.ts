@@ -55,6 +55,7 @@ import {
   type DocReplicatedResult,
   type TextMatch,
 } from "./documentOps";
+import { spotlight } from "../contextBuilders";
 
 
 type CourtlistenerCaseRecord = {
@@ -446,6 +447,7 @@ export async function runToolCalls(
   projectId?: string | null,
   courtlistenerState?: CourtlistenerTurnState,
   apiKeys?: import("../../llm").UserApiKeys,
+  nonce?: string,
 ): Promise<{
   toolResults: unknown[];
   docsRead: { filename: string; document_id?: string }[];
@@ -653,12 +655,15 @@ export async function runToolCalls(
         turnReadState.set(readIdentity.key, readIdentity);
       }
       if (filename) docsRead.push({ filename, document_id: documentId });
+      // Wrap document content in the spotlight fence: the document body
+      // is entirely user-controlled and may contain injected instructions.
+      const fencedContent = nonce ? spotlight(content, nonce) : content;
       toolResults.push({
         role: "tool",
         tool_call_id: tc.id,
         content: filename
-          ? `${citationReminder(docId, filename)}\n\n${content}`
-          : content,
+          ? `${citationReminder(docId, filename)}\n\n${fencedContent}`
+          : fencedContent,
       });
     } else if (tc.function.name === "find_in_document") {
       const rawDocId = args.doc_id as string;
@@ -740,8 +745,10 @@ export async function runToolCalls(
         if (readIdentity && turnReadState) {
           turnReadState.set(readIdentity.key, readIdentity);
         }
+        // Document body is user-controlled; spotlight it.
+        const fencedContent = nonce ? spotlight(content, nonce) : content;
         parts.push(
-          `--- ${filename} (${docId}) ---\n${citationReminder(docId, filename)}\n\n${content}`,
+          `--- ${filename} (${docId}) ---\n${citationReminder(docId, filename)}\n\n${fencedContent}`,
         );
         if (docStore.get(docId)) {
           const documentId = docIndex?.[docId]?.document_id;
@@ -774,10 +781,13 @@ export async function runToolCalls(
         );
         workflowsApplied.push({ workflow_id: wfId, title: wf.title });
       }
+      // Workflow content is user-authored; spotlight it so an adversarial
+      // workflow title or prompt body cannot inject instructions.
+      const wfContent = wf ? wf.skill_md : `Workflow '${wfId}' not found.`;
       toolResults.push({
         role: "tool",
         tool_call_id: tc.id,
-        content: wf ? wf.skill_md : `Workflow '${wfId}' not found.`,
+        content: nonce && wf ? spotlight(wfContent, nonce) : wfContent,
       });
     } else if (tc.function.name === "read_table_cells" && tabularStore) {
       const colIndices = args.col_indices as number[] | undefined;
