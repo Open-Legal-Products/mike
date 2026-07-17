@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "observedAt": "2026-07-16T00:00:00.000Z",
+  "liveChecksPerformed": false,
+  "status": "pre-production-not-observed",
+  "providers": {
+    "a2aj-canada": { "state": "not-observed", "checkedAt": null, "lastSuccessfulAt": null, "consecutiveFailures": 0, "consecutiveSuccesses": 0, "sourceVersion": null },
+    "ontario-elaws": { "state": "not-observed", "checkedAt": null, "lastSuccessfulAt": null, "consecutiveFailures": 0, "consecutiveSuccesses": 0, "sourceVersion": null },
+    "justice-laws-canada": { "state": "not-observed", "checkedAt": null, "lastSuccessfulAt": null, "consecutiveFailures": 0, "consecutiveSuccesses": 0, "sourceVersion": null },
+    "courtlistener-us": { "state": "not-observed", "checkedAt": null, "lastSuccessfulAt": null, "consecutiveFailures": 0, "consecutiveSuccesses": 0, "sourceVersion": null },
+    "canlii-licensed": { "state": "disabled", "checkedAt": null, "lastSuccessfulAt": null, "consecutiveFailures": 0, "consecutiveSuccesses": 0, "sourceVersion": null }
+  }
+}

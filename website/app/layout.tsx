@@ -16,8 +16,15 @@ export const metadata: Metadata = {
     title: "ROSS — Ontario-first legal work, built in the open",
     description: "An open-source legal workspace in development for Ontario lawyers and paralegals.",
   },
-  robots: { index: false, follow: false },
-  other: { "codex-preview": "development" },
+  robots: {
+    index: siteConfig.publicLaunchApproved,
+    follow: siteConfig.publicLaunchApproved,
+  },
+  other: {
+    "codex-preview": siteConfig.publicLaunchApproved
+      ? "production-reviewed"
+      : "development",
+  },
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
 };
 

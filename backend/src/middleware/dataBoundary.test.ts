@@ -13,6 +13,8 @@ const config: RuntimeConfig = {
     hostedMode: "controlled-beta",
     dataBoundaryVersion: "test-v1",
     hostedModelProviders: ["openai"],
+    releaseId: null,
+    releaseManifestSha256: null,
 };
 
 test("content-bearing write routes are identified without blocking reads or deletion", () => {

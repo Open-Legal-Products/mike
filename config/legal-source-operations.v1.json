@@ -1,0 +1,38 @@
+{
+  "version": "1.0.0",
+  "policyId": "ross-legal-source-operations-v1",
+  "status": "engineering-policy-approved",
+  "defaultTimeoutMs": 10000,
+  "providers": {
+    "a2aj-canada": {
+      "requiredForProduction": true,
+      "maximumAgeHours": 24,
+      "quarantineAfterFailures": 3,
+      "recoverAfterSuccesses": 2
+    },
+    "ontario-elaws": {
+      "requiredForProduction": true,
+      "maximumAgeHours": 24,
+      "quarantineAfterFailures": 3,
+      "recoverAfterSuccesses": 2
+    },
+    "justice-laws-canada": {
+      "requiredForProduction": true,
+      "maximumAgeHours": 24,
+      "quarantineAfterFailures": 3,
+      "recoverAfterSuccesses": 2
+    },
+    "courtlistener-us": {
+      "requiredForProduction": false,
+      "maximumAgeHours": 72,
+      "quarantineAfterFailures": 3,
+      "recoverAfterSuccesses": 2
+    },
+    "canlii-licensed": {
+      "requiredForProduction": false,
+      "maximumAgeHours": 24,
+      "quarantineAfterFailures": 1,
+      "recoverAfterSuccesses": 2
+    }
+  }
+}

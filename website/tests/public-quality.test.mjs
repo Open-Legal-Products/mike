@@ -39,6 +39,7 @@ test("representative public pages meet the automated semantic accessibility cont
     "/ontario",
     "/coverage",
     "/responsible-ai",
+    "/readiness",
     "/privacy",
     "/terms",
     "/accessibility",
@@ -65,6 +66,7 @@ test("sitemap covers dynamic public content while indexing remains intentionally
   const sitemap = await render("/sitemap.xml");
   assert.equal(sitemap.response.status, 200);
   assert.match(sitemap.html, /updates\/foundation/);
+  assert.match(sitemap.html, /updates\/release-controls/);
   assert.match(sitemap.html, /workflows\/factum-authority-record-cross-check/);
   assert.match(sitemap.html, /\/demo/);
   const robots = await render("/robots.txt");
@@ -93,6 +95,7 @@ test("internal content links resolve in the built site", async () => {
     "/status",
     "/subprocessors",
     "/responsible-ai",
+    "/readiness",
   ];
   const links = new Set();
   for (const seed of seeds) {

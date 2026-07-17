@@ -1,6 +1,8 @@
 # Contributing
 
-Thanks for helping improve Mike. Please keep contributions small, focused, and easy to review.
+Thanks for helping improve ROSS, a modified fork of Mike. Please keep
+contributions small, focused, and easy to review while preserving the inherited
+Mike functionality recorded in the baseline contract.
 
 ## Guidelines
 
@@ -9,12 +11,18 @@ Thanks for helping improve Mike. Please keep contributions small, focused, and e
 - Update docs or env examples when changing setup, config, or user-facing behavior.
 - Please do not propose local-hosting refactors for the main app, such as local LLMs, local databases, or local filesystem storage. Those ideas are better suited to a future fully local version of the project.
 - Do not commit secrets, API keys, private documents, or local `.env` files.
+- Do not use confidential, privileged, regulated, proprietary, or real client
+  material in fixtures, previews, demonstrations, issues, or pull requests.
+- Do not scrape CanLII. Licensed connectors require an approved agreement,
+  transport, entitlement, and activation record.
 
 ## Before Opening a PR
 
 - Install all dependencies from the repository root with `npm run install:all`.
 - Run the baseline contract tests with `npm test`.
 - Run the full local verification suite with `npm run check`.
+- For a release-candidate change, regenerate and verify the governed manifest
+  with `npm run build:release-manifest` and `npm run test:release-manifest`.
 - If deployed test URLs are available, run `ROSS_E2E_API_URL=... ROSS_E2E_APP_URL=... npm run test:e2e`.
 - Check `git diff` and remove unrelated changes.
 - Write a concise Markdown PR description with:

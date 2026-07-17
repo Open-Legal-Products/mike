@@ -18,6 +18,13 @@ export const siteConfig = {
         ? "Engineering integrations implemented — runtime coverage and legal review remain conditional"
         : "Foundation only — Ontario and Canadian source integrations are not live yet",
   socialLinks: brand.socialLinks,
+  publicLaunchApproved:
+    process.env.NEXT_PUBLIC_ROSS_PUBLIC_LAUNCH_APPROVED === "true" &&
+    brand.product.legalOperator !== "TBD" &&
+    brand.policy.coverageStatus === "production-reviewed" &&
+    !(process.env.NEXT_PUBLIC_ROSS_WEBSITE_URL ?? brand.urls.website).includes(
+      ".invalid",
+    ),
 } as const;
 
 export const primaryNav = [
@@ -25,6 +32,7 @@ export const primaryNav = [
   { href: "/features", label: "Features" },
   { href: "/workflows", label: "Workflows" },
   { href: "/coverage", label: "Coverage" },
+  { href: "/readiness", label: "Readiness" },
   { href: "/demo", label: "Demo" },
   { href: "/open-source", label: "Open source" },
 ] as const;
@@ -59,6 +67,7 @@ export const footerGroups = [
       ["Documentation", "/docs"],
       ["Contact", "/contact"],
       ["Status", "/status"],
+      ["Launch readiness", "/readiness"],
     ],
   },
   {

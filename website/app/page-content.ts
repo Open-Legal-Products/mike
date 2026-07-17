@@ -322,7 +322,8 @@ export const publicPages: Record<string, PublicPage> = {
     eyebrow: "Versioned project records",
     summary:
       "Architecture decisions, product boundaries, verification reports, and contributor guidance live with the source code.",
-    status: "Deployment and user documentation are still being developed.",
+    status:
+      "Release, restore, rollback, source-health, monitoring, and launch procedures are documented; live operational evidence remains pending.",
     governance: engineeringReviewed("ROSS technical maintainers"),
     sections: [
       {
@@ -358,6 +359,39 @@ export const publicPages: Record<string, PublicPage> = {
       {
         title: "Future status reporting",
         body: "Production status will be independently hosted and cover website, application, API, legal-source ingestion, and material incidents.",
+      },
+      {
+        title: "Release control",
+        body: "Production promotion fails closed unless legal, privacy, security, accessibility, product, Ontario benchmark, source-health, operational, and launch evidence all belong to the same immutable candidate.",
+      },
+    ],
+  },
+  readiness: {
+    title: "Launch readiness",
+    eyebrow: "Fail-closed release status",
+    summary:
+      "ROSS now has executable engineering gates and operational runbooks, but every production approval and live-environment exercise remains pending.",
+    status:
+      "Blocked: owner, domains, vendors, effective notices, independent reviews, live source health, staging, restore, rollback, monitoring, and go-live evidence are not approved.",
+    governance: independentReviewRequired(
+      "Release and product owners — unassigned",
+    ),
+    sections: [
+      {
+        title: "What the code enforces",
+        body: "The candidate gate binds the Ontario evaluation, legal and product approvals, operational exercises, launch decisions, source health, and governed artifact hashes to a production decision. Missing evidence blocks release.",
+      },
+      {
+        title: "What people must still do",
+        body: "Named reviewers must select and assess the operator, Canadian-region vendors, privacy and security controls, effective policies, support channels, accessibility, legal content, source coverage, benchmark, and limited beta cohort.",
+      },
+      {
+        title: "Current safe boundary",
+        body: "The website remains owner-only and no-index. Any preview or controlled-beta use remains limited to synthetic or affirmatively non-confidential material. No confidential or privileged client-material launch is authorized.",
+      },
+      {
+        title: "Promotion and rollback",
+        body: "A reviewed immutable artifact is promoted only after a staging journey, migration dry run, isolated backup restore, rollback exercise, monitoring test, source observation, dependency review, and incident exercise produce dated evidence.",
       },
     ],
   },
@@ -450,5 +484,21 @@ export const publicUpdates = [
     ],
     limitations:
       "No Ontario lawyer has approved the benchmark or workflows. No production operator, vendor set, confidential-data mode, comprehensive citator, or public launch has been approved.",
+  },
+  {
+    slug: "release-controls",
+    title: "Production-readiness controls remain fail-closed",
+    publishedAt: "2026-07-16",
+    status: "Engineering update — launch remains blocked",
+    summary:
+      "ROSS adds governed release artifacts, source quarantine, operational evidence, launch decisions, and indexing safeguards without claiming that external reviews or live exercises have occurred.",
+    changes: [
+      "Added required-provider freshness, quarantine, and recovery policy with a deliberately unobserved pre-production health report.",
+      "Added an immutable SHA-256 release manifest and manual CI evidence workflow with no automatic production deployment.",
+      "Added release, backup/restore, rollback, source, monitoring, incident, and launch procedures tied to dated evidence.",
+      "Added a public readiness page and a launch flag that cannot enable indexing while the operator, production coverage, or domain remains a placeholder.",
+    ],
+    limitations:
+      "No operator, production vendor, domain, live source monitor, staging exercise, restore, rollback, penetration test, accessibility audit, Ontario lawyer review, effective legal notice, support channel, or go-live decision is approved.",
   },
 ] as const;

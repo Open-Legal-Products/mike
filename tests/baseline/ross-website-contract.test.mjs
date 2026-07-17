@@ -84,6 +84,7 @@ test("the website scaffold exposes every governed public route", () => {
     "subprocessors",
     "responsible-ai",
     "demo",
+    "readiness",
   ];
   for (const key of requiredKeys) {
     assert.match(content, new RegExp(`[\"']?${key}[\"']?\\s*:`), key);
@@ -107,7 +108,11 @@ test("the public site communicates beta limits and does not use application data
 
   const robots = read("website/app/robots.ts");
   const layout = read("website/app/layout.tsx");
+  assert.match(robots, /publicLaunchApproved/);
   assert.match(robots, /disallow: "\/"/);
-  assert.match(layout, /index: false/);
-  assert.match(layout, /follow: false/);
+  assert.match(layout, /index: siteConfig\.publicLaunchApproved/);
+  assert.match(layout, /follow: siteConfig\.publicLaunchApproved/);
+  assert.match(read("website/app/site-config.ts"), /legalOperator !== "TBD"/);
+  assert.match(read("website/app/site-config.ts"), /production-reviewed/);
+  assert.match(read("website/app/site-config.ts"), /\.invalid/);
 });

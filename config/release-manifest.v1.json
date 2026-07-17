@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0",
+  "releaseId": "unassigned",
+  "generatedAt": "2026-07-16T00:00:00.000Z",
+  "artifacts": [
+    "backend/schema.sql",
+    "backend/src/config/runtime.ts",
+    "config/legal-source-operations.v1.json",
+    "config/launch-readiness.v1.json",
+    "config/operations-readiness.v1.json",
+    "config/public-source-coverage.json",
+    "config/release-approvals.v1.json",
+    "config/ross-brand.json",
+    "reports/legal-source-health-v1.json",
+    "reports/ontario-evaluation-v1.json",
+    "scripts/lib/release-readiness.mjs",
+    "website/app/site-config.ts",
+    "workflows/ontario/catalogue.json"
+  ]
+}

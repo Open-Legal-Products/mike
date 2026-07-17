@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0-draft",
+  "releaseId": "unassigned",
+  "status": "blocked-awaiting-launch-decisions",
+  "decisions": {
+    "legalOperator": { "status": "pending", "approver": null, "date": null, "evidence": null },
+    "accountableOwners": { "status": "pending", "approver": null, "date": null, "evidence": null },
+    "productionDomains": { "status": "pending", "approver": null, "date": null, "evidence": null },
+    "vendorsAndResidency": { "status": "pending", "approver": null, "date": null, "evidence": null },
+    "effectiveLegalNotices": { "status": "pending", "approver": null, "date": null, "evidence": null },
+    "supportAndPrivacyChannels": { "status": "pending", "approver": null, "date": null, "evidence": null },
+    "betaCohortAndTerms": { "status": "pending", "approver": null, "date": null, "evidence": null },
+    "goLiveDecision": { "status": "pending", "approver": null, "date": null, "evidence": null }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0-draft",
+  "releaseId": "unassigned",
+  "status": "blocked-awaiting-operational-evidence",
+  "evidence": {
+    "ci": { "status": "pending", "approver": null, "date": null, "evidence": null },
+    "stagingJourney": { "status": "pending", "approver": null, "date": null, "evidence": null },
+    "migrationDryRun": { "status": "pending", "approver": null, "date": null, "evidence": null },
+    "backupRestore": { "status": "pending", "approver": null, "date": null, "evidence": null },
+    "rollbackExercise": { "status": "pending", "approver": null, "date": null, "evidence": null },
+    "observability": { "status": "pending", "approver": null, "date": null, "evidence": null },
+    "sourceHealth": { "status": "pending", "approver": null, "date": null, "evidence": null },
+    "dependencyReview": { "status": "pending", "approver": null, "date": null, "evidence": null },
+    "incidentExercise": { "status": "pending", "approver": null, "date": null, "evidence": null }
+  }
+}

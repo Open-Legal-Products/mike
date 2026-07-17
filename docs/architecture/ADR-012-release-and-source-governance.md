@@ -34,5 +34,8 @@ Ontario evaluation gates are implemented and assigned owners.
 
 ## Follow-up
 
-- [ ] Define release artefacts and approval matrix in ROSS-150 and ROSS-170.
-- [ ] Add source health, freshness, quarantine, and rollback procedures.
+- [x] Define release artifacts and approval matrices in ROSS-150 and ROSS-170.
+- [x] Add source health, freshness, quarantine, and rollback procedures.
+- [ ] Assign owners and complete staging, restore, rollback, source, security,
+  accessibility, legal-content, privacy, and launch evidence for one immutable
+  candidate.
