@@ -7,11 +7,11 @@
 # this job "e2e / playwright" as a required status check in branch protection —
 # see docs/e2e-ci.md ("Make it merge-blocking").
 #
-# Required repository secret for a full pass:
-#   ANTHROPIC_API_KEY — the critical-path / chat specs send a message and expect a
-#                       streamed answer, which needs a live model key. Add it under
-#                       Settings > Secrets and variables > Actions. Without it the
-#                       chat specs fail; every other spec runs key-less.
+# The suite is green with NO secret: the 4 LLM-dependent specs (chat + critical
+# path) skip themselves when ANTHROPIC_API_KEY is absent (see e2e/llm.ts), so a
+# keyless run passes the other ~23 specs. Set the ANTHROPIC_API_KEY secret under
+# Settings > Secrets and variables > Actions to also run and enforce those 4.
+# See docs/e2e-ci.md for the full picture.
 #
 # The e2e user (e2e@mike.local) is bootstrapped in-job by e2e/auth.setup.ts against
 # the local Supabase admin API, so no E2E_PASSWORD secret is needed — the defaults

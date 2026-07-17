@@ -12,31 +12,42 @@ On every `pull_request` targeting `main` (or `upstream-main`, the fork mirror),
 and on manual `workflow_dispatch`, the `e2e / playwright` job:
 
 1. installs the root (Playwright), `backend/`, and `frontend/` dependencies;
-2. boots **MinIO** (S3-compatible object storage — three specs upload documents);
-3. boots **local Supabase** (Auth + Postgres) via the Supabase CLI and loads
-   `backend/schema.sql` — the same fresh-database schema the README tells a human
-   to run;
+2. boots **MinIO** (S3-compatible object storage — several specs upload documents);
+3. boots **local Supabase** (Auth + Postgres) via the Supabase CLI, loads
+   `backend/schema.sql`, then applies every dated migration in `backend/migrations/`
+   on top. `schema.sql` is meant to be the latest shape but in practice lags the
+   migrations (e.g. it is missing `workflow_open_source_submissions`, which
+   `GET /workflows/:id` queries — a 500 without the migrations). It also grants
+   `service_role` full access to the `public` tables afterward, because
+   `schema.sql` revokes client grants assuming a hosted Supabase where
+   `service_role` is already privileged;
 4. writes `backend/.env` and `frontend/.env.local` from the live Supabase values;
-5. starts the backend API (`:3001`) and the Next.js web app (`:3000`), waits for
-   both to be healthy;
+5. **builds** the web app (`next build`) and serves it with `next start` — a
+   production build, not `next dev`, so there is no on-demand compilation (which
+   makes first-hit page loads slow enough to time out specs) and no dev
+   hydration-error overlay (whose injected DOM pollutes text locators). Starts the
+   backend API (`:3001`) and the web server (`:3000`) and waits for both healthy;
 6. runs `npx playwright test` and uploads the HTML report + traces as an artifact
-   (`playwright-report`) on both pass and fail.
+   (`playwright-report`) on pass, fail, or timeout.
 
 `e2e/auth.setup.ts` bootstraps the shared test user (`e2e@mike.local`) against
 the local Supabase admin API, so no login secret is needed — the credentials
 baked into that file are the single source of truth.
 
-## Required secret
+Typical run: **~7 minutes**, **23 passed / 4 skipped / 0 failed** with no secret.
 
-| Secret | Why | Without it |
+## Optional secret (fuller coverage)
+
+| Secret | What it unlocks | Without it |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | The critical-path / chat specs send a message and assert a **streamed** answer, which needs a live model key. | Those chat specs fail; every other spec still runs. |
+| `ANTHROPIC_API_KEY` | The 4 LLM-dependent specs (chat rename/delete/submit, critical-path "ask a question") send a message and assert a **streamed** answer. With the key set they run and must pass. | Those 4 specs **skip** (see `e2e/llm.ts`) instead of hanging, so the run is still green on the other ~23 specs. |
 
-Add it under **Settings → Secrets and variables → Actions → New repository
-secret**. For pull requests opened from a **fork**, GitHub withholds secrets by
-default — a maintainer approves the run (or re-runs from the branch) so the key
-is available. Treat that approval as the point where the chat specs become
-enforceable for external contributions.
+The suite is green **without** any secret — the LLM specs skip themselves via
+`test.skip(!process.env.ANTHROPIC_API_KEY, …)`, which keeps keyless runs (local,
+and fork PRs with no secret access) green and fast. Add the key under
+**Settings → Secrets and variables → Actions → New repository secret** to also
+run and enforce the LLM specs. For fork PRs, GitHub withholds secrets until a
+maintainer approves the run.
 
 ## Make it merge-blocking
 
