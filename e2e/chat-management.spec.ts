@@ -124,7 +124,7 @@ test("rename chat: sidebar rename interaction updates the title", async ({ page 
 
     // ── Step 1: create a new chat ─────────────────────────────────────────────────
     await page.goto("/assistant");
-    const textarea = page.getByPlaceholder("Ask a question about your documents...");
+    const textarea = page.getByPlaceholder("How can I help?");
     await expect(textarea).toBeVisible({ timeout: 10_000 });
     // Pick the keyless demo model so the submit isn't blocked by the
     // ApiKeyMissingModal (no provider key is configured in this run).
@@ -155,13 +155,13 @@ test("rename chat: sidebar rename interaction updates the title", async ({ page 
 
     // ── Step 4: locate the active chat item ──────────────────────────────────────
     // SidebarChatItem.tsx renders a `div.group.relative` wrapper for each chat.
-    // When isActive=true the wrapper class includes "bg-gray-200/60" as a
-    // standalone Tailwind class.  Inactive items have "hover:bg-gray-100" (a
-    // different token), so matching the "bg-gray-200/60" class distinguishes the
-    // active item.  Use an attribute-substring match ([class*=]) to avoid having
-    // to CSS-escape the "/" in the Tailwind class name.
+    // When isActive=true the wrapper carries APP_SURFACE_ACTIVE_CLASS
+    // ("bg-app-surface-active"); inactive items carry APP_SURFACE_HOVER_CLASS
+    // ("hover:bg-app-surface-hover", a different token), so matching
+    // "bg-app-surface-active" distinguishes the active item. (The olp liquid-
+    // surface refresh renamed the old "bg-gray-200/60" active token.)
     const activeItem = page
-        .locator('div.group.relative[class*="bg-gray-200/60"]')
+        .locator('div.group.relative[class*="bg-app-surface-active"]')
         .first();
 
     // The active item's trigger is already opacity-100, but hover is harmless and
@@ -214,7 +214,7 @@ test("delete chat: sidebar delete action removes the chat from history", async (
 
     // ── Step 1: create a new chat ─────────────────────────────────────────────────
     await page.goto("/assistant");
-    const textarea = page.getByPlaceholder("Ask a question about your documents...");
+    const textarea = page.getByPlaceholder("How can I help?");
     await expect(textarea).toBeVisible({ timeout: 10_000 });
     // ── Step 2: create the chat, riding out transient gateway 502s ───────────────
     // ChatInput.handleSubmit creates the chat (saveChat → POST /chat/create) then
@@ -276,7 +276,7 @@ test("delete chat: sidebar delete action removes the chat from history", async (
     // just-created chat is active and prepended, so it is the first row; rename it
     // via the same three-dot menu the rename test exercises.
     const uniqueTitle = `Delete Target ${Date.now()}`;
-    const firstRow = page.locator("div.group.relative.h-9.rounded-md").first();
+    const firstRow = page.locator("div.group.relative.h-8.rounded-md").first();
     await firstRow.hover();
     await firstRow.locator("button").last().click();
     await page.getByRole("menuitem", { name: "Rename" }).click();
@@ -290,7 +290,7 @@ test("delete chat: sidebar delete action removes the chat from history", async (
     await expect(targetTitle).toBeVisible({ timeout: 10_000 });
     // The row wrapper that contains that title button (for reaching its menu).
     const targetRow = page
-        .locator("div.group.relative.h-9.rounded-md")
+        .locator("div.group.relative.h-8.rounded-md")
         .filter({ has: targetTitle });
 
     // ── Step 5-7: delete that specific chat, riding out flaky Supabase 500s ──────
@@ -397,7 +397,9 @@ test("project assistant: create a new chat and submit a question", async ({ page
     // found". A genuinely broken assistant tab never shows the button on any
     // attempt, so the final assertion still fails.
     const assistantUrl = page.url() + "/assistant";
-    const createNewBtn = page.getByText("+ Create New");
+    // The olp UI replaced the old "+ Create New" text link with a PillButton
+    // reading "Create" in the ProjectAssistantTable empty state.
+    const createNewBtn = page.getByRole("button", { name: "Create", exact: true });
     const projectNotFound = page.getByText("Project not found");
     const TAB_ATTEMPTS = 4;
     for (let attempt = 0; attempt < TAB_ATTEMPTS; attempt++) {
@@ -452,7 +454,7 @@ test("project assistant: create a new chat and submit a question", async ({ page
     // ── Step 9: assert the ChatInput textarea is visible ─────────────────────────
     // ProjectAssistantChatPage renders <ChatInput> in the right "Project Assistant"
     // panel (line 1221-1229 of the chat page component).
-    const chatInput = page.getByPlaceholder("Ask a question about your documents...");
+    const chatInput = page.getByPlaceholder("How can I help?");
     await expect(chatInput).toBeVisible({ timeout: 10_000 });
 
     // ── Step 10-11: pick an available model, submit a question, assert it clears ──

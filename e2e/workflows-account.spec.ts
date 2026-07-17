@@ -134,8 +134,11 @@ test.describe("Workflows", () => {
         page,
     }) => {
         // Navigate directly to the known built-in ID; this avoids having to click
-        // through the DisplayWorkflowModal "View Page" button.
-        await page.goto("/workflows/builtin-cp-checklist");
+        // through the DisplayWorkflowModal "View Page" button. builtin-cp-checklist
+        // is an assistant-type workflow, so use the typed detail route
+        // (/workflows/assistant/[id]) that the app itself links to via
+        // workflowDetailPath — the flat /workflows/[id] path does not exist here.
+        await page.goto("/workflows/assistant/builtin-cp-checklist");
 
         // The page loads and shows the built-in workflow title
         await expect(page.getByText("Draft CP Checklist")).toBeVisible({

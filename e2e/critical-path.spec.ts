@@ -143,9 +143,11 @@ test("create project, upload PDF, ask a question and receive a response", async 
        the "Assistant" item in the sidebar nav. The workspace fetches
        getProject() on mount and does NOT retry, so under the local-Supabase load
        the page can land on a permanent "Project not found" or a slow skeleton;
-       re-navigate until the assistant tab's "+ Create New" affordance renders. */
+       re-navigate until the assistant tab's empty-state "Create" affordance
+       renders. (The olp UI replaced the old "+ Create New" text link with a
+       PillButton reading "Create" — ProjectAssistantTable empty state.) */
     const projectUrl = page.url().split("?")[0];
-    const createNew = page.getByText("+ Create New");
+    const createNew = page.getByRole("button", { name: "Create", exact: true });
     for (let attempt = 1; attempt <= 6; attempt++) {
         await page.goto(`${projectUrl}/assistant`);
         await page
@@ -163,9 +165,7 @@ test("create project, upload PDF, ask a question and receive a response", async 
     await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
 
     /* ── Step 7: select the keyless demo model, type a question, submit ───── */
-    const chatInput = page.getByPlaceholder(
-        "Ask a question about your documents...",
-    );
+    const chatInput = page.getByPlaceholder("How can I help?");
     await expect(chatInput).toBeVisible({ timeout: 10_000 });
 
     /* The default Gemini model has no key configured, so submitting it would be
