@@ -10,7 +10,10 @@ import { eventErrorMessage, toolCallLabel } from "./message/eventUtils";
 import { preprocessCitations, internalCaseHref } from "./message/citationUtils";
 import { useSmoothedReveal } from "./message/useSmoothedReveal";
 import { MarkdownContent } from "./message/MarkdownContent";
-import { CitationsBlock, buildCitationAppendix } from "./message/CitationSources";
+import {
+    CitationsBlock,
+    buildCitationAppendix,
+} from "./message/CitationSources";
 import { EditCardsSection } from "./message/EditCardsSection";
 import {
     AskInputsBlock,
@@ -22,6 +25,7 @@ import {
     DocReadBlock,
     DocReplicatedBlock,
     EventBlock,
+    LegalAuthorityBlock,
     ReasoningBlock,
     WorkflowAppliedBlock,
     type CourtListenerBlockItem,
@@ -39,6 +43,9 @@ interface Props {
     onOpenCitationSource?: (citation: Citation) => void;
     onCaseClick?: (
         citation: Extract<AssistantEvent, { type: "case_citation" }>,
+    ) => void;
+    onAuthorityClick?: (
+        event: Extract<AssistantEvent, { type: "legal_authority" }>,
     ) => void;
     minHeight?: string;
     onWorkflowClick?: (workflowId: string) => void;
@@ -108,6 +115,7 @@ export function AssistantMessage({
     onCitationClick,
     onOpenCitationSource,
     onCaseClick,
+    onAuthorityClick,
     minHeight = "0px",
     onWorkflowClick,
     onEditViewClick,
@@ -487,6 +495,40 @@ export function AssistantMessage({
                     onClick={
                         onWorkflowClick
                             ? () => onWorkflowClick(event.workflow_id)
+                            : undefined
+                    }
+                />
+            );
+        }
+        if (event.type === "legal_source_search") {
+            const detail = event.error
+                ? event.error
+                : `${event.result_count} ${event.result_count === 1 ? "result" : "results"}${event.provider_name ? ` from ${event.provider_name}` : ""}`;
+            return (
+                <EventBlock
+                    key={globalIdx}
+                    showConnector={showConnector}
+                    dotColor={event.error ? "red" : "gray"}
+                >
+                    <span className="font-medium">Searched legal sources</span>{" "}
+                    <span>{detail}</span>
+                    {event.coverage_warning && (
+                        <p className="mt-1 text-xs text-amber-700">
+                            {event.coverage_warning}
+                        </p>
+                    )}
+                </EventBlock>
+            );
+        }
+        if (event.type === "legal_authority") {
+            return (
+                <LegalAuthorityBlock
+                    key={globalIdx}
+                    event={event}
+                    showConnector={showConnector}
+                    onOpen={
+                        event.authority && onAuthorityClick
+                            ? () => onAuthorityClick(event)
                             : undefined
                     }
                 />

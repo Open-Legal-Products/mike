@@ -12,6 +12,7 @@ import { useAuth } from "@/app/contexts/AuthContext";
 import {
     type ApiKeyState,
     type ApiKeyProvider,
+    type LegalResearchSettings,
     type UserProfile as ApiUserProfile,
     getUserProfile,
     isMfaRequiredError,
@@ -30,6 +31,7 @@ interface UserProfile {
     titleModel: string;
     tabularModel: string;
     mfaOnLogin: boolean;
+    legalResearch: LegalResearchSettings;
     legalResearchUs: boolean;
     apiKeys: ApiKeyState;
 }
@@ -44,6 +46,7 @@ interface UserProfileContextType {
         value: string,
     ) => Promise<boolean>;
     updateMfaOnLogin: (enabled: boolean) => Promise<boolean>;
+    updateLegalResearch: (settings: LegalResearchSettings) => Promise<boolean>;
     updateLegalResearchUs: (enabled: boolean) => Promise<boolean>;
     updateApiKey: (
         provider: ApiKeyProvider,
@@ -120,6 +123,18 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 titleModel: "gemini-3.1-flash-lite-preview",
                 tabularModel: "gemini-3-flash-preview",
                 mfaOnLogin: false,
+                legalResearch: {
+                    enabled: true,
+                    defaultCountry: "CA",
+                    defaultProvince: "ON",
+                    enabledJurisdictions: ["CA-ON", "CA", "US"],
+                    enabledSourceProviders: [
+                        "a2aj-canada",
+                        "ontario-elaws",
+                        "justice-laws-canada",
+                        "courtlistener-us",
+                    ],
+                },
                 legalResearchUs: true,
                 apiKeys: emptyApiKeys(),
             });
@@ -230,6 +245,24 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
         [user],
     );
 
+    const updateLegalResearch = useCallback(
+        async (settings: LegalResearchSettings): Promise<boolean> => {
+            if (!user) return false;
+            try {
+                const updated = await updateUserProfile({
+                    legalResearch: settings,
+                });
+                setProfile((prev) =>
+                    prev ? { ...prev, ...toProfile(updated) } : null,
+                );
+                return true;
+            } catch {
+                return false;
+            }
+        },
+        [user],
+    );
+
     const updateApiKey = useCallback(
         async (
             provider: ApiKeyProvider,
@@ -290,6 +323,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 updateOrganisation,
                 updateModelPreference,
                 updateMfaOnLogin,
+                updateLegalResearch,
                 updateLegalResearchUs,
                 updateApiKey,
                 reloadProfile,

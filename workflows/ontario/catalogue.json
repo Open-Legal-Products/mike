@@ -1,0 +1,261 @@
+[
+  {
+    "slug": "civil-claim-defence-issue-extraction",
+    "title": "Ontario Civil Claim and Defence Issue Extraction",
+    "description": "Extract pleaded facts, causes of action, defences, remedies, admissions, denials, and material gaps from Ontario civil pleadings.",
+    "practice": "Civil Litigation",
+    "jurisdictions": ["Canada / Ontario"],
+    "version": "0.1.0-draft",
+    "status": "draft-awaiting-lawyer-review",
+    "intendedUsers": [
+      "Ontario lawyers",
+      "Ontario paralegals acting within their permitted scope"
+    ],
+    "excludedUses": [
+      "Consumer legal advice",
+      "Autonomous pleading amendment",
+      "Limitation-period calculation",
+      "Use with confidential material during the controlled beta"
+    ],
+    "requiredInputs": [
+      "Claim and defence",
+      "Represented party",
+      "Court file and region",
+      "Legal as-of date",
+      "Any relevant orders or endorsements"
+    ],
+    "primarySources": [
+      {
+        "label": "Rules of Civil Procedure",
+        "url": "https://www.ontario.ca/laws/regulation/900194"
+      },
+      {
+        "label": "Superior Court practice directions",
+        "url": "https://www.ontariocourts.ca/scj/practice-directions/"
+      }
+    ],
+    "sourceCurrency": "Retrieve and verify the official rule and applicable regional direction at run time.",
+    "output": "A source-linked issue table and a separate missing-information list.",
+    "reviewChecklist": [
+      "Every finding cites an uploaded pleading location",
+      "Legal propositions use retrieved primary authority",
+      "Admissions and allegations remain distinct",
+      "No deadline or limitation opinion is inferred",
+      "Regional direction is identified or the gap is visible"
+    ],
+    "reviewer": null,
+    "reviewDate": null,
+    "syntheticFixture": "tests/fixtures/workflows/ontario-civil-pleadings-synthetic.md",
+    "skillFile": "civil-claim-defence-issue-extraction.md"
+  },
+  {
+    "slug": "documentary-discovery-review",
+    "title": "Ontario Documentary Discovery Review",
+    "description": "Review a synthetic document set for relevance, issues, chronology, duplicates, and potential privilege flags without making privilege determinations.",
+    "practice": "Civil Litigation",
+    "jurisdictions": ["Canada / Ontario"],
+    "version": "0.1.0-draft",
+    "status": "draft-awaiting-lawyer-review",
+    "intendedUsers": [
+      "Ontario lawyers",
+      "Ontario paralegals acting within their permitted scope"
+    ],
+    "excludedUses": [
+      "Final privilege determination",
+      "Autonomous production decision",
+      "Destruction or alteration of originals",
+      "Use with confidential material during the controlled beta"
+    ],
+    "requiredInputs": [
+      "Synthetic document set",
+      "Pleadings or issue list",
+      "Represented party",
+      "Court file and region",
+      "Legal as-of date",
+      "Review protocol"
+    ],
+    "primarySources": [
+      {
+        "label": "Rules of Civil Procedure",
+        "url": "https://www.ontario.ca/laws/regulation/900194"
+      },
+      {
+        "label": "Superior Court practice directions",
+        "url": "https://www.ontariocourts.ca/scj/practice-directions/"
+      }
+    ],
+    "sourceCurrency": "Verify Rules 29.1, 30, and 30.1 and applicable directions at run time.",
+    "output": "A review table with source locations, relevance rationale, privilege-review flags, and unresolved questions.",
+    "reviewChecklist": [
+      "No privilege conclusion is automated",
+      "Each entry identifies its source document",
+      "Duplicates and families remain traceable",
+      "Review scope and date are recorded",
+      "Human production decision is explicit"
+    ],
+    "reviewer": null,
+    "reviewDate": null,
+    "syntheticFixture": "tests/fixtures/workflows/ontario-discovery-synthetic.md",
+    "skillFile": "documentary-discovery-review.md"
+  },
+  {
+    "slug": "affidavit-fact-check",
+    "title": "Ontario Affidavit Fact Check",
+    "description": "Cross-check a draft Ontario affidavit against supplied records and identify unsupported, inconsistent, ambiguous, or hearsay-sensitive passages.",
+    "practice": "Civil Litigation",
+    "jurisdictions": ["Canada / Ontario"],
+    "version": "0.1.0-draft",
+    "status": "draft-awaiting-lawyer-review",
+    "intendedUsers": [
+      "Ontario lawyers",
+      "Ontario paralegals acting within their permitted scope"
+    ],
+    "excludedUses": [
+      "Assessing witness credibility",
+      "Inventing personal knowledge",
+      "Final admissibility opinion",
+      "Use with confidential material during the controlled beta"
+    ],
+    "requiredInputs": [
+      "Draft affidavit",
+      "Synthetic supporting records",
+      "Deponent identity and stated knowledge basis",
+      "Court and region",
+      "Legal as-of date"
+    ],
+    "primarySources": [
+      {
+        "label": "Rules of Civil Procedure",
+        "url": "https://www.ontario.ca/laws/regulation/900194"
+      },
+      {
+        "label": "Ontario Evidence Act",
+        "url": "https://www.ontario.ca/laws/statute/90e23"
+      },
+      {
+        "label": "Superior Court practice directions",
+        "url": "https://www.ontariocourts.ca/scj/practice-directions/"
+      }
+    ],
+    "sourceCurrency": "Retrieve relevant official provisions and applicable directions at run time.",
+    "output": "A paragraph-by-paragraph evidence map, discrepancy list, and questions for the deponent and supervising professional.",
+    "reviewChecklist": [
+      "Every factual comparison cites both locations",
+      "Absence of evidence is not treated as contradiction",
+      "Personal knowledge and information-and-belief are separated",
+      "No credibility conclusion is generated",
+      "Exhibit references are checked"
+    ],
+    "reviewer": null,
+    "reviewDate": null,
+    "syntheticFixture": "tests/fixtures/workflows/ontario-affidavit-synthetic.md",
+    "skillFile": "affidavit-fact-check.md"
+  },
+  {
+    "slug": "factum-authority-record-cross-check",
+    "title": "Ontario Factum Authority and Record Cross-Check",
+    "description": "Check a draft factum's record references, quoted passages, Canadian citations, and authority support while keeping verification states separate.",
+    "practice": "Civil Litigation and Appeals",
+    "jurisdictions": ["Canada / Ontario", "Canada / Federal"],
+    "version": "0.1.0-draft",
+    "status": "draft-awaiting-lawyer-review",
+    "intendedUsers": [
+      "Ontario lawyers",
+      "Ontario paralegals acting within their permitted scope"
+    ],
+    "excludedUses": [
+      "Automated noting-up conclusion",
+      "Inventing record references",
+      "Final filing approval",
+      "Use with confidential material during the controlled beta"
+    ],
+    "requiredInputs": [
+      "Draft factum",
+      "Synthetic appeal book or record",
+      "Book of authorities or authority list",
+      "Court and region",
+      "Legal as-of date"
+    ],
+    "primarySources": [
+      {
+        "label": "Rules of Civil Procedure",
+        "url": "https://www.ontario.ca/laws/regulation/900194"
+      },
+      {
+        "label": "Court of Appeal general practice direction",
+        "url": "https://www.ontariocourts.ca/coa/how-to-proceed-court/general/"
+      },
+      {
+        "label": "Court of Appeal civil practice direction",
+        "url": "https://www.ontariocourts.ca/coa/how-to-proceed-court/practice-directions-guidelines/practice-direction-civil/"
+      }
+    ],
+    "sourceCurrency": "Verify current court directions and retrieve each authority at run time; ordinary search does not establish treatment.",
+    "output": "A proposition-to-record-and-authority matrix with separate citation, passage, currency, and treatment states.",
+    "reviewChecklist": [
+      "Quoted text matches retrieved passages",
+      "Record pinpoints resolve",
+      "Citation and passage verification remain separate",
+      "Currency and treatment gaps are visible",
+      "No unsupported proposition is marked verified"
+    ],
+    "reviewer": null,
+    "reviewDate": null,
+    "syntheticFixture": "tests/fixtures/workflows/ontario-factum-synthetic.md",
+    "skillFile": "factum-authority-record-cross-check.md"
+  },
+  {
+    "slug": "small-claims-intake",
+    "title": "Ontario Small Claims Claim and Defence Intake",
+    "description": "Organize a synthetic Small Claims matter into parties, allegations, responses, remedies, documents, procedural questions, and missing facts.",
+    "practice": "Small Claims Court",
+    "jurisdictions": ["Canada / Ontario"],
+    "version": "0.1.0-draft",
+    "status": "draft-awaiting-lawyer-review",
+    "intendedUsers": [
+      "Ontario lawyers",
+      "Ontario paralegals acting within their permitted scope"
+    ],
+    "excludedUses": [
+      "Consumer-facing legal advice",
+      "Automatic form filing",
+      "Limitation-period calculation",
+      "Use with confidential material during the controlled beta"
+    ],
+    "requiredInputs": [
+      "Claim, defence, or intake narrative",
+      "Represented party",
+      "Synthetic supporting records",
+      "Court location",
+      "Legal as-of date",
+      "Known service information"
+    ],
+    "primarySources": [
+      {
+        "label": "Rules of the Small Claims Court",
+        "url": "https://www.ontario.ca/laws/regulation/980258"
+      },
+      {
+        "label": "Official Small Claims forms",
+        "url": "https://www.ontariocourts.ca/scj/filing-procedures/rules/small-claims/"
+      },
+      {
+        "label": "Superior Court practice directions",
+        "url": "https://www.ontariocourts.ca/scj/practice-directions/"
+      }
+    ],
+    "sourceCurrency": "Verify the current rules, official form version, monetary jurisdiction, and applicable direction at run time.",
+    "output": "An intake summary, allegation-response matrix, document list, source-linked procedural questions, and missing-information list.",
+    "reviewChecklist": [
+      "Allegations and evidence remain distinct",
+      "Current official forms are linked rather than copied",
+      "No deadline or monetary-limit value is assumed",
+      "Court location and service facts are confirmed",
+      "Professional-scope warning remains visible"
+    ],
+    "reviewer": null,
+    "reviewDate": null,
+    "syntheticFixture": "tests/fixtures/workflows/ontario-small-claims-synthetic.md",
+    "skillFile": "small-claims-intake.md"
+  }
+]

@@ -8,11 +8,13 @@
   },
   "scripts": {
     "install:all": "npm ci --prefix backend && npm ci --prefix frontend && npm ci --prefix website",
-    "test": "npm run test:baseline",
+    "test": "npm run test:workflow-sources && npm run test:baseline && npm run test:legal-sources --prefix backend",
+    "test:workflow-sources": "node scripts/build-ross-workflows.mjs --check",
     "test:baseline": "node --test tests/baseline/*.test.mjs",
     "test:e2e": "node --test tests/e2e/*.test.mjs",
     "test:website": "npm run test:routes --prefix website",
-    "build": "npm run build:backend && npm run build:frontend && npm run build:website",
+    "build": "npm run build:ross-workflows && npm run build:backend && npm run build:frontend && npm run build:website",
+    "build:ross-workflows": "node scripts/build-ross-workflows.mjs",
     "build:backend": "npm run build --prefix backend",
     "build:frontend": "node scripts/build-frontend.mjs",
     "build:website": "npm run build --prefix website",
@@ -20,7 +22,7 @@
     "lint:baseline": "node scripts/lint-baseline.mjs",
     "lint:strict": "npm run lint --prefix frontend",
     "lint:website": "npm run lint --prefix website",
-    "check": "npm run test:baseline && npm run build && npm run lint && npm run test:website"
+    "check": "npm test && npm run build && npm run lint && npm run test:website"
   },
   "license": "AGPL-3.0-only"
 }

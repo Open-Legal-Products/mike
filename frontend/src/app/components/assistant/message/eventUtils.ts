@@ -28,6 +28,11 @@ export function toolCallLabel(name: string): string {
     if (name === "courtlistener_read_case") return "Reading case...";
     if (name === "courtlistener_verify_citations")
         return "Verifying citations...";
+    if (name === "search_legal_sources") return "Searching legal sources...";
+    if (name === "fetch_legal_source") return "Fetching legal authority...";
+    if (name === "find_in_legal_source")
+        return "Retrieving supporting passages...";
+    if (name === "verify_legal_citations") return "Verifying citations...";
     if (name.startsWith("mcp_")) return "Using connector...";
     return name ? `Running ${name}...` : "Working...";
 }

@@ -170,12 +170,19 @@ export async function createProject(
     name: string,
     cm_number?: string,
     practice?: string,
+    jurisdictions?: Array<"CA-ON" | "CA" | "US">,
     shared_with?: string[],
 ): Promise<Project> {
     return apiRequest<Project>("/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, cm_number, practice, shared_with }),
+        body: JSON.stringify({
+            name,
+            cm_number,
+            practice,
+            jurisdictions,
+            shared_with,
+        }),
     });
 }
 
@@ -226,8 +233,18 @@ export interface UserProfile {
     titleModel: string;
     tabularModel: string;
     mfaOnLogin: boolean;
+    legalResearch: LegalResearchSettings;
+    /** Legacy compatibility alias for enabledJurisdictions.includes("US"). */
     legalResearchUs: boolean;
     apiKeyStatus: ApiKeyStatus;
+}
+
+export interface LegalResearchSettings {
+    enabled: boolean;
+    defaultCountry: "CA" | "US";
+    defaultProvince: "ON" | null;
+    enabledJurisdictions: Array<"CA-ON" | "CA" | "US">;
+    enabledSourceProviders: string[];
 }
 
 export interface UserLookupResult {
@@ -253,6 +270,7 @@ export async function updateUserProfile(payload: {
     organisation?: string | null;
     titleModel?: string;
     tabularModel?: string;
+    legalResearch?: LegalResearchSettings;
     legalResearchUs?: boolean;
 }): Promise<UserProfile> {
     return apiRequest<UserProfile>("/user/profile", {
@@ -745,6 +763,8 @@ export async function downloadDocumentsZip(
 
 export async function createChat(payload?: {
     project_id?: string;
+    jurisdictions?: Array<"CA-ON" | "CA" | "US">;
+    legal_as_of_date?: string;
 }): Promise<{ id: string }> {
     return apiRequest<{ id: string }>("/chat/create", {
         method: "POST",
@@ -853,6 +873,8 @@ export async function streamChat(payload: {
     chat_id?: string;
     project_id?: string;
     model?: string;
+    jurisdictions?: Array<"CA-ON" | "CA" | "US">;
+    legal_as_of_date?: string;
     ask_inputs_response?: {
         responses: (
             | {
@@ -898,6 +920,8 @@ export async function streamProjectChat(payload: {
     messages: StreamChatMessage[];
     chat_id?: string;
     model?: string;
+    jurisdictions?: Array<"CA-ON" | "CA" | "US">;
+    legal_as_of_date?: string;
     displayed_doc?: { filename: string; document_id: string };
     attached_documents?: { filename: string; document_id: string }[];
     ask_inputs_response?: {

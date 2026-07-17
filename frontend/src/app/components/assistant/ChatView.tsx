@@ -120,19 +120,16 @@ export function ChatView({
         [],
     );
 
-    const hidePanel = useCallback(
-        (afterHidden: () => void) => {
-            if (panelCloseTimerRef.current !== null) {
-                window.clearTimeout(panelCloseTimerRef.current);
-            }
-            setPanelVisible(false);
-            panelCloseTimerRef.current = window.setTimeout(() => {
-                panelCloseTimerRef.current = null;
-                afterHidden();
-            }, ASSISTANT_PANEL_TRANSITION_MS);
-        },
-        [],
-    );
+    const hidePanel = useCallback((afterHidden: () => void) => {
+        if (panelCloseTimerRef.current !== null) {
+            window.clearTimeout(panelCloseTimerRef.current);
+        }
+        setPanelVisible(false);
+        panelCloseTimerRef.current = window.setTimeout(() => {
+            panelCloseTimerRef.current = null;
+            afterHidden();
+        }, ASSISTANT_PANEL_TRANSITION_MS);
+    }, []);
 
     const unmountPanel = useCallback(
         (afterUnmount?: () => void) => {
@@ -187,16 +184,23 @@ export function ChatView({
     const upsertTab = useCallback(
         (tab: AssistantSidePanelTab) => {
             setTabs((prev) => {
-                const idx = prev.findIndex((t) =>
-                    tab.kind === "case"
-                        ? t.kind === "case" && t.id === tab.id
-                        : t.kind !== "case" && t.documentId === tab.documentId,
-                );
+                const idx = prev.findIndex((t) => {
+                    if (tab.kind === "case" || tab.kind === "authority")
+                        return t.kind === tab.kind && t.id === tab.id;
+                    return (
+                        t.kind !== "case" &&
+                        t.kind !== "authority" &&
+                        t.documentId === tab.documentId
+                    );
+                });
                 if (idx >= 0) {
                     const existing = prev[idx];
                     const copy = prev.slice();
                     copy[idx] =
-                        tab.kind === "case" || existing.kind === "case"
+                        tab.kind === "case" ||
+                        tab.kind === "authority" ||
+                        existing.kind === "case" ||
+                        existing.kind === "authority"
                             ? tab
                             : {
                                   ...tab,
@@ -280,6 +284,20 @@ export function ChatView({
                 pdfUrl: citation.pdfUrl ?? null,
                 quotes: undefined,
                 opinions: citation.case?.opinions,
+            });
+        },
+        [chatId, upsertTab],
+    );
+
+    const openAuthority = useCallback(
+        (event: Extract<AssistantEvent, { type: "legal_authority" }>) => {
+            if (!chatId || !event.authority) return;
+            const key = `${event.authority.providerId}:${event.authority.sourceId ?? event.authority.citation ?? event.authority.title ?? "source"}`;
+            upsertTab({
+                kind: "authority",
+                id: `authority:${key}`,
+                chatId,
+                authority: event.authority,
             });
         },
         [chatId, upsertTab],
@@ -431,7 +449,9 @@ export function ChatView({
             // Surface the warning on every tab tied to this document.
             setTabs((prev) =>
                 prev.map((t) =>
-                    t.kind !== "case" && t.documentId === args.documentId
+                    t.kind !== "case" &&
+                    t.kind !== "authority" &&
+                    t.documentId === args.documentId
                         ? { ...t, warning: args.message }
                         : t,
                 ),
@@ -715,6 +735,9 @@ export function ChatView({
                                                 }
                                                 onCaseClick={(citation) =>
                                                     openCase(citation)
+                                                }
+                                                onAuthorityClick={(event) =>
+                                                    openAuthority(event)
                                                 }
                                                 minHeight={
                                                     i === lastAssistantIndex

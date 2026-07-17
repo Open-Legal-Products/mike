@@ -357,6 +357,8 @@ export function useAssistantChat({
             attached_documents:
               attachedDocs.length > 0 ? attachedDocs : undefined,
             ask_inputs_response: opts?.askInputsResponse,
+            jurisdictions: message.jurisdictions,
+            legal_as_of_date: message.legalAsOfDate,
             signal: controller.signal,
           })
         : streamChat({
@@ -364,6 +366,8 @@ export function useAssistantChat({
             chat_id: chatId,
             model,
             ask_inputs_response: opts?.askInputsResponse,
+            jurisdictions: message.jurisdictions,
+            legal_as_of_date: message.legalAsOfDate,
             signal: controller.signal,
           }));
 
@@ -595,6 +599,64 @@ export function useAssistantChat({
                   { type: "case_opinions" }
                 >["case"],
               });
+              continue;
+            }
+
+            if (data.type === "legal_source_search") {
+              pushEvent({
+                type: "legal_source_search",
+                provider_id:
+                  typeof data.provider_id === "string"
+                    ? (data.provider_id as string)
+                    : null,
+                provider_name:
+                  typeof data.provider_name === "string"
+                    ? (data.provider_name as string)
+                    : null,
+                query: typeof data.query === "string" ? data.query : "",
+                result_count:
+                  typeof data.result_count === "number" ? data.result_count : 0,
+                coverage_warning:
+                  typeof data.coverage_warning === "string"
+                    ? data.coverage_warning
+                    : undefined,
+                error:
+                  typeof data.error === "string" ? data.error : undefined,
+              });
+              pushThinkingPlaceholder();
+              continue;
+            }
+
+            if (data.type === "legal_authority") {
+              pushEvent({
+                type: "legal_authority",
+                action:
+                  data.action === "passages" || data.action === "verified"
+                    ? data.action
+                    : "fetched",
+                provider_id:
+                  typeof data.provider_id === "string"
+                    ? data.provider_id
+                    : null,
+                provider_name:
+                  typeof data.provider_name === "string"
+                    ? data.provider_name
+                    : null,
+                authority:
+                  data.authority && typeof data.authority === "object"
+                    ? (data.authority as Extract<
+                        AssistantEvent,
+                        { type: "legal_authority" }
+                      >["authority"])
+                    : undefined,
+                passage_count:
+                  typeof data.passage_count === "number"
+                    ? data.passage_count
+                    : undefined,
+                error:
+                  typeof data.error === "string" ? data.error : undefined,
+              });
+              pushThinkingPlaceholder();
               continue;
             }
 

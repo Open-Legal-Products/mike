@@ -35,6 +35,16 @@ function normalizeOptionalString(value: unknown) {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function normalizeProjectJurisdictions(value: unknown) {
+  if (!Array.isArray(value)) return ["CA-ON", "CA"];
+  const allowed = new Set(["CA-ON", "CA", "US"]);
+  const normalized = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => allowed.has(item));
+  return normalized.length > 0 ? [...new Set(normalized)] : ["CA-ON", "CA"];
+}
+
 function normalizeDocumentFilename(nextName: unknown, currentName: string) {
   if (typeof nextName !== "string") return null;
   const trimmed = nextName.trim().slice(0, 200);
@@ -170,10 +180,11 @@ projectsRouter.get("/", requireAuth, async (req, res) => {
 projectsRouter.post("/", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
   const userEmail = res.locals.userEmail as string | undefined;
-  const { name, cm_number, practice, shared_with } = req.body as {
+  const { name, cm_number, practice, jurisdictions, shared_with } = req.body as {
     name: string;
     cm_number?: string;
     practice?: string;
+    jurisdictions?: string[];
     shared_with?: string[];
   };
   if (!name?.trim())
@@ -211,6 +222,7 @@ projectsRouter.post("/", requireAuth, async (req, res) => {
       name: name.trim(),
       cm_number: normalizeOptionalString(cm_number),
       practice: normalizeOptionalString(practice),
+      jurisdictions: normalizeProjectJurisdictions(jurisdictions),
       shared_with: cleanedSharedWith,
     })
     .select("*")
@@ -318,6 +330,11 @@ projectsRouter.patch("/:projectId", requireAuth, async (req, res) => {
   if (req.body.cm_number != null) updates.cm_number = req.body.cm_number;
   if ("practice" in req.body) {
     updates.practice = normalizeOptionalString(req.body.practice);
+  }
+  if ("jurisdictions" in req.body) {
+    updates.jurisdictions = normalizeProjectJurisdictions(
+      req.body.jurisdictions,
+    );
   }
   if (Array.isArray(req.body.shared_with)) {
     // Normalise: lowercase + dedupe + drop empties.

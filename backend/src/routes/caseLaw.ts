@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
-import { getCourtlistenerCaseOpinions } from "../lib/courtlistener";
+import { createLegalSourceRegistry } from "../lib/legalSources";
 import { createServerSupabase } from "../lib/supabase";
 import { getUserModelSettings } from "../lib/userSettings";
 
@@ -14,6 +14,7 @@ const devLog = (...args: Parameters<typeof console.log>) => {
 };
 
 const sidepanelOpinionFetches = new Map<string, Promise<unknown>>();
+const legalSources = createLegalSourceRegistry();
 
 function cleanClusterId(value: unknown): number | null {
     const numeric =
@@ -51,21 +52,31 @@ caseLawRouter.post("/case-opinions", async (req, res) => {
                 clusterId,
             });
         } else {
-            fetchPromise = getCourtlistenerCaseOpinions({
-                clusterId,
-                db,
-                includeFullText: true,
-                maxChars: 50000,
-                apiToken: settings.api_keys.courtlistener,
-            }).finally(() => {
-                sidepanelOpinionFetches.delete(fetchKey);
-            });
+            const courtListener = legalSources.get("courtlistener-us");
+            if (!courtListener.fetchDecision)
+                throw new Error(
+                    "CourtListener decision retrieval is unavailable.",
+                );
+            fetchPromise = courtListener
+                .fetchDecision(String(clusterId), {
+                    db,
+                    apiToken: settings.api_keys.courtlistener,
+                })
+                .finally(() => {
+                    sidepanelOpinionFetches.delete(fetchKey);
+                });
             sidepanelOpinionFetches.set(fetchKey, fetchPromise);
         }
         const fetched = await fetchPromise;
-        const fetchedRecord =
+        const decisionRecord =
             fetched && typeof fetched === "object" && !Array.isArray(fetched)
                 ? (fetched as Record<string, unknown>)
+                : {};
+        const fetchedRecord =
+            decisionRecord.providerPayload &&
+            typeof decisionRecord.providerPayload === "object" &&
+            !Array.isArray(decisionRecord.providerPayload)
+                ? (decisionRecord.providerPayload as Record<string, unknown>)
                 : {};
         const opinions = Array.isArray(fetchedRecord.opinions)
             ? fetchedRecord.opinions
@@ -78,7 +89,9 @@ caseLawRouter.post("/case-opinions", async (req, res) => {
         return res.json({ opinions });
     } catch (err) {
         const message =
-            err instanceof Error ? err.message : "Failed to fetch case opinions";
+            err instanceof Error
+                ? err.message
+                : "Failed to fetch case opinions";
         return res.status(502).json({ detail: message });
     }
 });

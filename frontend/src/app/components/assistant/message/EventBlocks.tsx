@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ChevronDown, Download, Loader2 } from "lucide-react";
+import { ChevronDown, Download, ExternalLink, Loader2 } from "lucide-react";
 import { supabase } from "@/app/lib/supabase";
 import type { AssistantEvent } from "../../shared/types";
 import { FileTypeIcon } from "../../shared/FileTypeIcon";
@@ -239,6 +239,148 @@ export function DocReadBlock({
                     </span>
                 )}
             </div>
+        </EventBlock>
+    );
+}
+
+export function LegalAuthorityBlock({
+    event,
+    showConnector,
+    onOpen,
+}: {
+    event: Extract<AssistantEvent, { type: "legal_authority" }>;
+    showConnector?: boolean;
+    onOpen?: () => void;
+}) {
+    const authority = event.authority;
+    const hasError = !!event.error;
+    const title =
+        authority?.title ||
+        authority?.citation ||
+        event.provider_name ||
+        "Legal authority";
+    const status = authority?.verification ?? "unverified";
+    const canonicalUrl = (() => {
+        try {
+            const url = new URL(authority?.canonicalUrl ?? "");
+            return url.protocol === "https:" ? url.toString() : null;
+        } catch {
+            return null;
+        }
+    })();
+    return (
+        <EventBlock
+            showConnector={showConnector}
+            dotColor={
+                hasError ? "red" : status === "verified" ? "green" : "gray"
+            }
+        >
+            <details className="group">
+                <summary className="cursor-pointer list-none">
+                    <span className="font-medium">
+                        {hasError
+                            ? "Legal source request failed"
+                            : event.action === "passages"
+                              ? "Retrieved supporting passages"
+                              : event.action === "verified"
+                                ? "Checked legal citations"
+                                : "Fetched legal authority"}
+                    </span>
+                    <span className="ml-1 text-gray-400">{title}</span>
+                    <ChevronDown className="ml-1 inline h-3 w-3 transition-transform group-open:rotate-180" />
+                </summary>
+                {event.error ? (
+                    <p className="mt-2 text-xs text-red-600">{event.error}</p>
+                ) : authority ? (
+                    <div className="mt-2 space-y-2 rounded-md border border-gray-200 bg-white/60 p-3 text-xs text-gray-600">
+                        <div className="flex flex-wrap gap-1.5">
+                            <span className="rounded bg-gray-100 px-1.5 py-0.5">
+                                {status === "verified"
+                                    ? "Citation verified"
+                                    : "Not verified"}
+                            </span>
+                            <span className="rounded bg-gray-100 px-1.5 py-0.5">
+                                {authority.official
+                                    ? "Official source"
+                                    : authority.fullTextStatus}
+                            </span>
+                            {authority.jurisdiction && (
+                                <span className="rounded bg-gray-100 px-1.5 py-0.5">
+                                    {authority.jurisdiction}
+                                </span>
+                            )}
+                            {authority.language && (
+                                <span className="rounded bg-gray-100 px-1.5 py-0.5">
+                                    {authority.language.toUpperCase()}
+                                </span>
+                            )}
+                        </div>
+                        <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
+                            {authority.court && (
+                                <>
+                                    <dt>Court</dt>
+                                    <dd>{authority.court}</dd>
+                                </>
+                            )}
+                            {authority.decisionDate && (
+                                <>
+                                    <dt>Decision</dt>
+                                    <dd>{authority.decisionDate}</dd>
+                                </>
+                            )}
+                            {authority.currentToDate && (
+                                <>
+                                    <dt>Current to</dt>
+                                    <dd>{authority.currentToDate}</dd>
+                                </>
+                            )}
+                            {authority.retrievedAt && (
+                                <>
+                                    <dt>Retrieved</dt>
+                                    <dd>{authority.retrievedAt}</dd>
+                                </>
+                            )}
+                            <dt>Provider</dt>
+                            <dd>{authority.providerName}</dd>
+                        </dl>
+                        {authority.passages.map((passage, index) => (
+                            <blockquote
+                                key={`${passage.sourceUrl ?? "passage"}-${index}`}
+                                className="border-l-2 border-gray-300 pl-2 text-gray-700"
+                            >
+                                {passage.text}
+                                {(passage.paragraphStart ||
+                                    passage.section) && (
+                                    <span className="ml-1 text-gray-400">
+                                        {passage.paragraphStart
+                                            ? `¶ ${passage.paragraphStart}${passage.paragraphEnd ? `–${passage.paragraphEnd}` : ""}`
+                                            : `s. ${passage.section}`}
+                                    </span>
+                                )}
+                            </blockquote>
+                        ))}
+                        {canonicalUrl && (
+                            <a
+                                href={canonicalUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-blue-600 underline"
+                            >
+                                Open source <ExternalLink className="h-3 w-3" />
+                            </a>
+                        )}
+                        {onOpen && (
+                            <button
+                                type="button"
+                                onClick={onOpen}
+                                className="ml-2 text-blue-600 underline"
+                            >
+                                Inspect details
+                            </button>
+                        )}
+                    </div>
+                ) : null}
+            </details>
         </EventBlock>
     );
 }

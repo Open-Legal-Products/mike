@@ -18,9 +18,7 @@ import {
     type ChatMessage,
 } from "../lib/chat";
 import { completeText } from "../lib/llm";
-import {
-    getUserModelSettings,
-} from "../lib/userSettings";
+import { getUserModelSettings } from "../lib/userSettings";
 import { checkProjectAccess } from "../lib/access";
 import { safeErrorLog, safeErrorMessage } from "../lib/safeError";
 
@@ -35,7 +33,10 @@ const devLog = (...args: Parameters<typeof console.log>) => {
 const TITLE_FALLBACK = "Misc. Query";
 
 function normalizeGeneratedTitle(raw: string): string {
-    const title = raw.trim().replace(/^["'`]+|["'`.,:;!?]+$/g, "").trim();
+    const title = raw
+        .trim()
+        .replace(/^["'`]+|["'`.,:;!?]+$/g, "")
+        .trim();
     if (!title) return TITLE_FALLBACK;
     return title.slice(0, 80);
 }
@@ -47,7 +48,9 @@ type AccessibleChat = {
     project_id: string | null;
 } & Record<string, unknown>;
 
-function parseOptionalProjectId(value: unknown):
+function parseOptionalProjectId(
+    value: unknown,
+):
     | { ok: true; provided: boolean; projectId: string | null }
     | { ok: false; detail: string } {
     if (value === undefined)
@@ -62,19 +65,20 @@ function parseOptionalProjectId(value: unknown):
     return { ok: true, provided: true, projectId: value.trim() };
 }
 
-function parseOptionalChatId(value: unknown):
-    | { ok: true; chatId: string | null }
-    | { ok: false; detail: string } {
-    if (value === undefined || value === null) return { ok: true, chatId: null };
+function parseOptionalChatId(
+    value: unknown,
+): { ok: true; chatId: string | null } | { ok: false; detail: string } {
+    if (value === undefined || value === null)
+        return { ok: true, chatId: null };
     if (typeof value !== "string" || !value.trim()) {
         return { ok: false, detail: "chat_id must be a non-empty string" };
     }
     return { ok: true, chatId: value.trim() };
 }
 
-function parseChatMessages(value: unknown):
-    | { ok: true; messages: ChatMessage[] }
-    | { ok: false; detail: string } {
+function parseChatMessages(
+    value: unknown,
+): { ok: true; messages: ChatMessage[] } | { ok: false; detail: string } {
     if (!Array.isArray(value) || value.length === 0) {
         return { ok: false, detail: "messages must be a non-empty array" };
     }
@@ -98,14 +102,63 @@ function parseChatMessages(value: unknown):
     return { ok: true, messages: value as ChatMessage[] };
 }
 
-function parseOptionalModel(value: unknown):
-    | { ok: true; model: string | undefined }
-    | { ok: false; detail: string } {
+function parseOptionalModel(
+    value: unknown,
+): { ok: true; model: string | undefined } | { ok: false; detail: string } {
     if (value === undefined) return { ok: true, model: undefined };
     if (typeof value !== "string" || !value.trim()) {
         return { ok: false, detail: "model must be a non-empty string" };
     }
     return { ok: true, model: value.trim() };
+}
+
+function parseLegalScope(
+    jurisdictions: unknown,
+    legalAsOfDate: unknown,
+):
+    | {
+          ok: true;
+          jurisdictions: Array<"CA-ON" | "CA" | "US"> | null;
+          legalAsOfDate: string | null;
+      }
+    | { ok: false; detail: string } {
+    let normalizedJurisdictions: Array<"CA-ON" | "CA" | "US"> | null = null;
+    if (jurisdictions !== undefined) {
+        if (!Array.isArray(jurisdictions) || jurisdictions.length === 0)
+            return {
+                ok: false,
+                detail: "jurisdictions must be a non-empty array",
+            };
+        const allowed = new Set(["CA-ON", "CA", "US"]);
+        if (
+            jurisdictions.some(
+                (item) => typeof item !== "string" || !allowed.has(item),
+            )
+        )
+            return {
+                ok: false,
+                detail: "jurisdictions contains an unsupported value",
+            };
+        normalizedJurisdictions = [
+            ...new Set(jurisdictions as Array<"CA-ON" | "CA" | "US">),
+        ];
+    }
+    if (legalAsOfDate !== undefined && legalAsOfDate !== null) {
+        if (
+            typeof legalAsOfDate !== "string" ||
+            !/^\d{4}-\d{2}-\d{2}$/.test(legalAsOfDate) ||
+            Number.isNaN(Date.parse(`${legalAsOfDate}T00:00:00Z`))
+        )
+            return {
+                ok: false,
+                detail: "legal_as_of_date must use YYYY-MM-DD",
+            };
+    }
+    return {
+        ok: true,
+        jurisdictions: normalizedJurisdictions,
+        legalAsOfDate: typeof legalAsOfDate === "string" ? legalAsOfDate : null,
+    };
 }
 
 async function validateAccessibleProjectId(
@@ -181,6 +234,12 @@ chatRouter.post("/create", requireAuth, async (req, res) => {
         return void res.status(400).json({ detail: parsedProjectId.detail });
     }
     const projectId = parsedProjectId.projectId;
+    const parsedScope = parseLegalScope(
+        req.body?.jurisdictions,
+        req.body?.legal_as_of_date,
+    );
+    if (!parsedScope.ok)
+        return void res.status(400).json({ detail: parsedScope.detail });
     const db = createServerSupabase();
     const projectAccess = await validateAccessibleProjectId(
         projectId,
@@ -195,7 +254,16 @@ chatRouter.post("/create", requireAuth, async (req, res) => {
 
     const { data, error } = await db
         .from("chats")
-        .insert({ user_id: userId, project_id: projectId ?? null })
+        .insert({
+            user_id: userId,
+            project_id: projectId ?? null,
+            ...(parsedScope.jurisdictions
+                ? { jurisdictions: parsedScope.jurisdictions }
+                : {}),
+            ...(parsedScope.legalAsOfDate
+                ? { legal_as_of_date: parsedScope.legalAsOfDate }
+                : {}),
+        })
         .select("id")
         .single();
 
@@ -211,8 +279,7 @@ chatRouter.get("/:chatId", requireAuth, async (req, res) => {
     const db = createServerSupabase();
 
     const chat = await getAccessibleChat(chatId, userId, userEmail, db);
-    if (!chat)
-        return void res.status(404).json({ detail: "Chat not found" });
+    if (!chat) return void res.status(404).json({ detail: "Chat not found" });
 
     const { data: messages } = await db
         .from("chat_messages")
@@ -238,8 +305,7 @@ async function hydrateEditStatuses(
         if (!Array.isArray(list)) return;
         for (const a of list as Record<string, unknown>[]) {
             if (typeof a?.edit_id === "string") editIds.add(a.edit_id);
-            if (typeof a?.version_id === "string")
-                versionIds.add(a.version_id);
+            if (typeof a?.version_id === "string") versionIds.add(a.version_id);
         }
     };
     for (const m of messages) {
@@ -387,8 +453,7 @@ chatRouter.post("/:chatId/generate-title", requireAuth, async (req, res) => {
 
     const db = createServerSupabase();
     const chat = await getAccessibleChat(chatId, userId, userEmail, db);
-    if (!chat)
-        return void res.status(404).json({ detail: "Chat not found" });
+    if (!chat) return void res.status(404).json({ detail: "Chat not found" });
 
     try {
         const { title_model, api_keys } = await getUserModelSettings(
@@ -403,10 +468,7 @@ chatRouter.post("/:chatId/generate-title", requireAuth, async (req, res) => {
         });
         const title = normalizeGeneratedTitle(titleText);
 
-        await db
-            .from("chats")
-            .update({ title })
-            .eq("id", chatId);
+        await db.from("chats").update({ title }).eq("id", chatId);
 
         res.json({ title });
     } catch (err) {
@@ -441,6 +503,12 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     const askInputsResponse = parseAskInputsResponsePayload(
         body.ask_inputs_response,
     );
+    const parsedScope = parseLegalScope(
+        body.jurisdictions,
+        body.legal_as_of_date,
+    );
+    if (!parsedScope.ok)
+        return void res.status(400).json({ detail: parsedScope.detail });
 
     const messages = parsedMessages.messages;
     const chat_id = parsedChatId.chatId;
@@ -477,6 +545,19 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         }
         resolvedProjectId = existingProjectId;
         chatTitle = existing.title;
+        if (parsedScope.jurisdictions || parsedScope.legalAsOfDate) {
+            await db
+                .from("chats")
+                .update({
+                    ...(parsedScope.jurisdictions
+                        ? { jurisdictions: parsedScope.jurisdictions }
+                        : {}),
+                    ...(parsedScope.legalAsOfDate
+                        ? { legal_as_of_date: parsedScope.legalAsOfDate }
+                        : {}),
+                })
+                .eq("id", chatId);
+        }
     }
 
     if (!chatId) {
@@ -495,7 +576,16 @@ chatRouter.post("/", requireAuth, async (req, res) => {
 
         const { data: newChat, error } = await db
             .from("chats")
-            .insert({ user_id: userId, project_id: resolvedProjectId })
+            .insert({
+                user_id: userId,
+                project_id: resolvedProjectId,
+                ...(parsedScope.jurisdictions
+                    ? { jurisdictions: parsedScope.jurisdictions }
+                    : {}),
+                ...(parsedScope.legalAsOfDate
+                    ? { legal_as_of_date: parsedScope.legalAsOfDate }
+                    : {}),
+            })
             .select("id, title")
             .single();
         if (error || !newChat) {
@@ -543,16 +633,29 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         db,
         docIndex,
     );
-    const {
-        api_keys: apiKeys,
-        legal_research_us: legalResearchUs,
-    } = await getUserModelSettings(userId, db);
+    const { api_keys: apiKeys, legal_research: legalResearch } =
+        await getUserModelSettings(userId, db);
+    const scopedLegalResearch = parsedScope.jurisdictions
+        ? {
+              ...legalResearch,
+              defaultCountry: parsedScope.jurisdictions.includes("US")
+                  ? ("US" as const)
+                  : ("CA" as const),
+              defaultProvince: parsedScope.jurisdictions.includes("CA-ON")
+                  ? ("ON" as const)
+                  : null,
+              enabledJurisdictions: parsedScope.jurisdictions,
+          }
+        : legalResearch;
+    const legalScopeExtra = parsedScope.legalAsOfDate
+        ? `LEGAL AS-OF DATE FOR THIS CHAT: ${parsedScope.legalAsOfDate}. Do not substitute current law without disclosure.`
+        : undefined;
     const apiMessages = buildMessages(
         enrichedMessages,
         docAvailability,
+        legalScopeExtra,
         undefined,
-        undefined,
-        legalResearchUs,
+        scopedLegalResearch,
     );
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
@@ -587,7 +690,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             db,
             write,
             workflowStore,
-            includeResearchTools: legalResearchUs,
+            includeResearchTools: legalResearch.enabled,
             model,
             apiKeys,
             signal: streamAbort.signal,
@@ -665,9 +768,10 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         }
         console.error("[chat/stream] error:", safeErrorLog(err));
         const message = safeErrorMessage(err, "Stream error");
-        const errorEvents = err instanceof AssistantStreamError
-            ? stripTransientAssistantEvents(err.events)
-            : [{ type: "error" as const, message }];
+        const errorEvents =
+            err instanceof AssistantStreamError
+                ? stripTransientAssistantEvents(err.events)
+                : [{ type: "error" as const, message }];
         const errorFullText =
             err instanceof AssistantStreamError ? err.fullText : "";
         try {
@@ -700,9 +804,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             console.error("[chat/stream] failed to save error", saveErr);
         }
         try {
-            write(
-                `data: ${JSON.stringify({ type: "error", message })}\n\n`,
-            );
+            write(`data: ${JSON.stringify({ type: "error", message })}\n\n`);
             write("data: [DONE]\n\n");
         } catch {
             /* ignore */

@@ -3,8 +3,8 @@ import brand from "../../config/ross-brand.json";
 export const siteConfig = {
   name: brand.product.name,
   expandedName: brand.product.expandedName,
-  websiteUrl: brand.urls.website,
-  appUrl: brand.urls.app,
+  websiteUrl: process.env.NEXT_PUBLIC_ROSS_WEBSITE_URL ?? brand.urls.website,
+  appUrl: process.env.NEXT_PUBLIC_ROSS_APP_URL ?? brand.urls.app,
   sourceUrl: brand.urls.source,
   upstreamUrl: brand.urls.upstreamSource,
   supportUrl: brand.urls.support,

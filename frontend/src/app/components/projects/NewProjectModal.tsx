@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Upload, User, X } from "lucide-react";
+import { Check, Upload, User, X } from "lucide-react";
 import {
     addDocumentToProject,
     createProject,
@@ -29,6 +29,9 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
     const [name, setName] = useState("");
     const [cmNumber, setCmNumber] = useState("");
     const [practice, setPractice] = useState("");
+    const [jurisdictions, setJurisdictions] = useState<
+        Array<"CA-ON" | "CA" | "US">
+    >(["CA-ON", "CA"]);
     const [sharedUsers, setSharedUsers] = useState<UserLookupResult[]>([]);
     const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -74,6 +77,7 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
                 practice.trim() && practice.trim() !== "Other"
                     ? practice.trim()
                     : undefined,
+                jurisdictions,
                 ownEmail
                     ? sharedUsers
                           .map((user) => user.email)
@@ -99,6 +103,7 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
         setName("");
         setCmNumber("");
         setPractice("");
+        setJurisdictions(["CA-ON", "CA"]);
         setSharedUsers([]);
         setSelectedDocIds(new Set());
         setPendingFiles([]);
@@ -246,6 +251,51 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
                                 value={practice}
                                 onChange={setPractice}
                             />
+                        </div>
+
+                        <div>
+                            <ModalFieldLabel as="p">Jurisdictions</ModalFieldLabel>
+                            <div className="mt-2 space-y-2">
+                                {(
+                                    [
+                                        ["CA-ON", "Ontario, Canada"],
+                                        ["CA", "Federal — Canada"],
+                                        ["US", "United States"],
+                                    ] as const
+                                ).map(([code, label]) => {
+                                    const checked = jurisdictions.includes(code);
+                                    return (
+                                        <button
+                                            key={code}
+                                            type="button"
+                                            role="checkbox"
+                                            aria-checked={checked}
+                                            onClick={() =>
+                                                setJurisdictions((current) =>
+                                                    checked
+                                                        ? current.filter(
+                                                              (item) =>
+                                                                  item !== code,
+                                                          )
+                                                        : [...current, code],
+                                                )
+                                            }
+                                            className="flex w-full items-center justify-between rounded-md bg-gray-50 px-3 py-2 text-left text-sm text-gray-800"
+                                        >
+                                            {label}
+                                            <span
+                                                className={`flex h-5 w-5 items-center justify-center rounded-sm border ${
+                                                    checked
+                                                        ? "border-gray-950 bg-gray-950 text-white"
+                                                        : "border-gray-300 bg-white text-transparent"
+                                                }`}
+                                            >
+                                                <Check className="h-3.5 w-3.5" />
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
 
                         <div className="space-y-2">

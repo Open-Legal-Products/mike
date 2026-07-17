@@ -12,9 +12,12 @@ import { workflowsRouter } from "./routes/workflows";
 import { userRouter } from "./routes/user";
 import { downloadsRouter } from "./routes/downloads";
 import { caseLawRouter } from "./routes/caseLaw";
+import { legalSourcesRouter } from "./routes/legalSources";
+import { loadRuntimeConfig } from "./config/runtime";
 
 const app = express();
-const PORT = process.env.PORT ?? 3001;
+const runtime = loadRuntimeConfig();
+const PORT = runtime.port;
 const isProduction = process.env.NODE_ENV === "production";
 
 function envInt(name: string, fallback: number): number {
@@ -113,7 +116,13 @@ app.use(
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL ?? "http://localhost:3000",
+    origin(origin, callback) {
+      if (!origin || runtime.allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error("Origin is not allowed by ROSS CORS policy."));
+    },
     credentials: true,
   }),
 );
@@ -155,9 +164,12 @@ app.use("/user", userRouter);
 app.use("/users", userRouter);
 app.use("/download", downloadsRouter);
 app.use("/case-law", caseLawRouter);
+app.use("/legal-sources", legalSourcesRouter);
 
-app.get("/health", (_req, res) => res.json({ ok: true }));
+app.get("/health", (_req, res) =>
+  res.json({ ok: true, service: "ross-api", environment: runtime.environment }),
+);
 
 app.listen(PORT, () => {
-  console.log(`Mike backend running on port ${PORT}`);
+  console.log(`ROSS API running on port ${PORT} (${runtime.environment})`);
 });
