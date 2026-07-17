@@ -20,7 +20,12 @@ import {
   storageKey,
 } from "../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../lib/convert";
-import { checkProjectAccess } from "../lib/access";
+import {
+  checkProjectAccess,
+  getOrgRole,
+  getPersonalOrgId,
+  resolveContentOrgId,
+} from "../lib/access";
 import { singleFileUpload } from "../lib/upload";
 import { deleteUserProjects } from "../lib/userDataCleanup";
 import {
@@ -363,11 +368,12 @@ projectsRouter.get("/", requireAuth, async (req, res) => {
 projectsRouter.post("/", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
   const userEmail = res.locals.userEmail as string | undefined;
-  const { name, cm_number, practice, shared_with } = req.body as {
+  const { name, cm_number, practice, shared_with, org_id } = req.body as {
     name: string;
     cm_number?: string;
     practice?: string;
     shared_with?: string[];
+    org_id?: string | null;
   };
   if (!name?.trim())
     return void res.status(400).json({ detail: "name is required" });
@@ -397,6 +403,20 @@ projectsRouter.post("/", requireAuth, async (req, res) => {
     });
   }
 
+  // Tenant assignment: an explicit org_id must be one the caller belongs to;
+  // otherwise the project lands in the caller's personal org.
+  let resolvedOrgId: string | null;
+  if (org_id) {
+    const role = await getOrgRole(userId, org_id, db);
+    if (!role)
+      return void res
+        .status(400)
+        .json({ detail: "You are not a member of that organization." });
+    resolvedOrgId = org_id;
+  } else {
+    resolvedOrgId = await getPersonalOrgId(userId, db);
+  }
+
   const { data, error } = await db
     .from("projects")
     .insert({
@@ -405,6 +425,7 @@ projectsRouter.post("/", requireAuth, async (req, res) => {
       cm_number: normalizeOptionalString(cm_number),
       practice: normalizeOptionalString(practice),
       shared_with: cleanedSharedWith,
+      org_id: resolvedOrgId,
     })
     .select("*")
     .single();
@@ -901,11 +922,13 @@ projectsRouter.post(
     if (doc.project_id === projectId) return void res.json(doc);
 
     if (doc.project_id === null) {
-      // Standalone → assign project_id
+      // Standalone → assign project_id (and inherit the project's org).
+      const targetOrgId = await resolveContentOrgId(db, { userId, projectId });
       const { data: updated, error } = await db
         .from("documents")
         .update({
           project_id: projectId,
+          org_id: targetOrgId,
           library_folder_id: null,
           updated_at: new Date().toISOString(),
         })
@@ -953,12 +976,14 @@ projectsRouter.post(
           .json({ detail: "Failed to read source document bytes" });
       }
 
+      const copyOrgId = await resolveContentOrgId(db, { userId, projectId });
       const { data: copy, error } = await db
         .from("documents")
         .insert({
           project_id: projectId,
           user_id: userId,
           status: doc.status,
+          org_id: copyOrgId,
         })
         .select("*")
         .single();
@@ -1414,12 +1439,14 @@ export async function handleDocumentUpload(
       });
 
   const content = file.buffer;
+  const orgId = await resolveContentOrgId(db, { userId, projectId });
   const { data: doc, error: insertErr } = await db
     .from("documents")
     .insert({
       project_id: projectId,
       user_id: userId,
       status: "processing",
+      org_id: orgId,
     })
     .select("*")
     .single();
