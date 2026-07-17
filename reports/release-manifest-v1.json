@@ -1,0 +1,74 @@
+{
+  "version": "1.0.0",
+  "releaseId": "unassigned",
+  "generatedAt": "2026-07-16T00:00:00.000Z",
+  "algorithm": "sha256",
+  "artifactCount": 13,
+  "artifacts": [
+    {
+      "path": "backend/schema.sql",
+      "sha256": "a802879090542e04152ef55a0faf47b78d2726d15859eb438b5537c1132d8026",
+      "sizeBytes": 27712
+    },
+    {
+      "path": "backend/src/config/runtime.ts",
+      "sha256": "b24c1d7c6848e6c7237c71487b061d3ca4aec843db3a14f65676f2d5fa5208f6",
+      "sizeBytes": 5963
+    },
+    {
+      "path": "config/legal-source-operations.v1.json",
+      "sha256": "ae74d9bc6cb411cf8aec077d70354605efb3444be24c98d49506da28e5efffb1",
+      "sizeBytes": 1003
+    },
+    {
+      "path": "config/launch-readiness.v1.json",
+      "sha256": "b1be324e2e5193d05914be0d8193f997ebcab685078025b7cc67e8b6e6b8f98e",
+      "sizeBytes": 938
+    },
+    {
+      "path": "config/operations-readiness.v1.json",
+      "sha256": "311f92bee6fcb63f88f0d4023406518eb9a71adff2a87cc51fa3319ae357bb68",
+      "sizeBytes": 997
+    },
+    {
+      "path": "config/public-source-coverage.json",
+      "sha256": "9b59797073dd36364a4ebf71b416dde1715ece7bef98b96678beb6c1fb198919",
+      "sizeBytes": 3632
+    },
+    {
+      "path": "config/release-approvals.v1.json",
+      "sha256": "3e6df14ffc9ed377befde53f25f00b5a46010527e622de967969199c7926a5f1",
+      "sizeBytes": 739
+    },
+    {
+      "path": "config/ross-brand.json",
+      "sha256": "97fd6fa842758de709dbed7ad08adf72be86e7636d6f939f12031d859e6cbfba",
+      "sizeBytes": 1972
+    },
+    {
+      "path": "reports/legal-source-health-v1.json",
+      "sha256": "b347e4ddb627fcbc4f67392a1e71cd84d01b52c01b97c8d6abeb7d011e63ab80",
+      "sizeBytes": 1025
+    },
+    {
+      "path": "reports/ontario-evaluation-v1.json",
+      "sha256": "67dc3e089dfb30a0d7565713cc6c2104f1908a5fc2fd4c634ca37e174e5f6800",
+      "sizeBytes": 5396
+    },
+    {
+      "path": "scripts/lib/release-readiness.mjs",
+      "sha256": "6592d96c8d0669800a0fa38c4eb8966e0882b1e18f966334b29524abca6b8b9d",
+      "sizeBytes": 2944
+    },
+    {
+      "path": "website/app/site-config.ts",
+      "sha256": "05ac5b38d330a90e4cc27a55c2e2b43904a104c9f580eeb98ae02f3fffaa2866",
+      "sizeBytes": 2693
+    },
+    {
+      "path": "workflows/ontario/catalogue.json",
+      "sha256": "406218eb0bbe6b8503cd7efc68d485c0be7374c4e1b7992a9d06c983196c87c4",
+      "sizeBytes": 10399
+    }
+  ]
+}

@@ -8,6 +8,8 @@ export type RuntimeConfig = {
     hostedMode: RossHostedMode;
     dataBoundaryVersion: string;
     hostedModelProviders: Array<"claude" | "gemini" | "openai">;
+    releaseId: string | null;
+    releaseManifestSha256: string | null;
 };
 
 const PLACEHOLDER =
@@ -129,8 +131,14 @@ export function loadRuntimeConfig(): RuntimeConfig {
             "R2_ACCESS_KEY_ID",
             "R2_SECRET_ACCESS_KEY",
             "R2_BUCKET_NAME",
+            "ROSS_RELEASE_ID",
+            "ROSS_RELEASE_MANIFEST_SHA256",
         ])
             requiredProductionValue(name);
+        if (!/^[a-f0-9]{64}$/.test(process.env.ROSS_RELEASE_MANIFEST_SHA256!))
+            throw new Error(
+                "ROSS_RELEASE_MANIFEST_SHA256 must be a lowercase SHA-256 digest.",
+            );
         if (allowedOrigins.some((origin) => PLACEHOLDER.test(origin))) {
             throw new Error(
                 "Production CORS origins cannot use localhost or placeholder domains.",
@@ -167,5 +175,8 @@ export function loadRuntimeConfig(): RuntimeConfig {
         dataBoundaryVersion:
             process.env.ROSS_DATA_BOUNDARY_VERSION?.trim() || "2026-07-16",
         hostedModelProviders: hostedModelProviders(currentHostedMode),
+        releaseId: process.env.ROSS_RELEASE_ID?.trim() || null,
+        releaseManifestSha256:
+            process.env.ROSS_RELEASE_MANIFEST_SHA256?.trim() || null,
     };
 }

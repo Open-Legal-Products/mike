@@ -1,0 +1,56 @@
+name: Release candidate evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_id:
+        description: Non-secret release candidate identifier
+        required: true
+        default: rc-unassigned
+
+permissions:
+  contents: read
+
+jobs:
+  verify-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+            website/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm run install:all
+
+      - name: Run the complete engineering gate
+        run: npm run check
+
+      - name: Confirm governed artifacts are current
+        run: npm run test:release-manifest
+
+      - name: Archive non-secret candidate evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ross-${{ inputs.candidate_id }}-evidence
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            reports/ontario-evaluation-v1.json
+            reports/legal-source-health-v1.json
+            reports/release-manifest-v1.json
+            config/release-approvals.v1.json
+            config/operations-readiness.v1.json
+            config/launch-readiness.v1.json
+
+# Deliberately no deploy job. Production promotion is a separate, human-approved
+# action after every fail-closed record and external review is complete.

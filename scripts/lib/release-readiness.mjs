@@ -6,6 +6,29 @@ const REQUIRED_APPROVALS = [
   "productOwner",
 ];
 
+const REQUIRED_OPERATIONAL_EVIDENCE = [
+  "ci",
+  "stagingJourney",
+  "migrationDryRun",
+  "backupRestore",
+  "rollbackExercise",
+  "observability",
+  "sourceHealth",
+  "dependencyReview",
+  "incidentExercise",
+];
+
+const REQUIRED_LAUNCH_DECISIONS = [
+  "legalOperator",
+  "accountableOwners",
+  "productionDomains",
+  "vendorsAndResidency",
+  "effectiveLegalNotices",
+  "supportAndPrivacyChannels",
+  "betaCohortAndTerms",
+  "goLiveDecision",
+];
+
 const isDatedApproval = (approval) =>
   approval?.status === "approved" &&
   typeof approval.approver === "string" &&
@@ -15,7 +38,19 @@ const isDatedApproval = (approval) =>
   typeof approval.evidence === "string" &&
   approval.evidence.trim().length > 0;
 
-export function evaluateReleaseReadiness(report, approvalRecord, production) {
+function requireEvidence(record, names, label, blockers) {
+  for (const name of names) {
+    if (!isDatedApproval(record?.[name]))
+      blockers.push(`${label} ${name} is missing or incomplete.`);
+  }
+}
+
+export function evaluateReleaseReadiness(
+  report,
+  approvalRecord,
+  production,
+  productionEvidence = {},
+) {
   const blockers = [];
   if (report.passed !== true)
     blockers.push("Ontario evaluation thresholds failed.");
@@ -34,6 +69,24 @@ export function evaluateReleaseReadiness(report, approvalRecord, production) {
         blockers.push(`${name} approval is missing or incomplete.`);
       }
     }
+    if (productionEvidence.operations?.status !== "approved-for-release")
+      blockers.push("Operational readiness record is not approved-for-release.");
+    requireEvidence(
+      productionEvidence.operations?.evidence,
+      REQUIRED_OPERATIONAL_EVIDENCE,
+      "operational evidence",
+      blockers,
+    );
+    if (productionEvidence.launch?.status !== "approved-for-launch")
+      blockers.push("Launch readiness record is not approved-for-launch.");
+    requireEvidence(
+      productionEvidence.launch?.decisions,
+      REQUIRED_LAUNCH_DECISIONS,
+      "launch decision",
+      blockers,
+    );
+    if (productionEvidence.sourceOperations?.ready !== true)
+      blockers.push("Required legal-source health is not production-ready.");
   }
 
   return {
@@ -41,5 +94,7 @@ export function evaluateReleaseReadiness(report, approvalRecord, production) {
     ready: blockers.length === 0,
     blockers,
     requiredApprovals: REQUIRED_APPROVALS,
+    requiredOperationalEvidence: REQUIRED_OPERATIONAL_EVIDENCE,
+    requiredLaunchDecisions: REQUIRED_LAUNCH_DECISIONS,
   };
 }

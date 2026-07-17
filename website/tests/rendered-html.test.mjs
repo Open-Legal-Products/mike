@@ -67,6 +67,7 @@ test("required public routes render without authentication", async () => {
     "/subprocessors",
     "/responsible-ai",
     "/demo",
+    "/readiness",
   ];
 
   for (const route of routes) {
@@ -140,6 +141,21 @@ test("the first dated update and governed metadata render", async () => {
   assert.match(normalized, /Published 2026-07-16/);
   assert.match(update.html, /What remains blocked/);
   assert.match(update.html, /No Ontario lawyer has approved/);
+});
+
+test("production readiness remains candid and indexing fails closed", async () => {
+  const readiness = await render("/readiness");
+  assert.equal(readiness.response.status, 200);
+  assert.match(readiness.html, /every production approval/i);
+  assert.match(
+    readiness.html,
+    /No confidential or privileged client-material launch/i,
+  );
+  const update = await render("/updates/release-controls");
+  assert.equal(update.response.status, 200);
+  assert.match(update.html, /launch remains blocked/i);
+  const robots = await render("/robots.txt");
+  assert.match(robots.html, /Disallow: \/$/m);
 });
 
 test("unknown routes return the custom not-found page", async () => {

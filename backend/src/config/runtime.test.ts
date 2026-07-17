@@ -8,6 +8,8 @@ const KEYS = [
     "ROSS_HOSTED_MODE",
     "HOSTED_MODEL_PROVIDERS",
     "ROSS_PRODUCTION_CONTROLS_APPROVED",
+    "ROSS_RELEASE_ID",
+    "ROSS_RELEASE_MANIFEST_SHA256",
     "LOG_RAW_LLM_STREAM",
     "RAW_LLM_STREAM_LOG_DIR",
     "CORS_ALLOWED_ORIGINS",
@@ -101,11 +103,40 @@ test("non-local raw model logging and unapproved production fail closed", () => 
             R2_ACCESS_KEY_ID: "production-access-value",
             R2_SECRET_ACCESS_KEY: "production-storage-secret",
             R2_BUCKET_NAME: "ross-production",
+            ROSS_RELEASE_ID: "ross-2026-07-16-rc1",
+            ROSS_RELEASE_MANIFEST_SHA256:
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         },
         () =>
             assert.throws(
                 () => loadRuntimeConfig(),
                 /ROSS_PRODUCTION_CONTROLS_APPROVED=true/,
+            ),
+    );
+});
+
+test("production requires a valid immutable release manifest identity", () => {
+    withEnvironment(
+        {
+            ROSS_ENV: "production",
+            ROSS_HOSTED_MODE: "production",
+            HOSTED_MODEL_PROVIDERS: "openai",
+            CORS_ALLOWED_ORIGINS: "https://app.ross.test",
+            SUPABASE_URL: "https://ross.supabase.co",
+            SUPABASE_SECRET_KEY: "production-secret-value",
+            DOWNLOAD_SIGNING_SECRET: "production-signing-value",
+            R2_ENDPOINT_URL: "https://objects.ross.test",
+            R2_ACCESS_KEY_ID: "production-access-value",
+            R2_SECRET_ACCESS_KEY: "production-storage-secret",
+            R2_BUCKET_NAME: "ross-production",
+            ROSS_RELEASE_ID: "ross-2026-07-16-rc1",
+            ROSS_RELEASE_MANIFEST_SHA256: "not-a-digest",
+            ROSS_PRODUCTION_CONTROLS_APPROVED: "true",
+        },
+        () =>
+            assert.throws(
+                () => loadRuntimeConfig(),
+                /ROSS_RELEASE_MANIFEST_SHA256 must be a lowercase SHA-256/,
             ),
     );
 });

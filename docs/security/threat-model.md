@@ -24,7 +24,7 @@ Real confidential, privileged, proprietary, regulated, or client material is out
 | Malicious files/conversion | Existing type/size validation and isolated service boundary in the target topology | Malware scanning, conversion sandbox verification, resource limits, and penetration testing remain required |
 | Unsafe sharing/export | Existing server authorization and rate limits; metadata-only audit table foundation | Complete audit hooks and sharing/export IDOR tests remain required |
 | Source poisoning or stale law | Official/allowlisted sources, provider metadata, source hashes/checks, visible verification states | Human stale-source response and comprehensive citator coverage remain incomplete |
-| Availability or abuse | Helmet, exact CORS, bounded payloads, route-specific rate limits | Distributed limiter, WAF configuration, monitoring, backup, and failover belong to Delivery C |
+| Availability or abuse | Helmet, exact CORS, bounded payloads, route-specific rate limits, fail-closed source policy, release/rollback/restore runbooks | Distributed limiter, WAF, monitoring, backups, restore and failover still require selected infrastructure and exercised evidence |
 
 ## Abuse cases
 

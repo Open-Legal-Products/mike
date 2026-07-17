@@ -2,8 +2,9 @@
 
 ROSS (Ranade OSS, fork of Mike OSS) is a legal document assistant with a Next.js frontend, an Express backend, Supabase Auth/Postgres, and Cloudflare R2-compatible object storage.
 
-ROSS public website: planned; placeholder domains are recorded in
-`config/ross-brand.json` until approved.
+The ROSS public website source is in `website/`. Its current hosted checkpoint
+is owner-only and no-index; placeholder production domains and owners remain in
+`config/ross-brand.json` until independently approved.
 
 Upstream project: [Mike source](https://github.com/Open-Legal-Products/mike) and
 [Mike website](https://mikeoss.com). ROSS is independently developed and is not
@@ -20,6 +21,10 @@ materials only. Architecture decisions and their approval status are indexed in
 - `backend/` - Express API, Supabase access, document processing, and database schema
 - `backend/schema.sql` - Supabase schema for fresh databases
 - `backend/migrations/` - dated, incremental schema migrations; on an existing database, apply the files dated after the Mike version you deployed
+- `website/` - separate public website with governed Ontario, trust, coverage,
+  status, and launch-readiness content
+- `config/` and `reports/` - versioned policy, approval, evaluation,
+  source-health, and immutable release-manifest records
 
 ## Prerequisites
 
@@ -116,6 +121,7 @@ Install each app package:
 ```bash
 npm install --prefix backend
 npm install --prefix frontend
+npm install --prefix website
 ```
 
 ## Run Locally
@@ -162,3 +168,23 @@ npm run check
 
 Use `npm run lint:strict` to inspect the inherited frontend lint debt separately
 from the non-regression gate.
+
+## Production and controlled-beta release boundary
+
+Self-hosted local development remains available. An operator-hosted beta is
+limited to synthetic or affirmatively non-confidential material. Production is
+not approved and fails closed while the operator, domains, vendors, effective
+legal notices, independent reviews, live source health, and operational
+exercises are pending.
+
+Start with these records and runbooks:
+
+- `config/release-approvals.v1.json`
+- `config/operations-readiness.v1.json`
+- `config/launch-readiness.v1.json`
+- `docs/operations/release-runbook.md`
+- `docs/operations/launch-checklist.md`
+
+`npm run release:check` is the production promotion gate. Do not replace a
+blocked result with an environment flag or deploy a different artifact from the
+one reviewed in `reports/release-manifest-v1.json`.
