@@ -22,11 +22,12 @@ import { UploadOverlay } from "./UploadOverlay";
 import { FileTypeIcon } from "../shared/FileTypeIcon";
 import { AddDocumentsModal } from "../modals/AddDocumentsModal";
 import { AssistantWorkflowModal } from "./AssistantWorkflowModal";
+import { ModelToggle, DEMO_MODEL_ID } from "./ModelToggle";
 import { ApiKeyMissingPopup } from "../popups/ApiKeyMissingPopup";
-import { ModelToggle } from "./ModelToggle";
 import { useSelectedModel } from "@/app/hooks/useSelectedModel";
 import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import {
+    anyModelKeyConfigured,
     getModelProvider,
     isModelAvailable,
     type ModelProvider,
@@ -253,9 +254,19 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
     const handleSubmit = () => {
         const query = value.trim();
         if (!query || isLoading) return;
+        // Zero keys configured: fall back to the keyless demo model so the
+        // user still gets an answer (the demo reply and the global banner
+        // both nudge them to add a real key). But if the user HAS a key and
+        // merely picked a model from a provider they haven't configured, keep
+        // the explanatory popup — silently answering in demo mode would be
+        // wrong and confusing for them.
+        let effectiveModel = model;
         if (apiKeys && !isModelAvailable(model, apiKeys)) {
-            setApiKeyModalProvider(getModelProvider(model));
-            return;
+            if (anyModelKeyConfigured(apiKeys)) {
+                setApiKeyModalProvider(getModelProvider(model));
+                return;
+            }
+            effectiveModel = DEMO_MODEL_ID;
         }
         setValue("");
         if (textareaRef.current) {
@@ -275,7 +286,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
             content: query,
             files: files.length > 0 ? files : undefined,
             workflow: wf ?? undefined,
-            model,
+            model: effectiveModel,
         });
     };
 

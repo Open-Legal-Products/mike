@@ -32,6 +32,16 @@ export const DEFAULT_MAIN_MODEL = "gemini-3-flash-preview";
 export const DEFAULT_TITLE_MODEL = "gemini-3.1-flash-lite-preview";
 export const DEFAULT_TABULAR_MODEL = "gemini-3-flash-preview";
 
+/**
+ * Built-in keyless "demo" model. Requires no API key and returns a canned,
+ * context-aware placeholder answer. Used as the automatic fallback when a
+ * request's chosen provider has no configured key, so a brand-new user still
+ * gets a response (and a nudge to add a real key) instead of a hard error.
+ * Also selectable directly in the model picker. Registered by
+ * providers/demo.ts.
+ */
+export const DEMO_MODEL = "mike-demo";
+
 // Derived (not hand-maintained) fallback set for resolveModel().
 // Built by spreading the *_MODELS arrays above, so adding a model to any
 // of those arrays automatically includes it here — no second edit site.

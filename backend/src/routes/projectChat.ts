@@ -22,6 +22,7 @@ import {
     getUserModelSettings,
 } from "../lib/userSettings";
 import { checkProjectAccess } from "../lib/access";
+import { resolveDemoFallback } from "./chat";
 import { safeErrorLog, safeErrorMessage } from "../lib/safeError";
 
 const PROJECT_SYSTEM_PROMPT_EXTRA = `PROJECT CONTEXT:
@@ -203,7 +204,10 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             extraTools: PROJECT_EXTRA_TOOLS,
             workflowStore,
             includeResearchTools: legalResearchUs,
-            model,
+            // Same keyless-demo fallback as the main chat route: a keyless
+            // request carrying a real model id answers in demo mode instead
+            // of surfacing a raw provider auth error.
+            model: resolveDemoFallback(model, apiKeys),
             apiKeys,
             signal: streamAbort.signal,
             projectId,

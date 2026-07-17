@@ -17,7 +17,13 @@ import {
     parseAskInputsResponsePayload,
     type ChatMessage,
 } from "../lib/chat";
-import { completeText } from "../lib/llm";
+import {
+    completeText,
+    DEFAULT_MAIN_MODEL,
+    DEMO_MODEL,
+    providerForModel,
+    resolveModel,
+} from "../lib/llm";
 import {
     getUserModelSettings,
 } from "../lib/userSettings";
@@ -25,6 +31,29 @@ import { checkProjectAccess } from "../lib/access";
 import { safeErrorLog, safeErrorMessage } from "../lib/safeError";
 
 export const chatRouter = Router();
+
+/**
+ * Pick the model to actually run. If the requested model's provider has no
+ * usable key (env or per-user), fall back to the keyless demo model so the user
+ * gets a helpful placeholder instead of a raw provider auth error. An explicit
+ * demo request, or a provider with a key present, is returned unchanged.
+ * Exported for unit testing.
+ */
+export function resolveDemoFallback(
+    requestedModel: string | null | undefined,
+    apiKeys: Record<string, string | null | undefined>,
+): string {
+    const model = resolveModel(requestedModel, DEFAULT_MAIN_MODEL);
+    if (model === DEMO_MODEL) return model;
+    let provider: string;
+    try {
+        provider = providerForModel(model);
+    } catch {
+        return model; // unknown model — let the normal path surface the error
+    }
+    if (provider === "demo") return model;
+    return apiKeys[provider]?.trim() ? model : DEMO_MODEL;
+}
 
 type Db = ReturnType<typeof createServerSupabase>;
 const isDev = process.env.NODE_ENV !== "production";
@@ -395,8 +424,12 @@ chatRouter.post("/:chatId/generate-title", requireAuth, async (req, res) => {
             userId,
             db,
         );
+        // Titles go through the same keyless-demo fallback as the streaming
+        // route — without it a keyless demo chat 500s here the moment the
+        // first reply finishes.
+        const effectiveTitleModel = resolveDemoFallback(title_model, api_keys);
         const titleText = await completeText({
-            model: title_model,
+            model: effectiveTitleModel,
             user: `Generate a concise title (3–6 words) for a chat in an AI Legal Platform that starts with this message. The title should describe the topic or document — do NOT include words like "Legal Assistant", "AI", "Chat", or any similar prefix. If there is not enough information to generate a title, return exactly "${TITLE_FALLBACK}". Return only the title, no quotes or punctuation.\n\nMessage: ${message.slice(0, 500)}`,
             maxTokens: 64,
             apiKeys: api_keys,
@@ -557,6 +590,12 @@ chatRouter.post("/", requireAuth, async (req, res) => {
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
 
+    // Keyless-demo fallback: if the chosen model's provider has no configured
+    // key, answer in demo mode instead of failing with a raw provider auth
+    // error. An explicitly selected demo model is left as-is. This is what makes
+    // a brand-new instance usable before any key is set up.
+    const effectiveModel = resolveDemoFallback(model, apiKeys);
+
     devLog("[chat/stream] starting LLM stream", {
         apiMessageCount: apiMessages.length,
         docCount: Object.keys(docIndex).length,
@@ -588,7 +627,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             write,
             workflowStore,
             includeResearchTools: legalResearchUs,
-            model,
+            model: effectiveModel,
             apiKeys,
             signal: streamAbort.signal,
             projectId: resolvedProjectId,

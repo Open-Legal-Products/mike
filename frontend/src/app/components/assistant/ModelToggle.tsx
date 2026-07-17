@@ -18,8 +18,12 @@ import type { ApiKeyState } from "@/app/lib/mikeApi";
 export interface ModelOption {
     id: string;
     label: string;
-    group: "Anthropic" | "Google" | "OpenAI";
+    group: "Anthropic" | "Google" | "OpenAI" | "Demo";
 }
+
+/** Keyless built-in model — always available, returns a placeholder answer.
+ *  Mirrors DEMO_MODEL in backend/src/lib/llm/models.ts. */
+export const DEMO_MODEL_ID = "mike-demo";
 
 export const MODELS: ModelOption[] = [
     { id: "claude-fable-5", label: "Claude Fable 5", group: "Anthropic" },
@@ -31,6 +35,7 @@ export const MODELS: ModelOption[] = [
     { id: "gemini-3-flash-preview", label: "Gemini 3 Flash", group: "Google" },
     { id: "gpt-5.5", label: "GPT-5.5", group: "OpenAI" },
     { id: "gpt-5.4", label: "GPT-5.4", group: "OpenAI" },
+    { id: DEMO_MODEL_ID, label: "Demo (no key needed)", group: "Demo" },
 ];
 
 export const SETTINGS_MODELS: ModelOption[] = [
@@ -48,7 +53,7 @@ export const DEFAULT_MODEL_ID = "gemini-3-flash-preview";
 
 export const ALLOWED_MODEL_IDS = new Set(MODELS.map((m) => m.id));
 
-const GROUP_ORDER: ModelOption["group"][] = ["Anthropic", "Google", "OpenAI"];
+const GROUP_ORDER: ModelOption["group"][] = ["Anthropic", "Google", "OpenAI", "Demo"];
 const itemClassName =
     "rounded-xl px-2.5 py-1.5 text-gray-700 focus:bg-app-surface-hover focus:text-gray-900 data-[highlighted]:bg-app-surface-hover data-[highlighted]:text-gray-900";
 

@@ -27,6 +27,7 @@ export * from "./models";
  * registerProvider()/registerApiKeyProvider(), no core edits.
  */
 export { registerProvider } from "./registry";
+import { setupDemo } from "./providers/demo";
 
 // ---------------------------------------------------------------------------
 // Register built-in providers
@@ -37,6 +38,11 @@ export { registerProvider } from "./registry";
 
 /** Register the built-in LLM providers (claude/gemini/openai). */
 export function registerBuiltinProviders(): void {
+    // Keyless demo model — always available. Lets a brand-new user get a
+    // response before any API key is configured, and backs the auto-fallback
+    // in routes/chat.ts.
+    setupDemo();
+
     registerProvider({
         id: "claude",
         matchesModel: (m) => m.startsWith("claude"),
