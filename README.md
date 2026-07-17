@@ -1,6 +1,10 @@
 # Mike
 
-Mike is a legal document assistant with a Next.js frontend, an Express backend, Supabase Auth/Postgres, and Cloudflare R2-compatible object storage.
+![Mike](https://mikeoss.com/link-image.jpg)
+
+Mike or MIkeOSS is a legal AI platform that is able to assist you with document review, drafting and legal research.
+
+It has a Next.js frontend, an Express backend, Supabase Auth/Postgres, and Cloudflare R2-compatible object storage.
 
 Website: [mikeoss.com](https://mikeoss.com)
 
