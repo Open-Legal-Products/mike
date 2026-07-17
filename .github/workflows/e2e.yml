@@ -113,6 +113,19 @@ jobs:
           # schema file already includes the latest shape, so no migrations are
           # replayed on a fresh CI database.
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f backend/schema.sql
+          # schema.sql revokes client grants (anon/authenticated) on purpose, but
+          # it assumes a HOSTED Supabase project where service_role already holds
+          # full table access. On a fresh CLI stack loaded via psql, service_role
+          # gets no grants on the newly-created public tables, so the backend —
+          # which queries exclusively as service_role (lib/supabase.ts) — 500s with
+          # "permission denied for table user_profiles" on the first write. Restore
+          # the production grant posture so the API behaves as it does in prod.
+          psql "$DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          GRANT USAGE ON SCHEMA public TO service_role;
+          GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+          GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+          GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO service_role;
+          SQL
 
       - name: Wire env from Supabase
         run: |
