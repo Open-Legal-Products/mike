@@ -291,7 +291,11 @@ test("create a folder inside a project", { timeout: 60_000 }, async ({ page }) =
      * "Add Subfolder") only appears once the project has loaded, so reload until
      * it does.
      */
-    const addSubfolderBtn = page.getByRole("button", { name: "Add Subfolder" });
+    /* The olp UI renamed the documents-toolbar folder-create button from
+       "Add Subfolder" to "Folder" (a TabPillButton wired to the root
+       createFolderAction — ProjectDocumentsView). Clicking it still renders the
+       autofocused "Folder name" input at root level (creatingIn === null). */
+    const addSubfolderBtn = page.getByRole("button", { name: "Folder" });
     await waitForProjectLoaded(page, addSubfolderBtn);
 
     /* Confirm the uploaded document rendered, i.e. the project is non-empty and
