@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Agent } from "undici";
 
 // Mock DNS resolution so the SSRF guard is exercised deterministically without
 // touching the network. `lookupMock` is hoisted so the vi.mock factory can
@@ -104,7 +105,7 @@ describe("guardedFetch", () => {
         expect(fetchSpy).not.toHaveBeenCalled();
     });
 
-    it("disables redirects for public hosts", async () => {
+    it("pins the connection (undici dispatcher) and disables redirects for public hosts", async () => {
         resolvesTo("93.184.216.34");
         const fetchSpy = vi
             .spyOn(globalThis, "fetch")
@@ -116,8 +117,11 @@ describe("guardedFetch", () => {
         expect(res.status).toBe(200);
         expect(fetchSpy).toHaveBeenCalledTimes(1);
 
-        const init = fetchSpy.mock.calls[0][1] as RequestInit;
+        const init = fetchSpy.mock.calls[0][1] as RequestInit & {
+            dispatcher?: unknown;
+        };
         expect(init.redirect).toBe("manual");
+        expect(init.dispatcher).toBeInstanceOf(Agent);
         // Original request options are preserved.
         expect(init.method).toBe("GET");
     });

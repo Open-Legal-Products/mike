@@ -46,8 +46,8 @@ function parseWwwAuthenticate(value: string | null): string | null {
 
 async function fetchJson(url: string, init?: RequestInit) {
     // Route through the shared guarded egress helper so this call gets the same
-    // HTTPS-only / private-IP / no-redirect protections as the connector
-    // transport (closes the raw-fetch SSRF gap in OAuth discovery).
+    // HTTPS-only / private-IP / connect-time-pinned / no-redirect protections as
+    // the connector transport (closes the raw-fetch SSRF gap in OAuth discovery).
     const response = await guardedFetch(url, init);
     if (!response.ok) {
         throw new Error(`Failed to fetch OAuth metadata (${response.status}).`);
