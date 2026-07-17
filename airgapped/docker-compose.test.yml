@@ -1,0 +1,6 @@
+# Test-only override: publish Postgres so the host can run migrate + verify.
+# Never used in a real air-gap deployment.
+services:
+  postgres:
+    ports:
+      - "5433:5432"

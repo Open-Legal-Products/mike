@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "ignoreDeprecations": "5.0",
+    "outDir": "./dist",
+    "rootDir": "../..",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node", "express", "cors", "multer"],
+    "paths": {
+      "@mike/core": ["../../packages/core/src/index.ts"],
+      "@mike/api-client": ["../../packages/api-client/src/index.ts"],
+      "@mike/sdk-js": ["../../packages/sdk-js/src/index.ts"],
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/**/__tests__/**"]
+}

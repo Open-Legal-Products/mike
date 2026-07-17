@@ -1,0 +1,37 @@
+{
+    "name": "mike-monorepo",
+    "private": true,
+    "workspaces": [
+        "apps/api",
+        "apps/web",
+        "packages/*"
+    ],
+    "scripts": {
+        "build": "npm run build --workspaces --if-present",
+        "test": "npm run test --workspaces --if-present",
+        "lint": "npm run lint --workspaces --if-present",
+        "typecheck": "npm run typecheck --workspaces --if-present",
+        "dev:api": "npm run dev --workspace apps/api",
+        "dev:web": "npm run dev --workspace apps/web",
+        "test:e2e": "playwright test",
+        "test:e2e:headed": "playwright test --headed",
+        "test:e2e:ui": "playwright test --ui",
+        "test:python-sdk": "cd sdks/python && python3 -m pytest",
+        "test:evals": "node evals/run.mjs --threshold 1.0",
+        "test:all": "npm run test --workspaces --if-present && npm run test:evals && npm run test:python-sdk",
+        "verify:all": "npm run lint --workspaces --if-present && npm run typecheck --workspaces --if-present && npm run build --workspaces --if-present && npm run test:all"
+    },
+    "devDependencies": {
+        "@playwright/test": "^1.61.1"
+    },
+    "overrides": {
+        "tmp": "^0.2.6",
+        "form-data@>=4.0.0 <4.0.6": "^4.0.6",
+        "form-data@<2.5.6": "^2.5.6",
+        "@tiptap/core": "3.27.3"
+    },
+    "engines": {
+        "node": ">=22"
+    },
+    "license": "AGPL-3.0-only"
+}

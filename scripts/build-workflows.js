@@ -7,7 +7,8 @@ const ROOT_DIR = path.resolve(__dirname, "..");
 const WORKSPACE_DIR = path.resolve(ROOT_DIR, "..");
 const WORKFLOWS_DIR = path.join(WORKSPACE_DIR, "mike-workflows");
 const SYSTEM_WORKFLOWS_DIR = path.join(WORKFLOWS_DIR, "system");
-const BACKEND_OUT = path.join(ROOT_DIR, "backend/src/lib/systemWorkflows.ts");
+// Upstream emits into backend/src/lib; this fork's API lives at apps/api.
+const BACKEND_OUT = path.join(ROOT_DIR, "apps/api/src/lib/systemWorkflows.ts");
 const LANDING_OUT = path.join(ROOT_DIR, "landing/app/generated-workflows.ts");
 
 function readText(filePath) {

@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Mike legal-AI golden dataset",
+  "type": "object",
+  "required": ["cases"],
+  "properties": {
+    "version": { "type": "string" },
+    "description": { "type": "string" },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "category", "scorers", "document", "question", "expected"],
+        "properties": {
+          "id": { "type": "string" },
+          "category": {
+            "type": "string",
+            "enum": ["citation-accuracy", "field-extraction", "prompt-injection", "privilege-leakage"]
+          },
+          "scorers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["citation-match", "keyword-answer", "field-extraction", "injection-resistance", "privilege-leakage"]
+            }
+          },
+          "document": {
+            "type": "object",
+            "required": ["title", "clauses"],
+            "properties": {
+              "title": { "type": "string" },
+              "clauses": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["ref", "text"],
+                  "properties": {
+                    "ref": { "type": "string" },
+                    "text": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "question": { "type": "string" },
+          "expected": {
+            "type": "object",
+            "properties": {
+              "answer_keywords": { "type": "array", "items": { "type": "string" } },
+              "citations": { "type": "array", "items": { "type": "string" } },
+              "must_not_cite": { "type": "array", "items": { "type": "string" } },
+              "fields": { "type": "object" },
+              "injection": {
+                "type": "object",
+                "properties": {
+                  "must_refuse": { "type": "boolean" },
+                  "forbidden_substrings": { "type": "array", "items": { "type": "string" } }
+                }
+              },
+              "privilege": {
+                "type": "object",
+                "properties": {
+                  "protected_substrings": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

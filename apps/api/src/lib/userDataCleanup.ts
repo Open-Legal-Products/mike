@@ -1,0 +1,435 @@
+import { createServerSupabase } from "./supabase";
+import { deleteFile, listFiles } from "./storage";
+
+type Db = ReturnType<typeof createServerSupabase>;
+
+const DELETE_BATCH_SIZE = 500;
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+    return [...new Set(values.filter((value): value is string => !!value))];
+}
+
+function chunks<T>(values: T[], size = DELETE_BATCH_SIZE): T[][] {
+    const result: T[][] = [];
+    for (let i = 0; i < values.length; i += size) {
+        result.push(values.slice(i, i + size));
+    }
+    return result;
+}
+
+async function throwIfError<T extends { message?: string } | null>(
+    error: T,
+    context: string,
+) {
+    if (error) throw new Error(`${context}: ${error.message ?? "unknown error"}`);
+}
+
+async function deleteByIds(db: Db, table: string, ids: string[]) {
+    for (const batch of chunks(ids)) {
+        const { error } = await db.from(table).delete().in("id", batch);
+        await throwIfError(error, `Failed to delete ${table}`);
+    }
+}
+
+async function deleteWhereIn(
+    db: Db,
+    table: string,
+    column: string,
+    values: string[],
+) {
+    for (const batch of chunks(values)) {
+        const { error } = await db
+            .from(table)
+            .delete()
+            .in(column, batch);
+        await throwIfError(error, `Failed to delete ${table}`);
+    }
+}
+
+async function getOwnedProjectIds(db: Db, userId: string): Promise<string[]> {
+    const { data, error } = await db
+        .from("projects")
+        .select("id")
+        .eq("user_id", userId);
+    await throwIfError(error, "Failed to load user projects");
+    return uniqueStrings(
+        (data ?? []).map(
+            (row: Record<string, unknown>) => row.id as string | null,
+        ),
+    );
+}
+
+async function getDocumentIdsForAccountDeletion(
+    db: Db,
+    userId: string,
+    ownedProjectIds: string[],
+): Promise<string[]> {
+    const [ownedDocs, projectDocs] = await Promise.all([
+        db.from("documents").select("id").eq("user_id", userId),
+        ownedProjectIds.length > 0
+            ? db.from("documents").select("id").in("project_id", ownedProjectIds)
+            : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    await throwIfError(ownedDocs.error, "Failed to load user documents");
+    await throwIfError(projectDocs.error, "Failed to load project documents");
+
+    return uniqueStrings([
+        ...((ownedDocs.data ?? []) as { id: string | null }[]).map((row) => row.id),
+        ...((projectDocs.data ?? []) as { id: string | null }[]).map((row) => row.id),
+    ]);
+}
+
+async function deleteDocumentVersionFiles(db: Db, documentIds: string[]) {
+    const paths = new Set<string>();
+
+    for (const batch of chunks(documentIds)) {
+        const { data, error } = await db
+            .from("document_versions")
+            .select("storage_path, pdf_storage_path")
+            .in("document_id", batch);
+        await throwIfError(error, "Failed to load document storage paths");
+
+        for (const version of data ?? []) {
+            if (
+                typeof version.storage_path === "string" &&
+                version.storage_path.length > 0
+            ) {
+                paths.add(version.storage_path);
+            }
+            if (
+                typeof version.pdf_storage_path === "string" &&
+                version.pdf_storage_path.length > 0
+            ) {
+                paths.add(version.pdf_storage_path);
+            }
+        }
+    }
+
+    await Promise.all([...paths].map((path) => deleteFile(path)));
+}
+
+async function deleteUserStoragePrefix(userId: string) {
+    try {
+        const paths = await listFiles(`documents/${userId}/`);
+        await Promise.all(paths.map((path) => deleteFile(path).catch(() => {})));
+    } catch {
+        // Version-linked objects are deleted above. Prefix cleanup is best-effort
+        // for orphaned files left behind by interrupted uploads.
+    }
+}
+
+async function removeEmailFromSharedWith(
+    db: Db,
+    table: "projects" | "tabular_reviews",
+    email: string | null | undefined,
+) {
+    const normalizedEmail = email?.trim().toLowerCase();
+    if (!normalizedEmail) return;
+
+    const { data, error } = await db
+        .from(table)
+        .select("id, shared_with")
+        .filter("shared_with", "cs", JSON.stringify([normalizedEmail]));
+    await throwIfError(error, `Failed to load shared ${table}`);
+
+    const updates = (data ?? [])
+        .map((row: Record<string, unknown>) => {
+            const sharedWith = Array.isArray(row.shared_with)
+                ? row.shared_with.filter(
+                      (value: unknown) =>
+                          typeof value !== "string" ||
+                          value.trim().toLowerCase() !== normalizedEmail,
+                  )
+                : [];
+            return { id: row.id as string, sharedWith };
+        })
+        .filter((row: { id: string; sharedWith: unknown[] }) => row.id);
+
+    await Promise.all(
+        updates.map(async ({ id, sharedWith }: { id: string; sharedWith: unknown[] }) => {
+            const { error: updateError } = await db
+                .from(table)
+                .update({ shared_with: sharedWith })
+                .eq("id", id);
+            await throwIfError(updateError, `Failed to update shared ${table}`);
+        }),
+    );
+}
+
+/**
+ * Tear down a user's organization footprint on account deletion.
+ *
+ *  - Personal orgs (one-per-user) are deleted outright; the ON DELETE CASCADE
+ *    on org_members/teams/team_members cleans up their rows.
+ *  - For shared orgs the user merely belonged to, their membership row is
+ *    removed. If they were the org's sole owner, ownership is handed to the
+ *    earliest remaining member so the org isn't stranded ownerless; if no
+ *    members remain, the now-empty org is deleted.
+ *  - Any team memberships are removed.
+ *
+ * Without this, deleting a user would orphan their personal organization and
+ * its org_members rows (org_id on content uses ON DELETE SET NULL, so the
+ * cascade that removes their content does not remove their org).
+ */
+export async function deleteUserOrganizations(db: Db, userId: string) {
+    const { data: personalOrgs, error: personalError } = await db
+        .from("organizations")
+        .select("id")
+        .eq("created_by", userId)
+        .eq("personal", true);
+    await throwIfError(personalError, "Failed to load personal organizations");
+    const personalOrgIds = new Set(
+        uniqueStrings(
+            ((personalOrgs ?? []) as { id: string | null }[]).map((r) => r.id),
+        ),
+    );
+    await deleteByIds(db, "organizations", [...personalOrgIds]);
+
+    const { data: memberships, error: membershipError } = await db
+        .from("org_members")
+        .select("id, org_id, role")
+        .eq("user_id", userId);
+    await throwIfError(membershipError, "Failed to load org memberships");
+
+    for (const m of (memberships ?? []) as {
+        id: string;
+        org_id: string;
+        role: string;
+    }[]) {
+        if (personalOrgIds.has(m.org_id)) continue; // already cascade-deleted
+
+        const { error: deleteError } = await db
+            .from("org_members")
+            .delete()
+            .eq("id", m.id);
+        await throwIfError(deleteError, "Failed to remove org membership");
+
+        if (m.role !== "owner") continue;
+
+        // Sole-owner handoff: if no owners remain, promote the earliest member;
+        // if the org is now empty, delete it.
+        const { data: owners } = await db
+            .from("org_members")
+            .select("id")
+            .eq("org_id", m.org_id)
+            .eq("role", "owner");
+        if (((owners ?? []) as unknown[]).length > 0) continue;
+
+        const { data: remaining } = await db
+            .from("org_members")
+            .select("id")
+            .eq("org_id", m.org_id)
+            .order("created_at", { ascending: true })
+            .limit(1);
+        const heir = ((remaining ?? []) as { id: string }[])[0];
+        if (heir) {
+            const { error: promoteError } = await db
+                .from("org_members")
+                .update({ role: "owner" })
+                .eq("id", heir.id);
+            await throwIfError(promoteError, "Failed to hand off org ownership");
+        } else {
+            await deleteByIds(db, "organizations", [m.org_id]);
+        }
+    }
+
+    const { error: teamError } = await db
+        .from("team_members")
+        .delete()
+        .eq("user_id", userId);
+    await throwIfError(teamError, "Failed to remove team memberships");
+}
+
+export async function deleteAllUserChats(db: Db, userId: string) {
+    const [assistantChats, tabularChats] = await Promise.all([
+        db.from("chats").delete().eq("user_id", userId),
+        db.from("tabular_review_chats").delete().eq("user_id", userId),
+    ]);
+
+    await throwIfError(assistantChats.error, "Failed to delete assistant chats");
+    await throwIfError(tabularChats.error, "Failed to delete tabular chats");
+}
+
+export async function deleteAllUserTabularReviews(db: Db, userId: string) {
+    const { data: reviews, error: reviewsError } = await db
+        .from("tabular_reviews")
+        .select("id")
+        .eq("user_id", userId);
+    await throwIfError(reviewsError, "Failed to load tabular reviews");
+
+    const reviewIds = uniqueStrings(
+        ((reviews ?? []) as { id: string | null }[]).map((row) => row.id),
+    );
+    if (reviewIds.length === 0) return 0;
+
+    const { data: reviewChats, error: reviewChatsError } = await db
+        .from("tabular_review_chats")
+        .select("id")
+        .in("review_id", reviewIds);
+    await throwIfError(reviewChatsError, "Failed to load tabular review chats");
+
+    const reviewChatIds = uniqueStrings(
+        ((reviewChats ?? []) as { id: string | null }[]).map((row) => row.id),
+    );
+
+    await deleteWhereIn(
+        db,
+        "tabular_review_chat_messages",
+        "chat_id",
+        reviewChatIds,
+    );
+    await deleteWhereIn(db, "tabular_review_chats", "review_id", reviewIds);
+    await deleteWhereIn(db, "tabular_cells", "review_id", reviewIds);
+    await deleteByIds(db, "tabular_reviews", reviewIds);
+
+    return reviewIds.length;
+}
+
+export async function deleteUserProjects(
+    db: Db,
+    userId: string,
+    projectIds?: string[],
+) {
+    const requestedProjectIds = projectIds
+        ? uniqueStrings(projectIds)
+        : undefined;
+    if (requestedProjectIds && requestedProjectIds.length === 0) return 0;
+
+    let query = db.from("projects").select("id").eq("user_id", userId);
+    if (requestedProjectIds) query = query.in("id", requestedProjectIds);
+
+    const { data: projects, error: projectsError } = await query;
+    await throwIfError(projectsError, "Failed to load user projects");
+
+    const ownedProjectIds = uniqueStrings(
+        ((projects ?? []) as { id: string | null }[]).map((row) => row.id),
+    );
+    if (ownedProjectIds.length === 0) return 0;
+
+    const [projectDocs, projectChats, projectReviews, projectFolders] =
+        await Promise.all([
+            db.from("documents").select("id").in("project_id", ownedProjectIds),
+            db.from("chats").select("id").in("project_id", ownedProjectIds),
+            db
+                .from("tabular_reviews")
+                .select("id")
+                .in("project_id", ownedProjectIds),
+            db
+                .from("project_subfolders")
+                .select("id")
+                .in("project_id", ownedProjectIds),
+        ]);
+
+    await throwIfError(projectDocs.error, "Failed to load project documents");
+    await throwIfError(projectChats.error, "Failed to load project chats");
+    await throwIfError(
+        projectReviews.error,
+        "Failed to load project tabular reviews",
+    );
+    await throwIfError(projectFolders.error, "Failed to load project folders");
+
+    const documentIds = uniqueStrings(
+        ((projectDocs.data ?? []) as { id: string | null }[]).map(
+            (row) => row.id,
+        ),
+    );
+    const chatIds = uniqueStrings(
+        ((projectChats.data ?? []) as { id: string | null }[]).map(
+            (row) => row.id,
+        ),
+    );
+    const reviewIds = uniqueStrings(
+        ((projectReviews.data ?? []) as { id: string | null }[]).map(
+            (row) => row.id,
+        ),
+    );
+    const folderIds = uniqueStrings(
+        ((projectFolders.data ?? []) as { id: string | null }[]).map(
+            (row) => row.id,
+        ),
+    );
+
+    const { data: reviewChats, error: reviewChatsError } =
+        reviewIds.length > 0
+            ? await db
+                  .from("tabular_review_chats")
+                  .select("id")
+                  .in("review_id", reviewIds)
+            : { data: [], error: null };
+    await throwIfError(reviewChatsError, "Failed to load project review chats");
+
+    const reviewChatIds = uniqueStrings(
+        ((reviewChats ?? []) as { id: string | null }[]).map((row) => row.id),
+    );
+
+    await deleteDocumentVersionFiles(db, documentIds);
+    await deleteWhereIn(
+        db,
+        "tabular_review_chat_messages",
+        "chat_id",
+        reviewChatIds,
+    );
+    await deleteWhereIn(db, "tabular_review_chats", "review_id", reviewIds);
+    await deleteWhereIn(db, "tabular_cells", "review_id", reviewIds);
+    await deleteByIds(db, "tabular_reviews", reviewIds);
+    await deleteWhereIn(db, "chat_messages", "chat_id", chatIds);
+    await deleteByIds(db, "chats", chatIds);
+    await deleteByIds(db, "documents", documentIds);
+    await deleteByIds(db, "project_subfolders", folderIds);
+    await deleteByIds(db, "projects", ownedProjectIds);
+
+    return ownedProjectIds.length;
+}
+
+export async function deleteUserAccountData(
+    db: Db,
+    userId: string,
+    userEmail?: string | null,
+) {
+    const ownedProjectIds = await getOwnedProjectIds(db, userId);
+    const documentIds = await getDocumentIdsForAccountDeletion(
+        db,
+        userId,
+        ownedProjectIds,
+    );
+
+    await Promise.all([
+        removeEmailFromSharedWith(db, "projects", userEmail),
+        removeEmailFromSharedWith(db, "tabular_reviews", userEmail),
+        deleteDocumentVersionFiles(db, documentIds),
+        deleteUserStoragePrefix(userId),
+    ]);
+
+    await deleteByIds(db, "documents", documentIds);
+
+    const deletions = [
+        db.from("tabular_review_chats").delete().eq("user_id", userId),
+        db.from("tabular_reviews").delete().eq("user_id", userId),
+        db.from("chats").delete().eq("user_id", userId),
+        db.from("project_subfolders").delete().eq("user_id", userId),
+        db.from("hidden_workflows").delete().eq("user_id", userId),
+        db
+            .from("workflow_open_source_submissions")
+            .delete()
+            .eq("submitted_by_user_id", userId),
+        db.from("workflow_shares").delete().eq("shared_by_user_id", userId),
+        userEmail
+            ? db
+                  .from("workflow_shares")
+                  .delete()
+                  .eq("shared_with_email", userEmail.trim().toLowerCase())
+            : Promise.resolve({ error: null }),
+        db.from("workflows").delete().eq("user_id", userId),
+        db.from("projects").delete().eq("user_id", userId),
+    ];
+
+    const results = await Promise.all(deletions);
+    for (const result of results) {
+        await throwIfError(result.error, "Failed to delete account data");
+    }
+
+    // Organizations use ON DELETE SET NULL on content (not CASCADE), so the
+    // content deletions above never remove the user's orgs — do that here.
+    await deleteUserOrganizations(db, userId);
+}

@@ -17,3 +17,19 @@ next-env.d.ts
 .DS_Store
 .vercel
 coverage
+
+# Air-gap generated secrets (never commit)
+airgapped/.env.generated
+airgapped/backups/
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/.branches/
+
+# Playwright artifacts and the bootstrapped e2e session (contains auth tokens)
+test-results/
+playwright-report/
+e2e/.auth/
+
+# local walkthrough/demo screenshots (not source)
+.walkthrough-shots/

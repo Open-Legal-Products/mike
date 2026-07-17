@@ -1,0 +1,37 @@
+Mike
+====
+
+This product is a derivative work of the "Mike" open-source project by
+willchen96 (also published as Open-Legal-Products/mike):
+
+    Upstream: https://github.com/willchen96/mike
+
+Copyright and attribution
+-------------------------
+
+- Original portions of Mike are Copyright (C) the Mike authors
+  (willchen96 and upstream contributors).
+- Modifications, additions, and the reorganization introduced in this fork
+  are Copyright (C) 2026 the fork author (github.com/amal66) and this fork's
+  contributors.
+
+Both the original work and this fork are licensed under the GNU Affero
+General Public License, version 3.0 (AGPL-3.0). See the LICENSE file for the
+full license text.
+
+Summary of changes in this fork
+-------------------------------
+
+This fork was hardened, reorganized, and extended for open-source and
+acquisition-readiness. Notable changes relative to upstream include:
+
+- A multi-phase security and code-quality hardening campaign
+  (see CHANGELOG.md and the git history for the per-commit rationale).
+- Provider, storage, and law-library extensibility via pluggable registries
+  and adapters.
+- A Microsoft Word task-pane add-in that brings Mike into Word, sharing one
+  design system with the web app.
+- A merge of upstream willchen96/mike into the hardened fork.
+
+Nothing in this NOTICE modifies or supersedes the terms of the AGPL-3.0
+license in LICENSE. In the event of any conflict, the LICENSE controls.

@@ -1,0 +1,153 @@
+# End-to-end Playwright suite. Kept SEPARATE from ci.yml (unit/lint/typecheck)
+# and NOT a required check, because it needs a full local stack (Supabase +
+# API + web) plus a real LLM key for the chat critical-path, so it is heavier
+# and more environment-sensitive than the unit pipeline. Promote it to a
+# required check once it is observed green on a few runs.
+#
+# Required repository secret for a full pass:
+#   ANTHROPIC_API_KEY   — the critical-path / chat tests send a message and
+#                         expect a streamed answer, which needs a live key.
+# E2E_EMAIL / E2E_PASSWORD are generated inline (the auth.setup bootstraps the
+# user against local Supabase via the admin API).
+name: e2e
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+# Don't pile up runs on rapid pushes to the same PR.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    env:
+      E2E_EMAIL: e2e@mike.local
+      E2E_PASSWORD: E2ePassw0rd!
+      PLAYWRIGHT_BASE_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # npm ci intermittently skips lightningcss's Linux native optional dep
+      # (npm/cli#4828); without it `next dev` can't compile Tailwind CSS and the
+      # web server never boots, so wait-on times out and every spec fails.
+      - name: Ensure lightningcss native binary
+        run: npm install --no-save lightningcss
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      # Object storage. Three specs upload a document (tabular-review row,
+      # project-folder fixture) and assert the result renders; those uploads go
+      # through apps/api/src/lib/storage/r2.ts, which is an S3-compatible client
+      # that only ENABLES when R2_ENDPOINT_URL + R2_ACCESS_KEY_ID +
+      # R2_SECRET_ACCESS_KEY are set. With no storage the upload endpoint 5xxs
+      # and the row never appears. MinIO is the same S3-compatible server the
+      # repo's docker-compose already uses for local dev, so we boot it here and
+      # point the API at it. A `docker run` (not a `services:` container) is used
+      # because the minio image needs the `server /data` argument, which the
+      # services block can't supply, and because we must create the bucket after
+      # the server is healthy.
+      - name: Start MinIO (object storage)
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+          # Wait for the health endpoint before creating the bucket.
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/ready >/dev/null; then
+              echo "MinIO ready"; break
+            fi
+            echo "waiting for minio ($i)…"; sleep 2
+          done
+          # Create the "mike" bucket via the AWS CLI (preinstalled on
+          # ubuntu-latest). --endpoint-url + path-style talks to MinIO; the
+          # region is irrelevant to MinIO but the CLI insists on one.
+          AWS_ACCESS_KEY_ID=minioadmin \
+          AWS_SECRET_ACCESS_KEY=minioadmin \
+          AWS_DEFAULT_REGION=us-east-1 \
+            aws --endpoint-url http://localhost:9000 s3 mb s3://mike
+          # Verify the bucket exists before any spec runs.
+          AWS_ACCESS_KEY_ID=minioadmin \
+          AWS_SECRET_ACCESS_KEY=minioadmin \
+          AWS_DEFAULT_REGION=us-east-1 \
+            aws --endpoint-url http://localhost:9000 s3 ls s3://mike
+
+      - name: Start local Supabase
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: supabase start
+
+      - name: Wire API env from Supabase + apply migrations
+        run: |
+          API_URL=$(supabase status -o json | jq -r '.API_URL')
+          ANON_KEY=$(supabase status -o json | jq -r '.ANON_KEY')
+          SERVICE_KEY=$(supabase status -o json | jq -r '.SERVICE_ROLE_KEY')
+          cp apps/api/.env.example apps/api/.env
+          {
+            echo "SUPABASE_URL=$API_URL"
+            echo "SUPABASE_SECRET_KEY=$SERVICE_KEY"
+            echo "FRONTEND_URL=http://localhost:3000"
+            echo "DOWNLOAD_SIGNING_SECRET=ci-download-signing-secret-32bytes!"
+            # env.ts requires this at >=32 chars; the .env.example placeholder
+            # ("your-long-random-secret", 23 chars) FAILS that check, so the API
+            # aborts at boot and /health never comes up. Supply a CI dummy.
+            echo "USER_API_KEYS_ENCRYPTION_SECRET=ci-user-api-keys-encryption-secret-32bytes-min!"
+            # The e2e suite drives many write operations back-to-back (create
+            # folder/workflow/review, add document, update profile, login), which
+            # trips the default per-window rate limits (429s surface as
+            # "never returned 2xx after retries" / waitForResponse timeouts).
+            # e2e isn't testing throttling, so raise the tunable caps well above
+            # what one serial run needs.
+            echo "RATE_LIMIT_GENERAL_MAX=100000"
+            echo "RATE_LIMIT_CHAT_MAX=100000"
+            echo "RATE_LIMIT_CHAT_CREATE_MAX=100000"
+            echo "RATE_LIMIT_UPLOAD_MAX=100000"
+            # Point the S3-compatible storage adapter at the MinIO container
+            # started above. r2.ts enables only when all three of endpoint/key/
+            # secret are present; the bucket ("mike") was created in that step.
+            echo "R2_ENDPOINT_URL=http://localhost:9000"
+            echo "R2_ACCESS_KEY_ID=minioadmin"
+            echo "R2_SECRET_ACCESS_KEY=minioadmin"
+            echo "R2_BUCKET_NAME=mike"
+            echo "R2_REGION=auto"
+            echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}"
+          } >> apps/api/.env
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=$ANON_KEY"
+            echo "NEXT_PUBLIC_API_BASE_URL=http://localhost:3001"
+          } > apps/web/.env.local
+          supabase migration up --local
+
+      - name: Start API
+        run: npm run dev:api &
+      - name: Start web
+        run: npm run dev:web &
+
+      - name: Wait for servers
+        run: npx wait-on http://localhost:3001/health http://localhost:3000 --timeout 120000
+
+      - name: Run Playwright
+        run: npx playwright test
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14

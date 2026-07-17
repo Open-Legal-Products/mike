@@ -1,0 +1,193 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  api:
+    name: API tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      # Dummy values so env.ts validation passes at test time
+      SUPABASE_URL: http://localhost:54321
+      SUPABASE_SECRET_KEY: test-secret-key
+      # env.ts enforces a >=32-char minimum on these; keep the dummies above it
+      # so the test suite AND the built-app smoke import both pass env validation.
+      DOWNLOAD_SIGNING_SECRET: ci-download-signing-secret-32bytes-min!
+      USER_API_KEYS_ENCRYPTION_SECRET: ci-user-api-keys-encryption-secret-32bytes-min!
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - run: npm ci
+        working-directory: .
+
+      # Fail the build if any high or critical CVEs exist in dependencies.
+      # `--audit-level=high` means: pass if only low/moderate vulns exist,
+      # fail if any high or critical ones do.
+      # Why not --audit-level=critical? High CVEs are often exploitable too
+      # and should not be silently ignored.
+      - name: Dependency security audit
+        run: npm audit --audit-level=high
+        working-directory: apps/api
+
+      - run: npm run lint
+      # Run with coverage so the no-regression thresholds in vitest.config.mts
+      # are enforced in CI (fails the build if lib coverage drops).
+      - run: npm run test:coverage
+      - run: npm run build
+      - name: Smoke import built API app
+        run: node -e "require('./dist/apps/api/src/app.js'); console.log('api app import ok')"
+
+  packages:
+    name: Package typecheck and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - run: npm ci
+        working-directory: .
+
+      - run: ./node_modules/.bin/tsc -p packages/core/tsconfig.json --noEmit
+      - run: ./node_modules/.bin/tsc -p packages/api-client/tsconfig.json --noEmit
+      - run: ./node_modules/.bin/tsc -p packages/sdk-js/tsconfig.json --noEmit
+      # packages/shared is consumed as raw TSX by apps/web (transpilePackages)
+      # and word-addin (webpack alias), so neither consumer typechecks it as a
+      # unit — this is the only gate that does.
+      - run: ./node_modules/.bin/tsc -p packages/shared/tsconfig.json --noEmit
+      # Run the package test suites, not just the compiler: api-client pins the
+      # server→client field remapping and sdk-js pins the public SDK surface.
+      # Typechecking alone would miss a behavioral regression in either.
+      - run: npm test --workspace packages/api-client
+      - run: npm test --workspace packages/sdk-js
+
+  # -----------------------------------------------------------------------
+  # Offline eval harness: deterministic scorecard for citation accuracy,
+  # prompt-injection resistance, and privilege/PII leakage. Runs against
+  # committed fixtures (no network, no LLM calls, no secrets), so it is cheap
+  # enough to gate every PR. --threshold 1.0 = every case must pass.
+  # -----------------------------------------------------------------------
+  evals:
+    name: Eval harness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: node evals/run.mjs --threshold 1.0
+
+  # -----------------------------------------------------------------------
+  # Python SDK: installed and tested on the oldest supported Python (3.9,
+  # per pyproject requires-python) so compatibility claims stay honest.
+  # Tests are offline (respx-mocked httpx), so no secrets are needed.
+  # -----------------------------------------------------------------------
+  python-sdk:
+    name: Python SDK tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdks/python
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - run: pip install -e .[dev]
+      - run: python -m pytest
+
+  web:
+    name: Web lint and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - run: npm ci
+        working-directory: .
+      # `npm ci` intermittently skips lightningcss's platform-native optional
+      # dependency on Linux (npm/cli#4828), which breaks `next build` with
+      # "Cannot find module '../lightningcss.linux-x64-gnu.node'". Reinstalling
+      # lightningcss (without touching the lockfile) fetches the runner's
+      # matching native binary.
+      - run: npm install --no-save lightningcss
+        working-directory: .
+      - run: npm run lint
+      # Coverage mode so the no-regression thresholds in vitest.config.mts are
+      # enforced (same ratchet pattern as apps/api).
+      - run: npm run test:coverage
+      - run: npm run build
+
+  # -----------------------------------------------------------------------
+  # Slower job: migration validation against real local Supabase (3-5 min)
+  # Runs on PRs and pushes. Supabase's local stack applies the migrations
+  # against a real Postgres/Auth environment, which catches SQL drift that
+  # mocked unit tests cannot see.
+  # -----------------------------------------------------------------------
+  migrations:
+    name: Migration validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v2
+        with:
+          version: latest
+
+      - name: Start Supabase
+        run: supabase start
+
+      - name: Reset DB (applies all migrations from scratch)
+        run: supabase db reset
+
+      - name: Stop Supabase
+        run: supabase stop --no-backup
+
+  # -----------------------------------------------------------------------
+  # Deploy job: push migrations to production on merge to main
+  # -----------------------------------------------------------------------
+  deploy-migrations:
+    name: Deploy migrations
+    runs-on: ubuntu-latest
+    needs: [api, packages, web, migrations, evals, python-sdk]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v2
+        with:
+          version: latest
+
+      - name: Push migrations to production
+        run: supabase db push --db-url "${{ secrets.DATABASE_URL }}"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

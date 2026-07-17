@@ -1,0 +1,67 @@
+# Dependabot automatically opens PRs to keep dependencies up to date.
+#
+# WHY DEPENDABOT MATTERS:
+# The Node.js ecosystem has thousands of transitive dependencies.  A
+# vulnerability found in a package you've never heard of (e.g. a nested
+# transitive dep of express) becomes your problem if it's exploitable in
+# your context.
+#
+# Dependabot monitors the GitHub Advisory Database and opens a PR within
+# hours of a new CVE being published.  Without it, you'd find out about
+# a vulnerability when a security researcher reports it against YOUR app.
+#
+# HOW IT WORKS:
+# Every day (for security alerts) or weekly (for version bumps), Dependabot
+# reads your package-lock.json and checks whether any installed version has
+# a known CVE.  If so, it opens a PR that bumps the affected package to the
+# patched version.
+#
+# You still review and merge the PR — Dependabot never pushes directly.
+# CI runs on the PR so you can see if the update breaks anything before
+# merging.
+
+version: 2
+updates:
+  # Root workspace / monorepo tooling
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    groups:
+      # Group all minor/patch dev-dep bumps into one PR per week
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+
+  # API workspace
+  - package-ecosystem: "npm"
+    directory: "/apps/api"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+
+  # Web workspace
+  - package-ecosystem: "npm"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+
+  # GitHub Actions version pinning
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"

@@ -1,0 +1,33 @@
+# Internal TLS reverse proxy for the air-gapped stack (plan phase 5).
+#
+# Caddy terminates HTTPS in front of the app + gateway using an INTERNAL CA (no
+# ACME / no internet). Distribute the CA root to browsers and the Word add-in
+# clients (Caddy prints its root at data/caddy/pki/authorities/local/root.crt),
+# or they'll reject the cert offline.
+#
+# Only this proxy is host-published. It fronts:
+#   /            → web (Next.js)
+#   /api/*       → api  (Express)
+#   /auth, /rest → gateway (Supabase data plane) — usually reached via api, but
+#                  exposed here if the browser talks to Supabase directly.
+{
+    # Self-signed internal CA; no external ACME.
+    local_certs
+}
+
+mike.local, localhost {
+    tls internal
+
+    handle /api/* {
+        reverse_proxy api:3001
+    }
+    handle /auth/* {
+        reverse_proxy gateway:8000
+    }
+    handle /rest/* {
+        reverse_proxy gateway:8000
+    }
+    handle {
+        reverse_proxy web:3000
+    }
+}

@@ -1,0 +1,155 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "formatVersion": {
+      "type": "number",
+      "const": 1,
+      "description": "Schema version. Always 1 for files produced by the current export endpoint. Future breaking changes will increment this value."
+    },
+    "exportedAt": {
+      "description": "ISO 8601 timestamp of when the file was exported. Informational only — not used during import.",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+    },
+    "workflow": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Human-readable name shown in the workflow picker."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "assistant",
+            "tabular"
+          ],
+          "description": "Determines where the workflow appears. 'assistant' workflows appear in the chat sidebar; 'tabular' workflows appear in the tabular review column picker."
+        },
+        "prompt_md": {
+          "description": "The full workflow prompt in Markdown. For 'assistant' workflows, this is injected into the system prompt when the workflow is activated. For 'tabular' workflows, this describes the analysis task for each cell.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "columns_config": {
+          "description": "Column definitions for 'tabular' workflows. Each entry defines one column in the review table. Null for 'assistant' workflows.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Column heading shown in the UI."
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "description": "The prompt sent to the LLM for each cell in this column."
+                  },
+                  "type": {
+                    "description": "Optional cell rendering hint. 'flag' renders a coloured badge; 'yesno' renders Yes/No; 'text' (default) renders plain text.",
+                    "type": "string",
+                    "enum": [
+                      "text",
+                      "flag",
+                      "yesno"
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "prompt"
+                ],
+                "additionalProperties": {},
+                "description": "One column definition in a 'tabular' workflow's review table. Extra keys are allowed so newer exports keep importing into older deployments."
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "practice": {
+          "description": "Optional legal practice area tag (e.g. 'corporate', 'ip', 'employment'). Used for filtering in the workflow picker.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "title",
+        "type"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "formatVersion",
+    "workflow"
+  ],
+  "additionalProperties": false,
+  "$id": "https://github.com/willchen96/mike/schemas/workflow.schema.json",
+  "title": "Mike Workflow Pack",
+  "description": "Schema for .mikeworkflow.json files exported from and imported into Mike. GENERATED from apps/api/src/modules/workflows/workflowFormat.ts by `npm run generate:workflow-schema` — do not edit by hand. See docs/workflows.md for a full explanation of each field.",
+  "examples": [
+    {
+      "formatVersion": 1,
+      "exportedAt": "2026-05-24T12:00:00.000Z",
+      "workflow": {
+        "title": "NDA Quick Review",
+        "type": "assistant",
+        "prompt_md": "Review the provided NDA and identify:\n1. Key definitions and their scope\n2. Exclusions from confidential information\n3. Duration of confidentiality obligations\n4. Any unusual or unfair clauses\n\nProvide a structured summary with a risk rating (Low / Medium / High).",
+        "columns_config": null,
+        "practice": "corporate"
+      }
+    },
+    {
+      "formatVersion": 1,
+      "exportedAt": "2026-05-24T12:00:00.000Z",
+      "workflow": {
+        "title": "Contract Risk Matrix",
+        "type": "tabular",
+        "prompt_md": null,
+        "columns_config": [
+          {
+            "name": "Governing Law",
+            "prompt": "What jurisdiction's law governs this agreement? Return only the jurisdiction name.",
+            "type": "text"
+          },
+          {
+            "name": "Liability Cap",
+            "prompt": "Is there a liability cap? If yes, state the amount or formula. If no, say 'None'.",
+            "type": "text"
+          },
+          {
+            "name": "Auto-Renewal",
+            "prompt": "Does this contract auto-renew? Answer Yes or No.",
+            "type": "yesno"
+          },
+          {
+            "name": "Red Flag",
+            "prompt": "Does this contract contain any clauses that are unusual, unfair, or potentially unenforceable? If yes, flag as RED and briefly explain. If no, flag as GREEN.",
+            "type": "flag"
+          }
+        ],
+        "practice": "corporate"
+      }
+    }
+  ]
+}
