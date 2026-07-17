@@ -1,5 +1,7 @@
 -- Phase: Safety net — enable RLS on every public base table with a
 -- deny-all policy for anon and authenticated roles.
+-- Adapted from upstream PR #145 by bmersereau
+-- (https://github.com/willchen96/mike/pull/145).
 --
 -- WHY THIS IS NEEDED:
 -- Supabase enables Row Level Security on tables individually.  If a new

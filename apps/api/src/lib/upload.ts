@@ -1,3 +1,6 @@
+// Magic-byte (file signature) validation adapted from upstream PR #78 by
+// bmersereau (https://github.com/willchen96/mike/pull/78), extended here to
+// the Office formats (xlsx/xlsm/pptx/xls/ppt).
 import type { RequestHandler } from "express";
 import multer from "multer";
 import { sendError } from "./http";

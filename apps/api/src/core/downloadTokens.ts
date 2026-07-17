@@ -1,3 +1,6 @@
+// Token expiry (the `exp` field and its 30-day default TTL) adapted from
+// upstream PR #77 by bmersereau (https://github.com/willchen96/mike/pull/77);
+// this fork additionally rejects tokens that carry no expiry at all.
 import crypto from "crypto";
 
 export type DownloadTokenPayload = {

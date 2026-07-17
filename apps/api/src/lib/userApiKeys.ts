@@ -1,3 +1,6 @@
+// Encryption scheme — HKDF-SHA256 with a per-row random 16-byte salt, and a
+// legacy SHA-256 decrypt path for rows where salt IS NULL — adapted from
+// upstream PR #76 by bmersereau (https://github.com/willchen96/mike/pull/76).
 import crypto from "crypto";
 import { createServerSupabase } from "./supabase";
 import type { UserApiKeys } from "./llm";
