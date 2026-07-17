@@ -7,15 +7,16 @@ import {
 } from "../llm";
 import { safeErrorMessage } from "../safeError";
 import { createServerSupabase } from "../supabase";
-import {
-  buildUserMcpTools,
-  type McpToolEvent,
-} from "../mcpConnectors";
+import { buildUserMcpTools, type McpToolEvent } from "../mcpConnectors";
 import {
   COURTLISTENER_TOOLS,
   type CaseCitationEvent,
   type CourtlistenerToolEvent,
 } from "./tools/courtlistenerTools";
+import {
+  LEGAL_SOURCE_TOOLS,
+  type LegalSourceToolEvent,
+} from "./tools/legalSourceTools";
 import {
   type DocStore,
   type DocIndex,
@@ -37,11 +38,7 @@ import {
   runToolCalls,
   type CourtlistenerTurnState,
 } from "./tools/toolDispatcher";
-import {
-  type TurnEditState,
-  type TurnReadState,
-} from "./tools/documentOps";
-
+import { type TurnEditState, type TurnReadState } from "./tools/documentOps";
 
 export type AssistantEvent =
   | { type: "reasoning"; text: string }
@@ -97,6 +94,7 @@ export type AssistantEvent =
     }
   | CaseCitationEvent
   | CourtlistenerToolEvent
+  | LegalSourceToolEvent
   | McpToolEvent
   | { type: "case_opinions"; cluster_id: number; case: unknown }
   | { type: "content"; text: string }
@@ -131,9 +129,7 @@ class AssistantStreamAskInputsPause extends Error {
 export function isAbortError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const record = error as { name?: unknown; message?: unknown };
-  return (
-    record.name === "AbortError" || record.message === "Stream aborted."
-  );
+  return record.name === "AbortError" || record.message === "Stream aborted.";
 }
 
 function throwIfAborted(signal?: AbortSignal) {
@@ -186,7 +182,9 @@ export async function runLLMStream(params: {
     signal,
     projectId,
   } = params;
-  const researchTools = includeResearchTools ? COURTLISTENER_TOOLS : [];
+  const researchTools = includeResearchTools
+    ? [...LEGAL_SOURCE_TOOLS, ...COURTLISTENER_TOOLS]
+    : [];
   const mcpTools = await buildUserMcpTools(userId, db);
   const baseTools = [...TOOLS, ...researchTools, ...WORKFLOW_TOOLS];
   const activeTools = extraTools?.length
@@ -217,8 +215,8 @@ export async function runLLMStream(params: {
   // changes that document so a post-edit verification read can still happen.
   const turnReadState: TurnReadState = new Map();
   const courtlistenerTurnState: CourtlistenerTurnState = {
-      casesByClusterId: new Map(),
-    };
+    casesByClusterId: new Map(),
+  };
   let fullText = "";
   let iterText = "";
   let iterVisibleText = "";
@@ -233,7 +231,9 @@ export async function runLLMStream(params: {
     citations: unknown[],
   ) => {
     if (buildCitations) return;
-    write(`data: ${JSON.stringify({ type: "citations", status, citations })}\n\n`);
+    write(
+      `data: ${JSON.stringify({ type: "citations", status, citations })}\n\n`,
+    );
   };
 
   const streamHiddenCitationContent = (delta: string) => {
@@ -243,11 +243,7 @@ export async function runLLMStream(params: {
     if (partial.length <= streamedCitationCount) return;
     streamedCitationCount = partial.length;
     const citations = partial.map((c) =>
-      createCitation(
-        c,
-        docIndex,
-        courtlistenerTurnState.casesByClusterId,
-      ),
+      createCitation(c, docIndex, courtlistenerTurnState.casesByClusterId),
     );
     emitCitationStreamSnapshot("partial", citations);
   };
@@ -399,6 +395,7 @@ export async function runLLMStream(params: {
           askInputsEvents,
           courtlistenerEvents,
           caseCitationEvents,
+          legalSourceEvents,
           mcpEvents,
         } = await runToolCalls(
           toolCalls,
@@ -474,6 +471,9 @@ export async function runLLMStream(params: {
         for (const event of courtlistenerEvents) {
           events.push(event);
         }
+        for (const event of legalSourceEvents) {
+          events.push(event);
+        }
         for (const event of mcpEvents) {
           events.push(event);
         }
@@ -530,11 +530,7 @@ export async function runLLMStream(params: {
   const citations = buildCitations
     ? buildCitations(fullText)
     : parsedCitations.map((c) =>
-        createCitation(
-          c,
-          docIndex,
-          courtlistenerTurnState.casesByClusterId,
-        ),
+        createCitation(c, docIndex, courtlistenerTurnState.casesByClusterId),
       );
   devLog("[chat/stream] final citations", {
     hasCitationsBlock: citationDiagnostics.hasBlock,

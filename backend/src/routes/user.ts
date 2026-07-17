@@ -56,6 +56,11 @@ type UserProfileRow = {
     tabular_model: string;
     mfa_on_login: boolean | null;
     legal_research_us: boolean | null;
+    legal_research_enabled?: boolean | null;
+    default_country?: string | null;
+    default_province?: string | null;
+    enabled_jurisdictions?: string[] | null;
+    enabled_source_providers?: string[] | null;
 };
 
 function errorMessage(error: unknown): string {
@@ -104,11 +109,14 @@ function shortHash(value: string) {
         : null;
 }
 
-function mcpOAuthPopupHtml(payload: {
-    success: boolean;
-    connectorId?: string;
-    detail?: string;
-}, nonce: string) {
+function mcpOAuthPopupHtml(
+    payload: {
+        success: boolean;
+        connectorId?: string;
+        detail?: string;
+    },
+    nonce: string,
+) {
     const targetOrigin = new URL(frontendUrl()).origin;
     const targetUrl = frontendUrl();
     const message = JSON.stringify({
@@ -160,6 +168,8 @@ function mcpOAuthPopupCsp(nonce: string) {
     ].join("; ");
 }
 
+const PROFILE_SELECT_GENERIC =
+    "display_name, organisation, message_credits_used, credits_reset_date, tier, title_model, tabular_model, mfa_on_login, legal_research_us, legal_research_enabled, default_country, default_province, enabled_jurisdictions, enabled_source_providers";
 const PROFILE_SELECT =
     "display_name, organisation, message_credits_used, credits_reset_date, tier, title_model, tabular_model, mfa_on_login, legal_research_us";
 const PROFILE_SELECT_NO_LEGAL =
@@ -178,15 +188,24 @@ function isMissingProfileColumn(error: unknown, column: string): boolean {
     return record.code === "42703" && message.includes(column);
 }
 
-// Loads a profile while tolerating older databases that lack the
-// legal_research_us column. Tries the full select first, then falls back to
-// the legacy cascade (which also handles missing title_model / mfa_on_login)
-// and defaults the feature flag to enabled.
+// Loads a profile while tolerating older Mike databases. The generic Ontario
+// settings are tried first, followed by the released U.S. flag and then the
+// earlier model/MFA compatibility cascade.
 async function selectProfile(
     db: ReturnType<typeof createServerSupabase>,
     userId: string,
     mode: "maybe" | "single",
 ) {
+    const genericQuery = db
+        .from("user_profiles")
+        .select(PROFILE_SELECT_GENERIC)
+        .eq("user_id", userId);
+    const generic =
+        mode === "single"
+            ? await genericQuery.single()
+            : await genericQuery.maybeSingle();
+    if (!generic.error) return generic;
+
     const fullQuery = db
         .from("user_profiles")
         .select(PROFILE_SELECT)
@@ -283,6 +302,15 @@ function serializeProfile(row: UserProfileRow, apiKeyStatus?: ApiKeyStatus) {
           : apiKeyStatus?.claude
             ? CLAUDE_LOW_MODELS[0]
             : DEFAULT_TITLE_MODEL;
+    const legacyUs = row.legal_research_us !== false;
+    const enabledJurisdictions = normalizeEnabledJurisdictions(
+        row.enabled_jurisdictions,
+        legacyUs,
+    );
+    const enabledSourceProviders = normalizeEnabledProviders(
+        row.enabled_source_providers,
+        legacyUs,
+    );
     return {
         displayName: row.display_name,
         organisation: row.organisation,
@@ -293,9 +321,50 @@ function serializeProfile(row: UserProfileRow, apiKeyStatus?: ApiKeyStatus) {
         titleModel: resolveModel(row.title_model, titleFallback),
         tabularModel: resolveModel(row.tabular_model, DEFAULT_TABULAR_MODEL),
         mfaOnLogin: row.mfa_on_login === true,
-        legalResearchUs: row.legal_research_us !== false,
+        legalResearch: {
+            enabled: row.legal_research_enabled !== false,
+            defaultCountry: row.default_country === "US" ? "US" : "CA",
+            defaultProvince:
+                row.default_country === "US"
+                    ? null
+                    : row.default_province === null
+                      ? null
+                      : "ON",
+            enabledJurisdictions,
+            enabledSourceProviders,
+        },
+        legalResearchUs: enabledJurisdictions.includes("US"),
         ...(apiKeyStatus ? { apiKeyStatus } : {}),
     };
+}
+
+const DEFAULT_CANADIAN_PROVIDERS = [
+    "a2aj-canada",
+    "ontario-elaws",
+    "justice-laws-canada",
+];
+
+function normalizeEnabledJurisdictions(
+    value: string[] | null | undefined,
+    legacyUs: boolean,
+) {
+    const fallback = ["CA-ON", "CA", ...(legacyUs ? ["US"] : [])];
+    if (!Array.isArray(value)) return fallback;
+    const allowed = new Set(["CA-ON", "CA", "US"]);
+    return [...new Set(value.filter((item) => allowed.has(item)))];
+}
+
+function normalizeEnabledProviders(
+    value: string[] | null | undefined,
+    legacyUs: boolean,
+) {
+    if (!Array.isArray(value)) {
+        return [
+            ...DEFAULT_CANADIAN_PROVIDERS,
+            ...(legacyUs ? ["courtlistener-us"] : []),
+        ];
+    }
+    return [...new Set(value.filter((provider) => provider.trim()))];
 }
 
 function validateProfilePayload(body: unknown):
@@ -307,6 +376,11 @@ function validateProfilePayload(body: unknown):
               title_model?: string;
               tabular_model?: string;
               legal_research_us?: boolean;
+              legal_research_enabled?: boolean;
+              default_country?: "CA" | "US";
+              default_province?: "ON" | null;
+              enabled_jurisdictions?: string[];
+              enabled_source_providers?: string[];
               updated_at: string;
           };
       }
@@ -321,6 +395,7 @@ function validateProfilePayload(body: unknown):
         "organisation",
         "titleModel",
         "tabularModel",
+        "legalResearch",
         "legalResearchUs",
     ]);
     const invalidField = Object.keys(raw).find(
@@ -339,6 +414,11 @@ function validateProfilePayload(body: unknown):
         title_model?: string;
         tabular_model?: string;
         legal_research_us?: boolean;
+        legal_research_enabled?: boolean;
+        default_country?: "CA" | "US";
+        default_province?: "ON" | null;
+        enabled_jurisdictions?: string[];
+        enabled_source_providers?: string[];
         updated_at: string;
     } = { updated_at: new Date().toISOString() };
 
@@ -394,7 +474,111 @@ function validateProfilePayload(body: unknown):
         update.legal_research_us = raw.legalResearchUs;
     }
 
+    if ("legalResearch" in raw) {
+        const parsed = validateLegalResearchSettings(raw.legalResearch);
+        if (!parsed.ok) return parsed;
+        Object.assign(update, parsed.update, {
+            legal_research_us:
+                parsed.update.enabled_jurisdictions.includes("US"),
+        });
+    }
+
     return { ok: true, update };
+}
+
+function validateLegalResearchSettings(value: unknown):
+    | {
+          ok: true;
+          update: {
+              legal_research_enabled: boolean;
+              default_country: "CA" | "US";
+              default_province: "ON" | null;
+              enabled_jurisdictions: string[];
+              enabled_source_providers: string[];
+          };
+      }
+    | { ok: false; detail: string } {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return { ok: false, detail: "legalResearch must be an object" };
+    }
+    const raw = value as Record<string, unknown>;
+    const allowedFields = new Set([
+        "enabled",
+        "defaultCountry",
+        "defaultProvince",
+        "enabledJurisdictions",
+        "enabledSourceProviders",
+    ]);
+    const invalidField = Object.keys(raw).find(
+        (key) => !allowedFields.has(key),
+    );
+    if (invalidField)
+        return {
+            ok: false,
+            detail: `Unsupported legalResearch field: ${invalidField}`,
+        };
+    if (typeof raw.enabled !== "boolean")
+        return { ok: false, detail: "legalResearch.enabled must be a boolean" };
+    if (raw.defaultCountry !== "CA" && raw.defaultCountry !== "US")
+        return {
+            ok: false,
+            detail: "legalResearch.defaultCountry must be CA or US",
+        };
+    if (raw.defaultProvince !== null && raw.defaultProvince !== "ON")
+        return {
+            ok: false,
+            detail: "legalResearch.defaultProvince must be ON or null",
+        };
+    const jurisdictionValues = Array.isArray(raw.enabledJurisdictions)
+        ? raw.enabledJurisdictions
+        : null;
+    if (
+        !jurisdictionValues ||
+        jurisdictionValues.some(
+            (item) => !["CA-ON", "CA", "US"].includes(String(item)),
+        )
+    )
+        return {
+            ok: false,
+            detail: "legalResearch.enabledJurisdictions contains an unsupported value",
+        };
+    const providerValues = Array.isArray(raw.enabledSourceProviders)
+        ? raw.enabledSourceProviders
+        : null;
+    const allowedProviders = new Set([
+        "a2aj-canada",
+        "ontario-elaws",
+        "justice-laws-canada",
+        "courtlistener-us",
+        "canlii-licensed",
+    ]);
+    if (
+        !providerValues ||
+        providerValues.some(
+            (item) =>
+                typeof item !== "string" ||
+                !allowedProviders.has(item),
+        )
+    )
+        return {
+            ok: false,
+            detail: "legalResearch.enabledSourceProviders contains an unsupported value",
+        };
+    const enabledJurisdictions = [...new Set(jurisdictionValues.map(String))];
+    const enabledSourceProviders = [
+        ...new Set(providerValues.map((item) => String(item))),
+    ];
+    return {
+        ok: true,
+        update: {
+            legal_research_enabled: raw.enabled,
+            default_country: raw.defaultCountry,
+            default_province:
+                raw.defaultCountry === "US" ? null : raw.defaultProvince,
+            enabled_jurisdictions: enabledJurisdictions,
+            enabled_source_providers: enabledSourceProviders,
+        },
+    };
 }
 
 function readBooleanBodyField(

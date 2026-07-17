@@ -12,8 +12,8 @@ import { ModalSelect } from "../modals/ModalSelect";
 import { ModalTextInput } from "../modals/ModalTextInput";
 
 const DEFAULT_LANGUAGE = "English";
-const DEFAULT_PRACTICE = "General Transactions";
-const DEFAULT_JURISDICTION = "General";
+const DEFAULT_PRACTICE = "Civil Litigation";
+const DEFAULT_JURISDICTION = "Canada / Ontario";
 const LANGUAGE_OPTIONS = [
     "English",
     "Chinese",
@@ -57,6 +57,8 @@ const LANGUAGE_OPTIONS = [
     "Other",
 ] as const;
 const JURISDICTION_OPTIONS = [
+    "Canada / Ontario",
+    "Federal — Canada",
     "General",
     "United States",
     "England and Wales",

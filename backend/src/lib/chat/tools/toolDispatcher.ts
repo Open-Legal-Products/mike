@@ -9,9 +9,18 @@ import {
   type CourtlistenerToolEvent,
 } from "./courtlistenerTools";
 import {
-  executeMcpToolCall,
-  type McpToolEvent,
-} from "../../mcpConnectors";
+  LEGAL_SOURCE_TOOL_NAMES,
+  type LegalSourceToolEvent,
+} from "./legalSourceTools";
+import {
+  createLegalSourceRegistry,
+  parseCanadianCitations,
+  verifyCanadianCitations,
+  type JurisdictionCode,
+  type LegalSourceProvider,
+} from "../../legalSources";
+import { getUserModelSettings } from "../../userSettings";
+import { executeMcpToolCall, type McpToolEvent } from "../../mcpConnectors";
 import { createServerSupabase } from "../../supabase";
 import {
   type DocStore,
@@ -25,11 +34,7 @@ import {
   devLog,
   resolveDocLabel,
 } from "../types";
-import {
-  downloadFile,
-  storageKey,
-  uploadFile,
-} from "../../storage";
+import { downloadFile, storageKey, uploadFile } from "../../storage";
 import { convertedPdfKey } from "../../convert";
 import { contentTypeForDocumentType } from "../../documentTypes";
 import { buildDownloadUrl } from "../../downloadTokens";
@@ -55,7 +60,6 @@ import {
   type DocReplicatedResult,
   type TextMatch,
 } from "./documentOps";
-
 
 type CourtlistenerCaseRecord = {
   clusterId: number;
@@ -91,7 +95,9 @@ function cleanAskInputString(value: unknown, fallback = ""): string {
   return text || fallback;
 }
 
-function normalizeAskInputsEvent(args: Record<string, unknown>): AskInputsEvent {
+function normalizeAskInputsEvent(
+  args: Record<string, unknown>,
+): AskInputsEvent {
   const rawItems = Array.isArray(args.items) ? args.items : [];
   const items = rawItems
     .map((item, index): AskInputItem | null => {
@@ -168,20 +174,21 @@ function upsertCourtlistenerCases(
 ): CourtlistenerCaseRecord[] {
   const records: CourtlistenerCaseRecord[] = [];
   for (const input of inputs) {
-    if (typeof input.clusterId !== "number" || !Number.isFinite(input.clusterId)) {
+    if (
+      typeof input.clusterId !== "number" ||
+      !Number.isFinite(input.clusterId)
+    ) {
       continue;
     }
     const clusterId = Math.floor(input.clusterId);
-    const current =
-      state.casesByClusterId.get(clusterId) ??
-      {
-        clusterId,
-        caseName: null,
-        citations: [],
-        url: null,
-        pdfUrl: null,
-        dateFiled: null,
-      };
+    const current = state.casesByClusterId.get(clusterId) ?? {
+      clusterId,
+      caseName: null,
+      citations: [],
+      url: null,
+      pdfUrl: null,
+      dateFiled: null,
+    };
     const nextCitations = [
       ...current.citations,
       ...(input.citation ? [input.citation] : []),
@@ -259,7 +266,9 @@ function courtlistenerCaseInputFromFetchedCase(
 ): CourtlistenerCaseInput {
   const record = recordFromUnknown(fetchedCase);
   const clusterId =
-    numberField(record, "clusterId") ?? numberField(record, "id") ?? fallbackClusterId;
+    numberField(record, "clusterId") ??
+    numberField(record, "id") ??
+    fallbackClusterId;
   return {
     clusterId,
     caseName: stringField(record, "caseName"),
@@ -285,8 +294,7 @@ function courtlistenerOpinionMetadata(raw: unknown) {
       ? stripCaseOpinionHtml(stringField(opinion, "html")!)
       : null);
   return {
-    opinion_id:
-      numberField(opinion, "opinionId") ?? numberField(opinion, "id"),
+    opinion_id: numberField(opinion, "opinionId") ?? numberField(opinion, "id"),
     type: stringField(opinion, "type"),
     author: stringField(opinion, "author"),
     per_curiam: stringField(opinion, "per_curiam"),
@@ -395,7 +403,8 @@ function parseFindInCaseArgs(args: Record<string, unknown>): FindInCaseArgs {
     clusterId:
       typeof args.clusterId === "number" && Number.isFinite(args.clusterId)
         ? Math.floor(args.clusterId)
-        : typeof args.cluster_id === "number" && Number.isFinite(args.cluster_id)
+        : typeof args.cluster_id === "number" &&
+            Number.isFinite(args.cluster_id)
           ? Math.floor(args.cluster_id)
           : null,
     query: typeof args.query === "string" ? args.query : "",
@@ -411,7 +420,10 @@ function parseFindInCaseArgs(args: Record<string, unknown>): FindInCaseArgs {
 }
 
 function findInCaseSearchSummary(
-  event: Extract<CourtlistenerToolEvent, { type: "courtlistener_find_in_case" }>,
+  event: Extract<
+    CourtlistenerToolEvent,
+    { type: "courtlistener_find_in_case" }
+  >,
 ) {
   return {
     cluster_id: event.cluster_id,
@@ -430,6 +442,336 @@ function cachedCaseNotFetchedResult(clusterId: number | null) {
     error:
       "Case has not been fetched in this turn. Call courtlistener_get_cases first.",
   };
+}
+
+const LEGAL_SOURCE_NAMES = new Set<string>(
+  Object.values(LEGAL_SOURCE_TOOL_NAMES),
+);
+
+function legalSourceProviderContext(
+  providerId: string,
+  db: ReturnType<typeof createServerSupabase>,
+  apiKeys?: import("../../llm").UserApiKeys,
+) {
+  return {
+    db,
+    apiToken: providerId === "courtlistener-us" ? apiKeys?.courtlistener : null,
+  };
+}
+
+function cleanLegalAuthority(
+  provider: LegalSourceProvider,
+  document: Record<string, unknown>,
+  passages?: unknown[],
+) {
+  return {
+    providerId: provider.descriptor.id,
+    providerName: provider.descriptor.name,
+    official: provider.descriptor.official,
+    fullTextStatus: provider.descriptor.fullTextStatus,
+    sourceId: document.sourceId ?? null,
+    kind: document.kind ?? "decision",
+    title: document.title ?? document.caseName ?? null,
+    citation: document.citation ?? null,
+    court: document.court ?? null,
+    jurisdiction: document.jurisdiction ?? null,
+    decisionDate: document.decisionDate ?? null,
+    currentToDate: document.currentToDate ?? null,
+    lastAmendedDate: document.lastAmendedDate ?? null,
+    retrievedAt: document.retrievedAt ?? null,
+    language: document.language ?? null,
+    canonicalUrl: document.canonicalUrl ?? null,
+    alternateLanguageUrl: document.alternateLanguageUrl ?? null,
+    verification: document.verification ?? "unverified",
+    reproductionIsOfficial: document.reproductionIsOfficial ?? null,
+    passages: passages ?? [],
+  };
+}
+
+async function executeLegalSourceTool(args: {
+  name: string;
+  input: Record<string, unknown>;
+  userId: string;
+  db: ReturnType<typeof createServerSupabase>;
+  apiKeys?: import("../../llm").UserApiKeys;
+}): Promise<{ content: string; event: LegalSourceToolEvent }> {
+  const { name, input, userId, db, apiKeys } = args;
+  const settings = (await getUserModelSettings(userId, db)).legal_research;
+  const registry = createLegalSourceRegistry();
+  const jurisdiction =
+    input.jurisdiction === "CA-ON" ||
+    input.jurisdiction === "CA" ||
+    input.jurisdiction === "US"
+      ? (input.jurisdiction as JurisdictionCode)
+      : null;
+  const requestedProvider =
+    typeof input.provider_id === "string" ? input.provider_id : null;
+  const materialType =
+    typeof input.material_type === "string" ? input.material_type : "decision";
+  const candidates = registry
+    .list({ jurisdiction: jurisdiction ?? undefined })
+    .filter(
+      (provider) =>
+        settings.enabled &&
+        settings.enabledSourceProviders.includes(provider.descriptor.id) &&
+        (!jurisdiction ||
+          settings.enabledJurisdictions.includes(jurisdiction as never)) &&
+        (!requestedProvider || provider.descriptor.id === requestedProvider) &&
+        (materialType === "decision"
+          ? !!provider.searchDecisions || !!provider.fetchDecision
+          : !!provider.searchLegislation || !!provider.fetchLegislation),
+    );
+  const provider = candidates[0];
+  if (!provider) {
+    const message = requestedProvider
+      ? `Provider ${requestedProvider} is not enabled for this jurisdiction and material type.`
+      : `No enabled provider covers ${jurisdiction ?? "the requested jurisdiction"} ${materialType}.`;
+    return {
+      content: JSON.stringify({ error: message, coverage_gap: true }),
+      event: {
+        type:
+          name === LEGAL_SOURCE_TOOL_NAMES.search
+            ? "legal_source_search"
+            : "legal_authority",
+        ...(name === LEGAL_SOURCE_TOOL_NAMES.search
+          ? {
+              provider_id: null,
+              provider_name: null,
+              query: typeof input.query === "string" ? input.query : "",
+              result_count: 0,
+            }
+          : {
+              action:
+                name === LEGAL_SOURCE_TOOL_NAMES.verify
+                  ? "verified"
+                  : name === LEGAL_SOURCE_TOOL_NAMES.find
+                    ? "passages"
+                    : "fetched",
+              provider_id: null,
+              provider_name: null,
+            }),
+        error: message,
+      } as LegalSourceToolEvent,
+    };
+  }
+  const context = legalSourceProviderContext(
+    provider.descriptor.id,
+    db,
+    apiKeys,
+  );
+
+  try {
+    if (name === LEGAL_SOURCE_TOOL_NAMES.search) {
+      const query = typeof input.query === "string" ? input.query.trim() : "";
+      const limit = Math.min(20, Math.max(1, Number(input.limit) || 10));
+      const results =
+        materialType === "decision" && provider.searchDecisions
+          ? await provider.searchDecisions(
+              {
+                query,
+                jurisdiction: jurisdiction ?? undefined,
+                court:
+                  typeof input.court === "string" ? input.court : undefined,
+                language: input.language === "fr" ? "fr" : "en",
+                from: typeof input.from === "string" ? input.from : undefined,
+                to: typeof input.to === "string" ? input.to : undefined,
+                limit,
+              },
+              context,
+            )
+          : provider.searchLegislation
+            ? await provider.searchLegislation(
+                {
+                  query,
+                  jurisdiction: jurisdiction ?? undefined,
+                  language: input.language === "fr" ? "fr" : "en",
+                  kind:
+                    materialType === "legislation" ||
+                    materialType === "regulation" ||
+                    materialType === "rule"
+                      ? materialType
+                      : undefined,
+                  limit,
+                },
+                context,
+              )
+            : [];
+      const coverageWarning =
+        provider.descriptor.id === "a2aj-canada" &&
+        typeof input.court === "string" &&
+        ["ONSC", "ONCJ", "SMALL CLAIMS", "HRTO", "ONLTB"].includes(
+          input.court.toUpperCase(),
+        )
+          ? `Published A2AJ coverage does not establish coverage for ${input.court}. Treat this as a known gap.`
+          : undefined;
+      return {
+        content: JSON.stringify({
+          provider: provider.descriptor,
+          results,
+          ...(coverageWarning ? { coverage_warning: coverageWarning } : {}),
+          next_required_action:
+            "Fetch a selected source and find the exact supporting passage before citing it.",
+        }),
+        event: {
+          type: "legal_source_search",
+          provider_id: provider.descriptor.id,
+          provider_name: provider.descriptor.name,
+          query,
+          result_count: results.length,
+          ...(coverageWarning ? { coverage_warning: coverageWarning } : {}),
+        },
+      };
+    }
+
+    if (name === LEGAL_SOURCE_TOOL_NAMES.verify) {
+      const text =
+        typeof input.text === "string" ? input.text.slice(0, 20_000) : "";
+      const providers = registry
+        .list()
+        .filter((item) =>
+          settings.enabledSourceProviders.includes(item.descriptor.id),
+        );
+      const results = await verifyCanadianCitations(
+        parseCanadianCitations(text),
+        providers,
+      );
+      return {
+        content: JSON.stringify({
+          results,
+          warning:
+            "Citation, passage, currency, and treatment verification are separate.",
+        }),
+        event: {
+          type: "legal_authority",
+          action: "verified",
+          provider_id: null,
+          provider_name: null,
+          passage_count: results.filter(
+            (result) => result.passageVerification === "verified",
+          ).length,
+        },
+      };
+    }
+
+    const sourceId =
+      typeof input.source_id === "string" ? input.source_id.trim() : "";
+    const document =
+      materialType === "decision" && provider.fetchDecision
+        ? await provider.fetchDecision(sourceId, context)
+        : provider.fetchLegislation
+          ? await provider.fetchLegislation(
+              sourceId,
+              {
+                language: input.language === "fr" ? "fr" : "en",
+                section:
+                  typeof input.section === "string" ? input.section : undefined,
+                versionDate:
+                  typeof input.version_date === "string"
+                    ? input.version_date
+                    : undefined,
+              },
+              context,
+            )
+          : null;
+    if (!document) throw new Error("Provider cannot fetch this material type.");
+
+    if (name === LEGAL_SOURCE_TOOL_NAMES.find) {
+      const query = typeof input.query === "string" ? input.query.trim() : "";
+      const maxResults = Math.min(
+        10,
+        Math.max(1, Number(input.max_results) || 5),
+      );
+      const passages =
+        "passages" in document && provider.findPassages
+          ? provider.findPassages(document, query, maxResults)
+          : "sections" in document
+            ? document.sections
+                .filter(
+                  (section) =>
+                    section.label === input.section ||
+                    section.text
+                      .toLocaleLowerCase("en-CA")
+                      .includes(query.toLocaleLowerCase("en-CA")),
+                )
+                .slice(0, maxResults)
+                .map((section) => ({
+                  text: section.text,
+                  language: document.language,
+                  section: section.label,
+                  heading: section.heading,
+                  sourceUrl: section.sourceUrl,
+                  verification: document.verification,
+                }))
+            : [];
+      const authority = cleanLegalAuthority(
+        provider,
+        document as unknown as Record<string, unknown>,
+        passages,
+      );
+      return {
+        content: JSON.stringify({ authority, passages }),
+        event: {
+          type: "legal_authority",
+          action: "passages",
+          provider_id: provider.descriptor.id,
+          provider_name: provider.descriptor.name,
+          authority,
+          passage_count: passages.length,
+        },
+      };
+    }
+
+    const authority = cleanLegalAuthority(
+      provider,
+      document as unknown as Record<string, unknown>,
+    );
+    return {
+      content: JSON.stringify({
+        authority,
+        next_required_action:
+          "Call find_in_legal_source and retrieve the exact supporting passage before citing this source.",
+      }),
+      event: {
+        type: "legal_authority",
+        action: "fetched",
+        provider_id: provider.descriptor.id,
+        provider_name: provider.descriptor.name,
+        authority,
+      },
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message.slice(0, 500)
+        : "Legal source request failed.";
+    return {
+      content: JSON.stringify({ error: message }),
+      event: {
+        type:
+          name === LEGAL_SOURCE_TOOL_NAMES.search
+            ? "legal_source_search"
+            : "legal_authority",
+        ...(name === LEGAL_SOURCE_TOOL_NAMES.search
+          ? {
+              provider_id: provider.descriptor.id,
+              provider_name: provider.descriptor.name,
+              query: typeof input.query === "string" ? input.query : "",
+              result_count: 0,
+            }
+          : {
+              action:
+                name === LEGAL_SOURCE_TOOL_NAMES.verify
+                  ? "verified"
+                  : name === LEGAL_SOURCE_TOOL_NAMES.find
+                    ? "passages"
+                    : "fetched",
+              provider_id: provider.descriptor.id,
+              provider_name: provider.descriptor.name,
+            }),
+        error: message,
+      } as LegalSourceToolEvent,
+    };
+  }
 }
 
 export async function runToolCalls(
@@ -457,6 +799,7 @@ export async function runToolCalls(
   askInputsEvents: AskInputsEvent[];
   courtlistenerEvents: CourtlistenerToolEvent[];
   caseCitationEvents: CaseCitationEvent[];
+  legalSourceEvents: LegalSourceToolEvent[];
   mcpEvents: McpToolEvent[];
 }> {
   const toolResults: unknown[] = [];
@@ -473,12 +816,11 @@ export async function runToolCalls(
   const askInputsEvents: AskInputsEvent[] = [];
   const courtlistenerEvents: CourtlistenerToolEvent[] = [];
   const caseCitationEvents: CaseCitationEvent[] = [];
+  const legalSourceEvents: LegalSourceToolEvent[] = [];
   const mcpEvents: McpToolEvent[] = [];
-  const courtState: CourtlistenerTurnState =
-    courtlistenerState ??
-    {
-      casesByClusterId: new Map(),
-    };
+  const courtState: CourtlistenerTurnState = courtlistenerState ?? {
+    casesByClusterId: new Map(),
+  };
   const groupedFindInCaseSearches = toolCalls
     .filter((tc) => tc.function.name === COURTLISTENER_TOOL_NAMES.findInCase)
     .map((tc) => {
@@ -583,6 +925,24 @@ export async function runToolCalls(
       args = JSON.parse(tc.function.arguments || "{}");
     } catch {
       /* ignore */
+    }
+
+    if (LEGAL_SOURCE_NAMES.has(tc.function.name)) {
+      const result = await executeLegalSourceTool({
+        name: tc.function.name,
+        input: args,
+        userId,
+        db,
+        apiKeys,
+      });
+      legalSourceEvents.push(result.event);
+      write(`data: ${JSON.stringify(result.event)}\n\n`);
+      toolResults.push({
+        role: "tool",
+        tool_call_id: tc.id,
+        content: result.content,
+      });
+      continue;
     }
 
     if (tc.function.name.startsWith("mcp_")) {
@@ -1061,7 +1421,9 @@ export async function runToolCalls(
       }
 
       const record =
-        typeof clusterId === "number" ? courtState.casesByClusterId.get(clusterId) : undefined;
+        typeof clusterId === "number"
+          ? courtState.casesByClusterId.get(clusterId)
+          : undefined;
       if (!record) {
         const payload = cachedCaseNotFetchedResult(clusterId);
         const event: CourtlistenerToolEvent = {
@@ -1158,7 +1520,9 @@ export async function runToolCalls(
       );
 
       const record =
-        typeof clusterId === "number" ? courtState.casesByClusterId.get(clusterId) : undefined;
+        typeof clusterId === "number"
+          ? courtState.casesByClusterId.get(clusterId)
+          : undefined;
       if (!record) {
         const payload = cachedCaseNotFetchedResult(clusterId);
         const event: CourtlistenerToolEvent = {
@@ -1202,8 +1566,7 @@ export async function runToolCalls(
           opinions: (record.opinions ?? [])
             .map(courtlistenerOpinionMetadata)
             .filter(
-              (opinion): opinion is NonNullable<typeof opinion> =>
-                !!opinion,
+              (opinion): opinion is NonNullable<typeof opinion> => !!opinion,
             ),
           error: multipleOpinions
             ? "Multiple opinions are available. Call courtlistener_read_case again with the opinionId or opinionIds needed."
@@ -1891,6 +2254,7 @@ export async function runToolCalls(
     askInputsEvents,
     courtlistenerEvents,
     caseCitationEvents,
+    legalSourceEvents,
     mcpEvents,
   };
 }

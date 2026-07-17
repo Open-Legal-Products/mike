@@ -9,15 +9,13 @@ import {
 } from "react";
 import { X } from "lucide-react";
 import { DocPanel, type DocPanelMode } from "./DocPanel";
-import type {
-    Citation,
-    EditAnnotation,
-} from "../shared/types";
-import {
-    CaseLawPanel,
-    type CaseTab,
-} from "./CaseLawPanel";
+import type { Citation, EditAnnotation } from "../shared/types";
+import { CaseLawPanel, type CaseTab } from "./CaseLawPanel";
 import { cn } from "@/app/lib/utils";
+import {
+    LegalAuthorityPanel,
+    type LegalAuthorityTab,
+} from "./LegalAuthorityPanel";
 
 // ---------------------------------------------------------------------------
 // Tab data
@@ -58,7 +56,8 @@ export type AssistantSidePanelTab =
     | DocumentTab
     | CitationTab
     | EditTab
-    | CaseTab;
+    | CaseTab
+    | LegalAuthorityTab;
 
 interface Props {
     tabs: AssistantSidePanelTab[];
@@ -115,6 +114,9 @@ function maxPanelWidth() {
 function tabTitle(tab: AssistantSidePanelTab): string {
     if (tab.kind === "case") {
         return tab.caseName || tab.citation || "Case";
+    }
+    if (tab.kind === "authority") {
+        return tab.authority.title || tab.authority.citation || "Authority";
     }
     return tab.filename;
 }
@@ -198,9 +200,11 @@ export function AssistantSidePanel({
                 "relative flex h-full w-full shrink-0 flex-col md:my-3 md:mr-3 md:h-[calc(100%-1.5rem)] md:w-[var(--assistant-panel-width)]",
                 "rounded-2xl border border-white/70 bg-white shadow-[0_6px_18px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-10px_24px_rgba(255,255,255,0.18),inset_1px_0_0_rgba(255,255,255,0.5)] backdrop-blur-2xl overflow-hidden",
             )}
-            style={{
-                "--assistant-panel-width": `${panelWidth}px`,
-            } as CSSProperties}
+            style={
+                {
+                    "--assistant-panel-width": `${panelWidth}px`,
+                } as CSSProperties
+            }
         >
             {/* Drag handle */}
             <div
@@ -224,6 +228,7 @@ export function AssistantSidePanel({
                         const isActive = tab.id === active.id;
                         const showVersionBadge =
                             tab.kind !== "case" &&
+                            tab.kind !== "authority" &&
                             typeof tab.versionNumber === "number" &&
                             Number.isFinite(tab.versionNumber) &&
                             tab.versionNumber > 1;
@@ -295,6 +300,17 @@ export function AssistantSidePanel({
                                     tab={tab}
                                     compactActions={panelWidth < 600}
                                 />
+                            </div>
+                        );
+                    }
+                    if (tab.kind === "authority") {
+                        return (
+                            <div
+                                key={tab.id}
+                                className={`absolute inset-0 flex flex-col ${isActive ? "" : "invisible pointer-events-none"}`}
+                                aria-hidden={!isActive}
+                            >
+                                <LegalAuthorityPanel tab={tab} />
                             </div>
                         );
                     }

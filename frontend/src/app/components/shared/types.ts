@@ -19,6 +19,7 @@ export interface Project {
   name: string;
   cm_number: string | null;
   practice: string | null;
+  jurisdictions?: Array<"CA-ON" | "CA" | "US">;
   shared_with: string[];
   created_at: string;
   updated_at: string;
@@ -66,6 +67,8 @@ export interface Chat {
   user_id: string;
   creator_display_name?: string | null;
   title: string | null;
+  jurisdictions?: Array<"CA-ON" | "CA" | "US">;
+  legal_as_of_date?: string | null;
   created_at: string;
 }
 
@@ -256,6 +259,26 @@ export type AssistantEvent =
       isStreaming?: boolean;
     }
   | {
+      type: "legal_source_search";
+      provider_id: string | null;
+      provider_name: string | null;
+      query: string;
+      result_count: number;
+      coverage_warning?: string;
+      error?: string;
+      isStreaming?: boolean;
+    }
+  | {
+      type: "legal_authority";
+      action: "fetched" | "passages" | "verified";
+      provider_id: string | null;
+      provider_name: string | null;
+      authority?: LegalAuthoritySummary;
+      passage_count?: number;
+      error?: string;
+      isStreaming?: boolean;
+    }
+  | {
       type: "case_citation";
       cluster_id: number | null;
       case_name: string | null;
@@ -288,6 +311,38 @@ export type AssistantEvent =
     }
   | { type: "content"; text: string; isStreaming?: boolean };
 
+export type LegalAuthoritySummary = {
+  providerId: string;
+  providerName: string;
+  official: boolean;
+  fullTextStatus: "official" | "licensed" | "unofficial" | "metadata-only";
+  sourceId: string | null;
+  kind: string;
+  title: string | null;
+  citation: string | null;
+  court: string | null;
+  jurisdiction: string | null;
+  decisionDate: string | null;
+  currentToDate: string | null;
+  lastAmendedDate: string | null;
+  retrievedAt: string | null;
+  language: string | null;
+  canonicalUrl: string | null;
+  alternateLanguageUrl: string | null;
+  verification: "verified" | "partial" | "unverified" | "unavailable";
+  reproductionIsOfficial: boolean | null;
+  passages: Array<{
+    text: string;
+    language?: string;
+    paragraphStart?: number | null;
+    paragraphEnd?: number | null;
+    section?: string;
+    heading?: string | null;
+    sourceUrl?: string | null;
+    verification?: string;
+  }>;
+};
+
 export type CaseCitationQuote = {
   opinionId: number | null;
   type: string | null;
@@ -302,6 +357,8 @@ export interface Message {
   files?: { filename: string; document_id?: string }[];
   workflow?: { id: string; title: string };
   model?: string;
+  jurisdictions?: Array<"CA-ON" | "CA" | "US">;
+  legalAsOfDate?: string;
   citations?: Citation[];
   citationStatus?: "started" | "partial" | "final";
   events?: AssistantEvent[];

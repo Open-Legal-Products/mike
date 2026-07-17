@@ -1,0 +1,10 @@
+{
+  "synthetic": true,
+  "dataset": "ONCA",
+  "citation_en": "2025 ONCA 999",
+  "name_en": "Synthetic Applicant v. Synthetic Respondent",
+  "document_date_en": "2025-03-04T00:00:00",
+  "url_en": "https://example.invalid/official/2025-onca-999",
+  "unofficial_text_en": "[1] This is a SYNTHETIC decision.\n\n[2] The synthetic housing issue is allowed.",
+  "upstream_license": "SYNTHETIC TEST LICENCE"
+}

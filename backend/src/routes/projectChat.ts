@@ -18,9 +18,7 @@ import {
     parseAskInputsResponsePayload,
     type ChatMessage,
 } from "../lib/chat";
-import {
-    getUserModelSettings,
-} from "../lib/userSettings";
+import { getUserModelSettings } from "../lib/userSettings";
 import { checkProjectAccess } from "../lib/access";
 import { safeErrorLog, safeErrorMessage } from "../lib/safeError";
 
@@ -34,6 +32,44 @@ When the user wants to use an existing project document as a starting point for 
 
 export const projectChatRouter = Router({ mergeParams: true });
 
+function parseProjectLegalScope(
+    jurisdictions: unknown,
+    legalAsOfDate: unknown,
+) {
+    if (!Array.isArray(jurisdictions) || jurisdictions.length === 0)
+        return {
+            ok: false as const,
+            detail: "jurisdictions must be a non-empty array",
+        };
+    const allowed = new Set(["CA-ON", "CA", "US"]);
+    if (
+        jurisdictions.some(
+            (item) => typeof item !== "string" || !allowed.has(item),
+        )
+    )
+        return {
+            ok: false as const,
+            detail: "jurisdictions contains an unsupported value",
+        };
+    if (
+        legalAsOfDate !== undefined &&
+        (typeof legalAsOfDate !== "string" ||
+            !/^\d{4}-\d{2}-\d{2}$/.test(legalAsOfDate) ||
+            Number.isNaN(Date.parse(`${legalAsOfDate}T00:00:00Z`)))
+    )
+        return {
+            ok: false as const,
+            detail: "legal_as_of_date must use YYYY-MM-DD",
+        };
+    return {
+        ok: true as const,
+        jurisdictions: [
+            ...new Set(jurisdictions as Array<"CA-ON" | "CA" | "US">),
+        ],
+        legalAsOfDate: typeof legalAsOfDate === "string" ? legalAsOfDate : null,
+    };
+}
+
 // POST /projects/:projectId/chat — streaming
 projectChatRouter.post("/", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
@@ -46,18 +82,26 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         displayed_doc,
         attached_documents,
         ask_inputs_response,
-    } =
-        req.body as {
-            messages: ChatMessage[];
-            chat_id?: string;
-            model?: string;
-            displayed_doc?: { filename: string; document_id: string };
-            attached_documents?: { filename: string; document_id: string }[];
-            ask_inputs_response?: unknown;
-        };
-    const askInputsResponse = parseAskInputsResponsePayload(
-        ask_inputs_response,
+        jurisdictions,
+        legal_as_of_date,
+    } = req.body as {
+        messages: ChatMessage[];
+        chat_id?: string;
+        model?: string;
+        displayed_doc?: { filename: string; document_id: string };
+        attached_documents?: { filename: string; document_id: string }[];
+        ask_inputs_response?: unknown;
+        jurisdictions?: Array<"CA-ON" | "CA" | "US">;
+        legal_as_of_date?: string;
+    };
+    const parsedScope = parseProjectLegalScope(
+        jurisdictions ?? ["CA-ON", "CA"],
+        legal_as_of_date,
     );
+    if (!parsedScope.ok)
+        return void res.status(400).json({ detail: parsedScope.detail });
+    const askInputsResponse =
+        parseAskInputsResponsePayload(ask_inputs_response);
 
     const db = createServerSupabase();
 
@@ -82,13 +126,31 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             .single();
         const canUse = !!existing && existing.project_id === projectId;
         if (!canUse) chatId = null;
-        else chatTitle = existing!.title;
+        else {
+            chatTitle = existing!.title;
+            await db
+                .from("chats")
+                .update({
+                    jurisdictions: parsedScope.jurisdictions,
+                    ...(parsedScope.legalAsOfDate
+                        ? { legal_as_of_date: parsedScope.legalAsOfDate }
+                        : {}),
+                })
+                .eq("id", chatId);
+        }
     }
 
     if (!chatId) {
         const { data: newChat, error } = await db
             .from("chats")
-            .insert({ user_id: userId, project_id: projectId })
+            .insert({
+                user_id: userId,
+                project_id: projectId,
+                jurisdictions: parsedScope.jurisdictions,
+                ...(parsedScope.legalAsOfDate
+                    ? { legal_as_of_date: parsedScope.legalAsOfDate }
+                    : {}),
+            })
             .select("id, title")
             .single();
         if (error || !newChat)
@@ -153,8 +215,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
     if (attached_documents?.length) {
         const slugByDocumentId = new Map<string, string>();
         for (const [slug, info] of Object.entries(docIndex)) {
-            if (info.document_id)
-                slugByDocumentId.set(info.document_id, slug);
+            if (info.document_id) slugByDocumentId.set(info.document_id, slug);
         }
         const lines = attached_documents.map((d) => {
             const slug = slugByDocumentId.get(d.document_id);
@@ -163,16 +224,27 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         systemPromptExtra += `\n\nUSER-ATTACHED DOCUMENTS FOR THIS TURN:\nThe user has attached the following document(s) directly to their latest message. Treat these as the primary focus of the request unless their message clearly says otherwise.\n${lines.join("\n")}`;
     }
 
-    const {
-        api_keys: apiKeys,
-        legal_research_us: legalResearchUs,
-    } = await getUserModelSettings(userId, db);
+    const { api_keys: apiKeys, legal_research: legalResearch } =
+        await getUserModelSettings(userId, db);
+    const scopedLegalResearch = {
+        ...legalResearch,
+        defaultCountry: parsedScope.jurisdictions.includes("US")
+            ? ("US" as const)
+            : ("CA" as const),
+        defaultProvince: parsedScope.jurisdictions.includes("CA-ON")
+            ? ("ON" as const)
+            : null,
+        enabledJurisdictions: parsedScope.jurisdictions,
+    };
+    const legalScopeExtra = parsedScope.legalAsOfDate
+        ? `\n\nLEGAL AS-OF DATE FOR THIS CHAT: ${parsedScope.legalAsOfDate}. Do not substitute current law without disclosure.`
+        : "";
     const apiMessages = buildMessages(
         messagesForLLM,
         docAvailability,
-        systemPromptExtra,
+        `${systemPromptExtra}${legalScopeExtra}`,
         undefined,
-        legalResearchUs,
+        scopedLegalResearch,
     );
 
     const workflowStore = await buildWorkflowStore(userId, userEmail, db);
@@ -202,7 +274,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             write,
             extraTools: PROJECT_EXTRA_TOOLS,
             workflowStore,
-            includeResearchTools: legalResearchUs,
+            includeResearchTools: legalResearch.enabled,
             model,
             apiKeys,
             signal: streamAbort.signal,
@@ -277,9 +349,10 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
         }
         console.error("[project-chat/stream] error:", safeErrorLog(err));
         const message = safeErrorMessage(err, "Stream error");
-        const errorEvents = err instanceof AssistantStreamError
-            ? stripTransientAssistantEvents(err.events)
-            : [{ type: "error" as const, message }];
+        const errorEvents =
+            err instanceof AssistantStreamError
+                ? stripTransientAssistantEvents(err.events)
+                : [{ type: "error" as const, message }];
         const errorFullText =
             err instanceof AssistantStreamError ? err.fullText : "";
         try {
@@ -307,14 +380,18 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
                 );
             }
             if (saveError)
-                console.error("[project-chat/stream] failed to save error", saveError);
+                console.error(
+                    "[project-chat/stream] failed to save error",
+                    saveError,
+                );
         } catch (saveErr) {
-            console.error("[project-chat/stream] failed to save error", saveErr);
+            console.error(
+                "[project-chat/stream] failed to save error",
+                saveErr,
+            );
         }
         try {
-            write(
-                `data: ${JSON.stringify({ type: "error", message })}\n\n`,
-            );
+            write(`data: ${JSON.stringify({ type: "error", message })}\n\n`);
             write("data: [DONE]\n\n");
         } catch {
             /* ignore */

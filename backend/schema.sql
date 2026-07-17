@@ -23,6 +23,11 @@ create table if not exists public.user_profiles (
   quote_model text,
   mfa_on_login boolean not null default false,
   legal_research_us boolean not null default true,
+  legal_research_enabled boolean not null default true,
+  default_country text not null default 'CA' check (default_country in ('CA', 'US')),
+  default_province text default 'ON' check (default_province is null or default_province = 'ON'),
+  enabled_jurisdictions text[] not null default array['CA-ON', 'CA', 'US']::text[],
+  enabled_source_providers text[] not null default array['a2aj-canada', 'ontario-elaws', 'justice-laws-canada', 'courtlistener-us']::text[],
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -197,6 +202,7 @@ create table if not exists public.projects (
   name text not null,
   cm_number text,
   practice text,
+  jurisdictions text[] not null default array['CA-ON', 'CA']::text[],
   visibility text not null default 'private',
   shared_with jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
@@ -335,8 +341,8 @@ create table if not exists public.workflows (
   prompt_md text,
   columns_config jsonb,
   language text default 'English',
-  practice text default 'General Transactions',
-  jurisdictions text[] default array['General']::text[],
+  practice text default 'Civil Litigation',
+  jurisdictions text[] default array['Canada / Ontario']::text[],
   created_at timestamptz not null default now()
 );
 
@@ -474,6 +480,8 @@ create table if not exists public.chats (
   project_id uuid references public.projects(id) on delete cascade,
   user_id text not null,
   title text,
+  jurisdictions text[] not null default array['CA-ON', 'CA']::text[],
+  legal_as_of_date date,
   created_at timestamptz not null default now()
 );
 

@@ -68,6 +68,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
     } | null>(null);
     const [model, setModel] = useSelectedModel();
     const { profile } = useUserProfile();
+    const [jurisdictionOverride, setJurisdictionOverride] = useState<
+        "CA-ON" | "CA" | "US" | null
+    >(null);
+    const jurisdiction =
+        jurisdictionOverride ??
+        (profile?.legalResearch.defaultCountry === "US" ? "US" : "CA-ON");
     const apiKeys = profile?.apiKeys;
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const controlsRef = useRef<HTMLDivElement>(null);
@@ -142,6 +148,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
             files: files.length > 0 ? files : undefined,
             workflow: wf ?? undefined,
             model,
+            jurisdictions:
+                jurisdiction === "CA-ON" ? ["CA-ON", "CA"] : [jurisdiction],
         });
     };
 
@@ -235,6 +243,29 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                         className="flex items-center justify-between md:p-2.5 p-2"
                     >
                         <div className="flex items-center gap-1">
+                            <label
+                                className="sr-only"
+                                htmlFor="chat-jurisdiction"
+                            >
+                                Governing jurisdiction
+                            </label>
+                            <select
+                                id="chat-jurisdiction"
+                                value={jurisdiction}
+                                onChange={(event) =>
+                                    setJurisdictionOverride(
+                                        event.target.value as
+                                            | "CA-ON"
+                                            | "CA"
+                                            | "US",
+                                    )
+                                }
+                                className="h-8 rounded-lg border-0 bg-white/45 px-2 text-xs text-gray-600 outline-none hover:bg-white/65 focus:ring-2 focus:ring-gray-400"
+                            >
+                                <option value="CA-ON">Ontario</option>
+                                <option value="CA">Federal Canada</option>
+                                <option value="US">United States</option>
+                            </select>
                             {!hideAddDocButton && (
                                 <AddDocButton
                                     onBrowseAll={() => setDocSelectorOpen(true)}

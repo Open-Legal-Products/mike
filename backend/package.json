@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "test:legal-sources": "node --import tsx --test src/lib/legalSources/*.test.ts",
     "start": "node dist/index.js"
   },
   "dependencies": {

@@ -11,7 +11,7 @@ import {
   type AskInputResponseItem,
   devLog,
 } from "./types";
-import { buildSystemPrompt } from "./prompts";
+import { buildSystemPrompt, type ResearchPromptSettings } from "./prompts";
 import { parseCitations, createCitation } from "./citations";
 import type { AssistantEvent } from "./streaming";
 
@@ -131,10 +131,10 @@ export function buildMessages(
   }[],
   systemPromptExtra?: string,
   docIndex?: DocIndex,
-  includeResearchTools = true,
+  researchSettings: boolean | ResearchPromptSettings = true,
 ) {
   const formatted: unknown[] = [];
-  let systemContent = buildSystemPrompt(includeResearchTools);
+  let systemContent = buildSystemPrompt(researchSettings);
 
   if (systemPromptExtra) {
     systemContent += `\n\n${systemPromptExtra.trim()}`;
