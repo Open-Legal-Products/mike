@@ -103,6 +103,30 @@ Bulk data is optional. When `COURTLISTENER_BULK_DATA_ENABLED=true`, Mike first t
 
 If you do not import bulk data, leave `COURTLISTENER_BULK_DATA_ENABLED=false`; live CourtListener tools still work with a valid token, subject to CourtListener rate limits.
 
+## Docker
+
+The easiest way to run the full stack is with Docker Compose.
+
+**1. Copy and fill in env files:**
+
+```bash
+cp .env.example .env
+cp backend/.env.example backend/.env
+cp frontend/.env.local.example frontend/.env.local
+```
+
+Edit each file with your Supabase, R2, and provider keys (see [Environment](#environment) below for details). The root `.env` supplies build-time values for the frontend image.
+
+**2. Build and start:**
+
+```bash
+docker compose up --build
+```
+
+Frontend is served at `http://localhost:3000`, backend at `http://localhost:3001`.
+
+**Note:** `NEXT_PUBLIC_*` variables are baked into the frontend image at build time. If you change them, re-run `docker compose up --build` to rebuild the image.
+
 ## Install
 
 Install each app package:
