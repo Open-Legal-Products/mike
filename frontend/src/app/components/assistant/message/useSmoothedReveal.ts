@@ -55,6 +55,11 @@ export function useSmoothedReveal(text: string, active: boolean): string {
         };
     }, [text.length, active]);
 
+    // Once the stream ends, render the authoritative text immediately. The
+    // effect above keeps the animation cursor in sync, but updating a ref does
+    // not trigger a render; slicing with the last animated state here could
+    // otherwise leave the final few characters permanently hidden.
+    if (!active) return text;
+
     return text.slice(0, Math.min(revealedInt, text.length));
 }
-

@@ -15,6 +15,12 @@ Website: [mikeoss.com](https://mikeoss.com)
 - `backend/schema.sql` - Supabase schema for fresh databases
 - `backend/migrations/` - dated, incremental schema migrations; on an existing database, apply the files dated after the Mike version you deployed
 
+## System Workflows
+
+Mike's system assistant and tabular review workflows are maintained in the
+[`Open-Legal-Products/mike-workflows`](https://github.com/Open-Legal-Products/mike-workflows)
+repository.
+
 ## Prerequisites
 
 - Node.js 20 or newer

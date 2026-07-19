@@ -44,13 +44,10 @@
       <stop offset="0.5" stop-color="#D9A94E"/>
       <stop offset="1" stop-color="#B07E2C"/>
     </linearGradient>
-    <filter id="bookShadow" x="-30%" y="-10%" width="170%" height="130%">
-      <feDropShadow dx="1.2" dy="1.4" stdDeviation="1.1" flood-color="#111827" flood-opacity="0.28"/>
-    </filter>
   </defs>
 
   <!-- brown book -->
-  <g filter="url(#bookShadow)">
+  <g>
     <rect x="6" y="3.8" width="11" height="49.2" rx="3" fill="url(#leatherBrown)" stroke="url(#rim)" stroke-width="1.4"/>
     <rect x="6.7" y="4.5" width="9.6" height="47.8" rx="2.4" fill="url(#spineGloss)"/>
     <path d="M8.1 8V49" stroke="#F0C7A2" stroke-opacity="0.28" stroke-width="0.65"/>
@@ -62,7 +59,7 @@
   </g>
 
   <!-- blue book -->
-  <g filter="url(#bookShadow)">
+  <g>
     <rect x="19" y="8" width="11.5" height="45" rx="3" fill="url(#leatherBlue)" stroke="url(#rim)" stroke-width="1.4"/>
     <rect x="19.7" y="8.7" width="10.1" height="43.6" rx="2.4" fill="url(#spineGloss)"/>
     <path d="M21.2 12V49" stroke="#B9DCFF" stroke-opacity="0.3" stroke-width="0.65"/>
@@ -74,7 +71,7 @@
   </g>
 
   <!-- red book -->
-  <g filter="url(#bookShadow)">
+  <g>
     <rect x="32.5" y="5" width="11" height="48" rx="3" fill="url(#leatherRed)" stroke="url(#rim)" stroke-width="1.4"/>
     <rect x="33.2" y="5.7" width="9.6" height="46.6" rx="2.4" fill="url(#spineGloss)"/>
     <path d="M34.6 9V49" stroke="#FFD0D2" stroke-opacity="0.3" stroke-width="0.65"/>
@@ -86,7 +83,7 @@
   </g>
 
   <!-- green book, leaning against the red book -->
-  <g transform="rotate(-9 62.1 52)" filter="url(#bookShadow)">
+  <g transform="rotate(-9 62.1 52)">
     <rect x="51.6" y="5.2" width="10.5" height="46.8" rx="3" fill="url(#leatherGreen)" stroke="url(#rim)" stroke-width="1.4"/>
     <rect x="52.3" y="5.9" width="9.1" height="45.4" rx="2.4" fill="url(#spineGloss)"/>
     <path d="M53.7 9.5V48.5" stroke="#FFFFFF" stroke-opacity="0.24" stroke-width="0.65"/>

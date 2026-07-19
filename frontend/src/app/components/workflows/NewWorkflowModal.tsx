@@ -164,14 +164,33 @@ interface Props {
     onClose: () => void;
     onCreated: (workflow: Workflow) => void;
     editWorkflow?: Workflow;
+    readOnly?: boolean;
     onUpdated?: (workflow: Workflow) => void;
 }
+
+function getWorkflowSourceLabel(workflow: Workflow) {
+    if (workflow.is_system) return "System";
+    if (workflow.is_owner === false) {
+        return workflow.shared_by_name?.trim() || "Shared";
+    }
+    return "User";
+}
+
+const OPEN_SOURCE_STATUS_LABELS: Record<
+    NonNullable<Workflow["open_source_submission"]>["status"],
+    string
+> = {
+    pending: "Pending review",
+    approved: "Approved",
+    rejected: "Rejected",
+};
 
 export function NewWorkflowModal({
     open,
     onClose,
     onCreated,
     editWorkflow,
+    readOnly = false,
     onUpdated,
 }: Props) {
     const [title, setTitle] = useState("");
@@ -199,6 +218,41 @@ export function NewWorkflowModal({
     const markdownInputRef = useRef<HTMLInputElement>(null);
 
     const isEditing = !!editWorkflow;
+    const viewOnly = isEditing && readOnly;
+    const workflowDetails = editWorkflow
+        ? [
+              {
+                  label: "Type",
+                  value:
+                      editWorkflow.metadata.type === "tabular"
+                          ? "Tabular"
+                          : "Assistant",
+              },
+              {
+                  label: "Source",
+                  value: getWorkflowSourceLabel(editWorkflow),
+              },
+              ...(editWorkflow.metadata.version
+                  ? [
+                        {
+                            label: "Version",
+                            value: editWorkflow.metadata.version,
+                        },
+                    ]
+                  : []),
+              ...(editWorkflow.open_source_submission
+                  ? [
+                        {
+                            label: "Open source",
+                            value:
+                                OPEN_SOURCE_STATUS_LABELS[
+                                    editWorkflow.open_source_submission.status
+                                ],
+                        },
+                    ]
+                  : []),
+          ]
+        : [];
     const isOtherLanguage = language === "Other";
     const isOtherPractice = practice === "Other";
     const isOtherJurisdiction = jurisdiction === "Other";
@@ -332,6 +386,7 @@ export function NewWorkflowModal({
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
+        if (viewOnly) return;
         if (!title.trim()) return;
         setLoading(true);
         setError("");
@@ -417,20 +472,24 @@ export function NewWorkflowModal({
             onClose={handleClose}
             breadcrumbs={[
                 "Workflows",
-                isEditing ? "Edit workflow" : "New workflow",
+                isEditing ? "View and Edit details" : "New workflow",
             ]}
-            primaryAction={{
-                label: loading
-                    ? isEditing
-                        ? "Saving…"
-                        : "Creating…"
-                    : isEditing
-                      ? "Save changes"
-                      : "Create workflow",
-                type: "submit",
-                form: formId,
-                disabled: !title.trim() || loading,
-            }}
+            primaryAction={
+                viewOnly
+                    ? undefined
+                    : {
+                          label: loading
+                              ? isEditing
+                                  ? "Saving…"
+                                  : "Creating…"
+                              : isEditing
+                                ? "Save changes"
+                                : "Create workflow",
+                          type: "submit",
+                          form: formId,
+                          disabled: !title.trim() || loading,
+                      }
+            }
             secondaryAction={
                 !isEditing && type === "assistant"
                     ? {
@@ -445,9 +504,23 @@ export function NewWorkflowModal({
             <form
                 id={formId}
                 onSubmit={handleSubmit}
-                className="flex min-h-0 flex-1 flex-col"
+                className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-5"
             >
                 <div className="space-y-6">
+                    {workflowDetails.length > 0 && (
+                        <dl className="grid grid-cols-2 gap-x-5 gap-y-4 rounded-2xl border border-white/70 bg-white/45 p-4 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-xl">
+                            {workflowDetails.map((detail) => (
+                                <div key={detail.label} className="min-w-0">
+                                    <dt className="text-xs text-gray-400">
+                                        {detail.label}
+                                    </dt>
+                                    <dd className="mt-0.5 truncate text-gray-700">
+                                        {detail.value}
+                                    </dd>
+                                </div>
+                            ))}
+                        </dl>
+                    )}
                     <div>
                         <ModalFieldLabel htmlFor="workflow-title">
                             Title
@@ -459,7 +532,8 @@ export function NewWorkflowModal({
                             onChange={(e) => setTitle(e.target.value)}
                             placeholder="Add workflow name"
                             variant="minimal"
-                            autoFocus
+                            disabled={viewOnly}
+                            autoFocus={!viewOnly}
                         />
                     </div>
 
@@ -494,6 +568,7 @@ export function NewWorkflowModal({
                                 id="workflow-language"
                                 value={language}
                                 options={languageOptions}
+                                disabled={viewOnly}
                                 open={openDropdown === "language"}
                                 onOpenChange={(nextOpen) =>
                                     setOpenDropdown((current) =>
@@ -517,6 +592,7 @@ export function NewWorkflowModal({
                                     ref={customLanguageInputRef}
                                     type="text"
                                     value={customLanguage}
+                                    disabled={viewOnly}
                                     onChange={(e) =>
                                         setCustomLanguage(e.target.value)
                                     }
@@ -534,6 +610,7 @@ export function NewWorkflowModal({
                                 id="workflow-practice"
                                 value={practice}
                                 options={PRACTICE_OPTIONS}
+                                disabled={viewOnly}
                                 open={openDropdown === "practice"}
                                 onOpenChange={(nextOpen) =>
                                     setOpenDropdown((current) =>
@@ -557,6 +634,7 @@ export function NewWorkflowModal({
                                     ref={customInputRef}
                                     type="text"
                                     value={customPractice}
+                                    disabled={viewOnly}
                                     onChange={(e) =>
                                         setCustomPractice(e.target.value)
                                     }
@@ -575,6 +653,7 @@ export function NewWorkflowModal({
                             id="workflow-jurisdiction"
                             value={jurisdiction}
                             options={jurisdictionOptions}
+                            disabled={viewOnly}
                             open={openDropdown === "jurisdiction"}
                             onOpenChange={(nextOpen) =>
                                 setOpenDropdown((current) =>
@@ -600,6 +679,7 @@ export function NewWorkflowModal({
                                 className="mt-2"
                                 value={jurisdictionRegion}
                                 options={jurisdictionRegionOptions}
+                                disabled={viewOnly}
                                 placeholder={
                                     jurisdiction === "United States"
                                         ? "Select state..."
@@ -626,6 +706,7 @@ export function NewWorkflowModal({
                                 ref={customJurisdictionInputRef}
                                 type="text"
                                 value={customJurisdiction}
+                                disabled={viewOnly}
                                 onChange={(e) =>
                                     setCustomJurisdiction(e.target.value)
                                 }

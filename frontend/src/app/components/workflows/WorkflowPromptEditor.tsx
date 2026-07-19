@@ -17,6 +17,7 @@ import {
     Table2,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
+import { LIQUID_TABLE_SURFACE_CLASS } from "@/app/components/ui/liquid-surface";
 
 interface Props {
     value: string;
@@ -352,14 +353,10 @@ export function WorkflowPromptEditor({
 
     return (
         <div
-            className={`flex h-full flex-col overflow-hidden bg-white ${
-                readOnly
-                    ? "rounded-md border border-gray-200"
-                    : "rounded-md border border-gray-200"
-            }`}
+            className={`flex h-full flex-col overflow-hidden ${LIQUID_TABLE_SURFACE_CLASS}`}
         >
             {!readOnly && editor && (
-                <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-gray-100 bg-gray-50 shrink-0">
+                <div className="flex shrink-0 items-center gap-0.5 border-b border-white/70 bg-app-surface px-2 py-1.5 backdrop-blur-xl">
                     <AppToolbarButton
                         onClick={() =>
                             rawMode
@@ -558,7 +555,7 @@ export function WorkflowPromptEditor({
                 </div>
             )}
             {readOnly && (
-                <div className="flex h-9 shrink-0 items-center justify-between bg-gray-50 px-5">
+                <div className="flex h-9 shrink-0 items-center justify-between bg-app-surface px-5 backdrop-blur-xl">
                     <span className="text-xs font-medium text-gray-500">
                         Read-only
                     </span>
@@ -591,7 +588,7 @@ export function WorkflowPromptEditor({
                         }
                         readOnly={readOnly}
                         spellCheck={false}
-                        className="h-full min-h-full w-full resize-none bg-white px-5 py-4 font-mono text-xs leading-6 text-gray-800 outline-none placeholder:text-gray-400 read-only:cursor-default"
+                        className="h-full min-h-full w-full resize-none bg-transparent px-5 py-4 font-mono text-xs leading-6 text-gray-800 outline-none placeholder:text-gray-400 read-only:cursor-default"
                         aria-label="Raw Markdown"
                     />
                 ) : (

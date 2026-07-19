@@ -6,7 +6,10 @@ const path = require("path");
 const ROOT_DIR = path.resolve(__dirname, "..");
 const WORKSPACE_DIR = path.resolve(ROOT_DIR, "..");
 const WORKFLOWS_DIR = path.join(WORKSPACE_DIR, "mike-workflows");
-const SYSTEM_WORKFLOWS_DIR = path.join(WORKFLOWS_DIR, "system");
+const WORKFLOW_COLLECTIONS = [
+  { directory: "assistant-workflows", type: "assistant" },
+  { directory: "tabular-review-workflows", type: "tabular" },
+];
 const BACKEND_OUT = path.join(ROOT_DIR, "backend/src/lib/systemWorkflows.ts");
 const LANDING_OUT = path.join(ROOT_DIR, "landing/app/generated-workflows.ts");
 
@@ -75,6 +78,7 @@ function parseSimpleYaml(source, label) {
 
     const scalarItems = [];
     const objectItems = [];
+    const properties = {};
     let mode = null;
     i++;
     for (; i < lines.length; i++) {
@@ -116,6 +120,19 @@ function parseSimpleYaml(source, label) {
         continue;
       }
 
+      const childPropMatch = child.match(/^  ([A-Za-z_][A-Za-z0-9_-]*):(.*)$/);
+      if (childPropMatch) {
+        mode ??= "properties";
+        if (mode !== "properties") {
+          fail(`${label}.${key} mixes mapping and list values`);
+        }
+        properties[childPropMatch[1]] = parseScalar(
+          childPropMatch[2],
+          `${label}.${key}.${childPropMatch[1]}`,
+        );
+        continue;
+      }
+
       const propMatch = child.match(/^    ([A-Za-z_][A-Za-z0-9_-]*):(.*)$/);
       if (!propMatch || mode !== "objects" || objectItems.length === 0) {
         fail(`${label}:${i + 1} has unsupported frontmatter structure`);
@@ -126,7 +143,12 @@ function parseSimpleYaml(source, label) {
       );
     }
 
-    result[key] = mode === "objects" ? objectItems : scalarItems;
+    result[key] =
+      mode === "objects"
+        ? objectItems
+        : mode === "properties"
+          ? properties
+          : scalarItems;
   }
 
   return result;
@@ -152,7 +174,7 @@ function readSkillFile(filePath) {
   };
 }
 
-function parseTableConfigYaml(filePath) {
+function parseTableColumnsYaml(filePath) {
   const lines = readText(filePath).replace(/\r\n/g, "\n").split("\n");
   const result = { columns_config: [] };
   let i = 0;
@@ -171,8 +193,8 @@ function parseTableConfigYaml(filePath) {
       continue;
     }
 
-    if (line !== "columns_config:") {
-      fail(`${relative(filePath)}:${i + 1} is not valid table config YAML`);
+    if (line !== "columns:") {
+      fail(`${relative(filePath)}:${i + 1} is not valid table columns YAML`);
     }
     i++;
     break;
@@ -300,9 +322,8 @@ function assertColumnConfig(columns, label) {
   });
 }
 
-function readWorkflow(category, dirent) {
-  const slug = dirent.name;
-  const workflowDir = path.join(SYSTEM_WORKFLOWS_DIR, category, slug);
+function readWorkflow(category, workflowDir) {
+  const slug = path.basename(workflowDir);
   const metadataPath = path.join(workflowDir, "metadata.json");
   if (fs.existsSync(metadataPath)) {
     fail(`${relative(metadataPath)} is no longer supported; use SKILL.md frontmatter`);
@@ -311,103 +332,93 @@ function readWorkflow(category, dirent) {
   if (!fs.existsSync(skillPath)) {
     fail(`${relative(skillPath)} is required`);
   }
-  const { metadata, body: skillMd, fullText: sourceSkillMd } = readSkillFile(skillPath);
+  const { metadata: frontmatter, body: skillMd, fullText: sourceSkillMd } =
+    readSkillFile(skillPath);
   const label = `${relative(skillPath)} frontmatter`;
+  const metadata = frontmatter.metadata;
   const id = `builtin-${slug}`;
 
-  if (metadata.id !== undefined) {
-    fail(`${label}.id is not supported; the ID is generated from the directory name`);
-  }
-  if (metadata.$schema !== undefined) {
-    fail(`${label}.$schema is not supported in SKILL.md frontmatter`);
-  }
-  if (metadata.title !== undefined) {
-    fail(`${label}.title is not supported; use name`);
-  }
-  if (metadata.order !== undefined) {
-    fail(`${label}.order is not supported`);
-  }
-  assertString(metadata.name, `${label}.name`);
-  if (metadata.name !== slug) {
+  assertString(frontmatter.name, `${label}.name`);
+  if (frontmatter.name !== slug) {
     fail(`${label}.name must match the folder name "${slug}"`);
   }
-  assertString(metadata.display_name, `${label}.display_name`);
-  assertString(metadata.description, `${label}.description`);
-  const contributors = normalizeContributors(
-    metadata.contributors,
-    `${label}.contributors`,
-  );
+  assertString(frontmatter.description, `${label}.description`);
+  assertString(frontmatter.license, `${label}.license`);
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    fail(`${label}.metadata must be a mapping`);
+  }
+  assertString(metadata.author, `${label}.metadata.author`);
   assertString(metadata.language, `${label}.language`);
   assertString(metadata.version, `${label}.version`);
-  if (metadata.type !== category) {
-    fail(`${label}.type must be "${category}"`);
+  assertString(metadata["mike-display-name"], `${label}.metadata.mike-display-name`);
+  if (metadata["mike-type"] !== category) {
+    fail(`${label}.metadata.mike-type must be "${category}"`);
   }
-  if (metadata.category !== undefined) {
-    fail(`${label}.category is not supported`);
+  if (!["system", "add-on"].includes(metadata["mike-availability"])) {
+    fail(`${label}.metadata.mike-availability must be "system" or "add-on"`);
   }
-  if (metadata.action !== undefined) {
-    fail(`${label}.action is not supported`);
-  }
-  assertOptionalString(metadata.practice, `${label}.practice`);
-  assertOptionalStringArray(metadata.jurisdictions, `${label}.jurisdictions`);
+  assertString(metadata.practice, `${label}.metadata.practice`);
+  assertString(metadata.jurisdictions, `${label}.metadata.jurisdictions`);
+
+  const normalizedMetadata = {
+    title: metadata["mike-display-name"],
+    description: frontmatter.description,
+    type: metadata["mike-type"],
+    contributors: [
+      {
+        name: metadata.author.trim(),
+        organisation: null,
+        role: null,
+        linkedin: null,
+      },
+    ],
+    language: metadata.language,
+    version: metadata.version,
+    practice: metadata.practice,
+    jurisdictions: metadata.jurisdictions
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  };
 
   if (category === "assistant") {
     if (!skillMd.trim()) {
       fail(`${relative(skillPath)} must include instructions after frontmatter`);
     }
-    const tableConfigPath = path.join(workflowDir, "table-config.yaml");
-    if (fs.existsSync(tableConfigPath)) {
-      fail(`${relative(tableConfigPath)} is only supported for tabular workflows`);
+    const tableColumnsPath = path.join(workflowDir, "table-columns.yaml");
+    if (fs.existsSync(tableColumnsPath)) {
+      fail(`${relative(tableColumnsPath)} is only supported for tabular workflows`);
     }
     return {
       id,
-      metadata: {
-        title: metadata.display_name,
-        description: metadata.description,
-        type: metadata.type,
-        contributors,
-        language: metadata.language,
-        version: metadata.version,
-        practice: metadata.practice ?? null,
-        jurisdictions: metadata.jurisdictions ?? null,
-      },
+      availability: metadata["mike-availability"],
+      metadata: normalizedMetadata,
       skill_md: skillMd,
       source_skill_md: sourceSkillMd,
       columns_config: null,
     };
   }
 
-  if (metadata.columns_config !== undefined) {
-    fail(`${label}.columns_config is not supported; use table-config.yaml`);
+  const tableColumnsPath = path.join(workflowDir, "table-columns.yaml");
+  if (!fs.existsSync(tableColumnsPath)) {
+    fail(`${relative(tableColumnsPath)} is required for tabular workflows`);
   }
-  const legacyTableConfigPath = path.join(workflowDir, "table-config.json");
-  if (fs.existsSync(legacyTableConfigPath)) {
-    fail(`${relative(legacyTableConfigPath)} is no longer supported; use table-config.yaml`);
-  }
-  const tableConfigPath = path.join(workflowDir, "table-config.yaml");
-  if (!fs.existsSync(tableConfigPath)) {
-    fail(`${relative(tableConfigPath)} is required for tabular workflows`);
-  }
-  const tableConfig = parseTableConfigYaml(tableConfigPath);
-  const tableConfigLabel = relative(tableConfigPath);
-  const expectedTableConfigSchema = "../../../schema/table-config.schema.yaml";
-  if (tableConfig.$schema !== expectedTableConfigSchema) {
-    fail(`${tableConfigLabel}.$schema must be "${expectedTableConfigSchema}"`);
+  const tableConfig = parseTableColumnsYaml(tableColumnsPath);
+  const tableConfigLabel = relative(tableColumnsPath);
+  const expectedSchemaPath = path.join(
+    WORKFLOWS_DIR,
+    "workflow-schema/table-columns.schema.yaml",
+  );
+  const actualSchemaPath = path.resolve(workflowDir, tableConfig.$schema ?? "");
+  if (actualSchemaPath !== expectedSchemaPath) {
+    fail(`${tableConfigLabel}.$schema must point to workflow-schema/table-columns.schema.yaml`);
   }
   assertColumnConfig(tableConfig.columns_config, tableConfigLabel);
 
   return {
     id,
-    metadata: {
-      title: metadata.display_name,
-      description: metadata.description,
-      type: metadata.type,
-      contributors,
-      language: metadata.language,
-      version: metadata.version,
-      practice: metadata.practice ?? null,
-      jurisdictions: metadata.jurisdictions ?? null,
-    },
+    availability: metadata["mike-availability"],
+    metadata: normalizedMetadata,
     skill_md: skillMd || null,
     source_skill_md: sourceSkillMd,
     columns_config: tableConfig.columns_config,
@@ -418,17 +429,30 @@ function loadWorkflows() {
   const workflows = [];
   const seenIds = new Set();
 
-  for (const category of ["assistant", "tabular"]) {
-    const categoryDir = path.join(SYSTEM_WORKFLOWS_DIR, category);
-    if (!fs.existsSync(categoryDir)) continue;
+  for (const collection of WORKFLOW_COLLECTIONS) {
+    const collectionDir = path.join(WORKFLOWS_DIR, collection.directory);
+    if (!fs.existsSync(collectionDir)) continue;
+    const workflowDirs = fs
+      .readdirSync(collectionDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+      .flatMap((entry) => {
+        const entryDir = path.join(collectionDir, entry.name);
+        if (fs.existsSync(path.join(entryDir, "SKILL.md"))) return [entryDir];
+        if (!fs.existsSync(path.join(entryDir, "pack.json"))) return [];
+        return fs
+          .readdirSync(entryDir, { withFileTypes: true })
+          .filter(
+            (child) =>
+              child.isDirectory() &&
+              fs.existsSync(path.join(entryDir, child.name, "SKILL.md")),
+          )
+          .map((child) => path.join(entryDir, child.name));
+      })
+      .sort((a, b) => a.localeCompare(b));
 
-    const entries = fs
-      .readdirSync(categoryDir, { withFileTypes: true })
-      .filter((dirent) => dirent.isDirectory() && !dirent.name.startsWith("."))
-      .sort((a, b) => a.name.localeCompare(b.name));
-
-    for (const entry of entries) {
-      const workflow = readWorkflow(category, entry);
+    for (const workflowDir of workflowDirs) {
+      const workflow = readWorkflow(collection.type, workflowDir);
+      if (workflow.availability !== "system") continue;
       if (seenIds.has(workflow.id)) {
         fail(`Duplicate workflow id: ${workflow.id}`);
       }
@@ -483,8 +507,11 @@ function main() {
   if (!fs.existsSync(WORKFLOWS_DIR)) {
     fail(`Workflow source directory not found: ${relative(WORKFLOWS_DIR)}`);
   }
-  if (!fs.existsSync(SYSTEM_WORKFLOWS_DIR)) {
-    fail(`System workflow source directory not found: ${relative(SYSTEM_WORKFLOWS_DIR)}`);
+  for (const collection of WORKFLOW_COLLECTIONS) {
+    const collectionDir = path.join(WORKFLOWS_DIR, collection.directory);
+    if (!fs.existsSync(collectionDir)) {
+      fail(`Workflow collection not found: ${relative(collectionDir)}`);
+    }
   }
 
   const workflows = loadWorkflows();

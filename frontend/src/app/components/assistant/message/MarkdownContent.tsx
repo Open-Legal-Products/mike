@@ -110,6 +110,18 @@ export function MarkdownContent({
                             {...withoutMarkdownNode(props)}
                         />
                     ),
+                    h5: (props) => (
+                        <h5
+                            className="text-base font-semibold mt-3 mb-2"
+                            {...withoutMarkdownNode(props)}
+                        />
+                    ),
+                    h6: (props) => (
+                        <h6
+                            className="text-sm font-semibold mt-3 mb-2"
+                            {...withoutMarkdownNode(props)}
+                        />
+                    ),
                     p: ({ node, ...props }) => {
                         const parent =
                             node && typeof node === "object" && "parent" in node
@@ -275,4 +287,3 @@ export function MarkdownContent({
         </div>
     );
 }
-

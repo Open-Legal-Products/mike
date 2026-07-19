@@ -380,11 +380,16 @@ export function useAssistantChat({
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
+        if (done) {
+          // Flush any bytes still held by TextDecoder. A response is allowed
+          // to close without a final newline, so the remaining buffer must be
+          // parsed as the last SSE record instead of being discarded.
+          buffer += decoder.decode();
+        } else {
+          buffer += decoder.decode(value, { stream: true });
+        }
         const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
+        buffer = done ? "" : lines.pop() || "";
 
         for (const line of lines) {
           const trimmed = line.trim();
@@ -1181,6 +1186,8 @@ export function useAssistantChat({
             );
           }
         }
+
+        if (done) break;
       }
 
       finalizeStreamingReasoning();
