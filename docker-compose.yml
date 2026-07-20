@@ -165,19 +165,29 @@ services:
     build: ./backend
     ports:
       - "3001:3001"
-    env_file: ./backend/.env   # model key(s) + the two generated *_SECRET values
+    # ponytail: both optional — local dev keeps secrets in backend/.env, hosted
+    # deploys (Dokploy et al) write them to the compose-root .env. Whichever
+    # exists wins; root .env is last so it takes precedence. Needs Compose 2.24+.
+    #
+    # Secrets must NOT be listed in `environment:` below — that section overrides
+    # env_file, so a bare name unset on the host blanks out the file's value.
+    env_file:
+      - path: ./backend/.env
+        required: false
+      - path: .env
+        required: false
     environment:
       # Topology + local Supabase wiring (override .env placeholders).
-      PORT: 3001
-      FRONTEND_URL: http://localhost:3000
-      SUPABASE_URL: http://gateway:8000
-      SUPABASE_SECRET_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
-      R2_ENDPOINT_URL: http://storage:9000
-      R2_ACCESS_KEY_ID: rustfsadmin
-      R2_SECRET_ACCESS_KEY: rustfsadmin
-      R2_BUCKET_NAME: mike
+      - PORT=3001
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - SUPABASE_URL=http://gateway:8000
+      - SUPABASE_SECRET_KEY=${SUPABASE_SECRET_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU}
+      - R2_ENDPOINT_URL=http://storage:9000
+      - R2_ACCESS_KEY_ID=rustfsadmin
+      - R2_SECRET_ACCESS_KEY=rustfsadmin
+      - R2_BUCKET_NAME=mike
       # Local Ollama running on the host. Override OLLAMA_MODEL to change the tag.
-      OLLAMA_BASE_URL: http://host.docker.internal:11434/v1
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
