@@ -40,14 +40,81 @@ Typical run: **~7 minutes**, **23 passed / 4 skipped / 0 failed** with no secret
 
 | Secret | What it unlocks | Without it |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | The 4 LLM-dependent specs (chat rename/delete/submit, critical-path "ask a question") send a message and assert a **streamed** answer. With the key set they run and must pass. | Those 4 specs **skip** (see `e2e/llm.ts`) instead of hanging, so the run is still green on the other ~23 specs. |
+| `ANTHROPIC_API_KEY` | The 4 LLM-dependent specs (chat rename/delete/submit, critical-path "ask a question") send a message and assert a **streamed** answer. With the key set they run and are enforced. | Those 4 specs **skip** (see `e2e/llm.ts`) instead of hanging, so the run is still green on the other 23 specs. |
 
 The suite is green **without** any secret — the LLM specs skip themselves via
 `test.skip(!process.env.ANTHROPIC_API_KEY, …)`, which keeps keyless runs (local,
-and fork PRs with no secret access) green and fast. Add the key under
-**Settings → Secrets and variables → Actions → New repository secret** to also
-run and enforce the LLM specs. For fork PRs, GitHub withholds secrets until a
-maintainer approves the run.
+and fork PRs with no secret access) green and fast. The gate is a blanket one on
+purpose: the app ships **no keyless model** — every model in the picker
+(`frontend/src/app/components/assistant/ModelToggle.tsx`) needs an
+Anthropic/Google/OpenAI key before `ChatInput` will send at all — so without a
+key the 4 specs cannot even submit a message. (The auto title-generation call is
+*not* the reason for the gate; keyless it returns a 500 the specs already
+tolerate.) Setup steps below.
+
+## Enable the LLM specs
+
+### 1. Add the repository secret
+
+UI path:
+
+1. Open the repository on GitHub → **Settings**.
+2. In the left sidebar: **Secrets and variables → Actions**.
+3. On the **Secrets** tab, click **New repository secret**.
+4. **Name:** `ANTHROPIC_API_KEY` — exactly this name; both the workflow env and
+   `e2e/llm.ts` read it. **Secret:** an Anthropic API key (`sk-ant-…`) from
+   <https://console.anthropic.com/settings/keys>.
+5. Click **Add secret**.
+
+CLI equivalent (repo admin):
+
+```bash
+gh secret set ANTHROPIC_API_KEY --repo Open-Legal-Products/mike
+# paste the key at the prompt (or pipe it: --body "$ANTHROPIC_API_KEY")
+```
+
+### 2. The fork-PR caveat
+
+On `pull_request` events from **forks**, GitHub withholds repository secrets, so
+fork PRs — most external contributions — still run keyless and skip the 4 specs.
+That is by design and keeps those runs green. Runs that actually receive the
+secret and exercise the specs are:
+
+- PRs from branches pushed to this repository (maintainer branches), and
+- manual runs: **Actions → e2e → Run workflow** (`workflow_dispatch`) on any
+  branch.
+
+So after adding the secret, the quickest way to see the specs run is a
+`workflow_dispatch` run from the Actions tab.
+
+### 3. Expected cost per run
+
+A handful of short completions: one streamed chat answer per LLM spec plus a few
+small title generations (`claude-haiku-4-5`, 64-token cap). On the order of a
+few cents per run — negligible next to the CI minutes.
+
+### 4. Confirm the specs ran (not skipped)
+
+Open the **Run Playwright** step in the Actions log:
+
+- **Keyless run:** the summary ends with `4 skipped` / `23 passed`, and each
+  skipped spec carries the reason
+  `requires a model key — set the ANTHROPIC_API_KEY secret to run LLM-dependent specs`.
+- **With the secret:** the summary shows `27 passed` and **no `skipped` line**;
+  searching the log for `requires a model key` finds nothing.
+
+The uploaded `playwright-report` artifact shows the same per-spec statuses.
+
+### Known gap: model selection
+
+As of this branch the four specs drive the model picker to a keyless
+**"Demo (no key needed)"** entry that exists in the amal66 fork but **not in
+this repository** (no `mike-demo` model id, no demo provider). With the secret
+set they therefore unskip and then fail at model selection. Before the secret
+turns them green, one of two follow-ups must land: point the specs'
+`selectDemoModel` helper at a Claude model when the key is present, or upstream
+the fork's keyless demo provider. The secret setup above is correct and ready
+either way.
 
 ## Make it merge-blocking
 
