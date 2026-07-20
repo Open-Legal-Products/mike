@@ -219,17 +219,9 @@ test("delete chat: sidebar delete action removes the chat from history", async (
     await page.goto("/assistant");
     const textarea = page.getByPlaceholder("How can I help?");
     await expect(textarea).toBeVisible({ timeout: 10_000 });
-    // ── Step 2: create the chat, riding out transient gateway 502s ───────────────
+    // ── Step 2: create the chat ──────────────────────────────────────────────────
     // ChatInput.handleSubmit creates the chat (saveChat → POST /chat/create) then
-    // navigates to /assistant/chat/<id>. The local Supabase/Kong gateway
-    // intermittently returns 502 on that POST under load; saveChat then returns null
-    // (createChat throws → caught in ChatHistoryContext.saveChat), so no chat is
-    // created and no navigation happens — the page stays on /assistant with the
-    // textarea intact, so re-submitting recovers the transient failure. This mirrors
-    // the bounded create-with-retry the project-assistant test (Step 7-8 below) uses
-    // for the same flaky POST. A genuinely broken create/navigation never reaches
-    // /assistant/chat/<id> on any attempt, so the final waitForURL still fails and
-    // the regression this test guards is preserved.
+    // navigates to /assistant/chat/<id>.
     const newChatUrl = /\/assistant\/chat\/.+/;
 
     // Sending the first message kicks off auto title-generation
@@ -246,22 +238,11 @@ test("delete chat: sidebar delete action removes the chat from history", async (
         )
         .catch(() => null);
 
-    const CREATE_ATTEMPTS = 4;
-    for (let attempt = 0; attempt < CREATE_ATTEMPTS; attempt++) {
-        if (newChatUrl.test(page.url())) break;
-        // Re-assert the demo model as the active (available) model in case a
-        // remount reset it to the default Gemini (which the ApiKeyMissingModal
-        // would block on), then re-fill and re-submit.
-        await selectDemoModel(page);
-        await textarea.fill(message);
-        await textarea.press("Enter");
-        try {
-            await page.waitForURL(newChatUrl, { timeout: 20_000 });
-            break;
-        } catch {
-            // transient gateway 5xx on POST /chat/create — still on /assistant; retry
-        }
-    }
+    // Pick the keyless demo model so the submit isn't blocked by the
+    // ApiKeyMissingModal, then send the first message.
+    await selectDemoModel(page);
+    await textarea.fill(message);
+    await textarea.press("Enter");
     await page.waitForURL(newChatUrl, { timeout: 20_000 });
 
     // Let auto title-generation land before renaming, so it cannot clobber the
@@ -296,22 +277,13 @@ test("delete chat: sidebar delete action removes the chat from history", async (
         .locator("div.group.relative.h-8.rounded-md")
         .filter({ has: targetTitle });
 
-    // ── Step 5-7: delete that specific chat, riding out flaky Supabase 500s ──────
-    // deleteChatFn (ChatHistoryContext.tsx:157-168) optimistically removes the row
-    // then, on API error, refetches via loadChats() which RESTORES it — so a
-    // transient 500 on DELETE /chat/<id> re-adds the row. Retry the open→Delete
-    // interaction until the uniquely-titled row is gone. A genuinely broken delete
-    // never removes it on any attempt, so the final assertion still fails.
-    // SidebarChatItem.tsx:132-144: the "Delete" DropdownMenuItem calls
+    // ── Step 5-7: delete that specific chat ──────────────────────────────────────
+    // deleteChatFn (ChatHistoryContext.tsx:157-168) optimistically removes the
+    // row. SidebarChatItem.tsx:132-144: the "Delete" DropdownMenuItem calls
     // deleteChat(chat.id) directly — no confirmation dialog.
-    const DELETE_ATTEMPTS = 4;
-    for (let attempt = 0; attempt < DELETE_ATTEMPTS; attempt++) {
-        if (!(await targetTitle.isVisible().catch(() => false))) break;
-        await targetRow.hover();
-        await targetRow.locator("button").last().click();
-        await page.getByRole("menuitem", { name: "Delete" }).click();
-        await expect(targetTitle).toBeHidden({ timeout: 10_000 }).catch(() => {});
-    }
+    await targetRow.hover();
+    await targetRow.locator("button").last().click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
     await expect(targetTitle).toBeHidden({ timeout: 10_000 });
 });
 
@@ -325,13 +297,10 @@ test("project assistant: create a new chat and submit a question", async ({ page
     // removing that router.push: "+ Create New" then no longer navigates and the
     // Step 8 waitForURL below fails.)
 
-    // This test creates a project then a chat (two sequential write round-trips plus
-    // a route compile/render each). Under a loaded dev server those round-trips can
-    // each take tens of seconds, so give the whole test — and the two create waits —
-    // generous headroom. Reliability matters more than speed here. The bounded
-    // create-with-retry on both the project and the chat (each up to a few
-    // re-submits under load) needs headroom beyond the create round-trips.
-    test.setTimeout(180_000);
+    // This test creates a project then a chat (two sequential write round-trips
+    // plus a navigation each) and ends with an LLM-backed submit, so give it
+    // headroom beyond the 30s default.
+    test.setTimeout(120_000);
 
     // ── Step 1: navigate to projects ─────────────────────────────────────────────
     await page.goto("/projects");
@@ -354,105 +323,41 @@ test("project assistant: create a new chat and submit a question", async ({ page
     // "Create project" submit button only exists on the second step.
     await page.getByRole("button", { name: "Next", exact: true }).click();
 
-    // ── Step 4: submit the form (resilient to transient gateway 502s) ────────────
+    // ── Step 4: submit the form ──────────────────────────────────────────────────
     // NewProjectModal.handleSubmit does NOT navigate itself — it calls onCreated()
     // then onClose().  ProjectsOverview.onCreated (ProjectsOverview.tsx:475-478)
     // inserts the row AND router.push(`/projects/${p.id}`), so the app navigates
     // straight to the project detail page; the name never re-appears in a list to
     // click.  Wait for that navigation instead of asserting a list row.
-    //
-    // The local Supabase/Kong gateway intermittently returns 502 on POST /projects
-    // under load. On a failed create, handleSubmit catches the error, leaves the
-    // modal open with the name retained, and re-enables the submit button — so a
-    // transient failure is recovered by re-submitting. A genuine broken
-    // create/navigation never reaches /projects/<id> on any attempt, so the final
-    // assertion below still fails and that regression is preserved.
     const submitBtn = page.getByRole("button", {
         name: /create project|creating/i,
     });
     const projectUrl = /\/projects\/[^/]+$/;
-    const CREATE_ATTEMPTS = 4;
-    for (let attempt = 0; attempt < CREATE_ATTEMPTS; attempt++) {
-        if (projectUrl.test(page.url())) break;
-        // toBeEnabled rides out a slow in-flight "Creating…" from a prior attempt.
-        await expect(submitBtn).toBeEnabled({ timeout: 10_000 });
-        await submitBtn.click();
-        try {
-            await page.waitForURL(projectUrl, { timeout: 20_000 });
-            break;
-        } catch {
-            // transient gateway 5xx — modal stays open, name retained; retry
-        }
-    }
+    await expect(submitBtn).toBeEnabled({ timeout: 10_000 });
+    await submitBtn.click();
     await page.waitForURL(projectUrl, { timeout: 20_000 });
 
-    // ── Step 6: open the assistant tab and reach the empty-state "+ Create New" ──
+    // ── Step 6: open the assistant tab and reach the empty-state "Create" ────────
     // The project assistant is now a nested route (/projects/[id]/assistant), not a
     // ?tab= query on the detail page. Navigating straight there avoids ambiguity
     // with the sidebar "Assistant" nav item.
-    //
-    // The project workspace fetches getProject(id) on mount with no client-side
-    // refetch. Under load that GET can transiently 502, leaving project=null so the
-    // page renders "Project not found" and the assistant section never mounts. The
-    // project row genuinely exists (Step 4 navigated to its id), so a reload
-    // refetches and recovers. Bounded-retry the load until the empty-state
-    // "+ Create New" button (ProjectAssistantTable.tsx:110-115, shown when
-    // chats.length === 0) is visible, reloading past any transient "Project not
-    // found". A genuinely broken assistant tab never shows the button on any
-    // attempt, so the final assertion still fails.
     const assistantUrl = page.url() + "/assistant";
     // The olp UI replaced the old "+ Create New" text link with a PillButton
-    // reading "Create" in the ProjectAssistantTable empty state.
+    // reading "Create" in the ProjectAssistantTable empty state
+    // (ProjectAssistantTable.tsx:110-115, shown when chats.length === 0).
     const createNewBtn = page.getByRole("button", { name: "Create", exact: true });
-    const projectNotFound = page.getByText("Project not found");
-    const TAB_ATTEMPTS = 4;
-    for (let attempt = 0; attempt < TAB_ATTEMPTS; attempt++) {
-        await page.goto(assistantUrl);
-        // Race the empty-state button against the transient "Project not found".
-        const outcome = await Promise.race([
-            createNewBtn
-                .waitFor({ state: "visible", timeout: 20_000 })
-                .then(() => "ready")
-                .catch(() => "retry"),
-            projectNotFound
-                .waitFor({ state: "visible", timeout: 20_000 })
-                .then(() => "notfound")
-                .catch(() => "retry"),
-        ]);
-        if (outcome === "ready") break;
-        // "notfound" (transient getProject 502) or a timeout — reload to refetch.
-    }
+    await page.goto(assistantUrl);
     await expect(createNewBtn).toBeVisible({ timeout: 20_000 });
 
-    // ── Step 7-8: click "+ Create New" and wait for the project chat URL ─────────
+    // ── Step 7-8: click "Create" and wait for the project chat URL ───────────────
     // handleNewChat (ProjectPage.tsx:515-519) calls saveChat(projectId) then
-    // router.push(`/projects/${projectId}/assistant/chat/${id}`). On a transient
-    // gateway 502, saveChat returns null (createChat throws → caught in
-    // ChatHistoryContext.saveChat), so no chat is created and no navigation
-    // happens; the empty-state button stays mounted (chats still empty), so
-    // re-clicking recovers the transient failure.
+    // router.push(`/projects/${projectId}/assistant/chat/${id}`).
     //
     // REGRESSION (the target of this test): if handleNewChat's router.push is
-    // removed, saveChat still succeeds and adds the chat to state, so the
-    // empty-state "+ Create New" button is replaced by the chat list and no
-    // navigation occurs — the loop's visibility guard then stops retrying and the
-    // final waitForURL fails. If saveChat itself is broken, navigation never
-    // happens either. So a genuine break fails on every attempt and is preserved.
+    // removed — or saveChat itself is broken — no navigation happens and the
+    // waitForURL below fails.
     const chatUrl = /\/projects\/.+\/assistant\/chat\/.+/;
-    const CHAT_ATTEMPTS = 4;
-    for (let attempt = 0; attempt < CHAT_ATTEMPTS; attempt++) {
-        if (chatUrl.test(page.url())) break;
-        // Empty-state button gone without navigation ⇒ a chat was created but
-        // never navigated (router.push regression): stop so it surfaces below.
-        if (!(await createNewBtn.isVisible().catch(() => false))) break;
-        await createNewBtn.click();
-        try {
-            await page.waitForURL(chatUrl, { timeout: 20_000 });
-            break;
-        } catch {
-            // transient gateway 5xx — empty-state remains; retry
-        }
-    }
+    await createNewBtn.click();
     await page.waitForURL(chatUrl, { timeout: 20_000 });
 
     // ── Step 9: assert the ChatInput textarea is visible ─────────────────────────
