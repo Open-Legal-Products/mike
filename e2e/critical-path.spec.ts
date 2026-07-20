@@ -55,11 +55,11 @@ test("create project, upload PDF, ask a question and receive a response", async 
     page,
 }) => {
     test.skip(!hasLlmKey, LLM_SKIP_REASON);
-    /* This end-to-end flow (create + upload + navigate + chat) is throttled by
-       the local Supabase stack and needs far more than the 30s default. The
-       per-test `{ timeout }` option that test() accepts is silently ignored by
-       Playwright (that object only takes tag/annotation), so set it here. */
-    test.setTimeout(180_000);
+    /* This end-to-end flow (create + upload + navigate + chat) needs more than
+       the 30s default. The per-test `{ timeout }` option that test() accepts is
+       silently ignored by Playwright (that object only takes tag/annotation),
+       so set it here. */
+    test.setTimeout(120_000);
 
     /* ── Step 1: navigate to projects ─────────────────────────────────────── */
     await page.goto("/projects");
@@ -96,71 +96,29 @@ test("create project, upload PDF, ask a question and receive a response", async 
     ).toBeVisible({ timeout: 5_000 });
 
     /* ── Step 5: submit the form ──────────────────────────────────────────── */
-    /* The modal's FileDirectory (useDirectoryData) fires a burst of Supabase
-       requests when the modal opens — a getProject() per existing project.
-       Submitting mid-burst makes the local Supabase gateway (Kong) return a 502
-       ("An invalid response was received from the upstream server"), surfaced
-       by the modal inline as text-red-500. Let those requests settle first so
-       the create POST goes through cleanly. */
-    await page
-        .waitForLoadState("networkidle", { timeout: 45_000 })
-        .catch(() => {});
-
     /* The PDF upload runs inside NewProjectModal.handleSubmit
        (await Promise.all([uploadProjectDocument(...)])) BEFORE onCreated fires,
        so the "Creating…" button state can persist for many seconds while the
        file uploads. ProjectsOverview.onCreated then router.push()es to the new
        project page, so wait for that navigation (generously, to cover the
-       upload). Race it against the inline error so a residual transient 502 is
-       detected immediately and retried by re-submitting (safe — the failed
-       request created nothing). */
-    const inlineError = page.locator("form p.text-red-500");
-    for (let attempt = 1; attempt <= 5; attempt++) {
-        await page.click('button[type="submit"]');
-        const outcome = await Promise.race([
-            page
-                .waitForURL(/\/projects\/[^/]+$/, { timeout: 30_000 })
-                .then(() => "nav" as const)
-                .catch(() => "timeout" as const),
-            inlineError
-                .waitFor({ state: "visible", timeout: 30_000 })
-                .then(() => "error" as const)
-                .catch(() => "timeout" as const),
-        ]);
-        if (outcome === "nav") break;
-        if (attempt === 5) {
-            throw new Error(
-                `create project: never navigated (last outcome: ${outcome})`,
-            );
-        }
-        await inlineError
-            .waitFor({ state: "hidden", timeout: 2_000 })
-            .catch(() => {});
-    }
+       upload). */
+    await page.click('button[type="submit"]');
+    await page.waitForURL(/\/projects\/[^/]+$/, { timeout: 30_000 });
 
     /* ── Step 6: open the project assistant ───────────────────────────────── */
     /* We're already on /projects/[id] (Documents tab by default). The project
        assistant is now a nested route, /projects/[id]/assistant. Navigate there
        directly rather than clicking through the tab bar to avoid ambiguity with
-       the "Assistant" item in the sidebar nav. The workspace fetches
-       getProject() on mount and does NOT retry, so under the local-Supabase load
-       the page can land on a permanent "Project not found" or a slow skeleton;
-       re-navigate until the assistant tab's empty-state "Create" affordance
-       renders. (The olp UI replaced the old "+ Create New" text link with a
-       PillButton reading "Create" — ProjectAssistantTable empty state.) */
+       the "Assistant" item in the sidebar nav. (The olp UI replaced the old
+       "+ Create New" text link with a PillButton reading "Create" —
+       ProjectAssistantTable empty state.) */
     const projectUrl = page.url().split("?")[0];
     const createNew = page.getByRole("button", { name: "Create", exact: true });
-    for (let attempt = 1; attempt <= 6; attempt++) {
-        await page.goto(`${projectUrl}/assistant`);
-        await page
-            .waitForLoadState("networkidle", { timeout: 20_000 })
-            .catch(() => {});
-        if (await createNew.isVisible().catch(() => false)) break;
-    }
+    await page.goto(`${projectUrl}/assistant`);
 
-    /* The assistant tab shows a chat list. Click "+ Create New" to open the
-       chat interface where the text input appears. */
-    await expect(createNew).toBeVisible({ timeout: 10_000 });
+    /* The assistant tab shows a chat list. Click "Create" to open the chat
+       interface where the text input appears. */
+    await expect(createNew).toBeVisible({ timeout: 20_000 });
     await createNew.click();
     /* Navigates to /projects/{id}/assistant (new chat UI) */
     await page.waitForURL(/\/projects\/.+\/assistant/, { timeout: 10_000 });

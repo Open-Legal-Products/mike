@@ -20,44 +20,20 @@ import { test, expect, type Page } from "@playwright/test";
 /**
  * Create a workflow from an already-open NewWorkflowModal and wait for the
  * post-create navigation to /workflows/<id>.
- *
- * The local Supabase/Kong gateway intermittently returns 502 on POST /workflows
- * under load. On a failed create the modal stays open with the entered name
- * retained — NewWorkflowModal.handleSubmit only calls onCreated()/onClose() on
- * success — so a transient failure is recovered by re-submitting the form.
- *
- * This retries ONLY transient failures: a genuine create regression (persistent
- * 5xx) never navigates on any attempt, so the final assertion still fails and the
- * regression is preserved.
  */
 async function createWorkflowAndOpenDetail(page: Page, title: string) {
     const nameInput = page.getByPlaceholder("Workflow name");
     await expect(nameInput).toBeVisible({ timeout: 5_000 });
     await nameInput.fill(title);
 
-    // Match the submit button in BOTH states: its label is "Create workflow" when idle
-    // and "Creating…" while a request is in flight. Matching only "Create workflow" would
-    // make the button "not found" mid-submit and break the retry loop.
+    // Match the submit button in BOTH states: its label is "Create workflow" when
+    // idle and "Creating…" while the request is in flight.
     const createBtn = page.getByRole("button", {
         name: /create workflow|creating/i,
     });
-    const MAX_ATTEMPTS = 4;
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-        // Already navigated (success on a prior attempt)? Done.
-        if (/\/workflows\/.+/.test(page.url())) return;
-        // Wait until the button is idle/enabled ("Create workflow"), then re-submit.
-        // toBeEnabled rides out a slow in-flight "Creating…" from the previous attempt.
-        await expect(createBtn).toBeEnabled({ timeout: 10_000 });
-        await createBtn.click();
-        try {
-            await expect(page).toHaveURL(/\/workflows\/.+/, { timeout: 10_000 });
-            return;
-        } catch {
-            // Transient gateway 5xx — modal stays open with the name retained; retry.
-        }
-    }
-    // Final assertion: surfaces a persistent (non-transient) create failure clearly.
-    await expect(page).toHaveURL(/\/workflows\/.+/, { timeout: 10_000 });
+    await expect(createBtn).toBeEnabled({ timeout: 10_000 });
+    await createBtn.click();
+    await expect(page).toHaveURL(/\/workflows\/.+/, { timeout: 15_000 });
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -116,9 +92,8 @@ test.describe("Workflows", () => {
 
         // Fill the title, submit, and wait for the post-create router.push to
         // /workflows/<id>. Type defaults to "Assistant" — no change needed.
-        // The helper re-submits on transient gateway 502s (see top of file).
-        // REGRESSION: a broken workflow-create API never navigates on any attempt,
-        // so the helper's final toHaveURL assertion still fails.
+        // REGRESSION: a broken workflow-create API never navigates, so the
+        // helper's toHaveURL assertion fails.
         const workflowTitle = `E2E Workflow ${Date.now()}`;
         await createWorkflowAndOpenDetail(page, workflowTitle);
 
@@ -180,10 +155,6 @@ test.describe("Workflows", () => {
         await newWorkflowBtn.click();
 
         const workflowTitle = `E2E Edit Workflow ${Date.now()}`;
-        // Resilient create: the inline workflow-create here intermittently hit a
-        // transient gateway 502 (→ no navigation, test stuck on /workflows). The
-        // helper re-submits on transient 5xx and waits for the /workflows/<id>
-        // detail navigation. A genuine create regression still fails all attempts.
         await createWorkflowAndOpenDetail(page, workflowTitle);
         await page.waitForLoadState("networkidle");
 
@@ -202,45 +173,27 @@ test.describe("Workflows", () => {
         /* Step 3: the debounced auto-save (800 ms) fires and the save-status
            span transitions: "" → "Saving…" → "Saved".
 
-           save() (workflows/[id]/page.tsx:122-138) sets "Saving…" synchronously on
-           every edit, then PATCHes prompt_md and sets "Saved" (which auto-reverts to
-           idle after ~2 s). Under load the PATCH can transiently 502 → the catch
-           sets status back to "idle" so "Saved" never lands. Each keystroke re-fires
-           the debounced save, so we re-trigger until the PATCH succeeds.
+           save() (workflows/[id]/page.tsx:122-138) sets "Saving…" synchronously
+           on every edit, then PATCHes prompt_md and sets "Saved" (which
+           auto-reverts to idle after ~2 s).
 
            REGRESSION: a removed/broken update API or save wiring shows NEITHER
-           "Saving…" (guard #1, save() never fires) NOR "Saved" (guard #2, PATCH
-           never resolves) on any attempt, so this still fails for a genuine break. */
-        const SAVE_ATTEMPTS = 4;
-        let saveConfirmed = false;
-        for (let attempt = 0; attempt < SAVE_ATTEMPTS && !saveConfirmed; attempt++) {
-            if (attempt > 0) {
-                // Re-fire the debounced save after a transient PATCH failure.
-                await page.keyboard.type(".");
-            }
-            // Guard #1: the save() handler must run (sets "Saving…" synchronously).
-            // PageHeader renders its actions twice — a desktop inline copy and a
-            // portal-mounted mobile copy — so an unscoped text locator resolves to
-            // two nodes and trips strict mode. Filter to the visible instance.
-            await expect(
-                page
-                    .getByText(/^(Saving…|Saved)$/)
-                    .filter({ visible: true })
-                    .first(),
-            ).toBeVisible({ timeout: 10_000 });
-            // Guard #2: the PATCH must resolve to "Saved" (transient 502s retried).
-            saveConfirmed = await page
-                .getByText("Saved")
+           "Saving…" (guard #1, save() never fires) NOR "Saved" (guard #2, the
+           PATCH never resolves), so this fails for a genuine break. */
+        // Guard #1: the save() handler must run (sets "Saving…" synchronously).
+        // PageHeader renders its actions twice — a desktop inline copy and a
+        // portal-mounted mobile copy — so an unscoped text locator resolves to
+        // two nodes and trips strict mode. Filter to the visible instance.
+        await expect(
+            page
+                .getByText(/^(Saving…|Saved)$/)
                 .filter({ visible: true })
-                .first()
-                .waitFor({ state: "visible", timeout: 8_000 })
-                .then(() => true)
-                .catch(() => false);
-        }
-        expect(
-            saveConfirmed,
-            "workflow prompt auto-save never reached the 'Saved' state",
-        ).toBe(true);
+                .first(),
+        ).toBeVisible({ timeout: 10_000 });
+        // Guard #2: the PATCH must resolve to "Saved".
+        await expect(
+            page.getByText("Saved").filter({ visible: true }).first(),
+        ).toBeVisible({ timeout: 10_000 });
     });
 });
 
@@ -281,8 +234,9 @@ test.describe("Account Settings", () => {
     test("updating display name saves and persists across navigation", async ({
         page,
     }) => {
-        // This test bounds-retries its mutation + persistence steps to ride out the
-        // intermittent gateway 502s, so give it more headroom than the 30 s default.
+        // This test bounds-retries its mutation + persistence steps to converge
+        // past a real client-side hydration race (see below), so give it more
+        // headroom than the 30 s default.
         test.setTimeout(120_000);
         await page.goto("/account");
         await expect(
@@ -302,18 +256,17 @@ test.describe("Account Settings", () => {
             .locator("xpath=parent::div")
             .getByRole("button", { name: /save/i });
 
-        // Robustly save the new name and verify it persists. Two real hazards are folded
-        // into one converging retry:
+        // Robustly save the new name and verify it persists. This retry exists
+        // for a real client-side hazard, independent of infrastructure:
         //
-        //  1) Async hydration race. The account page hydrates this input from a profile
-        //     fetch (UserProfileContext → `if (profile?.displayName) setDisplayName(...)`).
-        //     Under cold-start the auth state can settle late and trigger a SECOND profile
-        //     fetch that overwrites the field AFTER we type — so the stale stored name is
-        //     what handleSaveDisplayName persists (observed: a *previous* run's name was
-        //     saved). We therefore (re)fill immediately before saving and re-verify the
-        //     persisted value; if a late overwrite slipped a stale value in, the persist
-        //     check fails and the block re-runs (auth has settled by then, so it converges).
-        //  2) Transient gateway 502 on the PATCH or the post-reload GET — also retried here.
+        //  Async hydration race. The account page hydrates this input from a profile
+        //  fetch (UserProfileContext → `if (profile?.displayName) setDisplayName(...)`).
+        //  Under cold-start the auth state can settle late and trigger a SECOND profile
+        //  fetch that overwrites the field AFTER we type — so the stale stored name is
+        //  what handleSaveDisplayName persists (observed: a *previous* run's name was
+        //  saved). We therefore (re)fill immediately before saving and re-verify the
+        //  persisted value; if a late overwrite slipped a stale value in, the persist
+        //  check fails and the block re-runs (auth has settled by then, so it converges).
         //
         // On success the label flips Save → "Saved" for ~2 s (Display-Name button only; the
         // Organisation button stays "Save").
@@ -321,7 +274,7 @@ test.describe("Account Settings", () => {
         // REGRESSION: a broken profile PATCH / save handler never reaches "Saved" and never
         // persists newName, so every attempt fails and toPass exhausts → the test fails.
         await expect(async () => {
-            // Reload at the START of each attempt so a transient 502 on the profile GET
+            // Reload at the START of each attempt so a failed or stale profile GET
             // (which leaves the input empty via the null-displayName fallback, with no
             // client-side refetch) is retried with a fresh fetch rather than looping on a
             // permanently-empty page.
