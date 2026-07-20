@@ -2,6 +2,7 @@ import crypto from "crypto";
 import {
     auth as runMcpOAuth,
     type OAuthClientProvider,
+    type OAuthDiscoveryState,
 } from "@modelcontextprotocol/sdk/client/auth.js";
 import type {
     OAuthClientInformationMixed,
@@ -252,6 +253,41 @@ function tokenSecretPatch(prefix: string, value?: string | null) {
     };
 }
 
+function discoveryTokenEndpoint(state: OAuthDiscoveryState) {
+    return (
+        state.authorizationServerMetadata?.token_endpoint ??
+        new URL("/token", state.authorizationServerUrl).toString()
+    );
+}
+
+function discoveryResource(state: OAuthDiscoveryState) {
+    return typeof state.resourceMetadata?.resource === "string"
+        ? state.resourceMetadata.resource
+        : null;
+}
+
+async function patchOAuthTokenRow(
+    connectorId: string,
+    patch: Record<string, unknown>,
+    db: Db,
+) {
+    const existing = await loadOAuthToken(connectorId, db);
+    const row = {
+        ...patch,
+        updated_at: new Date().toISOString(),
+    };
+    const { error } = existing
+        ? await db
+              .from("user_mcp_oauth_tokens")
+              .update(row)
+              .eq("connector_id", connectorId)
+        : await db.from("user_mcp_oauth_tokens").insert({
+              connector_id: connectorId,
+              ...row,
+          });
+    if (error) throw error;
+}
+
 async function storeOAuthToken(
     connectorId: string,
     config: Omit<OAuthStateConfig, "codeVerifier" | "redirectUri">,
@@ -380,6 +416,7 @@ async function oauthBearerToken(connector: ConnectorRow, db: Db) {
 
 export class DbMcpOAuthProvider implements OAuthClientProvider {
     public lastAuthorizeUrl: URL | null = null;
+    private lastDiscoveryState: OAuthDiscoveryState | null = null;
 
     constructor(
         private readonly db: Db,
@@ -438,16 +475,14 @@ export class DbMcpOAuthProvider implements OAuthClientProvider {
             "client_secret" in info && typeof info.client_secret === "string"
                 ? info.client_secret
                 : undefined;
-        const row = {
-            connector_id: this.connector.id,
-            client_id: info.client_id,
-            ...tokenSecretPatch("client_secret", clientSecret),
-            updated_at: new Date().toISOString(),
-        };
-        const { error } = await this.db
-            .from("user_mcp_oauth_tokens")
-            .upsert(row, { onConflict: "connector_id" });
-        if (error) throw error;
+        await patchOAuthTokenRow(
+            this.connector.id,
+            {
+                client_id: info.client_id,
+                ...tokenSecretPatch("client_secret", clientSecret),
+            },
+            this.db,
+        );
     }
 
     async tokens(): Promise<OAuthTokens | undefined> {
@@ -488,6 +523,16 @@ export class DbMcpOAuthProvider implements OAuthClientProvider {
             : null;
         const env = oauthClientEnvFor(this.connector.server_url);
         const clientInfo = await this.clientInformation();
+        const tokenEndpoint = this.lastDiscoveryState
+            ? discoveryTokenEndpoint(this.lastDiscoveryState)
+            : existing?.token_endpoint;
+        const discoveredResource = this.lastDiscoveryState
+            ? discoveryResource(this.lastDiscoveryState)
+            : null;
+        const resource =
+            discoveredResource ??
+            existing?.resource ??
+            new URL(this.connector.server_url).toString();
         const expiresIn =
             typeof tokens.expires_in === "number" ? tokens.expires_in : null;
         const row = {
@@ -502,6 +547,11 @@ export class DbMcpOAuthProvider implements OAuthClientProvider {
             expires_at: expiresIn
                 ? new Date(Date.now() + expiresIn * 1000).toISOString()
                 : null,
+            authorization_server:
+                this.lastDiscoveryState?.authorizationServerUrl ??
+                existing?.authorization_server ??
+                null,
+            token_endpoint: tokenEndpoint ?? null,
             client_id: clientInfo?.client_id ?? null,
             ...tokenSecretPatch(
                 "client_secret",
@@ -510,7 +560,7 @@ export class DbMcpOAuthProvider implements OAuthClientProvider {
                     ? clientInfo.client_secret
                     : undefined,
             ),
-            resource: new URL(this.connector.server_url).toString(),
+            resource,
             updated_at: new Date().toISOString(),
         };
         const { error } = await this.db
@@ -528,6 +578,24 @@ export class DbMcpOAuthProvider implements OAuthClientProvider {
             .eq("id", this.connector.id)
             .eq("user_id", this.userId);
         if (connectorError) throw connectorError;
+    }
+
+    async saveDiscoveryState(state: OAuthDiscoveryState) {
+        this.lastDiscoveryState = state;
+        const tokenEndpoint = discoveryTokenEndpoint(state);
+        await validateRemoteMcpUrl(state.authorizationServerUrl);
+        await validateRemoteMcpUrl(tokenEndpoint);
+
+        const resource = discoveryResource(state);
+        if (resource) await validateRemoteMcpUrl(resource);
+
+        const patch: Record<string, unknown> = {
+            authorization_server: state.authorizationServerUrl,
+            token_endpoint: tokenEndpoint,
+        };
+        if (resource) patch.resource = resource;
+
+        await patchOAuthTokenRow(this.connector.id, patch, this.db);
     }
 
     async redirectToAuthorization(authorizationUrl: URL) {
