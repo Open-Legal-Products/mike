@@ -62,6 +62,11 @@ describe("validateRemoteMcpUrl", () => {
             "https://169.254.169.254/",
             "https://[::1]/",
             "https://[fd00::1]/",
+            // IPv4-compatible ::/96 embeds (deprecated per RFC 4291 but still
+            // parseable) — `::127.0.0.1` in hex, uncompressed, and dotted forms
+            "https://[::7f00:1]/",
+            "https://[0:0:0:0:0:0:7f00:1]/",
+            "https://[::10.0.0.1]/",
         ]) {
             await expect(validateRemoteMcpUrl(host), host).rejects.toThrow(
                 /blocked network address/,
