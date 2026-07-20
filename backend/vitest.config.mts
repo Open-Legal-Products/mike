@@ -16,20 +16,22 @@ export default defineConfig({
             reporter: ["text", "lcov"],
             include: ["src/lib/**"],
             // No-regression RATCHET floor, not a target. src/lib/** spans the
-            // small, tested libs (access, storage keys/dispositions,
-            // downloadTokens, userApiKeys provider/env checks, chat doc
-            // resolution) AND the large, still-untested feature libs
-            // (courtlistener, mcp, chat tool dispatch, llm providers,
-            // spreadsheet/docx handling), so the global number is low.
-            // Measured on this tree: 2.58% statements, 2.00% branches,
-            // 4.61% functions, 2.58% lines. These floors sit just below
-            // that (rounded down to whole percents) so CI fails on a
-            // *drop*; raise them as the feature-lib backlog gets covered.
+            // tested libs (access, storage keys/dispositions, downloadTokens,
+            // userApiKeys provider/env checks, chat doc resolution, safeError,
+            // llm model resolution, chat citations, userLookup,
+            // documentVersions, userDataCleanup) AND the large, still-untested
+            // feature libs (courtlistener, mcp, chat tool dispatch, llm
+            // providers, spreadsheet/docx handling), so the global number is
+            // still low. Measured on this tree: 11.18% statements, 10.98%
+            // branches, 14.43% functions, 10.91% lines. These floors sit just
+            // below that (rounded down to whole percents) so CI fails on a
+            // *drop*. Floors only go up: when you add tests, raise them in the
+            // same PR. Backlog + per-area status: docs/testing-coverage.md.
             thresholds: {
-                statements: 2,
-                branches: 2,
-                functions: 4,
-                lines: 2,
+                statements: 11,
+                branches: 10,
+                functions: 14,
+                lines: 10,
             },
         },
     },
