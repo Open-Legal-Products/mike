@@ -1,0 +1,102 @@
+# CI: build and test.
+#
+# Adapted from the amal66/mike fork's .github/workflows/ci.yml (monorepo
+# layout) to this repository's backend/ + frontend/ layout. Test steps use
+# `npm test --if-present`, and the eval job checks for evals/run.mjs, so this
+# workflow is safe to merge before or after the test-harness and evals PRs:
+# on a tree without those pieces the test steps no-op and the build still
+# gates the merge. Beyond the fork version this also builds the frontend
+# (placeholder NEXT_PUBLIC_* env — verified sufficient for `next build`) and
+# runs eslint as an advisory step (see the comment on that step).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend build and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+
+      # No-ops on a tree without a "test" script (e.g. before the vitest
+      # harness PR merges); runs the suite once it exists.
+      - run: npm test --if-present
+
+      - run: npm run build
+
+  frontend:
+    name: Frontend build and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      # No-ops on a tree without a "test" script (e.g. before the vitest
+      # harness PR merges); runs the suite once it exists.
+      - run: npm test --if-present
+
+      # Advisory only for now: main currently carries 23 eslint errors, so a
+      # blocking gate would turn every PR red on inherited debt. Flip this to
+      # blocking (remove continue-on-error) once the backlog is burned down.
+      - run: npm run lint
+        continue-on-error: true
+
+      # Production build. NEXT_PUBLIC_* values are inlined at build time and
+      # only need to be well-formed here — nothing is contacted during build.
+      # This catches type errors (next build runs tsc) and broken routes/imports.
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY: sb_publishable_placeholder
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:3001
+
+  # -----------------------------------------------------------------------
+  # Offline eval harness: deterministic scorecard for citation accuracy,
+  # prompt-injection resistance, and privilege/PII leakage. Runs against
+  # committed fixtures (no network, no LLM calls, no secrets), so it is cheap
+  # enough to gate every PR. --threshold 1.0 = every case must pass.
+  # Skips gracefully until the evals PR merges.
+  # -----------------------------------------------------------------------
+  evals:
+    name: Eval harness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run eval harness (skips if evals/ not present)
+        run: |
+          if [ -f evals/run.mjs ]; then
+            node evals/run.mjs --threshold 1.0
+          else
+            echo "evals/run.mjs not present on this tree; skipping"
+          fi
