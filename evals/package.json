@@ -1,0 +1,18 @@
+{
+  "name": "@mike/evals",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline, deterministic legal-AI evaluation harness (citation accuracy, prompt-injection resistance, privilege/PII leakage).",
+  "type": "module",
+  "bin": {
+    "mike-evals": "run.mjs"
+  },
+  "scripts": {
+    "test": "node run.mjs",
+    "test:strict": "node run.mjs --threshold 1.0",
+    "test:demo-failure": "node run.mjs --break privilege-pii-ssn"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
