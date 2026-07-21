@@ -550,6 +550,7 @@ create table if not exists public.chat_messages (
   role text not null,
   content jsonb,
   files jsonb,
+  workflow jsonb,
   citations jsonb,
   created_at timestamptz not null default now()
 );
