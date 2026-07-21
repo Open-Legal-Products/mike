@@ -163,8 +163,11 @@ async function toApiError(response: Response, path: string) {
 // Projects
 // ---------------------------------------------------------------------------
 
-export async function listProjects(): Promise<Project[]> {
-    return apiRequest<Project[]>("/projects");
+export async function listProjects(options?: {
+    includeDocuments?: boolean;
+}): Promise<Project[]> {
+    const query = options?.includeDocuments ? "?include=documents" : "";
+    return apiRequest<Project[]>(`/projects${query}`);
 }
 
 export async function createProject(

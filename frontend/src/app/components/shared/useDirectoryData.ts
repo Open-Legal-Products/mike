@@ -1,11 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-    getLibrary,
-    getProject,
-    listProjects,
-} from "@/app/lib/mikeApi";
+import { getLibrary, listProjects } from "@/app/lib/mikeApi";
 import type { Document, LibraryFolder, Project } from "./types";
 
 export type DirectoryTab = "files" | "templates" | "projects";
@@ -45,17 +41,14 @@ async function loadTemplates() {
 }
 
 async function loadProjects() {
-    const projects = await listProjects();
-    const fullProjects = await Promise.all(
-        projects.map((project) => getProject(project.id)),
-    );
-    const projectCounts = new Map(
-        projects.map((project) => [project.id, project.document_count ?? 0]),
-    );
-    return fullProjects.map((project) => ({
+    // One batched request. Fanning out getProject(id) per project caused an
+    // N+1 burst on every directory-modal open that could overwhelm the
+    // Supabase gateway once an account had accumulated projects.
+    const projects = await listProjects({ includeDocuments: true });
+    return projects.map((project) => ({
         ...project,
         document_count:
-            project.documents?.length ?? projectCounts.get(project.id) ?? 0,
+            project.documents?.length ?? project.document_count ?? 0,
     }));
 }
 
