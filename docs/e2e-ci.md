@@ -105,16 +105,19 @@ Open the **Run Playwright** step in the Actions log:
 
 The uploaded `playwright-report` artifact shows the same per-spec statuses.
 
-### Known gap: model selection
+### Model selection (gap fixed on the e2e suite branch)
 
-As of this branch the four specs drive the model picker to a keyless
+Earlier revisions of the four specs drove the model picker to a keyless
 **"Demo (no key needed)"** entry that exists in the amal66 fork but **not in
-this repository** (no `mike-demo` model id, no demo provider). With the secret
-set they therefore unskip and then fail at model selection. Before the secret
-turns them green, one of two follow-ups must land: point the specs'
-`selectDemoModel` helper at a Claude model when the key is present, or upstream
-the fork's keyless demo provider. The secret setup above is correct and ready
-either way.
+this repository** (no `mike-demo` model id, no demo provider), so setting the
+secret unskipped them and they then failed at model selection. This is fixed on
+the e2e suite branch (#220): the specs' `selectClaudeModel` helper picks
+**Claude Sonnet 4.6** in the ModelToggle whenever the key is set, and the
+critical-path response assertion checks for a nonempty streamed assistant
+answer instead of the fork's canned demo reply. With that fix, setting the
+`ANTHROPIC_API_KEY` secret yields **27 passed / 0 skipped** (verified locally:
+keyless 23 passed / 4 skipped; with the key 27 / 0). The secret setup above is
+all that is needed.
 
 ## Make it merge-blocking
 
