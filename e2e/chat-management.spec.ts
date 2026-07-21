@@ -32,23 +32,26 @@ async function ensureSidebarOpen(page: Page) {
 }
 
 /**
- * Select the built-in keyless "demo" model in the chat input's ModelToggle so
- * the first submit actually creates a chat instead of opening the
- * ApiKeyMissingModal.
+ * Select a Claude model in the chat input's ModelToggle so the first submit
+ * actually creates a chat instead of opening the ApiKeyMissingModal.
  *
- * The default model is "gemini-3-flash-preview" (ModelToggle.DEFAULT_MODEL_ID),
- * for which no key is configured; ChatInput.handleSubmit (ChatInput.tsx:116-119)
- * then refuses to send. The suite runs WITHOUT any provider key (the CI stack
- * leaves ANTHROPIC_API_KEY empty), so no Anthropic/Gemini/OpenAI model is
- * available — only the demo model (DEMO_MODEL_ID "mike-demo", label "Demo (no
- * key needed)") is always available and streams a canned response via
- * providers/demo.ts. ModelToggle renders a Radix DropdownMenu: the trigger is a
- * button whose title is "Choose model" (current model available) or "API key
- * missing for selected model" (current model not available — the default-Gemini
- * case). We open it, pick the Demo item, and confirm the trigger now shows
- * "Demo (no key needed)".
+ * The specs that call this run only when ANTHROPIC_API_KEY is set in the
+ * Playwright environment (test.skip(!hasLlmKey, ...) — e2e/llm.ts). The CI
+ * stack exports the same secret to the backend, whose key resolution
+ * (userApiKeys.ts envApiKey()) falls back to the ANTHROPIC_API_KEY env var, so
+ * the "claude" provider reports as configured and ModelToggle shows the
+ * Anthropic models as available. The default model, however, is
+ * "gemini-3-flash-preview" (ModelToggle.DEFAULT_MODEL_ID), for which no key is
+ * configured in CI; ChatInput.handleSubmit (ChatInput.tsx:116-119) then refuses
+ * to send. ModelToggle renders a Radix DropdownMenu: the trigger is a button
+ * whose title is "Choose model" (current model available) or "API key missing
+ * for selected model" (current model not available — the default-Gemini case).
+ * We open it, pick "Claude Sonnet 4.6" (the cheapest Anthropic entry in
+ * ModelToggle.MODELS), and confirm the trigger now shows that label.
  */
-async function selectDemoModel(page: Page) {
+const CLAUDE_MODEL_LABEL = "Claude Sonnet 4.6";
+
+async function selectClaudeModel(page: Page) {
     const trigger = page
         .locator(
             'button[title="Choose model"], button[title="API key missing for selected model"]',
@@ -56,12 +59,10 @@ async function selectDemoModel(page: Page) {
         .first();
     await expect(trigger).toBeVisible({ timeout: 10_000 });
     await trigger.click();
-    await page
-        .getByRole("menuitem", { name: "Demo (no key needed)" })
-        .click();
+    await page.getByRole("menuitem", { name: CLAUDE_MODEL_LABEL }).click();
     // After selection the trigger label reflects the chosen model.
     await expect(
-        page.getByRole("button", { name: /Demo \(no key needed\)/ }),
+        page.getByRole("button", { name: CLAUDE_MODEL_LABEL }),
     ).toBeVisible({ timeout: 5_000 });
 }
 
@@ -128,9 +129,10 @@ test("rename chat: sidebar rename interaction updates the title", async ({ page 
     await page.goto("/assistant");
     const textarea = page.getByPlaceholder("How can I help?");
     await expect(textarea).toBeVisible({ timeout: 10_000 });
-    // Pick the keyless demo model so the submit isn't blocked by the
-    // ApiKeyMissingModal (no provider key is configured in this run).
-    await selectDemoModel(page);
+    // Pick a Claude model (available via the backend's ANTHROPIC_API_KEY) so
+    // the submit isn't blocked by the ApiKeyMissingModal — the default Gemini
+    // model has no key configured in this run.
+    await selectClaudeModel(page);
     await textarea.fill(message);
 
     // Sending the first message triggers auto title-generation
@@ -238,9 +240,10 @@ test("delete chat: sidebar delete action removes the chat from history", async (
         )
         .catch(() => null);
 
-    // Pick the keyless demo model so the submit isn't blocked by the
-    // ApiKeyMissingModal, then send the first message.
-    await selectDemoModel(page);
+    // Pick a Claude model (available via the backend's ANTHROPIC_API_KEY) so
+    // the submit isn't blocked by the ApiKeyMissingModal, then send the first
+    // message.
+    await selectClaudeModel(page);
     await textarea.fill(message);
     await textarea.press("Enter");
     await page.waitForURL(newChatUrl, { timeout: 20_000 });
@@ -372,12 +375,14 @@ test("project assistant: create a new chat and submit a question", async ({ page
     // prior response is in flight; otherwise it returns early. Two transient gates
     // exist under load:
     //   • useSelectedModel (useSelectedModel.ts:16-20) seeds DEFAULT (Gemini) for
-    //     one render before its localStorage-read effect restores the demo model,
-    //     so a submit racing a ChatInput remount can momentarily see Gemini → the
-    //     ApiKeyMissingModal ("API key required") pops and the submit no-ops.
+    //     one render before its localStorage-read effect restores the Claude
+    //     model, so a submit racing a ChatInput remount can momentarily see
+    //     Gemini → the ApiKeyMissingModal ("API key required") pops and the
+    //     submit no-ops.
     //   • A transient in-flight response (isResponseLoading) also no-ops the submit.
-    // Re-select the demo model and re-submit until the textarea clears. A genuinely
-    // broken send never clears on ANY attempt, so a real regression is still caught.
+    // Re-select the Claude model and re-submit until the textarea clears. A
+    // genuinely broken send never clears on ANY attempt, so a real regression is
+    // still caught.
     const question = "What is in this project?";
     const apiKeyModalHeading = page.getByRole("heading", {
         name: "API key required",
@@ -393,8 +398,8 @@ test("project assistant: create a new chat and submit a question", async ({ page
                 .click()
                 .catch(() => {});
         }
-        // Re-assert the demo model as the active (available) model after any remount.
-        await selectDemoModel(page);
+        // Re-assert the Claude model as the active (available) model after any remount.
+        await selectClaudeModel(page);
         await chatInput.fill(question);
         // ChatInput.handleKeyDown: Enter (no Shift) → handleSubmit().
         await chatInput.press("Enter");
