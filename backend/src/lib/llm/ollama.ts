@@ -14,6 +14,13 @@ function baseUrl(): string {
   return (process.env.OLLAMA_BASE_URL?.trim() || "http://localhost:11434/v1").replace(/\/$/, "");
 }
 
+// Optional bearer auth — bare Ollama needs none, but OpenAI-compatible servers
+// behind a gateway (vLLM --api-key, Open WebUI, LiteLLM) require it.
+export function authHeaders(): Record<string, string> {
+  const key = process.env.OLLAMA_API_KEY?.trim();
+  return key ? { Authorization: `Bearer ${key}` } : {};
+}
+
 function modelName(modelId: string): string {
   // The id's tag (e.g. "ollama/qwen3.6:latest" -> "qwen3.6:latest") wins; the
   // OLLAMA_MODEL env is only a fallback for a bare "ollama" id.
@@ -55,7 +62,7 @@ async function postChat(
 ): Promise<Response> {
   const response = await fetch(`${baseUrl()}/chat/completions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
     signal,
   });
