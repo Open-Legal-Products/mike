@@ -43,7 +43,7 @@ import { PdfView } from "@/app/components/shared/views/PdfView";
 import { SpreadsheetView } from "@/app/components/shared/views/SpreadsheetView";
 import { OwnerOnlyPopup } from "@/app/components/popups/OwnerOnlyPopup";
 import { DocxView } from "@/app/components/shared/views/DocxView";
-import { MikeIcon } from "@/app/components/chat/mike-icon";
+import { BoMark, BO_MARK_ASPECT } from "@/app/components/chat/bo-mark";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import { useSidebar } from "@/app/contexts/SidebarContext";
@@ -87,6 +87,7 @@ type EditScrollTarget = {
 };
 
 const ICON_SIZE = 28;
+const ICON_WIDTH = ICON_SIZE * BO_MARK_ASPECT;
 const GAP = 14;
 const EXPLORER_MIN = 160;
 const EXPLORER_DEFAULT = 280;
@@ -105,7 +106,7 @@ function AssistantGreeting({ username }: { username: string }) {
         if (!profile || !textRef.current) return;
         const h1Width = textRef.current.offsetWidth;
         setIconOffset((h1Width + GAP) / 2);
-        setTextOffset((ICON_SIZE + GAP) / 2);
+        setTextOffset((ICON_WIDTH + GAP) / 2);
     }, [profile]);
 
     useEffect(() => {
@@ -128,7 +129,7 @@ function AssistantGreeting({ username }: { username: string }) {
                             "transform 900ms cubic-bezier(0.25, 0.46, 0.45, 0.94)",
                     }}
                 >
-                    <MikeIcon size={ICON_SIZE} />
+                    <BoMark size={ICON_SIZE} />
                 </div>
                 <h1
                     ref={textRef}

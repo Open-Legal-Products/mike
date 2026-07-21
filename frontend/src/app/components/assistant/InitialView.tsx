@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { MoreHorizontal } from "lucide-react";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { useUserProfile } from "@/app/contexts/UserProfileContext";
-import { MikeIcon } from "@/app/components/chat/mike-icon";
+import { BoMark, BO_MARK_ASPECT } from "@/app/components/chat/bo-mark";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { SelectAssistantProjectModal } from "./SelectAssistantProjectModal";
 import { QuickActionsModal } from "./QuickActionsModal";
@@ -26,6 +26,7 @@ interface InitialViewProps {
 }
 
 const ICON_SIZE = 30;
+const ICON_WIDTH = ICON_SIZE * BO_MARK_ASPECT;
 const GAP = 12; // gap-4 = 1rem = 16px
 const DOCUMENT_WORKFLOW_ACTIONS: Partial<
     Record<
@@ -87,7 +88,7 @@ export function InitialView({ onSubmit }: InitialViewProps) {
         if (!profile || !textRef.current) return;
         const h1Width = textRef.current.offsetWidth;
         setIconOffset((h1Width + GAP) / 2);
-        setTextOffset((ICON_SIZE + GAP) / 2);
+        setTextOffset((ICON_WIDTH + GAP) / 2);
     }, [profile]);
 
     useEffect(() => {
@@ -147,8 +148,9 @@ export function InitialView({ onSubmit }: InitialViewProps) {
             <div className="flex min-h-0 items-end justify-center pb-6">
                 <div className="relative h-10 w-full max-w-4xl px-0 xl:px-8">
                     <div
-                        className="absolute h-[30px] w-[30px]"
+                        className="absolute h-[30px]"
                         style={{
+                            width: ICON_WIDTH,
                             left: "50%",
                             top: "50%",
                             transform: loaded
@@ -158,7 +160,7 @@ export function InitialView({ onSubmit }: InitialViewProps) {
                                 "transform 900ms cubic-bezier(0.25, 0.46, 0.45, 0.94)",
                         }}
                     >
-                        <MikeIcon size={ICON_SIZE} />
+                        <BoMark size={ICON_SIZE} />
                     </div>
                     <h1
                         ref={textRef}

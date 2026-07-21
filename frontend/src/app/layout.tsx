@@ -16,9 +16,8 @@ const ebGaramond = EB_Garamond({
 
 export const metadata: Metadata = {
     metadataBase: new URL("https://app.mikeoss.com"),
-    title: "Mike - AI Legal Platform",
-    description:
-        "AI-powered legal document analysis and contract review platform.",
+    title: "Bo — Construction Intelligence",
+    description: "Upload the job. Ask Bo. Verify the source.",
     icons: {
         icon: [
             { url: "/icon.svg", type: "image/svg+xml" },
@@ -29,24 +28,22 @@ export const metadata: Metadata = {
     openGraph: {
         type: "website",
         url: "https://app.mikeoss.com",
-        siteName: "Mike",
-        title: "Mike - AI Legal Platform",
-        description:
-            "AI-powered legal document analysis and contract review platform.",
+        siteName: "Bo",
+        title: "Bo — Construction Intelligence",
+        description: "Upload the job. Ask Bo. Verify the source.",
         images: [
             {
                 url: "/link-image.jpg",
                 width: 1200,
-                height: 651,
-                alt: "Mike",
+                height: 630,
+                alt: "Bo",
             },
         ],
     },
     twitter: {
         card: "summary_large_image",
-        title: "Mike - AI Legal Platform",
-        description:
-            "AI-powered legal document analysis and contract review platform.",
+        title: "Bo — Construction Intelligence",
+        description: "Upload the job. Ask Bo. Verify the source.",
         images: ["/link-image.jpg"],
     },
 };
