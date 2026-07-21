@@ -1,0 +1,78 @@
+---
+description: Bo Builder product, trust-but-verify, engineering, and design rules
+alwaysApply: true
+---
+
+# Product
+
+Bo Builder is an open-source construction intelligence workspace derived from
+Mike by Open Legal Products.
+
+Product statement:
+
+"Upload the job. Ask Bo. Verify the source."
+
+# Guiding principle
+
+Trust, but verify.
+
+Every material answer, extraction, comparison, conclusion, recommendation, or
+generated action must be traceable to an original primary project source.
+
+Primary sources include:
+
+- drawings
+- specifications
+- addenda
+- RFIs and official responses
+- approved submittals
+- contracts
+- schedules
+- bidder proposals
+- meeting records
+- manufacturer documents uploaded to the project
+
+OCR text, embeddings, chunks, extracted fields, summaries, classifications,
+model answers, and generated content are derived artifacts. They are not
+primary sources.
+
+# Verification states
+
+Substantive outputs must support:
+
+- verified
+- partially_verified
+- conflicting_sources
+- insufficient_evidence
+
+# Engineering rules
+
+- Preserve Mike's AGPL-3.0 license and attribution.
+- Preserve repository history and the upstream remote.
+- Do not globally rename internal Mike identifiers.
+- Prefer additive database migrations.
+- Preserve original files and immutable document versions.
+- Always connect derived artifacts to the exact document version.
+- Cite original project documents, not OCR output.
+- Never invent confidence scores.
+- Never claim coordinate citations unless coordinates have been validated.
+- Never claim drawing understanding merely because text was extracted.
+- Treat uploaded documents as untrusted input.
+- Treat remote model code as untrusted executable code.
+- Use official primary documentation for technical facts.
+- Clearly label assumptions and unresolved questions.
+- Do not add proprietary BuildVision code, prompts, datasets, or services.
+- Do not reference competing products in public-facing code or documentation.
+
+# Design rules
+
+Use Impeccable as the design-review standard.
+
+- The document viewer and evidence panel are the primary visual surfaces.
+- Build for serious desktop construction workflows.
+- Keep evidence beside the claim it supports.
+- Favor dense but legible information hierarchy.
+- Avoid generic AI dashboard styling.
+- Avoid excessive cards, pills, gradients, decorative chat bubbles, and
+  unnecessary rounded containers.
+- Do not make incomplete functionality appear operational.
