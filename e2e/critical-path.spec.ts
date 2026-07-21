@@ -13,17 +13,23 @@ import path from "path";
 const PDF_FIXTURE = path.join(__dirname, "fixtures/test.pdf");
 
 /**
- * Select the built-in keyless "demo" model in the chat input's ModelToggle.
+ * Select a Claude model in the chat input's ModelToggle.
  *
- * The default model (Gemini) has no key configured in this environment, so a
- * submit would be blocked by the ApiKeyMissingModal. The demo model
- * (ModelToggle DEMO_MODEL_ID) is always available and streams a canned response
- * via providers/demo.ts, letting the "receive a response" assertion run
- * deterministically without any provider key. The Radix DropdownMenu trigger's
- * title is "Choose model" (current model available) or "API key missing for
- * selected model" (default-Gemini case).
+ * This spec runs only when ANTHROPIC_API_KEY is set in the Playwright
+ * environment (test.skip(!hasLlmKey, ...) — e2e/llm.ts). The CI stack exports
+ * the same secret to the backend, whose key resolution (userApiKeys.ts
+ * envApiKey()) falls back to the ANTHROPIC_API_KEY env var, so the "claude"
+ * provider reports as configured and ModelToggle shows the Anthropic models as
+ * available. The default model (Gemini) has no key configured in CI, so a
+ * submit with it would be blocked by the ApiKeyMissingModal. We pick
+ * "Claude Sonnet 4.6" (the cheapest Anthropic entry in ModelToggle.MODELS) so
+ * the request streams a real response. The Radix DropdownMenu trigger's title
+ * is "Choose model" (current model available) or "API key missing for selected
+ * model" (default-Gemini case).
  */
-async function selectDemoModel(page: Page) {
+const CLAUDE_MODEL_LABEL = "Claude Sonnet 4.6";
+
+async function selectClaudeModel(page: Page) {
     const trigger = page
         .locator(
             'button[title="Choose model"], button[title="API key missing for selected model"]',
@@ -31,12 +37,10 @@ async function selectDemoModel(page: Page) {
         .first();
     await expect(trigger).toBeVisible({ timeout: 10_000 });
     await trigger.click();
-    await page
-        .getByRole("menuitem", { name: "Demo (no key needed)" })
-        .click();
+    await page.getByRole("menuitem", { name: CLAUDE_MODEL_LABEL }).click();
     // After selection the trigger label reflects the chosen model.
     await expect(
-        page.getByRole("button", { name: /Demo \(no key needed\)/ }),
+        page.getByRole("button", { name: CLAUDE_MODEL_LABEL }),
     ).toBeVisible({ timeout: 5_000 });
 }
 
@@ -124,31 +128,39 @@ test("create project, upload PDF, ask a question and receive a response", async 
     await page.waitForURL(/\/projects\/.+\/assistant/, { timeout: 10_000 });
     await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
 
-    /* ── Step 7: select the keyless demo model, type a question, submit ───── */
+    /* ── Step 7: select a Claude model, type a question, submit ───────────── */
     const chatInput = page.getByPlaceholder("How can I help?");
     await expect(chatInput).toBeVisible({ timeout: 10_000 });
 
     /* The default Gemini model has no key configured, so submitting it would be
-       blocked by the ApiKeyMissingModal. Select the keyless demo model so the
-       request actually streams a response. */
-    await selectDemoModel(page);
+       blocked by the ApiKeyMissingModal. Select a Claude model (backed by the
+       ANTHROPIC_API_KEY the backend reads from its environment) so the request
+       actually streams a response. */
+    await selectClaudeModel(page);
     await chatInput.fill("What is this document about?");
     /* This ChatInput submits on Enter (Shift+Enter inserts a newline). */
     await chatInput.press("Enter");
 
     /* ── Step 8: verify the assistant streams a response ─────────────────── */
-    /* The demo provider always opens its reply with "Demo mode …"
-       (providers/demo.ts buildDemoAnswer). Its appearance proves the message
-       was sent, streamed, and rendered end-to-end — deterministically and
-       without any provider key.
+    /* With a real Claude model the reply content is nondeterministic, so assert
+       presence + nonempty rather than matching text. The assistant's answer
+       renders through MarkdownContent (message/MarkdownContent.tsx), whose
+       wrapper div carries "text-gray-900 … prose … font-serif" — a combination
+       unique to assistant answer content on this page (user messages render a
+       plain <p>, and the gray pre-response EventBlocks prose uses
+       text-gray-400). Its appearance with nonempty text proves the message was
+       sent, streamed, and rendered end-to-end.
 
-       The reply is preceded by a POST that persists the chat and a client-side
-       route change to /assistant/chat/<id>; under the local-Supabase load that
-       round-trip alone can outlast a 30s budget, so allow the same headroom the
-       rest of this flow gets. */
-    await expect(page.getByText("Demo mode").first()).toBeVisible({
-        timeout: 60_000,
-    });
+       The reply is preceded by a POST that persists the chat, a client-side
+       route change to /assistant/chat/<id>, and a real LLM round-trip; under
+       local-Supabase load that can outlast a 30s budget, so allow the same
+       headroom the rest of this flow gets. */
+    const assistantAnswer = page
+        .locator("div.prose.font-serif.text-gray-900")
+        .first();
+    await expect(assistantAnswer).toBeVisible({ timeout: 60_000 });
+    /* Nonempty streamed text (any non-whitespace character). */
+    await expect(assistantAnswer).toContainText(/\S/);
 });
 
 /* ─── Test 3: login-page redirect for unauthenticated users ──────────────── */
