@@ -589,3 +589,59 @@
         box-shadow: 0 0 0 2px rgba(59, 130, 246, 0);
     }
 }
+
+/* Bo modular loader: sequential structural box assemble, calm loop.
+   No spinning ring. Respects prefers-reduced-motion. */
+.bo-modular-loader__box {
+    opacity: 0.22;
+    transform-origin: center;
+}
+
+.bo-modular-loader__box--1,
+.bo-modular-loader__box--2,
+.bo-modular-loader__box--3,
+.bo-modular-loader__box--4 {
+    animation: boModularAssemble 2.8s ease-in-out infinite;
+}
+
+.bo-modular-loader__box--1 {
+    animation-delay: 0s;
+}
+.bo-modular-loader__box--2 {
+    animation-delay: 0.28s;
+}
+.bo-modular-loader__box--3 {
+    animation-delay: 0.56s;
+}
+.bo-modular-loader__box--4 {
+    animation-delay: 0.84s;
+}
+
+@keyframes boModularAssemble {
+    0%,
+    12% {
+        opacity: 0.18;
+        transform: translateY(6px);
+    }
+    28%,
+    58% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    78%,
+    100% {
+        opacity: 0.22;
+        transform: translateY(2px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .bo-modular-loader__box--1,
+    .bo-modular-loader__box--2,
+    .bo-modular-loader__box--3,
+    .bo-modular-loader__box--4 {
+        animation: none;
+        opacity: 0.85;
+        transform: none;
+    }
+}
