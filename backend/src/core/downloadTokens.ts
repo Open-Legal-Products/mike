@@ -80,15 +80,25 @@ export function verifyDownloadPayload(
       return null;
     }
     if (!parsed.p || !parsed.f) return null;
-    // Every token must carry an expiry. A token without `e` is legacy (issued
-    // before expiry existed) and would otherwise be valid forever, so reject it
-    // — any such link is long stale (all issuers have set `e` since), and a
-    // fresh, expiring token is re-issued on next access.
-    if (
-      typeof parsed.e !== "number" ||
-      parsed.e < Math.floor(Date.now() / 1000)
-    ) {
-      return null;
+    // Expiry policy:
+    // - All NEW tokens are signed with an `e` (exp) claim; expired tokens are
+    //   rejected, and a malformed `e` is rejected as tampering.
+    // - Tokens WITHOUT an `e` claim are legacy: upstream signed `{p, f}` with
+    //   no expiry until this change, and those permalinks are baked into
+    //   persisted chat messages. Rejecting them would 404 every historical
+    //   download link on deploy (a silent flag-day), so we accept them as a
+    //   transitional back-compat measure. They are still HMAC-verified —
+    //   only the server can have minted them. Once historical links have
+    //   aged out (or been re-issued on access), this branch can be tightened
+    //   to reject missing `e` as well.
+    if ("e" in parsed && parsed.e !== undefined) {
+      if (
+        typeof parsed.e !== "number" ||
+        !Number.isFinite(parsed.e) ||
+        parsed.e < Math.floor(Date.now() / 1000)
+      ) {
+        return null;
+      }
     }
     return { path: parsed.p, filename: parsed.f };
   } catch {
