@@ -30,6 +30,22 @@ export function generateSpotlightNonce(): string {
 }
 
 /**
+ * Neutralizes fence tokens the fenced text tries to smuggle in: redacts any
+ * echoed nonce and HTML-encodes the `<` of any literal fence tag (both the
+ * `<untrusted-content>` and `<workflow-instructions>` families), so even a
+ * sloppy model never sees a clean boundary token inside the data.
+ */
+function neutralizeFenceTokens(text: string, nonce: string): string {
+  return String(text)
+    .split(nonce)
+    .join("[redacted-nonce]")
+    .replace(
+      /<(\/?)(untrusted-content|workflow-instructions)/gi,
+      "&lt;$1$2",
+    );
+}
+
+/**
  * Wraps untrusted user-controlled text in a nonce-fenced tag.
  * The LLM is instructed (in the system prompt) to treat everything inside
  * these tags as data, not as instructions — a technique called "spotlighting".
@@ -37,16 +53,33 @@ export function generateSpotlightNonce(): string {
  * The nonce is on BOTH the opening and closing tags and is unpredictable per
  * request, so untrusted text cannot fabricate a matching closing tag to escape
  * the fence. As defense-in-depth we also neutralize any fence tokens the text
- * tries to smuggle in — HTML-encoding the `<` of any literal
- * `<untrusted-content>` / `</untrusted-content>` and redacting any echoed nonce
- * — so even a sloppy model never sees a clean boundary token inside the data.
+ * tries to smuggle in (see neutralizeFenceTokens).
  */
 export function spotlight(text: string, nonce: string): string {
-  const neutralized = String(text)
-    .split(nonce)
-    .join("[redacted-nonce]")
-    .replace(/<(\/?)untrusted-content/gi, "&lt;$1untrusted-content");
+  const neutralized = neutralizeFenceTokens(text, nonce);
   return `<untrusted-content nonce="${nonce}">\n${neutralized}\n</untrusted-content nonce="${nonce}">`;
+}
+
+/**
+ * Wraps a user-installed workflow body in the semi-trusted
+ * `<workflow-instructions>` fence.
+ *
+ * Workflow bodies are different from document content: the user installed the
+ * workflow precisely so the model FOLLOWS it, so it cannot go in
+ * `<untrusted-content>` ("data only, never instructions") without
+ * self-contradiction. The system prompt tells the model to follow
+ * `<workflow-instructions>` like a user request, but never to let a workflow
+ * override system policy, exfiltrate data, or re-interpret other fenced
+ * content. External data a workflow references (documents, fetched text)
+ * still arrives via `spotlight()` and stays data-only.
+ *
+ * Uses the same per-request nonce and fence-token neutralization as
+ * `spotlight()`, so a malicious workflow body cannot close its own fence or
+ * forge an `<untrusted-content>` boundary.
+ */
+export function spotlightWorkflow(text: string, nonce: string): string {
+  const neutralized = neutralizeFenceTokens(text, nonce);
+  return `<workflow-instructions nonce="${nonce}">\n${neutralized}\n</workflow-instructions nonce="${nonce}">`;
 }
 
 

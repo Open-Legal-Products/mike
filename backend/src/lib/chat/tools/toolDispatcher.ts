@@ -55,7 +55,7 @@ import {
   type DocReplicatedResult,
   type TextMatch,
 } from "./documentOps";
-import { spotlight } from "../contextBuilders";
+import { spotlight, spotlightWorkflow } from "../contextBuilders";
 
 
 type CourtlistenerCaseRecord = {
@@ -781,13 +781,16 @@ export async function runToolCalls(
         );
         workflowsApplied.push({ workflow_id: wfId, title: wf.title });
       }
-      // Workflow content is user-authored; spotlight it so an adversarial
-      // workflow title or prompt body cannot inject instructions.
+      // Workflow bodies are instructions the user installed to be FOLLOWED,
+      // so they get the semi-trusted <workflow-instructions> fence (follow,
+      // but never override system policy) rather than <untrusted-content>
+      // (data only) — wrapping instructions in a data-only fence would either
+      // break workflow execution or teach the model to ignore the fence.
       const wfContent = wf ? wf.skill_md : `Workflow '${wfId}' not found.`;
       toolResults.push({
         role: "tool",
         tool_call_id: tc.id,
-        content: nonce && wf ? spotlight(wfContent, nonce) : wfContent,
+        content: nonce && wf ? spotlightWorkflow(wfContent, nonce) : wfContent,
       });
     } else if (tc.function.name === "read_table_cells" && tabularStore) {
       const colIndices = args.col_indices as number[] | undefined;
