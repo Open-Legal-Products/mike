@@ -49,6 +49,7 @@ export function useFetchDocxBytes(
 
     useEffect(() => {
         if (!documentId) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- clear stale bytes when documentId is removed, within the fetch effect
             setBytes(null);
             setDownloadUrl(null);
             return;

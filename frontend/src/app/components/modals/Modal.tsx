@@ -61,6 +61,7 @@ export function Modal({
     // Portals can't render during SSR, so a keep-mounted modal only renders
     // (hidden) after the first client mount.
     const [hasMounted, setHasMounted] = useState(false);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR portal gate: must flip after first client mount
     useEffect(() => setHasMounted(true), []);
     const hasHeader = breadcrumbs?.length;
     const hasFooter =

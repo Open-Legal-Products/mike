@@ -29,6 +29,7 @@ export function PreResponseWrapper({
 
     useEffect(() => {
         if (forceOpen) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- streaming open/minimize latch (see comment above)
             setIsOpen(true);
             return;
         }

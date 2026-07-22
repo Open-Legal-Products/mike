@@ -16,6 +16,7 @@ export function useSelectedModel(): [string, (id: string) => void] {
     const [model, setModelState] = useState<string>(DEFAULT_MODEL_ID);
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration-safe localStorage read; SSR must render the default model
         setModelState(readStored());
     }, []);
 

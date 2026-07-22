@@ -228,7 +228,7 @@ export default function SupportPage() {
                             {/* Email Display (if logged in) */}
                             {user?.email && (
                                 <div className="text-sm text-gray-500">
-                                    We'll respond to:{" "}
+                                    We&apos;ll respond to:{" "}
                                     <span className="font-medium">
                                         {user.email}
                                     </span>

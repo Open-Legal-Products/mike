@@ -242,6 +242,7 @@ export function AskInputPopup({
     };
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-submit when every question is answered; submit() sets state as part of the side effect
         if (canSubmit) submit();
     });
 

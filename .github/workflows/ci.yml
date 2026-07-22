@@ -7,7 +7,7 @@
 # on a tree without those pieces the test steps no-op and the build still
 # gates the merge. Beyond the fork version this also builds the frontend
 # (placeholder NEXT_PUBLIC_* env — verified sufficient for `next build`) and
-# runs eslint as an advisory step (see the comment on that step).
+# runs eslint as a blocking gate (the error backlog is at zero).
 name: CI
 
 on:
@@ -61,11 +61,9 @@ jobs:
       # harness PR merges); runs the suite once it exists.
       - run: npm test --if-present
 
-      # Advisory only for now: main currently carries 23 eslint errors, so a
-      # blocking gate would turn every PR red on inherited debt. Flip this to
-      # blocking (remove continue-on-error) once the backlog is burned down.
+      # Blocking gate: the eslint error backlog was burned down in this PR
+      # (0 errors; warnings do not fail the step), so any new error fails CI.
       - run: npm run lint
-        continue-on-error: true
 
       # Production build. NEXT_PUBLIC_* values are inlined at build time and
       # only need to be well-formed here — nothing is contacted during build.

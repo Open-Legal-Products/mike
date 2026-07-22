@@ -47,6 +47,7 @@ export function CitationQuotesHeader({
 
     useEffect(() => {
         if (!hasMultipleQuotes && viewMode === "list") {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- collapse list view when quotes drop to a single item
             setViewMode("single");
         }
     }, [hasMultipleQuotes, viewMode]);
