@@ -4,13 +4,15 @@ import {
 } from "../core/downloadTokens";
 
 /**
- * HMAC-signed download tokens with a mandatory expiry (30 days by default).
+ * HMAC-signed download tokens with an expiry (30 days by default).
  *
  * The token encodes the R2 storage path + filename + expiry; the backend
  * route `/download/:token` validates the signature and expiry and streams
- * the file. Links stored in chat history go stale after the TTL — a fresh
- * token is re-issued on next access — and tokens without an expiry are
- * rejected outright so no link is valid forever.
+ * the file. All newly issued tokens carry an expiry, and expired tokens are
+ * rejected. Legacy tokens issued before expiry existed (no `e` claim, but
+ * still HMAC-verified) are accepted transitionally so historical download
+ * links persisted in chat messages keep working — see
+ * core/downloadTokens.ts for the policy details.
  */
 
 function getSecret(): string {
