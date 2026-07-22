@@ -34,7 +34,8 @@ and on manual `workflow_dispatch`, the `e2e / playwright` job:
 the local Supabase admin API, so no login secret is needed — the credentials
 baked into that file are the single source of truth.
 
-Typical run: **~7 minutes**, **23 passed / 4 skipped / 0 failed** with no secret.
+A keyless run is expected to end **23 passed / 4 skipped / 0 failed** — the
+suite has 27 specs, 4 of them LLM-gated (see "Confirm the specs ran" below).
 
 ## Optional secret (fuller coverage)
 
@@ -105,18 +106,21 @@ Open the **Run Playwright** step in the Actions log:
 
 The uploaded `playwright-report` artifact shows the same per-spec statuses.
 
-### Model selection (gap fixed on the e2e suite branch)
+### Model selection (gap fixed in this branch)
 
 Earlier revisions of the four specs drove the model picker to a keyless
 **"Demo (no key needed)"** entry that exists in the amal66 fork but **not in
 this repository** (no `mike-demo` model id, no demo provider), so setting the
-secret unskipped them and they then failed at model selection. This is fixed on
-the e2e suite branch (#220): the specs' `selectClaudeModel` helper picks
-**Claude Sonnet 4.6** in the ModelToggle whenever the key is set, and the
-critical-path response assertion checks for a nonempty streamed assistant
-answer instead of the fork's canned demo reply. With that fix, setting the
-`ANTHROPIC_API_KEY` secret yields **27 passed / 0 skipped** (verified locally:
-keyless 23 passed / 4 skipped; with the key 27 / 0). The secret setup above is
+secret unskipped them and they then failed at model selection. This branch
+carries the fix (commit `test(e2e): select a real Claude model in LLM-gated
+specs`): the specs' `selectClaudeModel` helper picks **Claude Sonnet 4.6** in
+the ModelToggle whenever the key is set, and the critical-path response
+assertion checks for a nonempty streamed assistant answer instead of the
+fork's canned demo reply. The **23 passed / 4 skipped** keyless and
+**27 passed / 0 skipped** with-key figures come from that commit's own
+verification against a full local stack (backend, prod-build frontend, local
+Supabase + MinIO — see its commit message); they have not been re-measured
+since this branch was rebased onto current `main`. The secret setup above is
 all that is needed.
 
 ## Make it merge-blocking

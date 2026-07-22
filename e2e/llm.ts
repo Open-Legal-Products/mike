@@ -26,12 +26,9 @@
  * specs, while still running — and enforcing — the LLM specs whenever the key
  * is present. Setup steps: docs/e2e-ci.md, "Enable the LLM specs".
  *
- * Known gap: the specs' selectDemoModel helper still targets a keyless
- * "Demo (no key needed)" model that exists in the amal66 fork but not in this
- * repository, so once unskipped they additionally need that helper pointed at
- * a Claude model (see docs/e2e-ci.md, "Known gap: model selection"). The
- * skip-guard itself is correct either way — keyless, no model in this repo
- * can send.
+ * When the key IS set, the specs' selectClaudeModel helper picks "Claude
+ * Sonnet 4.6" in the ModelToggle (see docs/e2e-ci.md, "Model selection"), so
+ * the unskipped specs submit against a model this repository actually ships.
  */
 export const hasLlmKey = Boolean(process.env.ANTHROPIC_API_KEY);
 
