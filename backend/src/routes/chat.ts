@@ -15,6 +15,8 @@ import {
     runLLMStream,
     stripTransientAssistantEvents,
     parseAskInputsResponsePayload,
+    parseOptionalDocumentContext,
+    buildWordDocumentContextPrompt,
     type ChatMessage,
 } from "../lib/chat";
 import { completeText } from "../lib/llm";
@@ -438,6 +440,17 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     if (!parsedModel.ok) {
         return void res.status(400).json({ detail: parsedModel.detail });
     }
+    // Optional plain-text document context supplied by the Word add-in (the
+    // active document body, read via Word.run() — no upload, no stored
+    // document record). Injected into the LLM system prompt below.
+    const parsedDocumentContext = parseOptionalDocumentContext(
+        body.documentContext,
+    );
+    if (!parsedDocumentContext.ok) {
+        return void res
+            .status(400)
+            .json({ detail: parsedDocumentContext.detail });
+    }
     const askInputsResponse = parseAskInputsResponsePayload(
         body.ask_inputs_response,
     );
@@ -547,10 +560,17 @@ chatRouter.post("/", requireAuth, async (req, res) => {
         api_keys: apiKeys,
         legal_research_us: legalResearchUs,
     } = await getUserModelSettings(userId, db);
+    // Extra system context: the Word add-in's active-document body. The
+    // document text is user-controlled and a prompt-injection vector, so
+    // buildWordDocumentContextPrompt nonce-fences it before it enters the
+    // system prompt.
+    const systemPromptExtra = parsedDocumentContext.documentContext
+        ? buildWordDocumentContextPrompt(parsedDocumentContext.documentContext)
+        : undefined;
     const apiMessages = buildMessages(
         enrichedMessages,
         docAvailability,
-        undefined,
+        systemPromptExtra,
         undefined,
         legalResearchUs,
     );

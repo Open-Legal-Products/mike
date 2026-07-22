@@ -141,7 +141,7 @@ The build writes the task-pane assets and a deployable, URL-rewritten manifest t
 
 ### Chat tab
 
-Ask any question about the open document. Toggle **Use document as context** to send the full document text to the AI with each message (posted to the backend as `documentContext`, which the chat routes fence into the system prompt). Responses stream in real time. On any AI response you can:
+Ask any question about the open document. Toggle **Use document as context** to send the full document text to the AI with each message (posted to the backend as `documentContext`, which `POST /chat` nonce-fences into the system prompt as reference data). Responses stream in real time. On any AI response you can:
 
 - **Insert below cursor** — inserts one or more real paragraphs after the paragraph containing the current selection; selected text is never overwritten
 - **Insert below (tracked)** — performs the same paragraph-aware insertion with change tracking enabled, then restores the user's prior tracking mode
