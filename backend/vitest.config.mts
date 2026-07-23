@@ -19,19 +19,21 @@ export default defineConfig({
             // tested libs (access, storage keys/dispositions, downloadTokens,
             // userApiKeys provider/env checks, chat doc resolution, safeError,
             // llm model resolution, chat citations, userLookup,
-            // documentVersions, userDataCleanup) AND the large, still-untested
-            // feature libs (courtlistener, mcp, chat tool dispatch, llm
-            // providers, spreadsheet/docx handling), so the global number is
-            // still low. Measured on this tree: 11.18% statements, 10.98%
-            // branches, 14.43% functions, 10.91% lines. These floors sit just
-            // below that (rounded down to whole percents) so CI fails on a
-            // *drop*. Floors only go up: when you add tests, raise them in the
-            // same PR. Backlog + per-area status: docs/testing-coverage.md.
+            // documentVersions, userDataCleanup, docxTrackedChanges,
+            // documentTypes, chat prompts, systemWorkflows) AND the large,
+            // still-untested feature libs (courtlistener, mcp, chat tool
+            // dispatch, llm providers, spreadsheet handling), so the global
+            // number is still low. Measured on this tree: 23.88% statements,
+            // 17.98% branches, 23.06% functions, 23.79% lines. These floors
+            // sit just below that (rounded down to whole percents) so CI
+            // fails on a *drop*. Floors only go up: when you add tests, raise
+            // them in the same PR. Backlog + per-area status:
+            // docs/testing-coverage.md.
             thresholds: {
-                statements: 11,
-                branches: 10,
-                functions: 14,
-                lines: 10,
+                statements: 23,
+                branches: 17,
+                functions: 23,
+                lines: 23,
             },
         },
     },
