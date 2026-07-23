@@ -8,6 +8,79 @@ It has a Next.js frontend, an Express backend, Supabase Auth/Postgres, and Cloud
 
 Website: [mikeoss.com](https://mikeoss.com)
 
+## Docker (local, account-free)
+
+Run the whole stack in containers with **one command** and no external
+accounts. `docker-compose.yml` embeds everything: Supabase (Postgres + Auth +
+data API + a gateway), RustFS for S3-compatible object storage, and the
+frontend/backend. The schema loads itself on first boot.
+
+The only thing you must supply is **at least one model provider key**
+(Anthropic, Gemini, or OpenAI — these are external APIs and cannot be
+self-hosted).
+
+```bash
+# 1. Env files
+cp .env.example .env                  # frontend build vars (local demo keys prefilled)
+cp backend/.env.example backend/.env
+
+# 2. In backend/.env set:
+#    - one of ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY
+#    - DOWNLOAD_SIGNING_SECRET and USER_API_KEYS_ENCRYPTION_SECRET (openssl rand -hex 32)
+#    SUPABASE_URL / SUPABASE_SECRET_KEY / R2_* are set by docker-compose, leave them.
+
+# 3. Up
+docker compose up --build
+```
+
+Open `http://localhost:3000` and sign up. Other endpoints: Postgres
+`localhost:54322`, Supabase API `localhost:54321`, storage console
+`localhost:9001` (`rustfsadmin` / `rustfsadmin`), and the **Mailpit inbox** at
+`localhost:8025`.
+
+### What happens when you register
+
+1. You sign up with email + password at `localhost:3000`.
+2. The Auth service creates an **unconfirmed** user and emails a confirmation
+   link. No mail leaves your machine — it is caught by Mailpit.
+3. Open the Mailpit inbox at **http://localhost:8025**, open the "Confirm Your
+   Email" message, and click the link. That confirms the account and redirects
+   back to the app.
+4. Now you can log in.
+
+To skip the email step entirely (instant signup), set
+`GOTRUE_MAILER_AUTOCONFIRM: "true"` on the `auth` service in
+`docker-compose.yml` and `docker compose up -d --force-recreate auth`.
+
+> Mailpit only catches **auth** emails (signup, password reset). Other app email
+> (via Resend) still needs a real `RESEND_API_KEY` and is not routed to Mailpit.
+
+### Local models via Ollama
+
+[Ollama](https://ollama.com) models are detected **dynamically** — whatever you
+have installed (`ollama list`) shows up in every model picker under a **Local**
+group, with no API key. The backend reaches Ollama on the host at
+`http://host.docker.internal:11434/v1` (override with `OLLAMA_BASE_URL`) and
+exposes the live list at `GET /models/ollama`.
+
+Just pull a model and it appears after a refresh:
+
+```bash
+ollama pull qwen3.6
+```
+
+Notes:
+- Models that support tool-calling can drive the full assistant; ones that
+  don't (e.g. `phi3:mini`) still work for plain chat — the backend retries
+  without tools automatically.
+- Quality and speed depend on the local model; large models are noticeably
+  slower for tabular review (which runs the model across many cells).
+
+The Supabase JWT secret and the anon/`service_role` keys baked into
+`docker-compose.yml` / `.env.example` are the well-known Supabase **local demo**
+values — convenient for localhost, but regenerate them before exposing this
+anywhere.
+
 ## Contents
 
 - `frontend/` - Next.js application

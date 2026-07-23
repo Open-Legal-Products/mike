@@ -78,6 +78,7 @@ function providerLabel(provider: Provider): string {
 
 function missingModelApiKey(model: string, apiKeys: UserApiKeys) {
     const provider = providerForModel(model);
+    if (provider === "ollama") return null; // local, no key
     if (apiKeys[provider]?.trim()) return null;
     return {
         provider,

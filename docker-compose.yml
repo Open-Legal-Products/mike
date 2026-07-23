@@ -1,0 +1,231 @@
+# MikeOSS — full local stack, one `docker compose up`. No external accounts.
+# Supabase is embedded (db + auth + rest + gateway); storage is RustFS.
+# The only thing you must supply is one model API key in backend/.env.
+#
+# JWT secret + anon/service_role keys below are the well-known Supabase local
+# demo values — fine for localhost, NOT for anything exposed. The keys are JWTs
+# signed with the secret; don't change one without regenerating the others.
+
+services:
+  # --- Supabase: Postgres (ships base roles, the `auth` schema, auth.uid, etc.)
+  db:
+    image: supabase/postgres:17.6.1.136
+    ports:
+      # ponytail: infra ports bind loopback only — reachable from the host for
+      # debugging, never from the internet. Compose networking is unaffected, so
+      # the other services still reach these by service name.
+      - "127.0.0.1:${DB_PORT:-54322}:5432"   # psql from host if needed
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+      JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      JWT_EXP: 3600
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./supabase/roles.sql:/docker-entrypoint-initdb.d/zz-roles.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # --- Supabase: Auth (GoTrue). Auto-runs its migrations to build auth.users.
+  auth:
+    image: supabase/gotrue:v2.189.0
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: "9999"
+      # Must be the browser-reachable gateway URL — confirmation links are built
+      # from it, so a localhost value makes signup uncompletable off-machine.
+      API_EXTERNAL_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://localhost:54321}
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:postgres@db:5432/postgres
+      GOTRUE_SITE_URL: ${FRONTEND_URL:-http://localhost:3000}
+      GOTRUE_URI_ALLOW_LIST: "*"
+      GOTRUE_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+      GOTRUE_JWT_EXP: "3600"
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      # Open registration by default (localhost). On a public host, create your
+      # account then set GOTRUE_DISABLE_SIGNUP=true to pull the ladder up.
+      GOTRUE_DISABLE_SIGNUP: ${GOTRUE_DISABLE_SIGNUP:-false}
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
+      # Locally, send a real confirmation email (caught by Mailpit). Set to true
+      # where no SMTP is wired up, or signup can never be completed.
+      GOTRUE_MAILER_AUTOCONFIRM: ${GOTRUE_MAILER_AUTOCONFIRM:-false}
+      GOTRUE_SMTP_HOST: mailpit
+      GOTRUE_SMTP_PORT: "1025"
+      # No SMTP_USER/PASS: Mailpit needs no auth, and GoTrue refuses to send
+      # credentials over a plaintext (non-TLS) connection ("unencrypted connection").
+      GOTRUE_SMTP_ADMIN_EMAIL: admin@mike.local
+      GOTRUE_SMTP_SENDER_NAME: Mike
+      # Confirmation/recovery links resolve to the gateway, which strips /auth/v1.
+      GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_RECOVERY: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_INVITE: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: /auth/v1/verify
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    restart: unless-stopped
+
+  # --- Supabase: data API (PostgREST). Backend queries tables through this.
+  rest:
+    image: postgrest/postgrest:v14.12
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:postgres@db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
+    restart: unless-stopped
+
+  # --- Supabase: gateway. supabase-js hits :54321/{auth,rest}/v1/* through here.
+  gateway:
+    image: nginx:alpine
+    ports:
+      # Browser-facing (supabase-js talks to it directly), so not loopback-bound.
+      - "${GATEWAY_PORT:-54321}:8000"
+    volumes:
+      - ./supabase/gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - auth
+      - rest
+    restart: unless-stopped
+
+  # --- One-shot: load schema.sql once auth.users exists; grant service_role.
+  db-init:
+    image: supabase/postgres:17.6.1.136
+    depends_on:
+      db:
+        condition: service_healthy
+      auth:
+        condition: service_started
+    environment:
+      DB: postgres://postgres:postgres@db:5432/postgres
+    volumes:
+      - ./backend/schema.sql:/schema.sql:ro
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        until psql "$$DB" -tAc "select to_regclass('auth.users')" | grep -q auth; do
+          echo "waiting for auth schema..."; sleep 2;
+        done
+        if psql "$$DB" -tAc "select to_regclass('public.user_profiles')" | grep -q user_profiles; then
+          echo "schema already applied, skipping";
+        else
+          psql "$$DB" -v ON_ERROR_STOP=1 -f /schema.sql;
+        fi
+        psql "$$DB" -c "grant usage on schema public to service_role;
+          grant all privileges on all tables in schema public to service_role;
+          grant all privileges on all sequences in schema public to service_role;"
+    restart: "no"
+
+  # --- Local SMTP catcher. Auth emails land in its web inbox (no real sending).
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      # Loopback only: the inbox exposes auth + password-reset links.
+      - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"   # web inbox
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"   # SMTP
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    restart: unless-stopped
+
+  # --- S3-compatible object storage (RustFS, MinIO alternative).
+  storage:
+    image: rustfs/rustfs:latest
+    ports:
+      # Loopback only: creds below are the default admin pair.
+      - "127.0.0.1:${STORAGE_PORT:-9000}:9000"
+      - "127.0.0.1:${STORAGE_CONSOLE_PORT:-9001}:9001"
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_ACCESS_KEY: rustfsadmin
+      RUSTFS_SECRET_KEY: rustfsadmin
+    volumes:
+      - storage_data:/data
+    restart: unless-stopped
+
+  createbucket:
+    image: amazon/aws-cli
+    depends_on:
+      - storage
+    environment:
+      AWS_ACCESS_KEY_ID: rustfsadmin
+      AWS_SECRET_ACCESS_KEY: rustfsadmin
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: /bin/sh
+    command: >
+      -c "until aws --endpoint-url http://storage:9000 s3 ls; do echo 'waiting for storage'; sleep 2; done;
+          aws --endpoint-url http://storage:9000 s3 mb s3://mike || true"
+    restart: "no"
+
+  backend:
+    build: ./backend
+    ports:
+      - "${BACKEND_PORT:-3001}:3001"
+    # ponytail: both optional — local dev keeps secrets in backend/.env, hosted
+    # deploys (Dokploy et al) write them to the compose-root .env. Whichever
+    # exists wins; root .env is last so it takes precedence. Needs Compose 2.24+.
+    #
+    # Secrets must NOT be listed in `environment:` below — that section overrides
+    # env_file, so a bare name unset on the host blanks out the file's value.
+    env_file:
+      - path: ./backend/.env
+        required: false
+      - path: .env
+        required: false
+    environment:
+      # Topology + local Supabase wiring (override .env placeholders).
+      - PORT=3001
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - SUPABASE_URL=http://gateway:8000
+      - SUPABASE_SECRET_KEY=${SUPABASE_SECRET_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU}
+      - R2_ENDPOINT_URL=http://storage:9000
+      - R2_ACCESS_KEY_ID=rustfsadmin
+      - R2_SECRET_ACCESS_KEY=rustfsadmin
+      - R2_BUCKET_NAME=mike
+      # Local Ollama running on the host. Override OLLAMA_MODEL to change the tag.
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      createbucket:
+        condition: service_completed_successfully
+      auth:
+        condition: service_started
+      rest:
+        condition: service_started
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://localhost:54321}
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3001}
+    ports:
+      # Dokploy's own dashboard occupies 3000 — set FRONTEND_PORT there.
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  db_data:
+  storage_data:

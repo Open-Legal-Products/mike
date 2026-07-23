@@ -299,6 +299,19 @@ export async function getApiKeyStatus(): Promise<ApiKeyStatus> {
     return apiRequest<ApiKeyStatus>("/user/api-keys");
 }
 
+export interface OllamaModelOption {
+    id: string;
+    label: string;
+    group: "Local";
+}
+
+export async function getOllamaModels(): Promise<OllamaModelOption[]> {
+    const { models } = await apiRequest<{ models: OllamaModelOption[] }>(
+        "/models/ollama",
+    );
+    return models;
+}
+
 export async function saveApiKey(
     provider: ApiKeyProvider,
     apiKey: string | null,
