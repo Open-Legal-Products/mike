@@ -1,0 +1,34 @@
+# gitleaks config for the Secret scan workflow (.github/workflows/gitleaks.yml).
+#
+# Default rules apply everywhere; the allowlist below covers paths whose
+# "secrets" are deliberate fakes, verified by hand before listing:
+# test fixtures (sk-proj-abc123..., minted throwaway JWTs, the public
+# supabase-demo anon key) and docs examples (mike_sk_... placeholders).
+# Several of the paths only exist in old commits from before the repo was
+# restructured (apps/, sdks/, word-addin/) — the scan covers full history,
+# so history-only paths still need allowlisting. Keep entries narrow:
+# allowlist a specific file or test directory, never a whole source tree.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Unit-test fixtures: fake API keys and locally minted JWTs"
+paths = [
+    '''(^|/)src/lib/__tests__/safeError\.test\.ts$''',
+    '''(^|/)src/lib/__tests__/secretGuard\.test\.ts$''',
+    '''(^|/)src/lib/__tests__/webhookSignature\.test\.ts$''',
+]
+
+[[allowlists]]
+description = "E2E fixtures: mocked login tokens (history includes pre-restructure apps/word-addin/ path)"
+paths = [
+    '''(^|/)word-addin/e2e/auth\.spec\.ts$''',
+]
+
+[[allowlists]]
+description = "History-only paths: Python SDK tests and developer-platform docs with mike_sk_... placeholders"
+paths = [
+    '''^sdks/python/tests/''',
+    '''^docs/developer-platform\.md$''',
+]

@@ -1,0 +1,41 @@
+# CodeQL: static analysis for the whole tree (backend/ + frontend/).
+#
+# Both halves are interpreted TypeScript, so CodeQL's `build-mode: none`
+# extracts them straight from source — no npm ci, no build step, and no
+# autobuild guessing at the two-package layout. One analyze job covers
+# backend and frontend together. The weekly cron re-runs analysis on an
+# otherwise-quiet tree so newly shipped CodeQL queries still get applied.
+# Findings land in the Security tab (code scanning), not as CI noise.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Mondays 04:30 UTC.
+    - cron: "30 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (javascript-typescript)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required to upload results to code scanning.
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          build-mode: none
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
