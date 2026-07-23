@@ -435,6 +435,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                             />
                             <button
                                 type="button"
+                                aria-label={
+                                    isLoading ? "Stop response" : "Send message"
+                                }
                                 className={cn(
                                     "relative bg-gradient-to-b from-neutral-700 to-black text-white rounded-[10px] h-8 w-8 flex items-center justify-center cursor-pointer disabled:cursor-default disabled:from-neutral-600 disabled:to-black backdrop-blur-xl border border-white/30 active:enabled:scale-95 transition-all duration-150",
                                     "shadow-[0_5px_14px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.24)]",
