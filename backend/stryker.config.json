@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": "Mutation testing for the SECURITY-CRITICAL libs only (access control, download-token signing, secret redaction, citation extraction). These are the modules where a test suite that merely *executes* lines without *asserting* behavior is dangerous, so we pay the mutation-testing cost here and nowhere else (~3 min locally, ~10 min on a CI runner). Deliberately NOT a merge gate — run on demand via `npm run test:mutation` or the monthly mutation.yml workflow. Measured on this tree (Stryker 9.6.1, two runs): overall 74.0–76.4% — citations.ts ~78–80, safeError.ts 76–93 (regex mutants sometimes hit timeout instead of survived, which counts as killed — hence the swing), downloadTokens.ts 65.4, access.ts 63.6. access.ts's number is dragged down by no-coverage mutants in listAccessibleProjectIds/filterAccessibleDocumentIds (its *covered* score is 82.4%); the surviving safeError mutants are regex-edge weakenings of the redaction patterns. `thresholds.break` = 69 sits ~5 points under the lowest measured score: it fails a run only on a real regression, not on timeout-vs-survived noise. Floors only go up — when you kill survivors, raise `break` in the same PR. Widen `mutate` only alongside tests that keep the score above `break`.",
+  "testRunner": "vitest",
+  "mutate": [
+    "src/lib/access.ts",
+    "src/lib/downloadTokens.ts",
+    "src/lib/safeError.ts",
+    "src/lib/chat/citations.ts"
+  ],
+  "coverageAnalysis": "perTest",
+  "reporters": ["html", "clear-text", "progress"],
+  "htmlReporter": {
+    "fileName": "reports/mutation/mutation.html"
+  },
+  "thresholds": {
+    "high": 80,
+    "low": 70,
+    "break": 69
+  },
+  "tempDirName": ".stryker-tmp"
+}
