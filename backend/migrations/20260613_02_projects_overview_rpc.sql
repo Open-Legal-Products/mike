@@ -4,6 +4,14 @@
 -- Returns the project list, owner display name, and per-project counts in one
 -- database call for the /projects table.
 
+-- Drop first: `create or replace` cannot change a function's return row type,
+-- and a newer version of this function (different columns) already exists in
+-- a database bootstrapped from the current schema.sql. Dropping is safe on
+-- deployments of this migration's era too — the function is recreated
+-- immediately below, and 20260703_02_project_practice.sql later replaces it
+-- with the final shape. Same pattern as that migration.
+drop function if exists public.get_projects_overview(text, text);
+
 create or replace function public.get_projects_overview(
   p_user_id text,
   p_user_email text default null

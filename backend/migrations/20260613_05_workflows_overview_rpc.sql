@@ -3,6 +3,14 @@
 -- Workflows overview read model.
 -- Returns owned and shared workflows in one database call.
 
+-- Drop first: `create or replace` cannot change a function's return row type,
+-- and a newer version of this function (different columns) already exists in
+-- a database bootstrapped from the current schema.sql. Dropping is safe on
+-- deployments of this migration's era too — the function is recreated
+-- immediately below, and 20260625_01_workflow_metadata.sql later replaces it
+-- with the final shape. Same pattern as that migration.
+drop function if exists public.get_workflows_overview(text, text, text);
+
 create or replace function public.get_workflows_overview(
   p_user_id text,
   p_user_email text default null,

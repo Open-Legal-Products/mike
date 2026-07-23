@@ -1,0 +1,106 @@
+# CI: Supabase stack integration tests.
+#
+# Runs the gated stack-level suite (backend/src/__tests__/integration/
+# *.supabase.test.ts) against a REAL local Supabase stack booted on the
+# runner — GoTrue auth plus Postgres with RLS. On every PR this proves two
+# things mocks cannot: the deny-all RLS firewall actually holds for anon and
+# authenticated clients, and the auth↔API contract (sign-in, JWT verification,
+# service-role access) still works against the real services. The database
+# bootstrap mirrors backend/scripts/test-stack.sh, which is the source of
+# truth for how the stack is prepared locally; the suite itself self-skips
+# without SUPABASE_TEST_* env vars, which is why the plain CI workflow never
+# exercised it — this workflow is the trigger that finally does.
+#
+# Everything runs locally on the runner: no secrets, no external services.
+# The keys used are the Supabase CLI's well-known local development keys.
+name: Stack tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, upstream-main]
+  workflow_dispatch:
+
+# Booting a Supabase stack is the slowest job in the repo, so cancel runs
+# that a newer push to the same PR has superseded. Pushes to main each get
+# their own group (keyed by sha) and are never cancelled.
+concurrency:
+  group: stack-tests-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+jobs:
+  stack:
+    name: Supabase stack integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      # Pinned so a CLI release can't silently change what CI proves; bump
+      # deliberately (this is also the harness you re-run on image bumps).
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.108.0
+
+      # The repo intentionally has no committed supabase/ config directory —
+      # `supabase init` generates a throwaway one on the runner (it is
+      # non-interactive without a TTY). Start only the services the suite
+      # exercises: Postgres, GoTrue (auth, not excludable so not listed),
+      # PostgREST, and Kong. The excluded extras (studio, realtime, storage,
+      # analytics, ...) are dead weight here and their health checks are the
+      # flaky part of a cold `supabase start`.
+      - name: Start local Supabase stack
+        run: |
+          supabase init
+          supabase start -x studio,imgproxy,inbucket,analytics,vector,realtime,storage,edge-runtime,functions,meta
+
+      # Derive the connection env vars from `supabase status -o json` exactly
+      # as backend/scripts/test-stack.sh does (same JSON keys, same node
+      # extraction), and publish them to the following steps.
+      - name: Export stack connection env
+        run: |
+          STATUS="$(supabase status -o json)"
+          read_key() { node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(String(JSON.parse(s)['$1']??'')))" <<<"$STATUS"; }
+          {
+            echo "SUPABASE_TEST_URL=$(read_key API_URL)"
+            echo "SUPABASE_TEST_SERVICE_ROLE_KEY=$(read_key SERVICE_ROLE_KEY)"
+            echo "SUPABASE_TEST_ANON_KEY=$(read_key ANON_KEY)"
+            echo "SUPABASE_TEST_DB_URL=$(read_key DB_URL)"
+          } >> "$GITHUB_ENV"
+
+      # Same bootstrap a fresh local checkout gets from test-stack.sh: load
+      # schema.sql into the empty stack, then apply every dated migration on
+      # top in filename order — schema.sql is a point-in-time snapshot and is
+      # known to lag the migrations, so the migrations must not be skipped.
+      # This doubles as a schema-drift smoke test: schema.sql and the
+      # migrations must apply cleanly together, so a migration that conflicts
+      # with (or was never folded into) schema.sql fails this step before it
+      # can break a fresh deployment.
+      - name: Load schema and migrations (drift smoke test)
+        run: |
+          test -n "$SUPABASE_TEST_DB_URL"
+          psql "$SUPABASE_TEST_DB_URL" -X --set ON_ERROR_STOP=1 --file backend/schema.sql
+          for migration in $(LC_ALL=C ls backend/migrations/*.sql); do
+            echo "Applying $migration"
+            psql "$SUPABASE_TEST_DB_URL" -X --set ON_ERROR_STOP=1 --file "$migration"
+          done
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      # The exact suite test-stack.sh invokes. SUPABASE_TEST_* are already in
+      # the job env, so the gated describe blocks run instead of self-skipping.
+      - name: Run stack integration tests
+        working-directory: backend
+        run: |
+          npx vitest run \
+            src/__tests__/integration/stack.supabase.test.ts \
+            src/__tests__/integration/access.supabase.test.ts
