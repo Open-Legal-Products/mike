@@ -9,7 +9,10 @@ makes that check *required*.
 ## What the workflow does
 
 On every `pull_request` targeting `main` (or `upstream-main`, the fork mirror),
-and on manual `workflow_dispatch`, the `e2e / playwright` job:
+on manual `workflow_dispatch`, and **nightly at 03:47 UTC** (a `schedule` cron,
+so drift that lands between PRs — dependency bumps, Supabase CLI changes,
+selector-breaking UI tweaks — is caught within a day), the `e2e / playwright`
+job:
 
 1. installs the root (Playwright), `backend/`, and `frontend/` dependencies;
 2. boots **MinIO** (S3-compatible object storage — several specs upload documents);
@@ -34,7 +37,27 @@ and on manual `workflow_dispatch`, the `e2e / playwright` job:
 the local Supabase admin API, so no login secret is needed — the credentials
 baked into that file are the single source of truth.
 
-Typical run: **~7 minutes**, **23 passed / 4 skipped / 0 failed** with no secret.
+Typical run: **~7 minutes**, all green with no secret (the 4 LLM specs skip).
+
+## Accessibility scans
+
+`e2e/accessibility.spec.ts` runs an [axe-core](https://github.com/dequelabs/axe-core)
+scan (via `@axe-core/playwright`) over the core pages: `/login` (pre-auth),
+`/assistant`, `/projects`, and `/tabular-reviews`. The policy is two-tier:
+**`critical`-impact violations fail the build**; `serious`-impact violations are
+printed to the test output but do not fail — enforce at critical first, then
+ratchet `serious` into the failing tier (`BLOCKING_IMPACTS` in the spec) once
+that backlog is cleared. The scans need no LLM key and run on every trigger.
+
+## Failure artifacts
+
+Playwright retries failed specs up to twice on CI and records a **trace** on the
+first retry (`retries` / `trace: "on-first-retry"` in `playwright.config.ts`).
+On pass, fail, or timeout, the job uploads `playwright-report/` and
+`test-results/` as the **`playwright-report`** artifact (14-day retention): from
+the failed run's page in the Actions tab, download it, then
+`npx playwright show-report playwright-report` locally to see per-spec results,
+screenshots, and step-by-step traces of what the browser did.
 
 ## Optional secret (fuller coverage)
 

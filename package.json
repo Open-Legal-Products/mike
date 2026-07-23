@@ -7,6 +7,7 @@
         "test:e2e:ui": "playwright test --ui"
     },
     "devDependencies": {
+        "@axe-core/playwright": "^4.12.1",
         "@playwright/test": "^1.61.1",
         "@types/node": "^22.14.1",
         "typescript": "^5.8.3"

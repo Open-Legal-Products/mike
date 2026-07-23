@@ -24,6 +24,16 @@ on:
     # `main` is the destination upstream; `upstream-main` is the fork's mirror of
     # it, so the suite is exercised on the fork PR and stays correct once merged.
     branches: [main, upstream-main]
+  # Nightly run against the default branch, so drift that lands BETWEEN pull
+  # requests (a dependency bump, a Supabase CLI change, an upstream UI tweak
+  # breaking a selector) is caught within a day instead of surfacing on the next
+  # unrelated PR. 03:47 UTC is a quiet hour for GitHub's cron pool (on-the-hour
+  # slots are congested and can be delayed or dropped). Scheduled runs exercise
+  # the 4 LLM-gated specs only when the ANTHROPIC_API_KEY repository secret is
+  # configured — without it they self-skip (e2e/llm.ts) and the run still
+  # covers the other specs.
+  schedule:
+    - cron: "47 3 * * *"
 
 # Don't pile up runs on rapid pushes to the same PR.
 concurrency:
