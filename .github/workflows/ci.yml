@@ -69,9 +69,10 @@ jobs:
 
       - run: npm ci
 
-      # No-ops on a tree without a "test" script (e.g. before the vitest
-      # harness PR merges); runs the suite once it exists.
-      - run: npm test --if-present
+      # Runs the suite with the coverage-ratchet floor check (see
+      # docs/frontend-testing.md); --if-present keeps the fallback semantics,
+      # so a tree without the "test:coverage" script still no-ops.
+      - run: npm run test:coverage --if-present
 
       # Blocking gate: the eslint error backlog was burned down in this PR
       # (0 errors; warnings do not fail the step), so any new error fails CI.
