@@ -28,8 +28,27 @@ ALTER TABLE public.document_versions
 -- assistant edits inherit the prior version's display_name (see
 -- runEditDocument), so the version number is no longer baked into the
 -- default label — it's surfaced as a separate tag in the UI.
-UPDATE public.document_versions dv
-SET display_name = d.filename
-FROM public.documents d
-WHERE dv.display_name IS NULL
-  AND d.id = dv.document_id;
+--
+-- Guarded: documents.filename was later moved to document_versions
+-- (20260602_02/_04) and no longer exists in a database bootstrapped from the
+-- current schema.sql, where there are no rows to backfill anyway. Only run
+-- the backfill where the historical column is still present, so this file
+-- applies cleanly both to deployments of its era and on top of schema.sql
+-- (which CI does as a schema-drift smoke test).
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'documents'
+      AND column_name = 'filename'
+  ) THEN
+    EXECUTE $sql$
+      UPDATE public.document_versions dv
+      SET display_name = d.filename
+      FROM public.documents d
+      WHERE dv.display_name IS NULL
+        AND d.id = dv.document_id
+    $sql$;
+  END IF;
+END $$;

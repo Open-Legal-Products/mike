@@ -19,38 +19,60 @@ alter table public.document_versions
 
 -- 2. Backfill: ensure every document has at least one document_versions row
 --    (the original upload). Older docs may predate document_versions entirely.
-insert into public.document_versions (
-    document_id,
-    storage_path,
-    pdf_storage_path,
-    source,
-    version_number,
-    display_name,
-    created_at
-)
-select
-    d.id,
-    d.storage_path,
-    d.pdf_storage_path,
-    'upload',
-    1,
-    d.filename,
-    d.created_at
-from public.documents d
-left join public.document_versions dv
-    on dv.document_id = d.id and dv.source = 'upload'
-where dv.id is null
-  and d.storage_path is not null;
-
 -- 3. Backfill pdf_storage_path onto the existing 'upload' rows for docs
 --    that already had one but predate document_versions.pdf_storage_path.
-update public.document_versions dv
-set pdf_storage_path = d.pdf_storage_path
-from public.documents d
-where dv.document_id = d.id
-  and dv.source = 'upload'
-  and dv.pdf_storage_path is null
-  and d.pdf_storage_path is not null;
+--
+-- Both steps are guarded: the documents.{storage_path, pdf_storage_path,
+-- filename} columns they read were dropped by step 5 below and by later
+-- migrations, so they no longer exist in a database bootstrapped from the
+-- current schema.sql — where there are no rows to backfill anyway. Only run
+-- the backfills where the historical columns are still present, so this file
+-- applies cleanly both to deployments of its era and on top of schema.sql
+-- (which CI does as a schema-drift smoke test).
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'documents'
+      AND column_name = 'storage_path'
+  ) THEN
+    EXECUTE $sql$
+      insert into public.document_versions (
+          document_id,
+          storage_path,
+          pdf_storage_path,
+          source,
+          version_number,
+          display_name,
+          created_at
+      )
+      select
+          d.id,
+          d.storage_path,
+          d.pdf_storage_path,
+          'upload',
+          1,
+          d.filename,
+          d.created_at
+      from public.documents d
+      left join public.document_versions dv
+          on dv.document_id = d.id and dv.source = 'upload'
+      where dv.id is null
+        and d.storage_path is not null
+    $sql$;
+
+    EXECUTE $sql$
+      update public.document_versions dv
+      set pdf_storage_path = d.pdf_storage_path
+      from public.documents d
+      where dv.document_id = d.id
+        and dv.source = 'upload'
+        and dv.pdf_storage_path is null
+        and d.pdf_storage_path is not null
+    $sql$;
+  END IF;
+END $$;
 
 -- 4. Backfill current_version_id for any document missing one — point it
 --    at the most recent version (assistant_edit / user_upload preferred,
