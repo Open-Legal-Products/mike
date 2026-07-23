@@ -82,5 +82,9 @@
         "vitest": "^4.1.9",
         "wrangler": "^4.90.0"
     },
+    "overrides": {
+        "tmp": "^0.2.6",
+        "form-data@>=4.0.0 <4.0.6": "^4.0.6"
+    },
     "license": "AGPL-3.0-only"
 }
