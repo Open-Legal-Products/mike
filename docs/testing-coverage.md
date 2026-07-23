@@ -28,27 +28,31 @@ Per-area statement coverage from `npm run test:coverage`:
 | `lib/safeError.ts` | 100 | ✓ |
 | `lib/userDataCleanup.ts` | 100 | ✓ |
 | `lib/llm/models.ts` | 100 | ✓ |
+| `lib/documentTypes.ts` | 100 | ✓ |
+| `lib/chat/prompts.ts` | 100 | ✓ |
+| `lib/systemWorkflows.ts` | 100 | ✓ |
 | `lib/documentVersions.ts` | 98 | ✓ |
 | `lib/chat/citations.ts` | 98 | ✓ |
 | `lib/userLookup.ts` | 91 | ✓ |
+| `lib/docxTrackedChanges.ts` | 89 | ✓ |
 | `lib/downloadTokens.ts` | 87 | ✓ |
 | `lib/chat/types.ts` | 85 | ✓ |
 | `lib/access.ts` | 76 | ✓ |
 | `lib/storage.ts` | 33 | partial — key/disposition helpers only |
 | `lib/userApiKeys.ts` | 13 | partial — provider/env helpers only |
-| `lib/documentTypes.ts`, `lib/userSettings.ts`, `lib/upload.ts`, `lib/officeText.ts` | 0 | ✗ |
-| `lib/convert.ts`, `lib/spreadsheet.ts`, `lib/docxTrackedChanges.ts` | 0 | ✗ |
+| `lib/userSettings.ts`, `lib/upload.ts`, `lib/officeText.ts` | 0 | ✗ |
+| `lib/convert.ts`, `lib/spreadsheet.ts` | 0 | ✗ |
 | `lib/userDataExport.ts` | 0 | ✗ |
-| `lib/courtlistener.ts`, `lib/systemWorkflows.ts` | 0 | ✗ |
-| `lib/chat/prompts.ts`, `lib/chat/contextBuilders.ts`, `lib/chat/streaming.ts` | 0 | ✗ |
+| `lib/courtlistener.ts` | 0 | ✗ |
+| `lib/chat/contextBuilders.ts`, `lib/chat/streaming.ts` | 0 | ✗ |
 | `lib/chat/tools/**` (schemas, documentOps, toolDispatcher) | 0 | ✗ |
 | `lib/llm/**` (providers, tools, index, rawStreamLog) | ~4 | ✗ (only models.ts) |
 | `lib/mcp/**` (client, servers, oauth, types) | 0 | ✗ |
 
-Global: **11.18% statements / 10.98% branches / 14.43% functions / 10.91%
+Global: **23.88% statements / 17.98% branches / 23.06% functions / 23.79%
 lines**. The global number is low because `src/lib/**` includes several very
-large feature libs (toolDispatcher, documentOps, systemWorkflows,
-courtlistener, docxTrackedChanges) that dominate the line count.
+large feature libs (toolDispatcher, documentOps, courtlistener) that dominate
+the line count.
 
 ## TODO — untested libs, in priority order
 
@@ -56,9 +60,9 @@ Each item is meant to be one self-contained PR: add the suite, then raise the
 floors in `backend/vitest.config.mts` to just below the new measured numbers.
 Size is a rough guess: S ≈ an hour, M ≈ an afternoon.
 
-- [ ] `lib/documentTypes.ts` — pure catalog/lookup of document types; assert
+- [x] `lib/documentTypes.ts` — pure catalog/lookup of document types; assert
       known types resolve and unknown inputs fall back sanely. (S)
-- [ ] `lib/chat/prompts.ts` — pure prompt builders; assert key instructions and
+- [x] `lib/chat/prompts.ts` — pure prompt builders; assert key instructions and
       interpolated values appear in the output strings. (S)
 - [ ] `lib/userSettings.ts` — title/tabular model resolution from which API
       keys a user has; reuse the Supabase mock pattern from
@@ -79,12 +83,12 @@ Size is a rough guess: S ≈ an hour, M ≈ an afternoon.
       and cell extraction, including empty/edge cells. (M)
 - [ ] `lib/chat/contextBuilders.ts` — context assembly from doc stores; assert
       doc labels, truncation, and ordering. (M)
-- [ ] `lib/docxTrackedChanges.ts` — tracked-changes XML round-trip on a minimal
+- [x] `lib/docxTrackedChanges.ts` — tracked-changes XML round-trip on a minimal
       docx fixture: insert/delete runs, accept/reject. High value: document
       integrity. (M)
 - [ ] `lib/courtlistener.ts` — API client with mocked fetch: query building,
       pagination, and error paths. Legal-research correctness. (M)
-- [ ] `lib/systemWorkflows.ts` — mostly data: assert workflow definitions are
+- [x] `lib/systemWorkflows.ts` — mostly data: assert workflow definitions are
       well-formed (unique ids, non-empty skill markdown). (S)
 - [ ] `lib/llm/tools.ts` + `lib/llm/index.ts` — provider-neutral tool plumbing
       and provider selection with mocked provider modules. (M)
@@ -109,7 +113,7 @@ better exercised by the e2e suite.
 ## Ratchet policy
 
 `backend/vitest.config.mts` enforces global coverage **floors** (currently
-statements 11 / branches 10 / functions 14 / lines 10). They are a
+statements 23 / branches 17 / functions 23 / lines 23). They are a
 no-regression ratchet, not a target:
 
 - **Floors only go up.** Never lower them to get a PR green — that means your
