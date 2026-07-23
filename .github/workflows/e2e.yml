@@ -1,0 +1,225 @@
+# End-to-end Playwright suite (auth, chat, projects, tabular reviews, workflows).
+#
+# This workflow is what makes the e2e suite a MERGE GATE: it runs on every pull
+# request into a protected branch, boots a full local stack (Supabase + backend
+# API + Next.js web + MinIO object storage), runs Playwright, and fails the check
+# when any spec fails. To have a red run actually BLOCK a merge you must also mark
+# this job "e2e / playwright" as a required status check in branch protection —
+# see docs/e2e-ci.md ("Make it merge-blocking").
+#
+# The suite is green with NO secret: the 4 LLM-dependent specs (chat + critical
+# path) skip themselves when ANTHROPIC_API_KEY is absent (see e2e/llm.ts), so a
+# keyless run passes the other ~23 specs. Set the ANTHROPIC_API_KEY secret under
+# Settings > Secrets and variables > Actions to also run and enforce those 4.
+# See docs/e2e-ci.md for the full picture.
+#
+# The e2e user (e2e@mike.local) is bootstrapped in-job by e2e/auth.setup.ts against
+# the local Supabase admin API, so no E2E_PASSWORD secret is needed — the defaults
+# baked into auth.setup.ts are the single source of truth.
+name: e2e
+
+on:
+  workflow_dispatch:
+  pull_request:
+    # `main` is the destination upstream; `upstream-main` is the fork's mirror of
+    # it, so the suite is exercised on the fork PR and stays correct once merged.
+    branches: [main, upstream-main]
+
+# Don't pile up runs on rapid pushes to the same PR.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    env:
+      # Defaults match e2e/auth.setup.ts; overriding the password here would break
+      # the valid-login specs, so only the base URL is pinned.
+      PLAYWRIGHT_BASE_URL: http://localhost:3000
+      # Exposed to the Playwright process (not just backend/.env) so the LLM-gated
+      # specs can skip themselves when no key is present — see e2e/llm.ts. When the
+      # secret is set they run and must pass; when absent they skip, so a keyless
+      # run (e.g. a fork PR) is still green on the other ~20 specs.
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Three installs: the root package (Playwright + the e2e tooling), the
+      # backend API, and the Next.js web app. Each carries its own lockfile in
+      # this repo's backend/ + frontend/ layout (no root workspace).
+      - name: Install root (Playwright) deps
+        run: npm ci
+      - name: Install backend deps
+        run: npm ci --prefix backend
+      - name: Install frontend deps
+        run: npm ci --prefix frontend
+
+      # npm ci intermittently skips lightningcss's Linux native optional dep
+      # (npm/cli#4828); without it `next dev` can't compile Tailwind CSS and the
+      # web server never boots, so wait-on times out and every spec fails.
+      - name: Ensure lightningcss native binary
+        run: npm install --no-save lightningcss --prefix frontend
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      # Object storage. Three specs upload a document (tabular-review row,
+      # project-folder fixture) and assert the result renders; those uploads go
+      # through backend/src/lib/storage.ts, an S3-compatible client that only
+      # ENABLES when R2_ENDPOINT_URL + R2_ACCESS_KEY_ID + R2_SECRET_ACCESS_KEY are
+      # set (region "auto", forcePathStyle true — MinIO-compatible as written).
+      # With no storage the upload endpoint 5xxs and the row never appears. A
+      # `docker run` (not a `services:` container) is used because the minio image
+      # needs the `server /data` argument the services block can't supply, and we
+      # must create the bucket after the server is healthy.
+      - name: Start MinIO (object storage)
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/ready >/dev/null; then
+              echo "MinIO ready"; break
+            fi
+            echo "waiting for minio ($i)…"; sleep 2
+          done
+          AWS_ACCESS_KEY_ID=minioadmin \
+          AWS_SECRET_ACCESS_KEY=minioadmin \
+          AWS_DEFAULT_REGION=us-east-1 \
+            aws --endpoint-url http://localhost:9000 s3 mb s3://mike
+          AWS_ACCESS_KEY_ID=minioadmin \
+          AWS_SECRET_ACCESS_KEY=minioadmin \
+          AWS_DEFAULT_REGION=us-east-1 \
+            aws --endpoint-url http://localhost:9000 s3 ls s3://mike
+
+      # Supabase (Auth + Postgres). This layout ships no supabase/ config dir
+      # (the app targets a hosted Supabase project), so we scaffold one with
+      # `supabase init` purely to boot the CLI's local stack, then load the
+      # repository's own fresh-database schema — exactly what the README tells a
+      # human to run on a new database (backend/schema.sql).
+      - name: Start local Supabase
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Init + start Supabase, load schema + migrations
+        run: |
+          supabase init --force --with-vscode-settings=false || supabase init --force
+          supabase start
+          DB_URL=$(supabase status -o json | jq -r '.DB_URL')
+          # 1) Base schema. README: "For a new Supabase database ... run
+          # backend/schema.sql". It is meant to be the latest shape but in practice
+          # lags the migrations (e.g. it is missing workflow_open_source_submissions,
+          # which GET /workflows/:id queries — a 500 that breaks the workflow specs).
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f backend/schema.sql
+          # 2) Apply every dated migration on top. They are written to be safe to
+          # re-run (IF NOT EXISTS / ADD COLUMN IF NOT EXISTS), so the ones already
+          # in schema.sql are no-ops and the newer ones fill the gaps. Verified on a
+          # fresh CLI DB: all migrations apply with zero errors. Kept fail-tolerant
+          # so one non-idempotent migration can't wedge the whole gate — mismatches
+          # surface as a spec failure downstream, not an opaque CI abort.
+          for m in $(ls backend/migrations/*.sql | sort); do
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -f "$m" >/dev/null 2>&1 \
+              || echo "::warning::migration returned a non-zero status (already applied?): $m"
+          done
+          # 3) schema.sql revokes client grants (anon/authenticated) on purpose, but
+          # assumes a HOSTED Supabase where service_role already holds full table
+          # access. On a fresh CLI stack loaded via psql, service_role gets no grants
+          # on the new public tables, so the backend — which queries exclusively as
+          # service_role (lib/supabase.ts) — 500s with "permission denied for table
+          # user_profiles" on the first write. Grant AFTER migrations so the tables
+          # they add are covered too.
+          psql "$DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          GRANT USAGE ON SCHEMA public TO service_role;
+          GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+          GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+          GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO service_role;
+          SQL
+          # 4) PostgREST cached its schema when `supabase start` booted it (before
+          # the DDL above). Tell it to reload so the new tables/grants are visible.
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -c "NOTIFY pgrst, 'reload schema';"
+
+      - name: Wire env from Supabase
+        run: |
+          API_URL=$(supabase status -o json | jq -r '.API_URL')
+          ANON_KEY=$(supabase status -o json | jq -r '.ANON_KEY')
+          SERVICE_KEY=$(supabase status -o json | jq -r '.SERVICE_ROLE_KEY')
+          # dotenv is last-wins: start from the committed example (so any key we
+          # don't override keeps a sane placeholder) then append the real values.
+          cp backend/.env.example backend/.env
+          {
+            echo "PORT=3001"
+            echo "FRONTEND_URL=http://localhost:3000"
+            echo "SUPABASE_URL=$API_URL"
+            echo "SUPABASE_SECRET_KEY=$SERVICE_KEY"
+            # Both secrets are consumed lazily by download-token signing and API-key
+            # encryption; supply CI dummies well over any length floor.
+            echo "DOWNLOAD_SIGNING_SECRET=ci-download-signing-secret-0123456789abcdef"
+            echo "USER_API_KEYS_ENCRYPTION_SECRET=ci-user-api-keys-encryption-secret-0123456789abcdef"
+            # The suite drives many writes back-to-back (create folder/workflow/
+            # review, upload, update profile, login); the default per-window caps
+            # trip 429s that surface as flaky timeouts. e2e isn't testing
+            # throttling, so raise every tunable cap above one serial run's needs.
+            echo "RATE_LIMIT_GENERAL_MAX=100000"
+            echo "RATE_LIMIT_CHAT_MAX=100000"
+            echo "RATE_LIMIT_CHAT_CREATE_MAX=100000"
+            echo "RATE_LIMIT_UPLOAD_MAX=100000"
+            echo "RATE_LIMIT_EXPORT_MAX=100000"
+            echo "RATE_LIMIT_DATA_DELETE_MAX=100000"
+            # Point the S3-compatible storage adapter at the MinIO container above.
+            echo "R2_ENDPOINT_URL=http://localhost:9000"
+            echo "R2_ACCESS_KEY_ID=minioadmin"
+            echo "R2_SECRET_ACCESS_KEY=minioadmin"
+            echo "R2_BUCKET_NAME=mike"
+            echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}"
+          } >> backend/.env
+          # next build inlines NEXT_PUBLIC_* at build time, so these must be set
+          # before the "Build web" step below.
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=$ANON_KEY"
+            echo "NEXT_PUBLIC_API_BASE_URL=http://localhost:3001"
+          } > frontend/.env.local
+
+      # Serve a PRODUCTION build, not `next dev`. Two reasons the dev server makes
+      # this suite flaky: (1) its on-demand route compilation makes the first hit
+      # of each page arbitrarily slow (20s waitForResponse assertions time out),
+      # and (2) its hydration-error overlay injects DOM (nextjs__container_errors…)
+      # that pollutes text locators — e.g. getByText('All') matched the overlay's
+      # "Call Stack"/"…fallback" text and failed strict mode. A production build has
+      # neither: no overlay, no JIT compile. Verified locally — flipping dev→start
+      # took the suite from intermittent overlay/timeout failures to green.
+      - name: Build web (production)
+        run: npm run build --prefix frontend
+
+      - name: Start backend API
+        run: npm run dev --prefix backend &
+      - name: Start web (production server)
+        run: npm run start --prefix frontend &
+
+      - name: Wait for servers
+        run: npx wait-on http://localhost:3001/health http://localhost:3000 --timeout 120000
+
+      # playwright.config.ts sets webServer to undefined when CI=true, so the job
+      # is responsible for the servers above; Playwright just drives them.
+      - name: Run Playwright
+        run: npx playwright test
+
+      # always() (not !cancelled()) so the report still uploads when the job is
+      # cancelled by the timeout — that's exactly when you most need the traces.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+          if-no-files-found: ignore
