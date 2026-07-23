@@ -28,7 +28,7 @@ maybeDescribe("Supabase access integration", () => {
         const privateDocId = crypto.randomUUID();
 
         try {
-            await admin.from("projects").insert([
+            const projectsInsert = await admin.from("projects").insert([
                 {
                     id: sharedProjectId,
                     user_id: ownerId,
@@ -42,9 +42,16 @@ maybeDescribe("Supabase access integration", () => {
                     shared_with: [],
                 },
             ]);
+            if (projectsInsert.error) {
+                throw new Error(
+                    `Could not seed projects: ${projectsInsert.error.message}`,
+                    { cause: projectsInsert.error },
+                );
+            }
+
             // filename/file_type live on document_versions in this schema —
             // the documents rows only need identity + ownership columns.
-            await admin.from("documents").insert([
+            const documentsInsert = await admin.from("documents").insert([
                 {
                     id: sharedDocId,
                     user_id: ownerId,
@@ -56,6 +63,12 @@ maybeDescribe("Supabase access integration", () => {
                     project_id: privateProjectId,
                 },
             ]);
+            if (documentsInsert.error) {
+                throw new Error(
+                    `Could not seed documents: ${documentsInsert.error.message}`,
+                    { cause: documentsInsert.error },
+                );
+            }
 
             await expect(
                 listAccessibleProjectIds(
