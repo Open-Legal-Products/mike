@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { createServerSupabase } from "../supabase";
 import {
   attachActiveVersionPaths,
@@ -14,6 +15,72 @@ import {
 import { buildSystemPrompt } from "./prompts";
 import { parseCitations, createCitation } from "./citations";
 import type { AssistantEvent } from "./streaming";
+
+// ---------------------------------------------------------------------------
+// Prompt-injection spotlighting helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Generates a random 16-byte hex nonce for use as the spotlighting fence.
+ * A fresh nonce per request means injected content cannot predict the tag it
+ * would need to forge in order to escape the <untrusted-content> block.
+ */
+export function generateSpotlightNonce(): string {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+/**
+ * Neutralizes fence tokens the fenced text tries to smuggle in: redacts any
+ * echoed nonce and HTML-encodes the `<` of any literal fence tag (both the
+ * `<untrusted-content>` and `<workflow-instructions>` families), so even a
+ * sloppy model never sees a clean boundary token inside the data.
+ */
+function neutralizeFenceTokens(text: string, nonce: string): string {
+  return String(text)
+    .split(nonce)
+    .join("[redacted-nonce]")
+    .replace(
+      /<(\/?)(untrusted-content|workflow-instructions)/gi,
+      "&lt;$1$2",
+    );
+}
+
+/**
+ * Wraps untrusted user-controlled text in a nonce-fenced tag.
+ * The LLM is instructed (in the system prompt) to treat everything inside
+ * these tags as data, not as instructions — a technique called "spotlighting".
+ *
+ * The nonce is on BOTH the opening and closing tags and is unpredictable per
+ * request, so untrusted text cannot fabricate a matching closing tag to escape
+ * the fence. As defense-in-depth we also neutralize any fence tokens the text
+ * tries to smuggle in (see neutralizeFenceTokens).
+ */
+export function spotlight(text: string, nonce: string): string {
+  const neutralized = neutralizeFenceTokens(text, nonce);
+  return `<untrusted-content nonce="${nonce}">\n${neutralized}\n</untrusted-content nonce="${nonce}">`;
+}
+
+/**
+ * Wraps a user-installed workflow body in the semi-trusted
+ * `<workflow-instructions>` fence.
+ *
+ * Workflow bodies are different from document content: the user installed the
+ * workflow precisely so the model FOLLOWS it, so it cannot go in
+ * `<untrusted-content>` ("data only, never instructions") without
+ * self-contradiction. The system prompt tells the model to follow
+ * `<workflow-instructions>` like a user request, but never to let a workflow
+ * override system policy, exfiltrate data, or re-interpret other fenced
+ * content. External data a workflow references (documents, fetched text)
+ * still arrives via `spotlight()` and stays data-only.
+ *
+ * Uses the same per-request nonce and fence-token neutralization as
+ * `spotlight()`, so a malicious workflow body cannot close its own fence or
+ * forge an `<untrusted-content>` boundary.
+ */
+export function spotlightWorkflow(text: string, nonce: string): string {
+  const neutralized = neutralizeFenceTokens(text, nonce);
+  return `<workflow-instructions nonce="${nonce}">\n${neutralized}\n</workflow-instructions nonce="${nonce}">`;
+}
 
 
 export async function enrichWithPriorEvents(
@@ -132,6 +199,7 @@ export function buildMessages(
   systemPromptExtra?: string,
   docIndex?: DocIndex,
   includeResearchTools = true,
+  nonce?: string,
 ) {
   const formatted: unknown[] = [];
   let systemContent = buildSystemPrompt(includeResearchTools);
@@ -143,9 +211,12 @@ export function buildMessages(
   if (docAvailability.length) {
     systemContent += "\n\n---\nAVAILABLE DOCUMENTS:\n";
     for (const doc of docAvailability) {
-      const label = doc.folder_path
+      // Filenames are user-controlled and may contain injected text.
+      // Wrap in the spotlight fence so the LLM treats them as data.
+      const rawLabel = doc.folder_path
         ? `${doc.folder_path} / ${doc.filename}`
         : doc.filename;
+      const label = nonce ? spotlight(rawLabel, nonce) : rawLabel;
       systemContent += `- ${doc.doc_id}: ${label}\n`;
     }
     systemContent +=
@@ -166,14 +237,20 @@ export function buildMessages(
   for (const msg of messages) {
     let content = msg.content ?? "";
     if (msg.role === "user" && msg.workflow) {
-      content = `[Workflow: ${msg.workflow.title} (id: ${msg.workflow.id})]\n\n${content}`;
+      // Workflow titles are user-controlled; spotlight them.
+      const title = nonce
+        ? spotlight(msg.workflow.title, nonce)
+        : msg.workflow.title;
+      content = `[Workflow: ${title} (id: ${msg.workflow.id})]\n\n${content}`;
     }
     if (msg.role === "user" && msg.files?.length) {
       const lines = msg.files.map((f) => {
         const slug = f.document_id
           ? slugByDocumentId.get(f.document_id)
           : undefined;
-        return slug ? `- ${slug}: ${f.filename}` : `- ${f.filename}`;
+        // Filenames are user-controlled; spotlight them.
+        const fname = nonce ? spotlight(f.filename, nonce) : f.filename;
+        return slug ? `- ${slug}: ${fname}` : `- ${fname}`;
       });
       content = `[The user attached the following document(s) to this message:\n${lines.join("\n")}]\n\n${content}`;
     }
