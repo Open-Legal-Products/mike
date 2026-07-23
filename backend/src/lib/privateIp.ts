@@ -92,6 +92,12 @@ export function isPrivateIpv6(ip: string): boolean {
     if (groups.slice(0, 5).every((g) => g === 0) && groups[5] === 0xffff) {
         return isPrivateIpv4(embeddedIpv4(groups[6], groups[7]));
     }
+    // IPv4-compatible ::/96 (deprecated, RFC 4291 §2.5.5.1) — `::a.b.c.d` /
+    // `::7f00:1`. `::` and `::1` were handled above, so anything else in this
+    // prefix embeds a routable-ish IPv4; classify by the embedded address.
+    if (groups.slice(0, 6).every((g) => g === 0)) {
+        return isPrivateIpv4(embeddedIpv4(groups[6], groups[7]));
+    }
     // NAT64 well-known prefix 64:ff9b::/96 — last 32 bits are the target IPv4.
     if (
         groups[0] === 0x64 &&
