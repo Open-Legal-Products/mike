@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Advisories land between PRs, not with them: a weekly re-audit of an
+  # unchanged lockfile catches newly published high/critical advisories
+  # instead of waiting for the next PR to trip over them.
+  schedule:
+    - cron: "17 5 * * 1"
 
 jobs:
   # `--audit-level=high` means: pass if only low/moderate advisories exist,
