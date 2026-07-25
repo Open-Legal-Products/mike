@@ -4,12 +4,13 @@ import {
 } from "../core/downloadTokens";
 
 /**
- * HMAC-signed, non-expiring download tokens.
+ * HMAC-signed download tokens with a mandatory expiry (30 days by default).
  *
- * The token encodes the R2 storage path + filename; the backend route
- * `/download/:token` validates the signature and streams the file. This
- * gives persistent links safe to store in chat history without signed-URL
- * expiry or R2 CORS headaches.
+ * The token encodes the R2 storage path + filename + expiry; the backend
+ * route `/download/:token` validates the signature and expiry and streams
+ * the file. Links stored in chat history go stale after the TTL — a fresh
+ * token is re-issued on next access — and tokens without an expiry are
+ * rejected outright so no link is valid forever.
  */
 
 function getSecret(): string {
