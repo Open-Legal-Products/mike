@@ -1,0 +1,8 @@
+[
+  {
+    "ghsa": "GHSA-mh99-v99m-4gvg",
+    "package": "brace-expansion",
+    "reason": "DoS via unbounded expansion length. Only patched in 5.0.8, which changes the module's export shape and breaks every CJS consumer of minimatch <= 10.0.2 (verified: eslint fails with 'expand is not a function' under an override). No non-breaking fix exists anywhere in the ecosystem yet; the exposure is build/lint-time glob expansion, not request-path input. Remove once minimatch/eslint/glob ship releases on brace-expansion >= 5.0.8 (Dependabot will surface them).",
+    "added": "2026-07-25"
+  }
+]
