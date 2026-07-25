@@ -1,0 +1,28 @@
+name: security-lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Runs the backend ESLint config, whose error tier is limited to rules that
+  # only fire on genuinely unsafe APIs (eval with an expression, new Buffer,
+  # pseudoRandomBytes, buffer noassert). Heuristic detectors are warnings and
+  # never fail this job — see backend/eslint.config.mjs.
+  backend-security-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: ESLint (security rules)
+        run: npm run lint
