@@ -1,0 +1,148 @@
+{
+  "suite": "citation-accuracy",
+  "description": "Model answers in Mike's real response format: prose with inline [N] markers plus a trailing <CITATIONS> JSON block (backend/src/lib/chat/prompts.ts). The checker parses the block with logic ported from backend/src/lib/chat/citations.ts and verifies every quote verbatim against the cited page of the fixture document (pages mirror the [Page N] blocks from backend/src/lib/chat/tools/documentOps.ts) or the fixture opinion text for cluster_id case citations.",
+  "cases": [
+    {
+      "id": "cc-01-msa-two-document-citations",
+      "description": "Two [N] markers, both quotes verbatim on the cited pages of a three-page MSA",
+      "expected": "pass",
+      "documents": {
+        "doc-0": {
+          "filename": "master-services-agreement-rivertown.pdf",
+          "pages": [
+            "MASTER SERVICES AGREEMENT\n\nThis Master Services Agreement (this \"Agreement\") is entered into as of March 1, 2026 (the \"Effective Date\") by and between Rivertown Analytics, Inc., a Delaware corporation (\"Vendor\"), and Calloway & Briggs LLP, a New York limited liability partnership (\"Client\").\n\n1. SERVICES. Vendor shall perform the document-processing and hosted-software services described in one or more statements of work executed by both parties (each, an \"SOW\"). Vendor shall perform the Services in a professional and workmanlike manner, in accordance with industry standards and all laws applicable to Vendor's performance. Vendor shall not subcontract any material portion of the Services without Client's prior written consent, not to be unreasonably withheld.\n\n2. FEES AND PAYMENT. Client shall pay the fees set forth in each SOW. Undisputed invoices are due within thirty (30) days of receipt. Vendor may suspend Services for amounts more than sixty (60) days past due, provided Vendor has given Client at least ten (10) business days' prior written notice of nonpayment. Fees are exclusive of sales, use, and similar taxes, which are Client's responsibility, excluding taxes on Vendor's income.\n\n3. TERM AND TERMINATION. This Agreement begins on the Effective Date and continues for an initial term of two (2) years, renewing automatically for successive one (1) year terms unless either party gives notice of non-renewal at least sixty (60) days before the end of the then-current term. Either party may terminate this Agreement or any SOW for material breach if the breach remains uncured thirty (30) days after written notice describing the breach in reasonable detail. Client may terminate any SOW for convenience on forty-five (45) days' written notice, in which case Client shall pay for Services performed through the effective date of termination.",
+            "4. CONFIDENTIALITY. \"Confidential Information\" means non-public business, technical, financial, or client information disclosed by one party to the other that is marked confidential or that a reasonable person would understand to be confidential from its nature or the circumstances of disclosure. The receiving party shall protect Confidential Information with at least the same degree of care it uses for its own similar information, and in no event less than reasonable care, and shall not disclose it except to employees, advisors, and permitted subcontractors who have a need to know and are bound by obligations at least as protective as this Section 4. These obligations survive for five (5) years after termination, except for trade secrets, which remain protected for as long as they qualify as trade secrets under applicable law.\n\n5. INDEMNIFICATION. Vendor shall defend, indemnify, and hold harmless Client and its partners, employees, and agents from and against any third-party claim, and all resulting damages, penalties, costs, and reasonable attorneys' fees, arising out of (a) Vendor's gross negligence or willful misconduct, (b) Vendor's breach of Section 4, or (c) any allegation that the Services infringe a third party's intellectual property rights, except to the extent the claim arises from Client's misuse of the Services or from combination of the Services with materials not provided by Vendor.\n\n6. LIMITATION OF LIABILITY. EXCEPT FOR LIABILITY ARISING UNDER SECTION 5 OR A BREACH OF SECTION 4, NEITHER PARTY SHALL BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, OR CONSEQUENTIAL",
+            "DAMAGES, AND EACH PARTY'S AGGREGATE LIABILITY UNDER THIS AGREEMENT SHALL NOT EXCEED THE FEES PAID OR PAYABLE BY CLIENT IN THE TWELVE (12) MONTHS PRECEDING THE EVENT GIVING RISE TO THE CLAIM. THE FOREGOING LIMITATIONS APPLY REGARDLESS OF THE FORM OF ACTION, WHETHER IN CONTRACT, TORT, OR OTHERWISE, AND EVEN IF A PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.\n\n7. GOVERNING LAW; VENUE. This Agreement is governed by the laws of the State of New York, without regard to its conflict-of-laws rules. The parties consent to the exclusive jurisdiction of the state and federal courts sitting in New York County, New York, and waive any objection to venue in those courts.\n\n8. MISCELLANEOUS. This Agreement, together with each SOW, is the parties' entire agreement regarding its subject matter and supersedes all prior or contemporaneous agreements on that subject. Neither party may assign this Agreement without the other party's prior written consent, except to a successor in a merger, acquisition, or sale of substantially all assets. Notices must be in writing and are effective on receipt."
+          ]
+        }
+      },
+      "answer": "Two points from the MSA worth flagging before signature:\n\n1. Payment: undisputed invoices run on net-thirty terms [1], and Vendor may suspend only after amounts are sixty days past due plus ten business days' notice — that is a reasonable suspension gate.\n2. Indemnity: Vendor must defend and indemnify the firm for IP-infringement claims and for its own gross negligence or willful misconduct [2], subject to the usual misuse carve-out.\n\n<CITATIONS>\n[\n  {\"ref\": 1, \"doc_id\": \"doc-0\", \"quotes\": [{\"page\": 1, \"quote\": \"Undisputed invoices are due within thirty (30) days of receipt.\"}]},\n  {\"ref\": 2, \"doc_id\": \"doc-0\", \"quotes\": [{\"page\": 2, \"quote\": \"Vendor shall defend, indemnify, and hold harmless Client and its partners, employees, and agents\"}]}\n]\n</CITATIONS>"
+    },
+    {
+      "id": "cc-02-fabricated-quote",
+      "description": "Cited quote (an uptime guarantee) appears nowhere in the document",
+      "expected": "fail",
+      "documents": {
+        "doc-0": {
+          "filename": "master-services-agreement-rivertown.pdf",
+          "pages": [
+            "1. SERVICES. Vendor shall perform the document-processing and hosted-software services described in one or more statements of work executed by both parties (each, an \"SOW\"). Vendor shall perform the Services in a professional and workmanlike manner, in accordance with industry standards and all laws applicable to Vendor's performance. Vendor shall not subcontract any material portion of the Services without Client's prior written consent, not to be unreasonably withheld.\n\n2. FEES AND PAYMENT. Client shall pay the fees set forth in each SOW. Undisputed invoices are due within thirty (30) days of receipt. Vendor may suspend Services for amounts more than sixty (60) days past due, provided Vendor has given Client at least ten (10) business days' prior written notice of nonpayment. Fees are exclusive of sales, use, and similar taxes, which are Client's responsibility, excluding taxes on Vendor's income."
+          ]
+        }
+      },
+      "answer": "Availability is covered: the agreement provides an express uptime commitment [1], so no separate SLA is needed.\n\n<CITATIONS>\n[\n  {\"ref\": 1, \"doc_id\": \"doc-0\", \"quotes\": [{\"page\": 1, \"quote\": \"Vendor guarantees uninterrupted availability of the Services\"}]}\n]\n</CITATIONS>"
+    },
+    {
+      "id": "cc-03-altered-liability-cap",
+      "description": "Quote silently changes the liability cap from twelve (12) months to twenty-four (24)",
+      "expected": "fail",
+      "documents": {
+        "doc-0": {
+          "filename": "master-services-agreement-rivertown.pdf",
+          "pages": [
+            "6. LIMITATION OF LIABILITY. EXCEPT FOR LIABILITY ARISING UNDER SECTION 5 OR A BREACH OF SECTION 4, NEITHER PARTY SHALL BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES, AND EACH PARTY'S AGGREGATE LIABILITY UNDER THIS AGREEMENT SHALL NOT EXCEED THE FEES PAID OR PAYABLE BY CLIENT IN THE TWELVE (12) MONTHS PRECEDING THE EVENT GIVING RISE TO THE CLAIM. THE FOREGOING LIMITATIONS APPLY REGARDLESS OF THE FORM OF ACTION, WHETHER IN CONTRACT, TORT, OR OTHERWISE, AND EVEN IF A PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES."
+          ]
+        }
+      },
+      "answer": "The cap is a two-year lookback [1], which is unusually generous to the claimant side.\n\n<CITATIONS>\n[\n  {\"ref\": 1, \"doc_id\": \"doc-0\", \"quotes\": [{\"page\": 1, \"quote\": \"AGGREGATE LIABILITY UNDER THIS AGREEMENT SHALL NOT EXCEED THE FEES PAID OR PAYABLE BY CLIENT IN THE TWENTY-FOUR (24) MONTHS PRECEDING\"}]}\n]\n</CITATIONS>"
+    },
+    {
+      "id": "cc-04-statute-wrong-page",
+      "description": "Quote is real 17 U.S.C. § 107 text from page 1 but the citation points at page 2",
+      "expected": "fail",
+      "documents": {
+        "doc-0": {
+          "filename": "statutory-excerpts-fair-use-antitrust.pdf",
+          "pages": [
+            "17 U.S.C. § 107 — Limitations on exclusive rights: Fair use\n\nNotwithstanding the provisions of sections 106 and 106A, the fair use of a copyrighted work, including such use by reproduction in copies or phonorecords or by any other means specified by that section, for purposes such as criticism, comment, news reporting, teaching (including multiple copies for classroom use), scholarship, or research, is not an infringement of copyright. In determining whether the use made of a work in any particular case is a fair use the factors to be considered shall include—\n(1) the purpose and character of the use, including whether such use is of a commercial nature or is for nonprofit educational purposes;\n(2) the nature of the copyrighted work;\n(3) the amount and substantiality of the portion used in relation to the copyrighted work as a whole; and\n(4) the effect of the use upon the potential market for or value of the copyrighted work.\nThe fact that a work is unpublished shall not itself bar a finding of fair use if such finding is made upon consideration of all the above factors.",
+            "15 U.S.C. § 1 — Trusts, etc., in restraint of trade illegal; penalty\n\nEvery contract, combination in the form of trust or otherwise, or conspiracy, in restraint of trade or commerce among the several States, or with foreign nations, is declared to be illegal. Every person who shall make any contract or engage in any combination or conspiracy hereby declared to be illegal shall be deemed guilty of a felony, and, on conviction thereof, shall be punished by fine not exceeding $100,000,000 if a corporation, or, if any other person, $1,000,000, or by imprisonment not exceeding 10 years, or by both said punishments, in the discretion of the court."
+          ]
+        }
+      },
+      "answer": "The first fair-use factor looks at commerciality [1], which cuts against the proposed use here.\n\n<CITATIONS>\n[\n  {\"ref\": 1, \"doc_id\": \"doc-0\", \"quotes\": [{\"page\": 2, \"quote\": \"the purpose and character of the use, including whether such use is of a commercial nature or is for nonprofit educational purposes\"}]}\n]\n</CITATIONS>"
+    },
+    {
+      "id": "cc-05-cross-page-quote",
+      "description": "Continuous quote across a page break using page \"2-3\" and [[PAGE_BREAK]], per the citation rules",
+      "expected": "pass",
+      "documents": {
+        "doc-0": {
+          "filename": "master-services-agreement-rivertown.pdf",
+          "pages": [
+            "3. TERM AND TERMINATION. This Agreement begins on the Effective Date and continues for an initial term of two (2) years, renewing automatically for successive one (1) year terms unless either party gives notice of non-renewal at least sixty (60) days before the end of the then-current term. Either party may terminate this Agreement or any SOW for material breach if the breach remains uncured thirty (30) days after written notice describing the breach in reasonable detail.",
+            "4. CONFIDENTIALITY. The receiving party shall protect Confidential Information with at least the same degree of care it uses for its own similar information, and in no event less than reasonable care. These obligations survive for five (5) years after termination.\n\n5. INDEMNIFICATION. Vendor shall defend, indemnify, and hold harmless Client and its partners, employees, and agents from and against any third-party claim.\n\n6. LIMITATION OF LIABILITY. EXCEPT FOR LIABILITY ARISING UNDER SECTION 5 OR A BREACH OF SECTION 4, NEITHER PARTY SHALL BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, OR CONSEQUENTIAL",
+            "DAMAGES, AND EACH PARTY'S AGGREGATE LIABILITY UNDER THIS AGREEMENT SHALL NOT EXCEED THE FEES PAID OR PAYABLE BY CLIENT IN THE TWELVE (12) MONTHS PRECEDING THE EVENT GIVING RISE TO THE CLAIM.\n\n7. GOVERNING LAW; VENUE. This Agreement is governed by the laws of the State of New York, without regard to its conflict-of-laws rules."
+          ]
+        }
+      },
+      "answer": "Consequential damages are excluded and exposure is capped at trailing twelve-month fees [1]; only the indemnity and confidentiality sections sit outside the cap.\n\n<CITATIONS>\n[\n  {\"ref\": 1, \"doc_id\": \"doc-0\", \"quotes\": [{\"page\": \"2-3\", \"quote\": \"NEITHER PARTY SHALL BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, OR CONSEQUENTIAL [[PAGE_BREAK]] DAMAGES, AND EACH PARTY'S AGGREGATE LIABILITY UNDER THIS AGREEMENT SHALL NOT EXCEED THE FEES PAID\"}]}\n]\n</CITATIONS>"
+    },
+    {
+      "id": "cc-06-case-citation-marbury",
+      "description": "Case citation with cluster_id and a verbatim Marbury v. Madison quote",
+      "expected": "pass",
+      "opinions": {
+        "84550": {
+          "case_name": "Marbury v. Madison, 5 U.S. (1 Cranch) 137 (1803)",
+          "text": "Certainly all those who have framed written constitutions contemplate them as forming the fundamental and paramount law of the nation, and consequently the theory of every such government must be, that an act of the legislature, repugnant to the constitution, is void.\n\nIt is emphatically the province and duty of the judicial department to say what the law is. Those who apply the rule to particular cases, must of necessity expound and interpret that rule. If two laws conflict with each other, the courts must decide on the operation of each. This is of the very essence of judicial duty."
+        }
+      },
+      "answer": "The premise of judicial review is not statutory — it is the holding of [Marbury v. Madison](https://www.courtlistener.com/opinion/84550/marbury-v-madison/): courts, not Congress, say what the law is [1].\n\n<CITATIONS>\n[\n  {\"ref\": 1, \"cluster_id\": 84550, \"quotes\": [{\"opinion_id\": 1250000, \"quote\": \"It is emphatically the province and duty of the judicial department to say what the law is.\"}]}\n]\n</CITATIONS>"
+    },
+    {
+      "id": "cc-07-case-citation-fabricated-erie",
+      "description": "Erie is a real fetched opinion, but the quoted holding is invented",
+      "expected": "fail",
+      "opinions": {
+        "103275": {
+          "case_name": "Erie Railroad Co. v. Tompkins, 304 U.S. 64 (1938)",
+          "text": "Except in matters governed by the Federal Constitution or by acts of Congress, the law to be applied in any case is the law of the state. And whether the law of the state shall be declared by its Legislature in a statute or by its highest court in a decision is not a matter of federal concern. There is no federal general common law. Congress has no power to declare substantive rules of common law applicable in a state, whether they be local in their nature or general, be they commercial law or a part of the law of torts."
+        }
+      },
+      "answer": "Erie is no obstacle: the Court expressly preserved federal power here [1], so the commercial-law claim can proceed under a federal rule.\n\n<CITATIONS>\n[\n  {\"ref\": 1, \"cluster_id\": 103275, \"quotes\": [{\"opinion_id\": 1732500, \"quote\": \"the federal courts remain free to fashion general common law in commercial cases\"}]}\n]\n</CITATIONS>"
+    },
+    {
+      "id": "cc-08-marker-without-entry",
+      "description": "Prose uses [1] and [2] but the CITATIONS block only defines ref 1",
+      "expected": "fail",
+      "documents": {
+        "doc-0": {
+          "filename": "master-services-agreement-rivertown.pdf",
+          "pages": [
+            "2. FEES AND PAYMENT. Client shall pay the fees set forth in each SOW. Undisputed invoices are due within thirty (30) days of receipt. Fees are exclusive of sales, use, and similar taxes, which are Client's responsibility, excluding taxes on Vendor's income.\n\n3. TERM AND TERMINATION. Either party may terminate this Agreement or any SOW for material breach if the breach remains uncured thirty (30) days after written notice describing the breach in reasonable detail."
+          ]
+        }
+      },
+      "answer": "Invoices are due in thirty days [1], and the cure period for material breach is also thirty days [2].\n\n<CITATIONS>\n[\n  {\"ref\": 1, \"doc_id\": \"doc-0\", \"quotes\": [{\"page\": 1, \"quote\": \"Undisputed invoices are due within thirty (30) days of receipt.\"}]}\n]\n</CITATIONS>"
+    },
+    {
+      "id": "cc-09-paraphrase-no-block",
+      "description": "Pure paraphrase, no markers, no CITATIONS block — the format allows omitting the block",
+      "expected": "pass",
+      "documents": {
+        "doc-0": {
+          "filename": "master-services-agreement-rivertown.pdf",
+          "pages": [
+            "7. GOVERNING LAW; VENUE. This Agreement is governed by the laws of the State of New York, without regard to its conflict-of-laws rules. The parties consent to the exclusive jurisdiction of the state and federal courts sitting in New York County, New York, and waive any objection to venue in those courts."
+          ]
+        }
+      },
+      "answer": "In short: New York substantive law governs, and any dispute has to be brought in state or federal court in Manhattan — both sides have waived venue objections."
+    },
+    {
+      "id": "cc-10-legacy-top-level-fields",
+      "description": "Legacy citation shape with top-level page/quote instead of a quotes array (citations.ts supports both)",
+      "expected": "pass",
+      "documents": {
+        "doc-0": {
+          "filename": "statutory-excerpts-fair-use-antitrust.pdf",
+          "pages": [
+            "17 U.S.C. § 107 — Limitations on exclusive rights: Fair use\n\nNotwithstanding the provisions of sections 106 and 106A, the fair use of a copyrighted work, including such use by reproduction in copies or phonorecords or by any other means specified by that section, for purposes such as criticism, comment, news reporting, teaching (including multiple copies for classroom use), scholarship, or research, is not an infringement of copyright.",
+            "15 U.S.C. § 1 — Trusts, etc., in restraint of trade illegal; penalty\n\nEvery contract, combination in the form of trust or otherwise, or conspiracy, in restraint of trade or commerce among the several States, or with foreign nations, is declared to be illegal. Every person who shall make any contract or engage in any combination or conspiracy hereby declared to be illegal shall be deemed guilty of a felony, and, on conviction thereof, shall be punished by fine not exceeding $100,000,000 if a corporation, or, if any other person, $1,000,000, or by imprisonment not exceeding 10 years, or by both said punishments, in the discretion of the court."
+          ]
+        }
+      },
+      "answer": "Section 1 of the Sherman Act reaches agreements, not unilateral conduct: the statute condemns every contract, combination, or conspiracy in restraint of trade [1].\n\n<CITATIONS>\n[\n  {\"ref\": 1, \"doc_id\": \"doc-0\", \"page\": 2, \"quote\": \"Every contract, combination in the form of trust or otherwise, or conspiracy, in restraint of trade or commerce among the several States, or with foreign nations, is declared to be illegal.\"}\n]\n</CITATIONS>"
+    }
+  ]
+}
