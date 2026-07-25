@@ -1,0 +1,59 @@
+# Dependabot automatically opens PRs to keep dependencies patched.
+#
+# This pairs with .github/workflows/security.yml: that workflow FAILS the
+# build when a high/critical advisory is published against a locked
+# dependency; Dependabot is the bot that FIXES it — it watches the GitHub
+# Advisory Database and opens a PR bumping the affected package to the
+# patched version, usually within hours of the CVE landing. Review, check
+# CI is green, merge: the gate is green again without anyone running
+# `npm audit fix` by hand.
+#
+# One repo setting is needed for the CVE-fix PRs (this file alone only
+# schedules version bumps): Settings → Advanced Security →
+# "Dependabot security updates" → Enable. It's free for public repos.
+#
+# Dependabot never pushes directly — everything arrives as a PR that CI
+# (including the audit gate and test suites) runs against first.
+
+version: 2
+updates:
+  # Backend workspace
+  - package-ecosystem: "npm"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    groups:
+      # One PR per batch of CVE fixes instead of one PR per advisory
+      security-fixes:
+        applies-to: security-updates
+        patterns: ["*"]
+      # One PR per week for routine minor/patch dev-dep bumps
+      dev-dependencies:
+        applies-to: version-updates
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+
+  # Frontend workspace
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    groups:
+      security-fixes:
+        applies-to: security-updates
+        patterns: ["*"]
+      dev-dependencies:
+        applies-to: version-updates
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+
+  # Keep the actions used by the security workflow pinned and current
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
