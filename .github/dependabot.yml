@@ -29,11 +29,15 @@ updates:
       security-fixes:
         applies-to: security-updates
         patterns: ["*"]
-      # One PR per week for routine minor/patch dev-dep bumps
+      # Routine version bumps arrive as (at most) two grouped weekly PRs —
+      # one for dev deps, one for production deps — never as a flood of
+      # per-package PRs.
       dev-dependencies:
         applies-to: version-updates
         dependency-type: "development"
-        update-types: ["minor", "patch"]
+      production-dependencies:
+        applies-to: version-updates
+        dependency-type: "production"
 
   # Frontend workspace
   - package-ecosystem: "npm"
@@ -49,7 +53,9 @@ updates:
       dev-dependencies:
         applies-to: version-updates
         dependency-type: "development"
-        update-types: ["minor", "patch"]
+      production-dependencies:
+        applies-to: version-updates
+        dependency-type: "production"
 
   # Keep the actions used by the security workflow pinned and current
   - package-ecosystem: "github-actions"

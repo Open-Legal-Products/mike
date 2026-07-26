@@ -30,8 +30,17 @@ try {
 }
 
 const report = JSON.parse(raw);
+// Fail CLOSED when npm audit itself failed: on registry outage/ENOAUDIT npm
+// exits non-zero and prints a JSON *error* object (no "vulnerabilities" key),
+// which must not parse as "zero advisories". A genuinely clean audit always
+// includes vulnerabilities: {}.
+if (report.error || !report.vulnerabilities) {
+  console.error("npm audit itself failed — refusing to pass the gate:");
+  console.error(raw.slice(0, 2000));
+  process.exit(1);
+}
 const advisories = new Map(); // ghsa -> { severity, title, url }
-for (const vuln of Object.values(report.vulnerabilities ?? {})) {
+for (const vuln of Object.values(report.vulnerabilities)) {
   for (const via of vuln.via ?? []) {
     if (typeof via !== "object" || !via.url) continue;
     if (via.severity !== "high" && via.severity !== "critical") continue;
