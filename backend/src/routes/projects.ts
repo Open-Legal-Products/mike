@@ -25,6 +25,7 @@ import {
   getPersonalOrgId,
   resolveContentOrgId,
 } from "../lib/access";
+import { can } from "../lib/permissions";
 import { singleFileUpload } from "../lib/upload";
 import { deleteUserProjects } from "../lib/userDataCleanup";
 import {
@@ -316,24 +317,16 @@ projectsRouter.get("/:projectId", requireAuth, async (req, res) => {
   const { projectId } = req.params;
   const db = createServerSupabase();
 
+  const access = await checkProjectAccess(projectId, userId, userEmail, db);
+  if (!access.ok)
+    return void res.status(404).json({ detail: "Project not found" });
+
   const { data: project, error } = await db
     .from("projects")
     .select("*")
     .eq("id", projectId)
     .single();
   if (error || !project)
-    return void res.status(404).json({ detail: "Project not found" });
-
-  let canAccess =
-    project.user_id === userId ||
-    (userEmail &&
-      Array.isArray(project.shared_with) &&
-      project.shared_with.includes(userEmail));
-  // Third access branch: org membership on the project's org (multi-tenant).
-  if (!canAccess && project.org_id) {
-    canAccess = (await getOrgRole(userId, project.org_id, db)) !== null;
-  }
-  if (!canAccess)
     return void res.status(404).json({ detail: "Project not found" });
 
   const [{ data: docs }, { data: folderData }] = await Promise.all([
@@ -350,7 +343,8 @@ projectsRouter.get("/:projectId", requireAuth, async (req, res) => {
   await attachDocumentOwnerLabels(db, docsTyped);
   res.json({
     ...project,
-    is_owner: project.user_id === userId,
+    is_owner: access.isOwner,
+    access_role: access.projectRole,
     documents: docsTyped,
     folders: folderData ?? [],
   });
@@ -366,23 +360,16 @@ projectsRouter.get("/:projectId/people", requireAuth, async (req, res) => {
   const { projectId } = req.params;
   const db = createServerSupabase();
 
-  const { data: project } = await db
-    .from("projects")
-    .select("id, user_id, shared_with")
-    .eq("id", projectId)
-    .single();
-  if (!project)
+  // Roster is visible to anyone who can see the project — including org
+  // members, who previously got a 404 here despite full read access.
+  const access = await checkProjectAccess(projectId, userId, userEmail, db);
+  if (!access.ok)
     return void res.status(404).json({ detail: "Project not found" });
-
-  const isOwner = project.user_id === userId;
+  const project = access.project;
   const sharedWith = (Array.isArray(project.shared_with)
     ? (project.shared_with as string[])
     : []
   ).map((e) => e.toLowerCase());
-  const isShared =
-    !!userEmail && sharedWith.includes(userEmail.toLowerCase());
-  if (!isOwner && !isShared)
-    return void res.status(404).json({ detail: "Project not found" });
 
   // Use the mirrored profile email so sharing checks do not scan auth.users.
   const { userByEmail, userById } = await loadProfileUsersByEmail(db);
@@ -434,6 +421,13 @@ projectsRouter.patch("/:projectId", requireAuth, async (req, res) => {
   }
 
   const db = createServerSupabase();
+  // Metadata and membership edits are manager+: the owner, or an org
+  // owner/admin of the project's org. The user_id filter moves out of the
+  // UPDATE so managers can act on rows they don't own.
+  const access = await checkProjectAccess(projectId, userId, userEmail, db);
+  if (!access.ok || !can(access.projectRole, "members.manage"))
+    return void res.status(404).json({ detail: "Project not found" });
+
   if (Array.isArray(updates.shared_with)) {
     const missingSharedUsers = await findMissingUserEmails(
       db,
@@ -450,7 +444,6 @@ projectsRouter.patch("/:projectId", requireAuth, async (req, res) => {
     .from("projects")
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq("id", projectId)
-    .eq("user_id", userId)
     .select("*")
     .single();
   if (error || !data)
@@ -561,7 +554,7 @@ projectsRouter.post(
     const db = createServerSupabase();
 
     const access = await checkProjectAccess(projectId, userId, userEmail, db);
-    if (!access.ok)
+    if (!access.ok || !can(access.projectRole, "docs.organize"))
       return void res.status(404).json({ detail: "Project not found" });
 
     // Adding-by-id pulls a doc into the project — only the doc's owner
@@ -747,7 +740,7 @@ projectsRouter.patch("/:projectId/documents/:documentId", requireAuth, async (re
   const db = createServerSupabase();
 
   const access = await checkProjectAccess(projectId, userId, userEmail, db);
-  if (!access.ok)
+  if (!access.ok || !can(access.projectRole, "docs.organize"))
     return void res.status(404).json({ detail: "Project not found" });
 
   const { data: doc } = await db
@@ -812,7 +805,7 @@ projectsRouter.post(
     const db = createServerSupabase();
 
     const access = await checkProjectAccess(projectId, userId, userEmail, db);
-    if (!access.ok)
+    if (!access.ok || !can(access.projectRole, "content.edit"))
       return void res.status(404).json({ detail: "Project not found" });
 
     await handleDocumentUpload(req, res, userId, projectId, db);
@@ -857,7 +850,8 @@ projectsRouter.post("/:projectId/folders", requireAuth, async (req, res) => {
 
   const db = createServerSupabase();
   const access = await checkProjectAccess(projectId, userId, userEmail, db);
-  if (!access.ok) return void res.status(404).json({ detail: "Project not found" });
+  if (!access.ok || !can(access.projectRole, "docs.organize"))
+    return void res.status(404).json({ detail: "Project not found" });
 
   // Verify parent folder belongs to this project
   if (parent_folder_id) {
@@ -883,8 +877,11 @@ projectsRouter.patch("/:projectId/folders/:folderId", requireAuth, async (req, r
   const body = req.body as { name?: string; parent_folder_id?: string | null };
 
   const db = createServerSupabase();
+  // Re-shaping the folder tree is manager+, like deleting it: a rename or
+  // re-parent rewrites the owner's organisation of the whole project.
   const access = await checkProjectAccess(projectId, userId, userEmail, db);
-  if (!access.ok) return void res.status(404).json({ detail: "Project not found" });
+  if (!access.ok || !can(access.projectRole, "structure.manage"))
+    return void res.status(404).json({ detail: "Project not found" });
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (body.name != null) updates.name = body.name.trim();
@@ -920,9 +917,12 @@ projectsRouter.delete("/:projectId/folders/:folderId", requireAuth, async (req, 
   const { projectId, folderId } = req.params;
   const db = createServerSupabase();
 
+  // Folder deletion cascades into every nested document and its storage
+  // objects, so it is manager+ — the owner, or an org owner/admin. (This
+  // generalises the owner-only gate to the org tier.)
   const access = await checkProjectAccess(projectId, userId, userEmail, db);
-  if (!access.ok) return void res.status(404).json({ detail: "Project not found" });
-  if (!access.isOwner) return void res.status(404).json({ detail: "Project not found" });
+  if (!access.ok || !can(access.projectRole, "structure.manage"))
+    return void res.status(404).json({ detail: "Project not found" });
 
   const { data: allFolders, error: foldersError } = await db
     .from("project_subfolders")
@@ -982,7 +982,8 @@ projectsRouter.patch("/:projectId/documents/:documentId/folder", requireAuth, as
 
   const db = createServerSupabase();
   const access = await checkProjectAccess(projectId, userId, userEmail, db);
-  if (!access.ok) return void res.status(404).json({ detail: "Project not found" });
+  if (!access.ok || !can(access.projectRole, "docs.organize"))
+    return void res.status(404).json({ detail: "Project not found" });
 
   if (folder_id) {
     const folder = await loadProjectFolder(db, projectId, folder_id);

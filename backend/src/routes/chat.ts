@@ -26,6 +26,7 @@ import {
     getUserModelSettings,
 } from "../lib/userSettings";
 import { checkProjectAccess } from "../lib/access";
+import { can } from "../lib/permissions";
 import { safeErrorLog, safeErrorMessage } from "../lib/safeError";
 
 export const chatRouter = Router();
@@ -58,8 +59,9 @@ async function validateAccessibleProjectId(
     db: Db,
 ): Promise<{ ok: true } | { ok: false; status: number; detail: string }> {
     if (!projectId) return { ok: true };
+    // Creating a chat under a project contributes content to it: editor+.
     const access = await checkProjectAccess(projectId, userId, userEmail, db);
-    if (!access.ok)
+    if (!access.ok || !can(access.projectRole, "content.edit"))
         return { ok: false, status: 404, detail: "Project not found" };
     return { ok: true };
 }

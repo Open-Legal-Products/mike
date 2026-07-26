@@ -29,6 +29,7 @@ import {
     getUserModelSettings,
 } from "../lib/userSettings";
 import { checkProjectAccess } from "../lib/access";
+import { can } from "../lib/permissions";
 import { safeErrorLog, safeErrorMessage } from "../lib/safeError";
 
 const PROJECT_SYSTEM_PROMPT_EXTRA = `PROJECT CONTEXT:
@@ -93,13 +94,15 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
     const db = createServerSupabase();
 
     // Verify the user has access to the project (owner or shared member).
+    // Project chat writes messages and can create document versions via
+    // tools: editor+.
     const projectAccess = await checkProjectAccess(
         projectId,
         userId,
         userEmail,
         db,
     );
-    if (!projectAccess.ok)
+    if (!projectAccess.ok || !can(projectAccess.projectRole, "content.edit"))
         return void res.status(404).json({ detail: "Project not found" });
 
     let chatId = chat_id ?? null;
