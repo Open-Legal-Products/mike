@@ -81,7 +81,7 @@ function parseGeminiErrorPayload(value: string): string | null {
   }
 }
 
-function geminiStreamFailureMessage(chunk: unknown): string | null {
+export function geminiStreamFailureMessage(chunk: unknown): string | null {
   if (!chunk || typeof chunk !== "object") return null;
   const record = chunk as Record<string, unknown>;
   const error = record.error;
