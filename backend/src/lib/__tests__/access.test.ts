@@ -194,7 +194,7 @@ describe("org RBAC access", () => {
         ],
     });
 
-    it("grants an org member read access without ownership", async () => {
+    it("grants an org member read access without ownership (viewer)", async () => {
         await expect(
             checkProjectAccess("proj-a", "carol", "carol@example.com", db),
         ).resolves.toMatchObject({
@@ -202,10 +202,11 @@ describe("org RBAC access", () => {
             isOwner: false,
             role: "member",
             canManage: false,
+            projectRole: "viewer",
         });
     });
 
-    it("marks org owners/admins as able to manage", async () => {
+    it("marks org owners/admins as able to manage (manager)", async () => {
         await expect(
             checkProjectAccess("proj-a", "dave", "dave@example.com", db),
         ).resolves.toMatchObject({
@@ -213,6 +214,31 @@ describe("org RBAC access", () => {
             isOwner: false,
             role: "admin",
             canManage: true,
+            projectRole: "manager",
+        });
+    });
+
+    it("derives owner and editor roles on the non-org branches", async () => {
+        await expect(
+            checkProjectAccess("proj-a", "alice", "alice@example.com", db),
+        ).resolves.toMatchObject({ ok: true, projectRole: "owner" });
+
+        const sharedDb = makeDb({
+            projects: [
+                {
+                    id: "proj-s",
+                    user_id: "alice",
+                    shared_with: ["eve@example.com"],
+                    org_id: null,
+                },
+            ],
+        });
+        await expect(
+            checkProjectAccess("proj-s", "eve", "eve@example.com", sharedDb),
+        ).resolves.toMatchObject({
+            ok: true,
+            isOwner: false,
+            projectRole: "editor",
         });
     });
 

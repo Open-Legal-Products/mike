@@ -115,6 +115,7 @@ describe("POST /projects/:projectId/chat", () => {
         checkProjectAccess.mockResolvedValue({
             ok: true,
             isOwner: true,
+            projectRole: "owner",
             project: { id: "p1", user_id: "u1", shared_with: null },
         });
     });

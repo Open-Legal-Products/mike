@@ -14,27 +14,42 @@
  *   3. org member — the row's `org_id` is an org the caller belongs to
  *                   (multi-tenant RBAC).
  *
- * Two orthogonal flags are returned so callers can gate correctly:
- *   - `isOwner`   — TRUE only for branch (1), the row owner. Existing
- *                   owner-only gates (delete, rename, member management)
- *                   depend on this meaning, so it is NOT overloaded.
- *   - `canManage` — TRUE for the row owner OR an org owner/admin. Use this
- *                   for org-level management operations that should be
- *                   available to org admins as well as the row owner.
+ * Each branch derives a ProjectRole (lib/permissions.ts) and routes gate on
+ * `can(projectRole, capability)` rather than on ad-hoc flags:
+ *   - branch (1) row owner      → "owner"
+ *   - branch (2) shared email   → "editor"  (content collaboration)
+ *   - branch (3) org owner/admin → "manager" (curate, not delete containers)
+ *   - branch (3) plain member    → "viewer"  (visibility, not ownership)
+ *
+ * Legacy flags are kept for compatibility and derived from the role:
+ *   - `isOwner`   — TRUE only for branch (1), the row owner.
+ *   - `canManage` — `can(projectRole, "members.manage")`.
  *   - `role`      — the caller's org role for branch (3), else null.
  */
 
 import type { createServerSupabase } from "./supabase";
+import { can, type ProjectRole } from "./permissions";
+
+export { can, type Capability, type ProjectRole } from "./permissions";
 
 type Db = ReturnType<typeof createServerSupabase>;
 
 // EXTENSION POINT (RBAC): new roles added to the org_members CHECK constraint
-// should be reflected here and in canManage-style predicates.
+// should be reflected here and in `orgRoleToProjectRole`.
 export type OrgRole = "owner" | "admin" | "member";
 
 /** Roles allowed to manage an org (members, teams, settings). */
 export function roleCanManage(role: OrgRole | null | undefined): boolean {
     return role === "owner" || role === "admin";
+}
+
+/**
+ * What standing in the tenant grants on a row the caller doesn't own:
+ * org owners/admins curate content ("manager"), plain members see it
+ * ("viewer") — the ADR's "visibility, not ownership".
+ */
+function orgRoleToProjectRole(role: OrgRole): ProjectRole {
+    return roleCanManage(role) ? "manager" : "viewer";
 }
 
 /**
@@ -118,6 +133,7 @@ export type ProjectAccess =
           isOwner: boolean;
           role: OrgRole | null;
           canManage: boolean;
+          projectRole: ProjectRole;
           project: {
               id: string;
               user_id: string;
@@ -146,20 +162,36 @@ export async function checkProjectAccess(
         org_id?: string | null;
     };
     if (proj.user_id === userId) {
-        return { ok: true, isOwner: true, role: null, canManage: true, project: proj };
+        return {
+            ok: true,
+            isOwner: true,
+            role: null,
+            canManage: true,
+            projectRole: "owner",
+            project: proj,
+        };
     }
     const sharedWith = Array.isArray(proj.shared_with) ? proj.shared_with : [];
     const email = (userEmail ?? "").trim().toLowerCase();
     if (email && sharedWith.some((e) => (e ?? "").toLowerCase() === email)) {
-        return { ok: true, isOwner: false, role: null, canManage: false, project: proj };
+        return {
+            ok: true,
+            isOwner: false,
+            role: null,
+            canManage: false,
+            projectRole: "editor",
+            project: proj,
+        };
     }
     const role = await getOrgRole(userId, proj.org_id, db);
     if (role) {
+        const projectRole = orgRoleToProjectRole(role);
         return {
             ok: true,
             isOwner: false,
             role,
-            canManage: roleCanManage(role),
+            canManage: can(projectRole, "members.manage"),
+            projectRole,
             project: proj,
         };
     }
@@ -167,7 +199,13 @@ export async function checkProjectAccess(
 }
 
 type ResourceAccess =
-    | { ok: true; isOwner: boolean; role: OrgRole | null; canManage: boolean }
+    | {
+          ok: true;
+          isOwner: boolean;
+          role: OrgRole | null;
+          canManage: boolean;
+          projectRole: ProjectRole;
+      }
     | { ok: false };
 
 /**
@@ -183,14 +221,22 @@ export async function ensureDocAccess(
     db: Db,
 ): Promise<ResourceAccess> {
     if (doc.user_id === userId)
-        return { ok: true, isOwner: true, role: null, canManage: true };
+        return {
+            ok: true,
+            isOwner: true,
+            role: null,
+            canManage: true,
+            projectRole: "owner",
+        };
     const docRole = await getOrgRole(userId, doc.org_id, db);
     if (docRole) {
+        const projectRole = orgRoleToProjectRole(docRole);
         return {
             ok: true,
             isOwner: false,
             role: docRole,
-            canManage: roleCanManage(docRole),
+            canManage: can(projectRole, "members.manage"),
+            projectRole,
         };
     }
     if (!doc.project_id) return { ok: false };
@@ -203,9 +249,13 @@ export async function ensureDocAccess(
     if (access.ok)
         return {
             ok: true,
+            // isOwner keeps meaning "owns this row": the project owner is
+            // not the owner of a collaborator's document, but inherits the
+            // project role for capability checks.
             isOwner: false,
             role: access.role,
             canManage: access.canManage,
+            projectRole: access.projectRole,
         };
     return { ok: false };
 }
@@ -232,20 +282,34 @@ export async function ensureReviewAccess(
     db: Db,
 ): Promise<ResourceAccess> {
     if (review.user_id === userId)
-        return { ok: true, isOwner: true, role: null, canManage: true };
+        return {
+            ok: true,
+            isOwner: true,
+            role: null,
+            canManage: true,
+            projectRole: "owner",
+        };
     const email = (userEmail ?? "").toLowerCase();
     if (email && Array.isArray(review.shared_with)) {
         if (review.shared_with.some((e) => (e ?? "").toLowerCase() === email)) {
-            return { ok: true, isOwner: false, role: null, canManage: false };
+            return {
+                ok: true,
+                isOwner: false,
+                role: null,
+                canManage: false,
+                projectRole: "editor",
+            };
         }
     }
     const reviewRole = await getOrgRole(userId, review.org_id, db);
     if (reviewRole) {
+        const projectRole = orgRoleToProjectRole(reviewRole);
         return {
             ok: true,
             isOwner: false,
             role: reviewRole,
-            canManage: roleCanManage(reviewRole),
+            canManage: can(projectRole, "members.manage"),
+            projectRole,
         };
     }
     if (!review.project_id) return { ok: false };
@@ -261,6 +325,7 @@ export async function ensureReviewAccess(
             isOwner: false,
             role: access.role,
             canManage: access.canManage,
+            projectRole: access.projectRole,
         };
     return { ok: false };
 }

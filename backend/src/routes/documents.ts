@@ -24,6 +24,7 @@ import {
   loadActiveVersion,
 } from "../lib/documentVersions";
 import { ensureDocAccess, resolveContentOrgId } from "../lib/access";
+import { can } from "../lib/permissions";
 import { singleFileUpload } from "../lib/upload";
 import {
   ALLOWED_DOCUMENT_TYPES,
@@ -417,7 +418,7 @@ documentsRouter.post(
     if (!targetDoc)
       return void res.status(404).json({ detail: "Document not found" });
     const targetAccess = await ensureDocAccess(targetDoc, userId, userEmail, db);
-    if (!targetAccess.ok)
+    if (!targetAccess.ok || !can(targetAccess.projectRole, "content.edit"))
       return void res.status(404).json({ detail: "Document not found" });
 
     const { data: sourceDoc } = await db
@@ -602,7 +603,7 @@ documentsRouter.post(
     if (!doc)
       return void res.status(404).json({ detail: "Document not found" });
     const access = await ensureDocAccess(doc, userId, userEmail, db);
-    if (!access.ok)
+    if (!access.ok || !can(access.projectRole, "content.edit"))
       return void res.status(404).json({ detail: "Document not found" });
 
     const suffix = file.originalname.includes(".")
@@ -755,7 +756,7 @@ documentsRouter.patch(
     if (!doc)
       return void res.status(404).json({ detail: "Document not found" });
     const access = await ensureDocAccess(doc, userId, userEmail, db);
-    if (!access.ok)
+    if (!access.ok || !can(access.projectRole, "content.edit"))
       return void res.status(404).json({ detail: "Document not found" });
 
     const raw = req.body?.filename;
@@ -1165,7 +1166,7 @@ async function handleEditResolution(
   if (!doc)
     return void res.status(404).json({ detail: "Document not found" });
   const access = await ensureDocAccess(doc, userId, userEmail, db);
-  if (!access.ok)
+  if (!access.ok || !can(access.projectRole, "content.edit"))
     return void res.status(404).json({ detail: "Document not found" });
 
   const active = await loadActiveVersion(documentId, db);
