@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import {
+    Building2,
     PanelLeft,
     User,
     ChevronsUpDown,
@@ -490,6 +491,21 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
                                     >
                                         <User className="h-4 w-4" />
                                         Account Settings
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            router.push(
+                                                "/account/organizations",
+                                            );
+                                            setIsDropdownOpen(false);
+                                        }}
+                                        className={cn(
+                                            "w-full px-4 py-2 text-left text-sm text-gray-700 flex items-center gap-2 rounded-md",
+                                            "hover:bg-white",
+                                        )}
+                                    >
+                                        <Building2 className="h-4 w-4" />
+                                        Organizations
                                     </button>
                                 </div>
                             )}

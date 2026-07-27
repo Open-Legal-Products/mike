@@ -46,6 +46,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
         prefetchProjectSections,
         search,
         setOwnerOnlyAction,
+        canDo,
     } = workspace;
     const [createFolderAction, setCreateFolderAction] = useState<
         (() => void) | null
@@ -168,13 +169,15 @@ export function ProjectDocumentsView({ projectId }: Props) {
                     )}
                 </div>
             )}
-            <TabPillButton
-                onClick={createFolderAction ?? undefined}
-                disabled={!createFolderAction || projectLoading}
-            >
-                <Plus className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Folder</span>
-            </TabPillButton>
+            {canDo("docs.organize") && (
+                <TabPillButton
+                    onClick={createFolderAction ?? undefined}
+                    disabled={!createFolderAction || projectLoading}
+                >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Folder</span>
+                </TabPillButton>
+            )}
         </div>
     );
 
@@ -201,7 +204,9 @@ export function ProjectDocumentsView({ projectId }: Props) {
                 search={search}
                 operations={operations}
                 onAddDocumentsActionChange={
-                    workspace.setAddDocumentsHeaderAction
+                    canDo("content.edit")
+                        ? workspace.setAddDocumentsHeaderAction
+                        : undefined
                 }
                 onCreateFolderActionChange={handleCreateFolderActionChange}
                 onSelectionActionsChange={handleSelectionActionsChange}
@@ -224,6 +229,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                     ) : null
                 }
                 onOwnerOnlyAction={setOwnerOnlyAction}
+                canDo={canDo}
             />
         </>
     );

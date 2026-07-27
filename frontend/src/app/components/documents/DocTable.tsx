@@ -45,6 +45,8 @@ import {
     SubfolderSvgIcon,
 } from "@/app/components/shared/FolderSvgIcon";
 import { useAuth } from "@/app/contexts/AuthContext";
+import type { Capability } from "@/app/lib/permissions";
+import type { OwnerGate } from "@/app/components/projects/ProjectWorkspace";
 import { WarningPopup } from "@/app/components/popups/WarningPopup";
 import { UploadOverlay } from "@/app/components/assistant/UploadOverlay";
 import { ConfirmPopup } from "@/app/components/popups/ConfirmPopup";
@@ -137,7 +139,13 @@ interface DocTableProps {
     onAddDocumentsActionChange?: (action: (() => void) | null) => void;
     onCreateFolderActionChange?: (action: (() => void) | null) => void;
     onSelectionActionsChange?: (actions: DocTableSelectionActions | null) => void;
-    onOwnerOnlyAction?: Dispatch<SetStateAction<string | null>>;
+    onOwnerOnlyAction?: Dispatch<SetStateAction<OwnerGate | null>>;
+    /**
+     * Role-based capability check for the containing collection. When
+     * omitted (library, standalone docs) every capability is allowed and
+     * only the per-document creator checks apply.
+     */
+    canDo?: (capability: Capability) => boolean;
     enableHeaderFilters?: boolean;
 }
 
@@ -271,6 +279,7 @@ export function DocTable({
     onCreateFolderActionChange,
     onSelectionActionsChange,
     onOwnerOnlyAction,
+    canDo,
     enableHeaderFilters = false,
 }: DocTableProps) {
     const [addDocsOpen, setAddDocsOpen] = useState(false);
@@ -293,6 +302,21 @@ export function DocTable({
     const setOwnerOnlyAction = useMemo(
         () => onOwnerOnlyAction ?? (() => {}),
         [onOwnerOnlyAction],
+    );
+    // Absent canDo (library/standalone contexts) means no role model applies.
+    const allowed = useMemo(() => canDo ?? (() => true), [canDo]);
+    /** Guard: false + popup when the caller's role lacks the capability. */
+    const requireCapability = useCallback(
+        (
+            capability: Capability,
+            action: string,
+            requiredRole: "manager" | "editor",
+        ) => {
+            if (allowed(capability)) return true;
+            setOwnerOnlyAction({ action, requiredRole });
+            return false;
+        },
+        [allowed, setOwnerOnlyAction],
     );
 
     useEffect(() => {
@@ -683,6 +707,10 @@ export function DocTable({
             setCreatingFolderIn(undefined);
             return;
         }
+        if (!requireCapability("docs.organize", "create folders", "editor")) {
+            setCreatingFolderIn(undefined);
+            return;
+        }
 
         // Immediately hide the input and show an optimistic folder row
         setCreatingFolderIn(undefined);
@@ -715,6 +743,14 @@ export function DocTable({
         const name = renameFolderValue.trim();
         setRenamingFolderId(null);
         if (!name) return;
+        if (
+            !requireCapability(
+                "structure.manage",
+                "rename folders",
+                "manager",
+            )
+        )
+            return;
         setFolders((prev) =>
             prev.map((f) => (f.id === folderId ? { ...f, name } : f)),
         );
@@ -748,6 +784,14 @@ export function DocTable({
     }
 
     function requestDeleteFolder(folderId: string) {
+        if (
+            !requireCapability(
+                "structure.manage",
+                "delete folders and their documents",
+                "manager",
+            )
+        )
+            return;
         const folder = folders.find((f) => f.id === folderId);
         if (!folder) return;
         const impact = folderDeleteImpact(folderId);
@@ -907,6 +951,10 @@ export function DocTable({
     }
 
     async function handleRemoveDocFromFolder(docId: string) {
+        if (
+            !requireCapability("docs.organize", "move documents", "editor")
+        )
+            return;
         setDocuments((prev) =>
             prev.map((d) =>
                 d.id === docId ? { ...d, folder_id: null } : d,
@@ -923,6 +971,12 @@ export function DocTable({
         }
         const previous = documents.find((d) => d.id === docId);
         if (!previous || trimmed === previous.filename) {
+            setRenamingDocumentId(null);
+            return;
+        }
+        if (
+            !requireCapability("docs.organize", "rename documents", "editor")
+        ) {
             setRenamingDocumentId(null);
             return;
         }
@@ -1268,6 +1322,10 @@ export function DocTable({
         if (docId) {
             const doc = documents.find((d) => d.id === docId);
             if (!doc || (doc.folder_id ?? null) === targetFolderId) return;
+            if (
+                !requireCapability("docs.organize", "move documents", "editor")
+            )
+                return;
             setDocuments((prev) =>
                 prev.map((d) =>
                     d.id === docId ? { ...d, folder_id: targetFolderId } : d,
@@ -1275,6 +1333,14 @@ export function DocTable({
             );
             await operations.moveDocument(docId, targetFolderId);
         } else if (subFolderId && subFolderId !== targetFolderId) {
+            if (
+                !requireCapability(
+                    "structure.manage",
+                    "move folders",
+                    "manager",
+                )
+            )
+                return;
             if (
                 targetFolderId !== null &&
                 wouldCreateCycle(subFolderId, targetFolderId)
@@ -1944,6 +2010,10 @@ export function DocTable({
     }, [downloadDoc, selectedDocIds]);
 
     const handleRemoveSelectedFromFolder = useCallback(async () => {
+        if (
+            !requireCapability("docs.organize", "move documents", "editor")
+        )
+            return;
         const ids = selectedDocIds.filter(
             (id) => docs.find((d) => d.id === id)?.folder_id != null,
         );
@@ -1956,7 +2026,7 @@ export function DocTable({
         await Promise.all(
             ids.map((id) => operations.moveDocument(id, null).catch(() => {})),
         );
-    }, [docs, operations, selectedDocIds, setDocuments]);
+    }, [docs, operations, requireCapability, selectedDocIds, setDocuments]);
 
     const handleDeleteSelectedDocs = useCallback(async () => {
         const ids = [...selectedDocIds];
