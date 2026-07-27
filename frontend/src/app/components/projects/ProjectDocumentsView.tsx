@@ -53,6 +53,7 @@ export function ProjectDocumentsView({ projectId, folderId = null }: Props) {
         search,
         setOwnerOnlyAction,
         setDocumentFolderBreadcrumbs,
+        canDo,
     } = workspace;
     const [createFolderAction, setCreateFolderAction] = useState<
         (() => void) | null
@@ -290,13 +291,15 @@ export function ProjectDocumentsView({ projectId, folderId = null }: Props) {
                     )}
                 </div>
             )}
-            <TabPillButton
-                onClick={createFolderAction ?? undefined}
-                disabled={!createFolderAction || projectLoading}
-            >
-                <Plus className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Folder</span>
-            </TabPillButton>
+            {canDo("docs.organize") && (
+                <TabPillButton
+                    onClick={createFolderAction ?? undefined}
+                    disabled={!createFolderAction || projectLoading}
+                >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Folder</span>
+                </TabPillButton>
+            )}
         </div>
     );
 
@@ -324,7 +327,9 @@ export function ProjectDocumentsView({ projectId, folderId = null }: Props) {
                 operations={operations}
                 emptyStateTitle="Documents"
                 onAddDocumentsActionChange={
-                    workspace.setAddDocumentsHeaderAction
+                    canDo("content.edit")
+                        ? workspace.setAddDocumentsHeaderAction
+                        : undefined
                 }
                 onCreateFolderActionChange={handleCreateFolderActionChange}
                 onFolderViewBackActionChange={handleFolderBackActionChange}
@@ -359,6 +364,7 @@ export function ProjectDocumentsView({ projectId, folderId = null }: Props) {
                     ) : null
                 }
                 onOwnerOnlyAction={setOwnerOnlyAction}
+                canDo={canDo}
             />
         </>
     );

@@ -34,11 +34,25 @@ import { PeopleModal } from "@/app/components/modals/PeopleModal";
 import { useChatHistoryContext } from "@/app/contexts/ChatHistoryContext";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { useUserProfile } from "@/app/contexts/UserProfileContext";
+import {
+    type Capability,
+    type ProjectRole,
+    can,
+    roleFrom,
+} from "@/app/lib/permissions";
 import { ProjectDetailsModal } from "./ProjectDetailsModal";
 import {
     ProjectPageHeader,
     type ProjectWorkspaceSection,
 } from "./ProjectPageParts";
+
+/**
+ * A denied action: the sentence for the popup plus which role the action is
+ * reserved for. Plain strings keep the historic owner-only phrasing.
+ */
+export type OwnerGate =
+    | string
+    | { action: string; requiredRole: "owner" | "manager" | "editor" };
 
 type ProjectWorkspaceValue = {
     projectId: string;
@@ -63,7 +77,11 @@ type ProjectWorkspaceValue = {
     setDocumentFolderBreadcrumbs: React.Dispatch<
         React.SetStateAction<Array<{ label: string; onClick: () => void }>>
     >;
-    setOwnerOnlyAction: React.Dispatch<React.SetStateAction<string | null>>;
+    setOwnerOnlyAction: React.Dispatch<React.SetStateAction<OwnerGate | null>>;
+    /** The caller's role on this project ("owner" until the project loads). */
+    accessRole: ProjectRole;
+    /** Capability check against the caller's role — mirror of the server. */
+    canDo: (capability: Capability) => boolean;
 };
 
 const ProjectWorkspaceContext =
@@ -115,7 +133,9 @@ export function ProjectWorkspaceProvider({
     const [projectChatsLoading, setProjectChatsLoading] = useState(false);
     const [peopleModalOpen, setPeopleModalOpen] = useState(false);
     const [projectDetailsOpen, setProjectDetailsOpen] = useState(false);
-    const [ownerOnlyAction, setOwnerOnlyAction] = useState<string | null>(null);
+    const [ownerOnlyAction, setOwnerOnlyAction] = useState<OwnerGate | null>(
+        null,
+    );
     const [deleteProjectConfirmOpen, setDeleteProjectConfirmOpen] =
         useState(false);
     const [deleteProjectStatus, setDeleteProjectStatus] = useState<
@@ -278,13 +298,24 @@ export function ProjectWorkspaceProvider({
         }
     }
 
+    // Role derived from the loaded project; "owner" until it loads, matching
+    // the historic `is_owner !== false` optimism. The server enforces.
+    const accessRole: ProjectRole = project ? roleFrom(project) : "owner";
+    const canDo = useCallback(
+        (capability: Capability) => can(accessRole, capability),
+        [accessRole],
+    );
+
     async function handleProjectDetailsSave(values: {
         name: string;
         cmNumber: string;
         practice: string;
     }) {
-        if (project && project.is_owner === false) {
-            setOwnerOnlyAction("edit project details");
+        if (project && !canDo("members.manage")) {
+            setOwnerOnlyAction({
+                action: "edit project details",
+                requiredRole: "manager",
+            });
             return;
         }
         const name = values.name.trim();
@@ -309,7 +340,7 @@ export function ProjectWorkspaceProvider({
     }
 
     function requestProjectDelete() {
-        if (project && project.is_owner === false) {
+        if (project && !canDo("container.delete")) {
             setOwnerOnlyAction("delete this project");
             return;
         }
@@ -353,6 +384,8 @@ export function ProjectWorkspaceProvider({
             setAddDocumentsHeaderAction,
             setDocumentFolderBreadcrumbs,
             setOwnerOnlyAction,
+            accessRole,
+            canDo,
         }),
         [
             projectId,
@@ -371,6 +404,8 @@ export function ProjectWorkspaceProvider({
             createChat,
             openNewReview,
             setAddDocumentsHeaderAction,
+            accessRole,
+            canDo,
         ],
     );
 
@@ -391,7 +426,7 @@ export function ProjectWorkspaceProvider({
                     activeSection={activeSection}
                     creatingChat={creatingChat}
                     creatingReview={creatingReview}
-                    isOwner={project?.is_owner !== false}
+                    isOwner={canDo("members.manage")}
                     onBackToProjects={() => router.push("/projects")}
                     onProjectRoot={openProjectRoot}
                     onOpenDetails={() => setProjectDetailsOpen(true)}
@@ -423,14 +458,24 @@ export function ProjectWorkspaceProvider({
 
                 <OwnerOnlyPopup
                     open={!!ownerOnlyAction}
-                    action={ownerOnlyAction ?? undefined}
+                    action={
+                        typeof ownerOnlyAction === "string"
+                            ? ownerOnlyAction
+                            : ownerOnlyAction?.action
+                    }
+                    requiredRole={
+                        typeof ownerOnlyAction === "string"
+                            ? "owner"
+                            : ownerOnlyAction?.requiredRole
+                    }
+                    ownerEmail={project?.owner_email}
                     onClose={() => setOwnerOnlyAction(null)}
                 />
 
                 <ProjectDetailsModal
                     open={projectDetailsOpen}
                     project={project}
-                    canEdit={project?.is_owner !== false}
+                    canEdit={canDo("members.manage")}
                     onClose={() => setProjectDetailsOpen(false)}
                     onSave={handleProjectDetailsSave}
                     onShareProject={() => {
@@ -476,7 +521,7 @@ export function ProjectWorkspaceProvider({
                             "People",
                         ]}
                         onSharedWithChange={
-                            project.is_owner === false
+                            !canDo("members.manage")
                                 ? undefined
                                 : async (next) => {
                                       const updated = await updateProject(

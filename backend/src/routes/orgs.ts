@@ -22,7 +22,10 @@ import {
     removeTeamMember,
     type OrgResult,
 } from "../lib/orgs";
-import { findProfileUserByEmail } from "../lib/userLookup";
+import {
+    findProfileUserByEmail,
+    loadProfileUsersByEmail,
+} from "../lib/userLookup";
 import { getOrgRole, roleCanManage } from "../lib/access";
 
 export const orgsRouter = Router();
@@ -93,13 +96,24 @@ orgsRouter.get("/:orgId", requireAuth, async (req, res) => {
     res.json(result.org);
 });
 
-// GET /orgs/:orgId/members — list members (any member).
+// GET /orgs/:orgId/members — list members (any member). Rows are enriched
+// with the mirrored profile email/display_name (same source as the projects
+// /people endpoint) so the client never has to render a bare user id.
 orgsRouter.get("/:orgId/members", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
     const db = createServerSupabase();
     const result = await listMembers(db, { userId, orgId: req.params.orgId });
     if (!result.ok) return sendFailure(res, result);
-    res.json(result.members);
+    const { userById } = await loadProfileUsersByEmail(db);
+    const members = (result.members as { user_id: string }[]).map((m) => {
+        const info = userById.get(m.user_id);
+        return {
+            ...m,
+            email: info?.email ?? null,
+            display_name: info?.display_name ?? null,
+        };
+    });
+    res.json(members);
 });
 
 // POST /orgs/:orgId/members — add a member by email (owner/admin only).
@@ -161,13 +175,44 @@ orgsRouter.delete("/:orgId/members/:userId", requireAuth, async (req, res) => {
     res.status(204).send();
 });
 
-// GET /orgs/:orgId/teams — list teams (any member).
+// GET /orgs/:orgId/teams — list teams (any member), each carrying its
+// members enriched with profile email/display_name so the team panel can
+// render people, not ids.
 orgsRouter.get("/:orgId/teams", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
     const db = createServerSupabase();
     const result = await listTeams(db, { userId, orgId: req.params.orgId });
     if (!result.ok) return sendFailure(res, result);
-    res.json(result.teams);
+    const teams = result.teams as { id: string }[];
+    if (teams.length === 0) return void res.json([]);
+
+    const [{ data: memberRows }, { userById }] = await Promise.all([
+        db
+            .from("team_members")
+            .select("team_id, user_id")
+            .in("team_id", teams.map((t) => t.id)),
+        loadProfileUsersByEmail(db),
+    ]);
+    const membersByTeam = new Map<
+        string,
+        { user_id: string; email: string | null; display_name: string | null }[]
+    >();
+    for (const row of (memberRows ?? []) as {
+        team_id: string;
+        user_id: string;
+    }[]) {
+        const info = userById.get(row.user_id);
+        const list = membersByTeam.get(row.team_id) ?? [];
+        list.push({
+            user_id: row.user_id,
+            email: info?.email ?? null,
+            display_name: info?.display_name ?? null,
+        });
+        membersByTeam.set(row.team_id, list);
+    }
+    res.json(
+        teams.map((t) => ({ ...t, members: membersByTeam.get(t.id) ?? [] })),
+    );
 });
 
 // POST /orgs/:orgId/teams — create a team (owner/admin only).
