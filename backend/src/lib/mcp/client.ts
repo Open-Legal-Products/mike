@@ -181,25 +181,59 @@ export function toolRequiresConfirmation(
     // hint, not a guarantee. For legal data the cost of silently running an
     // unvetted side-effecting tool (exfiltrating a privileged document,
     // mutating a matter, hitting an unknown external system) far outweighs the
-    // friction of one extra confirmation click. So the default flips toward
-    // safety: a tool requires confirmation UNLESS it is POSITIVELY known-safe.
+    // friction of one extra confirmation click. So a tool requires per-call
+    // confirmation UNLESS its annotations POSITIVELY declare it safe.
     //
-    // Known-safe means all three of:
-    //   - readOnlyHint === true      (server explicitly claims it only reads)
-    //   - NOT destructiveHint        (not flagged as destructive)
-    //   - NOT openWorldHint          (does not reach an open/unbounded world —
-    //                                 e.g. arbitrary external network/systems)
+    // Positively safe means all three, with the MCP spec's defaults in mind
+    // (an omitted openWorldHint defaults to TRUE, so absence is NOT safety):
+    //   - readOnlyHint === true    (server explicitly claims it only reads)
+    //   - openWorldHint === false  (server explicitly claims a closed world;
+    //                               merely omitting the hint means open-world)
+    //   - destructiveHint !== true (destructiveHint is only meaningful when a
+    //                               tool is not read-only, but an explicit
+    //                               destructive claim always gates)
     //
-    // Anything absent or ambiguous (no hints at all, readOnlyHint merely
-    // missing rather than true, an open-world reader, etc.) is treated as
-    // untrusted and gated. This is the inverse of the previous policy, which
-    // trusted a tool unless it explicitly declared itself destructive/mutating;
-    // that let a poorly- or maliciously-annotated tool run unconfirmed.
-    const knownSafe =
+    // Anything absent or ambiguous is gated. Note this function classifies
+    // the ANNOTATIONS only — whether a positively-safe tool may actually run
+    // without per-call approval additionally requires the user to have marked
+    // the connector as trusted (see mcpCallNeedsApproval), because a
+    // malicious server can simply lie in its annotations.
+    const annotationSafe =
         annotations?.readOnlyHint === true &&
-        !truthyAnnotation(annotations, "destructiveHint") &&
-        !truthyAnnotation(annotations, "openWorldHint");
-    return !knownSafe;
+        annotations?.openWorldHint === false &&
+        annotations?.destructiveHint !== true;
+    return !annotationSafe;
+}
+
+/**
+ * The locally controlled trust decision: annotations come from the server,
+ * but this flag comes from the USER, who must explicitly mark a connector's
+ * annotations as trustworthy before any of its tools can skip per-call
+ * approval. Stored in the connector's tool_policy so the user can revoke it.
+ */
+export function connectorTrustsAnnotations(
+    toolPolicy: Record<string, unknown> | null | undefined,
+): boolean {
+    return toolPolicy?.trust_annotations === true;
+}
+
+/**
+ * Whether a specific call must pause for the user's per-call approval.
+ * Auto-execution requires BOTH independent signals: the server's annotations
+ * positively declare the tool safe (requiresConfirmation === false) AND the
+ * user has locally marked this connector's annotations as trusted. Either
+ * one alone is insufficient — annotations because the server controls them,
+ * trust because it is a blanket statement that still shouldn't silence
+ * tools the server itself flags as unsafe.
+ */
+export function mcpCallNeedsApproval(input: {
+    requiresConfirmation: boolean;
+    toolPolicy: Record<string, unknown> | null | undefined;
+}): boolean {
+    return (
+        input.requiresConfirmation ||
+        !connectorTrustsAnnotations(input.toolPolicy)
+    );
 }
 
 function toToolSummary(row: ToolCacheRow): McpToolSummary {
@@ -235,6 +269,7 @@ export function toConnectorSummary(
         customHeaderKeys: Object.keys(authConfig.headers ?? {}),
         oauthConnected: !!oauthToken?.encrypted_access_token,
         toolPolicy: connector.tool_policy ?? {},
+        trustAnnotations: connectorTrustsAnnotations(connector.tool_policy),
         tools: tools.map(toToolSummary),
         toolCount,
         createdAt: connector.created_at,
