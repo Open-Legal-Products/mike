@@ -606,6 +606,32 @@ export async function runToolCalls(
         tc.function.name,
         args,
         db,
+        {
+          // Approval-gated call: surface the exact stored payload so the user
+          // can approve or decline it inline, then report how it resolved.
+          onApprovalRequired: (pending) => {
+            write(
+              `data: ${JSON.stringify({
+                type: "mcp_confirmation_required",
+                id: pending.id,
+                name: tc.function.name,
+                connector_name: pending.connector_name,
+                tool_name: pending.tool_name,
+                arguments_json: pending.arguments_json,
+                expires_at: pending.expires_at,
+              })}\n\n`,
+            );
+          },
+          onApprovalResolved: (pendingId, decision) => {
+            write(
+              `data: ${JSON.stringify({
+                type: "mcp_confirmation_resolved",
+                id: pendingId,
+                decision,
+              })}\n\n`,
+            );
+          },
+        },
       );
       toolResults.push({
         role: "tool",

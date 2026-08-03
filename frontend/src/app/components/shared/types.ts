@@ -119,6 +119,15 @@ export type AssistantEvent =
       isStreaming?: boolean;
     }
   | {
+      type: "mcp_confirmation";
+      id: string;
+      connector_name: string;
+      tool_name: string;
+      arguments_json: string;
+      expires_at: string;
+      resolved?: "approved" | "denied" | "expired";
+    }
+  | {
       type: "ask_inputs";
       items: (
         | {

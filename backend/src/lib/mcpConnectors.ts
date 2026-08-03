@@ -8,7 +8,13 @@ export type {
 } from "./mcp/types";
 export { McpOAuthRequiredError } from "./mcp/oauth";
 export {
+    decideMcpPendingToolCall,
+    type McpApprovalDecision,
+    type McpDecisionOutcome,
+} from "./mcp/approvals";
+export {
     buildUserMcpTools,
+    type McpApprovalPromptPayload,
     completeUserMcpConnectorOAuth,
     createUserMcpConnector,
     deleteUserMcpConnector,
