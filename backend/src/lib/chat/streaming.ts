@@ -11,6 +11,7 @@ import {
   buildUserMcpTools,
   type McpToolEvent,
 } from "../mcpConnectors";
+import { buildGoogleDriveTools } from "../integrations/googleDrive";
 import {
   COURTLISTENER_TOOLS,
   type CaseCitationEvent,
@@ -196,10 +197,11 @@ export async function runLLMStream(params: {
   } = params;
   const researchTools = includeResearchTools ? COURTLISTENER_TOOLS : [];
   const mcpTools = await buildUserMcpTools(userId, db);
+  const googleDriveTools = await buildGoogleDriveTools(userId, db);
   const baseTools = [...TOOLS, ...researchTools, ...WORKFLOW_TOOLS];
   const activeTools = extraTools?.length
-    ? [...baseTools, ...mcpTools, ...extraTools]
-    : [...baseTools, ...mcpTools];
+    ? [...baseTools, ...mcpTools, ...googleDriveTools, ...extraTools]
+    : [...baseTools, ...mcpTools, ...googleDriveTools];
 
   // Extract system prompt; pass remaining turns to the adapter as
   // plain user/assistant messages.
