@@ -28,6 +28,7 @@ import {
     startUserMcpConnectorOAuth,
     updateUserMcpConnector,
 } from "../lib/mcpConnectors";
+import { conciseMcpErrorMessage } from "../lib/mcp/errors";
 import {
     deleteAllUserChats,
     deleteAllUserTabularReviews,
@@ -867,9 +868,12 @@ userRouter.get("/mcp-connectors/oauth/callback", async (req, res) => {
                 ),
             );
     } catch (err) {
-        const detail = errorMessage(err);
+        // The popup renders this detail directly — keep it concise (the SDK
+        // embeds entire server response bodies, including HTML error pages,
+        // in its messages; the full text still goes to the log below).
+        const detail = conciseMcpErrorMessage(err);
         console.error("[user/mcp-connectors] oauth callback failed", {
-            error: detail,
+            error: errorMessage(err),
             stateHash: shortHash(state),
             hasCode: !!code,
             hasError: !!error,
@@ -903,19 +907,30 @@ userRouter.post(
             );
             res.json(connector);
         } catch (err) {
-            const detail = errorMessage(err);
+            // Full message (with any embedded response body) goes to the log;
+            // the user gets the concise diagnostic — never a raw HTML error
+            // page — plus the versioned-endpoint hint for Google URLs.
             console.error("[user/mcp-connectors] refresh failed", {
                 userId,
                 connectorId: req.params.connectorId,
-                error: detail,
+                error: errorMessage(err),
             });
             if (err instanceof McpOAuthRequiredError) {
                 return void res.status(401).json({
                     code: err.code,
-                    detail,
+                    detail: errorMessage(err),
                 });
             }
-            res.status(400).json({ detail });
+            const serverUrl = await getUserMcpConnector(
+                userId,
+                req.params.connectorId,
+                db,
+            )
+                .then((connector) => connector?.serverUrl)
+                .catch(() => undefined);
+            res.status(400).json({
+                detail: conciseMcpErrorMessage(err, serverUrl),
+            });
         }
     },
 );
