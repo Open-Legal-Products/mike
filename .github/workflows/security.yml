@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege for the job token: this workflow only reads the repo and
+# queries the npm registry — it never writes to the repo, issues, or checks.
+# Without this block the job token inherits the repository default, which
+# may be broader; OpenSSF Scorecard's Token-Permissions check verifies it.
+permissions:
+  contents: read
+
 jobs:
   # Blocking for BOTH workspaces: high/critical advisories fail the build
   # unless their GHSA id is documented (with a reason) in
