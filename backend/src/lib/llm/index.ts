@@ -43,21 +43,21 @@ export function registerBuiltinProviders(): void {
         matchesModel: (m) => m.startsWith("claude"),
         stream: streamClaude,
         complete: completeClaudeText,
-        models: { main: CLAUDE_MAIN_MODELS, mid: CLAUDE_MID_MODELS, low: CLAUDE_LOW_MODELS },
+        models: [...CLAUDE_MAIN_MODELS, ...CLAUDE_MID_MODELS, ...CLAUDE_LOW_MODELS],
     });
     registerProvider({
         id: "gemini",
         matchesModel: (m) => m.startsWith("gemini"),
         stream: streamGemini,
         complete: completeGeminiText,
-        models: { main: GEMINI_MAIN_MODELS, mid: GEMINI_MID_MODELS, low: GEMINI_LOW_MODELS },
+        models: [...GEMINI_MAIN_MODELS, ...GEMINI_MID_MODELS, ...GEMINI_LOW_MODELS],
     });
     registerProvider({
         id: "openai",
         matchesModel: (m) => m.startsWith("gpt-"),
         stream: streamOpenAI,
         complete: completeOpenAIText,
-        models: { main: OPENAI_MAIN_MODELS, mid: OPENAI_MID_MODELS, low: OPENAI_LOW_MODELS },
+        models: [...OPENAI_MAIN_MODELS, ...OPENAI_MID_MODELS, ...OPENAI_LOW_MODELS],
     });
     registerProvider({
         id: "ollama",
@@ -66,7 +66,7 @@ export function registerBuiltinProviders(): void {
         matchesModel: (m) => m.startsWith("ollama"),
         stream: streamOllama,
         complete: completeOllamaText,
-        models: { main: [], mid: [], low: [] },
+        models: [],
     });
 }
 

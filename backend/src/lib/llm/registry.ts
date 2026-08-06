@@ -23,15 +23,11 @@ export interface LLMProviderAdapter {
     /** Single-shot non-streaming text completion. */
     complete(params: CompleteTextParams): Promise<string>;
     /**
-     * Model IDs grouped by usage tier.
+     * Every model ID this provider serves (all tiers, flat).
      * Drives the global valid-model set so resolveModel() recognises
      * externally registered models without hard-coding them in models.ts.
      */
-    readonly models: {
-        readonly main: readonly string[];
-        readonly mid: readonly string[];
-        readonly low: readonly string[];
-    };
+    readonly models: readonly string[];
 }
 
 const _registry = new Map<string, LLMProviderAdapter>();
@@ -79,7 +75,7 @@ export function registeredProviderIds(): string[] {
 export function allRegisteredModels(): Set<string> {
     const set = new Set<string>();
     for (const p of _registry.values()) {
-        for (const m of [...p.models.main, ...p.models.mid, ...p.models.low]) {
+        for (const m of p.models) {
             set.add(m);
         }
     }
