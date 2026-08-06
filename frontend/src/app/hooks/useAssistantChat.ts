@@ -603,6 +603,46 @@ export function useAssistantChat({
               continue;
             }
 
+            if (data.type === "mcp_confirmation_required") {
+              pushEvent({
+                type: "mcp_confirmation",
+                id: (data.id as string) ?? "",
+                connector_name:
+                  typeof data.connector_name === "string"
+                    ? (data.connector_name as string)
+                    : "",
+                tool_name:
+                  typeof data.tool_name === "string"
+                    ? (data.tool_name as string)
+                    : "",
+                arguments_json:
+                  typeof data.arguments_json === "string"
+                    ? (data.arguments_json as string)
+                    : "{}",
+                expires_at:
+                  typeof data.expires_at === "string"
+                    ? (data.expires_at as string)
+                    : "",
+              });
+              continue;
+            }
+
+            if (data.type === "mcp_confirmation_resolved") {
+              const pendingId = (data.id as string) ?? "";
+              const decision =
+                data.decision === "approved" || data.decision === "denied"
+                  ? (data.decision as "approved" | "denied")
+                  : "expired";
+              updateMatchingEvent(
+                (e) => e.type === "mcp_confirmation" && e.id === pendingId,
+                (e) =>
+                  e.type === "mcp_confirmation"
+                    ? { ...e, resolved: decision }
+                    : e,
+              );
+              continue;
+            }
+
             if (data.type === "mcp_tool_start") {
               pushEvent({
                 type: "mcp_tool_call",

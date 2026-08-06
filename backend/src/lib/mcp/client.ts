@@ -174,14 +174,86 @@ function truthyAnnotation(
 export function toolRequiresConfirmation(
     annotations: Record<string, unknown> | null | undefined,
 ) {
-    // Gate only genuinely destructive tools behind human confirmation. We do
-    // NOT gate on openWorldHint (almost every useful connector — Gmail, Slack,
-    // GitHub — is "open world", so gating on it disables everything), and we
-    // require readOnlyHint to be *explicitly* false rather than merely absent
-    // (a missing hint must not be treated the same as readOnlyHint:false).
+    // Fail-safe confirmation policy for a legal product.
+    //
+    // Tool annotations (readOnlyHint / destructiveHint / openWorldHint) are
+    // ADVISORY and entirely controlled by the external MCP server — they are a
+    // hint, not a guarantee. For legal data the cost of silently running an
+    // unvetted side-effecting tool (exfiltrating a privileged document,
+    // mutating a matter, hitting an unknown external system) far outweighs the
+    // friction of one extra confirmation click. So a tool requires per-call
+    // confirmation UNLESS its annotations POSITIVELY declare it safe.
+    //
+    // Positively safe means all three, with the MCP spec's defaults in mind
+    // (an omitted openWorldHint defaults to TRUE, so absence is NOT safety):
+    //   - readOnlyHint === true    (server explicitly claims it only reads)
+    //   - openWorldHint === false  (server explicitly claims a closed world;
+    //                               merely omitting the hint means open-world)
+    //   - destructiveHint !== true (destructiveHint is only meaningful when a
+    //                               tool is not read-only, but an explicit
+    //                               destructive claim always gates)
+    //
+    // Anything absent or ambiguous is gated. Note this function classifies
+    // the ANNOTATIONS only — whether a positively-safe tool may actually run
+    // without per-call approval additionally requires the user to have marked
+    // the connector as trusted (see mcpCallNeedsApproval), because a
+    // malicious server can simply lie in its annotations.
+    const annotationSafe =
+        annotations?.readOnlyHint === true &&
+        annotations?.openWorldHint === false &&
+        annotations?.destructiveHint !== true;
+    return !annotationSafe;
+}
+
+/**
+ * The call-time gate over a cached tool row. The requires_confirmation
+ * column is only a display cache written at tool-refresh time — rows written
+ * before the fail-safe policy existed (or by any older, more lenient policy)
+ * can carry a stale `false`. Trusting that stale boolean would let an
+ * unannotated / open-world tool auto-run the moment the user trusts the
+ * connector, which is exactly the failure the fail-safe policy exists to
+ * prevent. So the gate recomputes the policy LIVE from the row's stored
+ * annotations and gates when EITHER signal says gate: the live computation
+ * is authoritative, and an explicit stored `true` is still honored so a
+ * cached "gate this" can never be silently downgraded.
+ */
+export function toolRowRequiresConfirmation(
+    row: Pick<ToolCacheRow, "annotations" | "requires_confirmation">,
+): boolean {
     return (
-        truthyAnnotation(annotations, "destructiveHint") ||
-        annotations?.readOnlyHint === false
+        row.requires_confirmation === true ||
+        toolRequiresConfirmation(row.annotations)
+    );
+}
+
+/**
+ * The locally controlled trust decision: annotations come from the server,
+ * but this flag comes from the USER, who must explicitly mark a connector's
+ * annotations as trustworthy before any of its tools can skip per-call
+ * approval. Stored in the connector's tool_policy so the user can revoke it.
+ */
+export function connectorTrustsAnnotations(
+    toolPolicy: Record<string, unknown> | null | undefined,
+): boolean {
+    return toolPolicy?.trust_annotations === true;
+}
+
+/**
+ * Whether a specific call must pause for the user's per-call approval.
+ * Auto-execution requires BOTH independent signals: the server's annotations
+ * positively declare the tool safe (requiresConfirmation === false) AND the
+ * user has locally marked this connector's annotations as trusted. Either
+ * one alone is insufficient — annotations because the server controls them,
+ * trust because it is a blanket statement that still shouldn't silence
+ * tools the server itself flags as unsafe.
+ */
+export function mcpCallNeedsApproval(input: {
+    requiresConfirmation: boolean;
+    toolPolicy: Record<string, unknown> | null | undefined;
+}): boolean {
+    return (
+        input.requiresConfirmation ||
+        !connectorTrustsAnnotations(input.toolPolicy)
     );
 }
 
@@ -218,6 +290,7 @@ export function toConnectorSummary(
         customHeaderKeys: Object.keys(authConfig.headers ?? {}),
         oauthConnected: !!oauthToken?.encrypted_access_token,
         toolPolicy: connector.tool_policy ?? {},
+        trustAnnotations: connectorTrustsAnnotations(connector.tool_policy),
         tools: tools.map(toToolSummary),
         toolCount,
         createdAt: connector.created_at,

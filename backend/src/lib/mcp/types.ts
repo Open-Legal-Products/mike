@@ -20,6 +20,8 @@ export type McpConnectorSummary = {
     customHeaderKeys: string[];
     oauthConnected: boolean;
     toolPolicy: Record<string, unknown>;
+    /** User's local decision to let annotation-safe tools run unprompted. */
+    trustAnnotations: boolean;
     tools: McpToolSummary[];
     toolCount: number;
     createdAt: string;
@@ -106,6 +108,28 @@ export type OAuthMetadata = {
     tokenEndpoint: string;
     registrationEndpoint?: string;
     scopesSupported?: string[];
+};
+
+export type PendingToolCallRow = {
+    id: string;
+    user_id: string;
+    connector_id: string;
+    tool_id: string | null;
+    tool_name: string;
+    openai_tool_name: string;
+    arguments: Record<string, unknown>;
+    status:
+        | "pending"
+        | "approved"
+        | "denied"
+        | "executing"
+        | "executed"
+        | "failed"
+        | "expired";
+    created_at: string;
+    expires_at: string;
+    decided_at: string | null;
+    executed_at: string | null;
 };
 
 export type ToolCacheRow = {

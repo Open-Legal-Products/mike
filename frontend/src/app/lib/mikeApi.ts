@@ -347,6 +347,7 @@ export interface McpConnectorSummary {
     customHeaderKeys: string[];
     oauthConnected: boolean;
     toolPolicy: Record<string, unknown>;
+    trustAnnotations: boolean;
     tools: McpToolSummary[];
     toolCount: number;
     createdAt: string;
@@ -386,6 +387,7 @@ export async function updateMcpConnector(
         enabled?: boolean;
         bearerToken?: string | null;
         headers?: Record<string, string>;
+        trustAnnotations?: boolean;
     },
 ): Promise<McpConnectorSummary> {
     return apiRequest<McpConnectorSummary>(
@@ -394,6 +396,20 @@ export async function updateMcpConnector(
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
+        },
+    );
+}
+
+export async function respondMcpPendingCall(
+    pendingId: string,
+    decision: "approve" | "deny",
+): Promise<{ status: "approved" | "denied" }> {
+    return apiRequest<{ status: "approved" | "denied" }>(
+        `/user/mcp-pending-calls/${pendingId}`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ decision }),
         },
     );
 }
