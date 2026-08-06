@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
     ChevronDown,
     Eye,
@@ -82,6 +82,19 @@ const mcpOAuthMessageOrigin = new URL(
     process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001",
 ).origin;
 
+/**
+ * Thrown to unwind the OAuth wait when the user cancels the flow or navigates
+ * away (the component unmounts) rather than because authorization genuinely
+ * failed. Callers use it to distinguish "abandoned on purpose" — which should
+ * quietly reset the UI — from a real error worth surfacing to the user.
+ */
+class McpOAuthCancelledError extends Error {
+    constructor(message = "OAuth authorization was cancelled.") {
+        super(message);
+        this.name = "McpOAuthCancelledError";
+    }
+}
+
 function parseCustomHeaders(raw: string): Record<string, string> | undefined {
     const text = raw.trim();
     if (!text) return undefined;
@@ -101,9 +114,11 @@ function parseCustomHeaders(raw: string): Record<string, string> | undefined {
 
 function isGoogleMcpConnector(connector: McpConnectorSummary) {
     try {
-        return new URL(connector.serverUrl).hostname
-            .toLowerCase()
-            .endsWith("googleapis.com");
+        const hostname = new URL(connector.serverUrl).hostname.toLowerCase();
+        return (
+            hostname === "googleapis.com" ||
+            hostname.endsWith(".googleapis.com")
+        );
     } catch {
         return false;
     }
@@ -143,6 +158,12 @@ export default function ConnectorsPage() {
         useState<string | null>(null);
     const [showDetailToken, setShowDetailToken] = useState(false);
     const [showDetailAdvanced, setShowDetailAdvanced] = useState(false);
+    // Which connector currently has a reconnect OAuth wait in flight (the
+    // details modal's Refresh flow). Drives the Cancel affordance next to the
+    // Refresh button, mirroring the escape hatch the add modal already has.
+    const [reconnectingConnectorId, setReconnectingConnectorId] = useState<
+        string | null
+    >(null);
 
     const selectedConnector = selectedConnectorDetails;
 
@@ -163,6 +184,23 @@ export default function ConnectorsPage() {
     useEffect(() => {
         void loadConnectors();
     }, [loadConnectors]);
+
+    // Holds the AbortController for an in-flight OAuth completion wait. A single
+    // flow can run at a time, so a ref (not state) is the right home: it is
+    // read/written imperatively and must never trigger a re-render.
+    const oauthAbortRef = useRef<AbortController | null>(null);
+
+    // If the user navigates away (or this page unmounts for any reason) while an
+    // OAuth popup wait is running, abort it. Without this the poll's setTimeout
+    // chain keeps firing authenticated GETs for up to five minutes and calls
+    // setState on an unmounted component. The empty dependency array makes the
+    // returned function a true unmount cleanup.
+    useEffect(() => {
+        return () => {
+            oauthAbortRef.current?.abort();
+            oauthAbortRef.current = null;
+        };
+    }, []);
 
     useEffect(() => {
         if (!selectedConnector) return;
@@ -260,7 +298,17 @@ export default function ConnectorsPage() {
     };
 
     const closeAddModal = () => {
-        if (addStep === "working" || addStep === "auth") return;
+        // "working" is a brief synchronous create with nothing to cancel, so we
+        // still block closing there. "auth" used to be blocked too, which trapped
+        // the user for the full five-minute timeout whenever the popup closed
+        // without a detectable result (COOP severs `popup.closed`, so we cannot
+        // know). Closing during "auth" now aborts the pending OAuth wait via the
+        // ref, giving the user a reliable escape hatch.
+        if (addStep === "working") return;
+        if (addStep === "auth") {
+            oauthAbortRef.current?.abort();
+            oauthAbortRef.current = null;
+        }
         setAddOpen(false);
         setAddDraft(emptyAddDraft);
         setAddStep("form");
@@ -297,20 +345,73 @@ export default function ConnectorsPage() {
         }
         popup.location.href = authorizationUrl;
 
-        await new Promise<void>((resolve, reject) => {
-            const timeout = window.setTimeout(() => {
+        // A single OAuth wait runs at a time. Register its AbortController so the
+        // Cancel affordance and the unmount cleanup can tear it down; abort any
+        // stray previous flow first.
+        const abortController = new AbortController();
+        oauthAbortRef.current?.abort();
+        oauthAbortRef.current = abortController;
+        const { signal } = abortController;
+
+        // Wait for authorization to complete. Strict identity providers (Google
+        // among them) serve their consent page with
+        // `Cross-Origin-Opener-Policy: same-origin`, which severs `window.opener`
+        // and makes `popup.closed` unreadable from here. That breaks both the
+        // callback's `postMessage` and any `popup.closed` polling, and a blocked
+        // `popup.closed` read can even report a false "closed". So we treat the
+        // backend's `oauthConnected` flag as the source of truth and poll for it,
+        // while still honouring a `postMessage` on the chance it gets through.
+        try {
+            await new Promise<void>((resolve, reject) => {
+            let settled = false;
+            const finish = (action: () => void) => {
+                if (settled) return;
+                settled = true;
                 cleanup();
-                reject(new Error("OAuth authorization timed out."));
-            }, 5 * 60 * 1000);
-            const poll = window.setInterval(() => {
-                if (popup.closed) {
-                    cleanup();
-                    reject(new Error("OAuth authorization window was closed."));
-                }
-            }, 700);
+                action();
+            };
+            const timeout = window.setTimeout(
+                () =>
+                    finish(() =>
+                        reject(new Error("OAuth authorization timed out.")),
+                    ),
+                5 * 60 * 1000,
+            );
+            // Self-rescheduling poll rather than a fixed setInterval. Two reasons:
+            // (1) we back the cadence off from 1.5s to 5s after the first minute
+            // — the happy path resolves in seconds, so a user slowly reading a
+            // consent screen shouldn't generate ~200 authenticated GETs over the
+            // five-minute window; (2) chaining the next poll only after the
+            // previous read settles guarantees we never stack requests on a slow
+            // connection.
+            const pollStarted = Date.now();
+            let pollTimer = 0;
+            const scheduleNextPoll = () => {
+                const elapsed = Date.now() - pollStarted;
+                const delay = elapsed < 60_000 ? 1500 : 5000;
+                pollTimer = window.setTimeout(runPoll, delay);
+            };
+            const runPoll = () => {
+                void getMcpConnector(connectorId)
+                    .then((connector) => {
+                        if (settled) return;
+                        if (connector.oauthConnected) {
+                            finish(resolve);
+                            return;
+                        }
+                        scheduleNextPoll();
+                    })
+                    .catch(() => {
+                        // Transient read errors shouldn't abort the wait.
+                        if (!settled) scheduleNextPoll();
+                    });
+            };
+            const onAbort = () =>
+                finish(() => reject(new McpOAuthCancelledError()));
             const cleanup = () => {
                 window.clearTimeout(timeout);
-                window.clearInterval(poll);
+                window.clearTimeout(pollTimer);
+                signal.removeEventListener("abort", onAbort);
                 window.removeEventListener("message", onMessage);
             };
             const onMessage = (event: MessageEvent<McpOAuthPopupMessage>) => {
@@ -327,19 +428,36 @@ export default function ConnectorsPage() {
                     { type: "mcp_oauth_result_ack" },
                     event.origin,
                 );
-                cleanup();
                 if (event.data.success) {
-                    resolve();
+                    finish(resolve);
                     return;
                 }
-                reject(
-                    new Error(
-                        event.data.detail || "OAuth authorization failed.",
+                finish(() =>
+                    reject(
+                        new Error(
+                            event.data.detail || "OAuth authorization failed.",
+                        ),
                     ),
                 );
             };
             window.addEventListener("message", onMessage);
-        });
+            signal.addEventListener("abort", onAbort);
+            // Everything (cleanup, onMessage, onAbort) is now defined, so it is
+            // safe to both start polling and honour an abort that may already
+            // have fired before we finished wiring up.
+            scheduleNextPoll();
+            if (signal.aborted) onAbort();
+            });
+        } finally {
+            if (oauthAbortRef.current === abortController) {
+                oauthAbortRef.current = null;
+            }
+            try {
+                popup.close();
+            } catch {
+                // COOP may block closing a severed popup; it self-closes anyway.
+            }
+        }
 
         const refreshed = await refreshMcpConnectorTools(connectorId);
         replaceConnector(refreshed);
@@ -402,6 +520,12 @@ export default function ConnectorsPage() {
                 setAddResult(refreshed);
                 setAddStep("success");
             } catch (err) {
+                // A user-initiated cancel (or navigation away) is not a failure:
+                // closeAddModal has already reset the modal, so surfacing an
+                // error would be noise. Just release the busy lock via `finally`.
+                if (err instanceof McpOAuthCancelledError) {
+                    return;
+                }
                 setAddStep("form");
                 setAddAuthMessage(null);
                 setAddError(
@@ -483,6 +607,14 @@ export default function ConnectorsPage() {
         );
     };
 
+    // Aborts a reconnect's in-flight OAuth wait. Same mechanism closeAddModal
+    // uses for the add flow: rejecting the wait with McpOAuthCancelledError,
+    // which handleRefresh treats as "abandoned on purpose", not a failure.
+    const cancelReconnectOAuth = () => {
+        oauthAbortRef.current?.abort();
+        oauthAbortRef.current = null;
+    };
+
     const handleRefresh = async (connectorId: string) => {
         await runSensitiveAction({ type: "refresh", connectorId }, async () => {
             setBusyKey(`refresh:${connectorId}`);
@@ -494,7 +626,26 @@ export default function ConnectorsPage() {
                         err instanceof MikeApiError &&
                             err.code === "oauth_required"
                     ) {
-                        await connectConnectorOAuth(connectorId);
+                        // COOP-strict providers make the consent popup's fate
+                        // unobservable, so without an explicit escape hatch a
+                        // closed popup would leave the Refresh button stuck
+                        // busy for the full five-minute timeout. Surface the
+                        // Cancel affordance while the wait runs, and treat a
+                        // user-initiated cancel as a quiet reset rather than
+                        // an error.
+                        setReconnectingConnectorId(connectorId);
+                        try {
+                            await connectConnectorOAuth(connectorId);
+                        } catch (oauthErr) {
+                            if (oauthErr instanceof McpOAuthCancelledError) {
+                                return;
+                            }
+                            throw oauthErr;
+                        } finally {
+                            setReconnectingConnectorId((current) =>
+                                current === connectorId ? null : current,
+                            );
+                        }
                         return;
                     }
                     throw err;
@@ -678,6 +829,11 @@ export default function ConnectorsPage() {
                 onSave={handleSaveSelectedConnector}
                 onClearBearerToken={handleClearBearerToken}
                 onRefresh={handleRefresh}
+                reconnectingOAuth={
+                    !!selectedConnectorId &&
+                    reconnectingConnectorId === selectedConnectorId
+                }
+                onCancelReconnectOAuth={cancelReconnectOAuth}
                 onDelete={handleDelete}
                 onConnectorEnabled={handleConnectorEnabled}
                 onToolEnabled={handleToolEnabled}
@@ -807,6 +963,8 @@ function McpConnectorDetailsModal({
     onSave,
     onClearBearerToken,
     onRefresh,
+    reconnectingOAuth,
+    onCancelReconnectOAuth,
     onDelete,
     onConnectorEnabled,
     onToolEnabled,
@@ -826,6 +984,8 @@ function McpConnectorDetailsModal({
     onSave: () => Promise<void>;
     onClearBearerToken: (connectorId: string) => Promise<void>;
     onRefresh: (connectorId: string) => Promise<void>;
+    reconnectingOAuth: boolean;
+    onCancelReconnectOAuth: () => void;
     onDelete: (connectorId: string) => Promise<void>;
     onConnectorEnabled: (
         connectorId: string,
@@ -946,7 +1106,16 @@ function McpConnectorDetailsModal({
                                     ? "Tool"
                                     : "Tools"}
                             </h3>
-                            <div className="flex items-center">
+                            <div className="flex items-center gap-3">
+                                {reconnectingOAuth && (
+                                    <button
+                                        type="button"
+                                        onClick={onCancelReconnectOAuth}
+                                        className="text-xs font-medium text-gray-500 transition-colors hover:text-gray-900"
+                                    >
+                                        Cancel
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={() => void onRefresh(connector.id)}
