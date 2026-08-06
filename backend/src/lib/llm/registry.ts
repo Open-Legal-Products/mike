@@ -33,6 +33,14 @@ export interface LLMProviderAdapter {
      * externally registered models without hard-coding them in models.ts.
      */
     readonly models: readonly string[];
+    /**
+     * Optional: return true if model is a valid, dynamically discovered
+     * model ID for this provider even though it is absent from `models`
+     * (e.g. Ollama's locally installed "ollama/<tag>" models, detected at
+     * runtime via GET /models/ollama).  Consulted by resolveModel() through
+     * matchesDynamicModel(); providers with a fully static catalog omit it.
+     */
+    isDynamicModel?(model: string): boolean;
 }
 
 const _registry = new Map<string, LLMProviderAdapter>();
@@ -89,6 +97,19 @@ export function allRegisteredModels(): Set<string> {
         }
     }
     return set;
+}
+
+/**
+ * Returns true when any registered provider claims id as a valid,
+ * dynamically discovered model (see LLMProviderAdapter.isDynamicModel).
+ * resolveModel() consults this alongside allRegisteredModels() so providers
+ * whose model lists only exist at runtime need no static declarations.
+ */
+export function matchesDynamicModel(id: string): boolean {
+    for (const p of _registry.values()) {
+        if (p.isDynamicModel?.(id)) return true;
+    }
+    return false;
 }
 
 /** Exposed for test isolation only — do not call in production code. */

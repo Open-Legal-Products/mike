@@ -76,6 +76,10 @@ describe("providerForModel", () => {
         expect(providerForModel("opencode-go/glm-5")).toBe("opencode-go");
     });
 
+    it("maps ollama/* ids to the ollama provider", () => {
+        expect(providerForModel("ollama/llama3")).toBe("ollama");
+    });
+
     it("throws on an unknown model id", () => {
         expect(() => providerForModel("llama-3")).toThrow(/Unknown model id/);
         expect(() => providerForModel("")).toThrow(/Unknown model id/);
@@ -103,6 +107,12 @@ describe("resolveModel", () => {
         );
         expect(resolveModel("gpt-5.6-sol", DEFAULT_MAIN_MODEL)).toBe(
             "gpt-5.6-sol",
+        );
+    });
+
+    it("accepts dynamically discovered ollama/<tag> ids", () => {
+        expect(resolveModel("ollama/llama3.3:70b", DEFAULT_MAIN_MODEL)).toBe(
+            "ollama/llama3.3:70b",
         );
     });
 

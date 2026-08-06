@@ -61,6 +61,10 @@ export function registerBuiltinProviders(): void {
         stream: streamOpenRouter,
         complete: completeOpenRouterText,
         models: [],
+        // A router id is "<router>/<vendor>/<model>" — two segments after the
+        // namespace. "openrouter/auto" (one segment) is a bare prefix, not a
+        // real catalog id, so it must not resolve.
+        isDynamicModel: (m) => /^openrouter\/[^\s/]+\/[^\s]+$/.test(m),
     });
     registerProvider({
         id: "vercel",
@@ -69,6 +73,7 @@ export function registerBuiltinProviders(): void {
         stream: streamVercel,
         complete: completeVercelText,
         models: [],
+        isDynamicModel: (m) => /^vercel\/[^\s/]+\/[^\s]+$/.test(m),
     });
     registerProvider({
         id: "opencode-go",
@@ -77,6 +82,9 @@ export function registerBuiltinProviders(): void {
         stream: streamOpenCodeGo,
         complete: completeOpenCodeGoText,
         models: [],
+        // Unlike the other two routers, OpenCode Go's catalog ids are bare
+        // single-segment names ("glm-5"), so one segment is all there is.
+        isDynamicModel: (m) => /^opencode-go\/[^\s]+$/.test(m),
     });
     registerProvider({
         id: "claude",
@@ -111,6 +119,7 @@ export function registerBuiltinProviders(): void {
         stream: streamOllama,
         complete: completeOllamaText,
         models: [],
+        isDynamicModel: (m) => m.startsWith("ollama/"),
     });
 }
 

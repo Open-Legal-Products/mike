@@ -1,4 +1,4 @@
-import { findProviderForModel, allRegisteredModels } from "./registry";
+import { findProviderForModel, allRegisteredModels, matchesDynamicModel } from "./registry";
 
 // ---------------------------------------------------------------------------
 // Canonical model IDs (built-in providers)
@@ -27,7 +27,8 @@ export const OPENAI_MAIN_MODELS = [
     "gpt-5.4",
 ] as const;
 // Ollama models are detected dynamically (see GET /models/ollama). Any id of
-// the form "ollama/<tag>" is valid — see providerForModel / resolveModel.
+// the form "ollama/<tag>" is valid — the ollama adapter registered in
+// index.ts declares this via its isDynamicModel() hook.
 
 // Mid-tier (used for tabular review) — user picks one in account settings.
 export const CLAUDE_MID_MODELS = [
@@ -133,12 +134,7 @@ export function resolveModel(
     const canonical = id ? (LEGACY_MODEL_IDS[id] ?? id) : id;
     if (
         canonical &&
-        (allRegisteredModels().has(canonical) ||
-            canonical.startsWith("ollama/") ||
-            /^(?:openrouter|vercel)\/[^\s/]+\/[^\s]+$/.test(canonical) ||
-            // OpenCode Go's catalog ids are single-segment ("glm-5"), not the
-            // vendor/model pairs OpenRouter and Vercel publish.
-            /^opencode-go\/[^\s]+$/.test(canonical))
+        (allRegisteredModels().has(canonical) || matchesDynamicModel(canonical))
     )
         return canonical;
     return fallback;
