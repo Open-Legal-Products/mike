@@ -333,6 +333,11 @@ export async function deleteUserAccountData(
                   .eq("shared_with_email", userEmail.trim().toLowerCase())
             : Promise.resolve({ error: null }),
         db.from("workflows").delete().eq("user_id", userId),
+        // Audit rows carry the user's id, email, chat/document titles and prompt
+        // excerpts. Deleting them here keeps account erasure complete (GDPR) —
+        // they are keyed by user_id and would otherwise be orphaned forever
+        // after the chats/projects they reference are gone.
+        db.from("audit_events").delete().eq("user_id", userId),
         db.from("projects").delete().eq("user_id", userId),
     ];
 

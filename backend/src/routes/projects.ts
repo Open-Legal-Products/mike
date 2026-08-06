@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth, requireMfaIfEnrolled } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
+import { recordAudit } from "../lib/audit";
 import { createClient } from "@supabase/supabase-js";
 import {
   attachActiveVersionPaths,
@@ -1113,6 +1114,19 @@ export async function handleDocumentUpload(
             active_version_number: 1,
         }
       : updated;
+    // Audit the project upload. The library/assistant upload path
+    // (documents.ts) records this too; this handler is the project-scoped
+    // duplicate and was previously uninstrumented, so project uploads never
+    // appeared in history.
+    void recordAudit(db, {
+      userId,
+      userEmail: res.locals.userEmail as string | undefined,
+      action: "document.uploaded",
+      title: filename,
+      surface: projectId ? "project" : "assistant",
+      projectId,
+      documentId: (updated as { id?: string } | null)?.id ?? null,
+    });
     return void res.status(201).json(responseDoc);
   } catch (e) {
     await db.from("documents").update({ status: "error" }).eq("id", doc.id);

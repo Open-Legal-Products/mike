@@ -371,6 +371,11 @@ describe("deleteUserAccountData", () => {
                 { id: "w1", user_id: "u1" },
                 { id: "w-other", user_id: "u2" },
             ],
+            audit_events: [
+                { id: "a1", user_id: "u1" },
+                { id: "a2", user_id: "u1" },
+                { id: "a-other", user_id: "u2" },
+            ],
         });
 
     it("removes the user's rows, files, and share references everywhere", async () => {
@@ -389,6 +394,10 @@ describe("deleteUserAccountData", () => {
         expect(tables.hidden_workflows).toEqual([]);
         expect(tables.workflow_open_source_submissions).toEqual([]);
         expect(ids(tables.workflows)).toEqual(["w-other"]);
+
+        // Audit rows carry PII (email, titles, prompt excerpts) and must be
+        // purged on account deletion — only the other user's row survives.
+        expect(ids(tables.audit_events)).toEqual(["a-other"]);
 
         // Shares by the user and shares to the user's email are both removed.
         expect(ids(tables.workflow_shares)).toEqual(["ws-keep"]);

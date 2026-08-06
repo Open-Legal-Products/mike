@@ -21,6 +21,7 @@ import {
     TabularReviewSkeuoIcon,
     WorkflowSkeuoIcon,
 } from "@/app/components/shared/AppSidebarSkeuoIcons";
+import { HistorySkeuoIcon } from "@/app/components/shared/HistorySkeuoIcon";
 import {
     ProjectSvgIcon,
 } from "@/app/components/shared/FolderSvgIcon";
@@ -38,6 +39,7 @@ const NAV_ITEMS = [
     { href: "/library", label: "Library", icon: LibrarySkeuoIcon },
     { href: "/tabular-reviews", label: "Tabular Review", icon: TabularReviewSkeuoIcon },
     { href: "/workflows", label: "Workflows", icon: WorkflowSkeuoIcon },
+    { href: "/history", label: "History", icon: HistorySkeuoIcon },
 ];
 
 interface AppSidebarProps {

@@ -1090,6 +1090,31 @@ alter table public.courtlistener_opinion_cluster_index enable row level security
 -- backend verifies the user's JWT. Do not grant the browser anon/authenticated
 -- roles direct table privileges for backend-owned data.
 
+-- Audit history of user actions (queried via the service-role backend only).
+-- Defined here — above the service_role grant block — so `grant ... on all
+-- tables in schema public` below covers it on a fresh install. Like every other
+-- backend-owned table, direct browser roles are revoked and RLS is enabled with
+-- no policies (defense in depth; service_role bypasses RLS for the backend path).
+create table if not exists public.audit_events (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  user_id uuid not null,
+  user_email text,
+  action text not null,
+  status text not null default 'completed',
+  title text,
+  surface text,
+  project_id uuid,
+  chat_id uuid,
+  document_id uuid,
+  review_id uuid,
+  model text,
+  detail jsonb
+);
+create index if not exists audit_events_user_created on public.audit_events (user_id, created_at desc);
+create index if not exists audit_events_project_created on public.audit_events (project_id, created_at desc);
+alter table public.audit_events enable row level security;
+
 revoke all on public.user_profiles from anon, authenticated;
 revoke all on public.projects from anon, authenticated;
 revoke all on public.project_subfolders from anon, authenticated;
@@ -1116,11 +1141,19 @@ revoke all on public.user_mcp_connector_tools from anon, authenticated;
 revoke all on public.user_mcp_tool_audit_logs from anon, authenticated;
 revoke all on public.courtlistener_citation_index from anon, authenticated;
 revoke all on public.courtlistener_opinion_cluster_index from anon, authenticated;
+revoke all on public.audit_events from anon, authenticated;
 
 -- Tables created by this file are owned by the database bootstrap role. The
 -- backend connects as service_role, so grant it only the data privileges that
 -- the direct browser roles above intentionally do not have. RLS is still
 -- enabled as defense in depth; service_role bypasses it for the backend path.
+--
+-- NOTE: this grant targets `all tables in schema public`, so every table it
+-- must cover has to already exist above this point. audit_events is therefore
+-- defined *before* this block (not after it) — otherwise a fresh plain-Postgres
+-- install would create the table with no service_role privileges and the
+-- backend's inserts would fail permission-denied (silently, since recordAudit
+-- swallows errors).
 grant select, insert, update, delete
   on all tables in schema public
   to service_role;

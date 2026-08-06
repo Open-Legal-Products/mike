@@ -240,6 +240,59 @@ export interface UserLookupResult {
     display_name: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Audit history
+// ---------------------------------------------------------------------------
+
+export interface AuditEvent {
+    id: string;
+    created_at: string;
+    user_email: string | null;
+    action: string;
+    status: string;
+    title: string | null;
+    surface: string | null;
+    project_id: string | null;
+    chat_id: string | null;
+    document_id: string | null;
+    review_id: string | null;
+    model: string | null;
+    detail: Record<string, unknown> | null;
+}
+
+export async function getAuditHistory(
+    params: {
+        q?: string;
+        action?: string;
+        from?: string;
+        to?: string;
+        page?: number;
+    },
+    signal?: AbortSignal,
+): Promise<{ events: AuditEvent[]; total: number; page: number; pageSize: number }> {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.action) qs.set("action", params.action);
+    if (params.from) qs.set("from", params.from);
+    if (params.to) qs.set("to", params.to);
+    if (params.page) qs.set("page", String(params.page));
+    return apiRequest(`/audit?${qs.toString()}`, { signal });
+}
+
+export async function exportAuditHistory(params: {
+    q?: string;
+    action?: string;
+    from?: string;
+    to?: string;
+}): Promise<{ blob: Blob; filename: string | null }> {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.action) qs.set("action", params.action);
+    if (params.from) qs.set("from", params.from);
+    if (params.to) qs.set("to", params.to);
+    return apiBlobRequest(`/audit/export?${qs.toString()}`);
+}
+
 export async function getUserProfile(): Promise<UserProfile> {
     return apiRequest<UserProfile>("/user/profile");
 }

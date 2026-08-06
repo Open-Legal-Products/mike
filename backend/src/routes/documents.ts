@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
+import { recordAudit } from "../lib/audit";
 import {
   buildContentDisposition,
   downloadFile,
@@ -1459,6 +1460,14 @@ export async function handleDocumentUpload(
           active_version_number: 1,
         }
       : updated;
+    void recordAudit(db, {
+      userId,
+      userEmail: res.locals.userEmail as string | undefined,
+      action: "document.uploaded",
+      title: filename,
+      surface: "assistant",
+      documentId: (updated as { id?: string } | null)?.id ?? null,
+    });
     return void res.status(201).json(responseDoc);
   } catch (e) {
     await db.from("documents").update({ status: "error" }).eq("id", doc.id);

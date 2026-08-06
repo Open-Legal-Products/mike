@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
+import { recordChatTurn } from "../lib/audit";
 import {
     buildDocContext,
     buildMessages,
@@ -577,9 +578,35 @@ chatRouter.post("/", requireAuth, async (req, res) => {
                 .update({ title: lastUser.content.slice(0, 120) })
                 .eq("id", chatId);
         }
+
+        void recordChatTurn(
+            db,
+            {
+                userId,
+                userEmail,
+                chatId,
+                projectId: resolvedProjectId,
+                title: chatTitle ?? lastUser?.content?.slice(0, 120) ?? null,
+                model,
+            },
+            persistedEvents,
+        );
     } catch (err) {
         if (isAbortError(err)) {
             devLog("[chat/stream] client aborted stream", { chatId });
+            void recordChatTurn(
+                db,
+                {
+                    userId,
+                    userEmail,
+                    chatId,
+                    projectId: resolvedProjectId,
+                    title: chatTitle,
+                    model,
+                    status: "cancelled",
+                },
+                null,
+            );
             if (err instanceof AssistantStreamError) {
                 const partial = buildCancelledAssistantMessage({
                     fullText: err.fullText,
