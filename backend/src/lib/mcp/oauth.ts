@@ -200,10 +200,6 @@ export async function discoverOAuthMetadata(serverUrl: string): Promise<OAuthMet
     };
 }
 
-export function isGoogleOAuthHost(serverUrl: string): boolean {
-    return mcpOAuthProviderFor(serverUrl)?.id === "google";
-}
-
 /**
  * Non-standard authorization-request parameters a given provider requires
  * (from the provider registry in providers.ts).
