@@ -230,6 +230,39 @@ describe("stale requires_confirmation cache cannot bypass the approval gate", ()
         expect(tables.user_mcp_pending_tool_calls[0].status).toBe("denied");
     });
 
+    it("an approved call whose execution errors is ledgered as failed, not executed", async () => {
+        // The user approves; the claim succeeds; the MCP call itself then
+        // fails (here: the SSRF guard rejects the private server URL before
+        // any network I/O). The ledger must record `failed` — recording
+        // `executed` for a call that never ran would falsify the audit trail.
+        const tables = makeTables();
+        const db = createFakeDb(tables);
+
+        const { content, event } = await executeMcpToolCall(
+            "user-1",
+            "mcp_test_delete_case_abc",
+            { case_id: 42 },
+            db,
+            {
+                onApprovalRequired: async (pending) => {
+                    await decideMcpPendingToolCall(
+                        "user-1",
+                        pending.id,
+                        "approve",
+                        db,
+                    );
+                },
+                approvalWaitMs: 5_000,
+            },
+        );
+
+        expect(event.status).toBe("error");
+        expect(content).toContain("blocked network address");
+        const [row] = tables.user_mcp_pending_tool_calls;
+        expect(row.status).toBe("failed");
+        expect(row.executed_at).toBeTruthy();
+    });
+
     it("buildUserMcpTools advertises the approval pause for a stale row", async () => {
         const db = createFakeDb(makeTables());
         const tools = await buildUserMcpTools("user-1", db);

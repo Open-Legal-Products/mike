@@ -165,6 +165,11 @@ export async function claimApprovedMcpToolCall(
     return rows[0] ?? null;
 }
 
+/**
+ * Record that the claimed call actually completed (executing -> executed).
+ * Called AFTER the MCP call returns: the `executing` claim is what provides
+ * single-use safety, so the terminal status can wait for the truth.
+ */
 export async function markMcpToolCallExecuted(
     pendingId: string,
     db: Db = createServerSupabase(),
@@ -172,6 +177,24 @@ export async function markMcpToolCallExecuted(
     await db
         .from("user_mcp_pending_tool_calls")
         .update({ status: "executed", executed_at: new Date().toISOString() })
+        .eq("id", pendingId)
+        .eq("status", "executing");
+}
+
+/**
+ * Record that the claimed call was attempted but errored
+ * (executing -> failed). Keeps the ledger honest: an approval whose
+ * execution failed must not read as "executed". The approval is still spent
+ * — `failed` is terminal, so the claim can never be retried or replayed.
+ * executed_at records when the attempt finished.
+ */
+export async function markMcpToolCallFailed(
+    pendingId: string,
+    db: Db = createServerSupabase(),
+): Promise<void> {
+    await db
+        .from("user_mcp_pending_tool_calls")
+        .update({ status: "failed", executed_at: new Date().toISOString() })
         .eq("id", pendingId)
         .eq("status", "executing");
 }

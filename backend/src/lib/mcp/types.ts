@@ -118,7 +118,14 @@ export type PendingToolCallRow = {
     tool_name: string;
     openai_tool_name: string;
     arguments: Record<string, unknown>;
-    status: "pending" | "approved" | "denied" | "executing" | "executed" | "expired";
+    status:
+        | "pending"
+        | "approved"
+        | "denied"
+        | "executing"
+        | "executed"
+        | "failed"
+        | "expired";
     created_at: string;
     expires_at: string;
     decided_at: string | null;

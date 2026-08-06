@@ -3,6 +3,8 @@ import {
     claimApprovedMcpToolCall,
     createPendingMcpToolCall,
     decideMcpPendingToolCall,
+    markMcpToolCallExecuted,
+    markMcpToolCallFailed,
     waitForMcpApprovalDecision,
 } from "../approvals";
 import type { ConnectorRow, Db, ToolCacheRow } from "../types";
@@ -188,6 +190,41 @@ describe("pending MCP tool call lifecycle", () => {
 
         await decideMcpPendingToolCall("user-1", pending.id, "deny", db);
         expect(await claimApprovedMcpToolCall(pending.id, db)).toBeNull();
+    });
+
+    it("a claimed call resolves to the honest terminal status: executed on success, failed on error", async () => {
+        // The `executing` claim is what provides single-use safety; the
+        // terminal status is written only once the outcome is known.
+        const success = createFakeDb();
+        const okPending = await seedPending(success.db);
+        await decideMcpPendingToolCall("user-1", okPending.id, "approve", success.db);
+        await claimApprovedMcpToolCall(okPending.id, success.db);
+        await markMcpToolCallExecuted(okPending.id, success.db);
+        expect(success.rows[0].status).toBe("executed");
+        expect(success.rows[0].executed_at).toBeTruthy();
+
+        const failure = createFakeDb();
+        const badPending = await seedPending(failure.db);
+        await decideMcpPendingToolCall("user-1", badPending.id, "approve", failure.db);
+        await claimApprovedMcpToolCall(badPending.id, failure.db);
+        await markMcpToolCallFailed(badPending.id, failure.db);
+        expect(failure.rows[0].status).toBe("failed");
+        expect(failure.rows[0].executed_at).toBeTruthy();
+
+        // Terminal states are one-way: a failed call can never become
+        // executed (and vice versa) because both UPDATEs require `executing`.
+        await markMcpToolCallExecuted(badPending.id, failure.db);
+        expect(failure.rows[0].status).toBe("failed");
+    });
+
+    it("markMcpToolCallFailed only fires on a claimed call, never on pending/approved rows", async () => {
+        const { db, rows } = createFakeDb();
+        const pending = await seedPending(db);
+        await markMcpToolCallFailed(pending.id, db);
+        expect(rows[0].status).toBe("pending");
+        await decideMcpPendingToolCall("user-1", pending.id, "approve", db);
+        await markMcpToolCallFailed(pending.id, db);
+        expect(rows[0].status).toBe("approved");
     });
 
     it("waitForMcpApprovalDecision returns an existing decision immediately", async () => {
