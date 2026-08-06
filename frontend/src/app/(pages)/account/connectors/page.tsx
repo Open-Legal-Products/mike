@@ -158,6 +158,12 @@ export default function ConnectorsPage() {
         useState<string | null>(null);
     const [showDetailToken, setShowDetailToken] = useState(false);
     const [showDetailAdvanced, setShowDetailAdvanced] = useState(false);
+    // Which connector currently has a reconnect OAuth wait in flight (the
+    // details modal's Refresh flow). Drives the Cancel affordance next to the
+    // Refresh button, mirroring the escape hatch the add modal already has.
+    const [reconnectingConnectorId, setReconnectingConnectorId] = useState<
+        string | null
+    >(null);
 
     const selectedConnector = selectedConnectorDetails;
 
@@ -601,6 +607,14 @@ export default function ConnectorsPage() {
         );
     };
 
+    // Aborts a reconnect's in-flight OAuth wait. Same mechanism closeAddModal
+    // uses for the add flow: rejecting the wait with McpOAuthCancelledError,
+    // which handleRefresh treats as "abandoned on purpose", not a failure.
+    const cancelReconnectOAuth = () => {
+        oauthAbortRef.current?.abort();
+        oauthAbortRef.current = null;
+    };
+
     const handleRefresh = async (connectorId: string) => {
         await runSensitiveAction({ type: "refresh", connectorId }, async () => {
             setBusyKey(`refresh:${connectorId}`);
@@ -612,7 +626,26 @@ export default function ConnectorsPage() {
                         err instanceof MikeApiError &&
                             err.code === "oauth_required"
                     ) {
-                        await connectConnectorOAuth(connectorId);
+                        // COOP-strict providers make the consent popup's fate
+                        // unobservable, so without an explicit escape hatch a
+                        // closed popup would leave the Refresh button stuck
+                        // busy for the full five-minute timeout. Surface the
+                        // Cancel affordance while the wait runs, and treat a
+                        // user-initiated cancel as a quiet reset rather than
+                        // an error.
+                        setReconnectingConnectorId(connectorId);
+                        try {
+                            await connectConnectorOAuth(connectorId);
+                        } catch (oauthErr) {
+                            if (oauthErr instanceof McpOAuthCancelledError) {
+                                return;
+                            }
+                            throw oauthErr;
+                        } finally {
+                            setReconnectingConnectorId((current) =>
+                                current === connectorId ? null : current,
+                            );
+                        }
                         return;
                     }
                     throw err;
@@ -796,6 +829,11 @@ export default function ConnectorsPage() {
                 onSave={handleSaveSelectedConnector}
                 onClearBearerToken={handleClearBearerToken}
                 onRefresh={handleRefresh}
+                reconnectingOAuth={
+                    !!selectedConnectorId &&
+                    reconnectingConnectorId === selectedConnectorId
+                }
+                onCancelReconnectOAuth={cancelReconnectOAuth}
                 onDelete={handleDelete}
                 onConnectorEnabled={handleConnectorEnabled}
                 onToolEnabled={handleToolEnabled}
@@ -925,6 +963,8 @@ function McpConnectorDetailsModal({
     onSave,
     onClearBearerToken,
     onRefresh,
+    reconnectingOAuth,
+    onCancelReconnectOAuth,
     onDelete,
     onConnectorEnabled,
     onToolEnabled,
@@ -944,6 +984,8 @@ function McpConnectorDetailsModal({
     onSave: () => Promise<void>;
     onClearBearerToken: (connectorId: string) => Promise<void>;
     onRefresh: (connectorId: string) => Promise<void>;
+    reconnectingOAuth: boolean;
+    onCancelReconnectOAuth: () => void;
     onDelete: (connectorId: string) => Promise<void>;
     onConnectorEnabled: (
         connectorId: string,
@@ -1064,7 +1106,16 @@ function McpConnectorDetailsModal({
                                     ? "Tool"
                                     : "Tools"}
                             </h3>
-                            <div className="flex items-center">
+                            <div className="flex items-center gap-3">
+                                {reconnectingOAuth && (
+                                    <button
+                                        type="button"
+                                        onClick={onCancelReconnectOAuth}
+                                        className="text-xs font-medium text-gray-500 transition-colors hover:text-gray-900"
+                                    >
+                                        Cancel
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={() => void onRefresh(connector.id)}
