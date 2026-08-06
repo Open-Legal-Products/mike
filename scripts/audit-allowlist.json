@@ -1,9 +1,5 @@
 [
     {
-        "ghsa": "GHSA-f88m-g3jw-g9cj",
-        "reason": "sharp <0.35 inherits libvips CVEs. next@16.2.x declares sharp ^0.34.5 (optional dep, used by next/image), and sharp 0.35 is a breaking release line, so no in-range fix exists. Forcing 0.35 via overrides would run Next against a sharp it has never been tested with. Exposure is next/image processing of first-party assets. REMOVE WHEN: Next declares sharp ^0.35.x, or a patched sharp 0.34.x is published."
-    },
-    {
         "ghsa": "GHSA-6g55-p6wh-862q",
         "reason": "postcss arbitrary file read via attacker-controlled sourceMappingURL. Affects only Next's internal copy — next pins postcss at exactly 8.4.31, so no in-range fix exists (the root tree already resolves patched postcss 8.5.x). Build-time only: this copy processes the repo's own CSS, never untrusted input. REMOVE WHEN: Next bumps its postcss pin past 8.5.17."
     },
