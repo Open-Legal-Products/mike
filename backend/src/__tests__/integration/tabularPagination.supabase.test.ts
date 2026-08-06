@@ -309,3 +309,138 @@ maybeDescribe("Supabase tabular-review pagination", () => {
             expect(returnedIds.has(id)).toBe(true);
     });
 });
+
+maybeDescribe("Supabase tabular-review org visibility", () => {
+    // Org membership is the third visibility branch (alongside "row owner"
+    // and "shared_with email"). These tests act as a plain "member" — not the
+    // row owner, not on any shared_with list — so only the org branch can
+    // make the colleague's reviews visible. org_members.user_id is a uuid FK
+    // to auth.users, so real auth users are required here (random UUIDs in
+    // user_id columns, as the pagination suite uses, would violate the FK).
+    const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const projectId = crypto.randomUUID();
+    const inProjectReviewId = crypto.randomUUID();
+    const standaloneReviewId = crypto.randomUUID();
+    const colleagueEmail = `org-vis-colleague-${suffix}@test.local`;
+    const memberEmail = `org-vis-member-${suffix}@test.local`;
+    let admin: SupabaseClient;
+    let colleagueId = "";
+    let memberId = "";
+    let orgId = "";
+
+    beforeAll(async () => {
+        admin = createClient(url!, serviceKey!, {
+            auth: { persistSession: false, autoRefreshToken: false },
+        });
+
+        const colleague = await admin.auth.admin.createUser({
+            email: colleagueEmail,
+            password: `pw-${suffix}-A1!`,
+            email_confirm: true,
+        });
+        if (colleague.error || !colleague.data.user)
+            throw colleague.error ?? new Error("no colleague user");
+        colleagueId = colleague.data.user.id;
+
+        const member = await admin.auth.admin.createUser({
+            email: memberEmail,
+            password: `pw-${suffix}-B1!`,
+            email_confirm: true,
+        });
+        if (member.error || !member.data.user)
+            throw member.error ?? new Error("no member user");
+        memberId = member.data.user.id;
+
+        const org = await admin
+            .from("organizations")
+            .insert({ name: `org-vis-${suffix}`, personal: false })
+            .select("id")
+            .single();
+        if (org.error || !org.data) throw org.error ?? new Error("no org");
+        orgId = org.data.id;
+
+        const members = await admin.from("org_members").insert([
+            { org_id: orgId, user_id: colleagueId, role: "owner" },
+            { org_id: orgId, user_id: memberId, role: "member" },
+        ]);
+        if (members.error) throw members.error;
+
+        const project = await admin.from("projects").insert({
+            id: projectId,
+            user_id: colleagueId,
+            name: `org-vis-project-${suffix}`,
+            org_id: orgId,
+        });
+        if (project.error) throw project.error;
+
+        const reviews = await admin.from("tabular_reviews").insert([
+            {
+                id: inProjectReviewId,
+                project_id: projectId,
+                user_id: colleagueId,
+                title: "Org Colleague In-Project",
+                columns_config: [],
+                document_ids: [],
+                org_id: orgId,
+            },
+            {
+                id: standaloneReviewId,
+                user_id: colleagueId,
+                title: "Org Colleague Standalone",
+                columns_config: [],
+                document_ids: [],
+                org_id: orgId,
+            },
+        ]);
+        if (reviews.error) throw reviews.error;
+    });
+
+    afterAll(async () => {
+        if (!admin) return;
+        await admin
+            .from("tabular_reviews")
+            .delete()
+            .in("id", [inProjectReviewId, standaloneReviewId]);
+        await admin.from("projects").delete().eq("id", projectId);
+        if (orgId) await admin.from("organizations").delete().eq("id", orgId);
+        // The auth trigger auto-created a personal org per user; remove those
+        // before the users so nothing orphaned lingers between runs.
+        if (colleagueId || memberId) {
+            await admin
+                .from("organizations")
+                .delete()
+                .in("created_by", [colleagueId, memberId].filter(Boolean));
+        }
+        if (colleagueId) await admin.auth.admin.deleteUser(colleagueId);
+        if (memberId) await admin.auth.admin.deleteUser(memberId);
+    });
+
+    it("shows a colleague's org reviews to a plain member via the paginated overview RPC", async () => {
+        // This is the overload GET /tabular-review actually resolves: all
+        // nine named arguments (see lib/tabularReviewsOverview.ts). The
+        // member is neither owner nor on shared_with, so both rows are
+        // visible only through the org-membership branch.
+        const result = await admin.rpc("get_tabular_reviews_overview", {
+            p_user_id: memberId,
+            p_user_email: memberEmail,
+            p_project_id: null,
+            p_scope: "all",
+            p_limit: 100,
+            p_offset: 0,
+            p_search_term: "org colleague",
+            p_sort_key: "created",
+            p_sort_direction: "desc",
+        });
+
+        expect(result.error).toBeNull();
+        const rows = (result.data ?? []) as {
+            id: string;
+            is_owner: boolean;
+        }[];
+        const ids = new Set(rows.map((row) => row.id));
+        expect(ids.has(inProjectReviewId)).toBe(true);
+        expect(ids.has(standaloneReviewId)).toBe(true);
+        // Org membership grants visibility, not ownership.
+        expect(rows.every((row) => row.is_owner === false)).toBe(true);
+    });
+});
