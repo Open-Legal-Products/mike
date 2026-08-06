@@ -1137,6 +1137,14 @@ as $$
         and p.user_id <> p_user_id
         and p.shared_with @> jsonb_build_array(p_user_email)
       )
+       or (
+        p.org_id is not null
+        and p.user_id <> p_user_id
+        and exists (
+          select 1 from public.org_members m
+          where m.org_id = p.org_id and m.user_id::text = p_user_id
+        )
+      )
   )
   select tr.id, tr.user_id
   from public.tabular_reviews tr
@@ -1182,6 +1190,15 @@ as $$
         and coalesce(p_user_email, '') <> ''
         and tr.user_id <> p_user_id
         and tr.shared_with @> jsonb_build_array(p_user_email)
+      )
+      or (
+        p_project_id is null
+        and tr.org_id is not null
+        and tr.user_id <> p_user_id
+        and exists (
+          select 1 from public.org_members m
+          where m.org_id = tr.org_id and m.user_id::text = p_user_id
+        )
       )
     )
   order by tr.created_at desc, tr.id asc
