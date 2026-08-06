@@ -378,12 +378,17 @@ export function DocTable({
 
     const openAddDocuments = useCallback(() => {
         if (loadingRef.current) return;
+        // Same capability the header Add button is gated on — this also
+        // covers the empty-state click, which calls openAddDocuments
+        // directly.
+        if (!requireCapability("content.edit", "add documents", "editor"))
+            return;
         if (renderAddDocumentsModalRef.current) {
             setAddDocsOpen(true);
             return;
         }
         documentUploadInputRef.current?.click();
-    }, []);
+    }, [requireCapability]);
 
     useEffect(() => {
         onAddDocumentsActionChange?.(openAddDocuments);
@@ -1193,6 +1198,11 @@ export function DocTable({
 
     async function handleDropCollectionFiles(files: File[]) {
         if (files.length === 0) return;
+        // Drag-and-drop bypasses the (capability-gated) Add button, so it
+        // needs the same content.edit check: viewers get the role popup
+        // instead of a doomed upload that the backend would 403 anyway.
+        if (!requireCapability("content.edit", "add documents", "editor"))
+            return;
         const { supported, unsupported } = partitionSupportedDocumentFiles(files);
         setDocumentUploadWarning(formatUnsupportedDocumentWarning(unsupported));
         if (supported.length === 0) return;
@@ -1202,6 +1212,12 @@ export function DocTable({
             handleDocsSelected(uploaded);
         } catch (err) {
             console.error("Document drop upload failed", err);
+            const detail = apiErrorDetail(err);
+            setDocumentUploadWarning(
+                detail
+                    ? `Upload failed: ${detail}`
+                    : "Upload failed. Please try again.",
+            );
         } finally {
             setUploadingDroppedFilenames([]);
         }
