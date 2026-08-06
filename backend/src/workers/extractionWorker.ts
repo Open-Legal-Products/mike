@@ -44,16 +44,20 @@ export async function runExtractionJob(
     data: ExtractionJobData,
     deps: ExtractionDeps = defaultDeps(),
 ): Promise<void> {
-    const { reviewId, userId, rowId } = data;
+    const { reviewId, userId, rowId, columnIndex } = data;
     const { db, publish } = deps;
 
-    // 1. Columns configured on the review.
+    // 1. Columns configured on the review. A single-cell job (regenerate)
+    //    narrows to its one column; the cell was already flipped off "done"
+    //    by the enqueuing route, so the shared core will re-extract it.
     const { data: review } = await db
         .from("tabular_reviews")
         .select("columns_config")
         .eq("id", reviewId)
         .single();
-    const columns: Column[] = (review?.columns_config as Column[]) ?? [];
+    let columns: Column[] = (review?.columns_config as Column[]) ?? [];
+    if (columnIndex != null)
+        columns = columns.filter((c) => c.index === columnIndex);
     if (columns.length === 0) return;
 
     // 2. The row this job fills (with its source-document ids resolved). A row
@@ -132,7 +136,7 @@ export async function markExtractionFailed(
     data: ExtractionJobData,
     deps: ExtractionDeps = defaultDeps(),
 ): Promise<void> {
-    const { reviewId, rowId } = data;
+    const { reviewId, rowId, columnIndex } = data;
     const { db, publish } = deps;
 
     const { data: cells } = await db
@@ -142,6 +146,8 @@ export async function markExtractionFailed(
         .eq("row_id", rowId);
 
     for (const cell of (cells ?? []) as Record<string, unknown>[]) {
+        // Single-cell jobs only ever own their one column's terminal state.
+        if (columnIndex != null && cell.column_index !== columnIndex) continue;
         if (cell.status === "done" && cell.content) continue;
         await db
             .from("tabular_cells")

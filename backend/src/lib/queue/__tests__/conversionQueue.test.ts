@@ -46,13 +46,28 @@ describe("enqueueConversion", () => {
         expect(opts.jobId).toBe("convert:ver-1");
     });
 
-    it("keeps the existing retry/backoff/history options", () => {
+    it("retries with backoff and removes terminal jobs so re-conversions can re-enqueue", () => {
         enqueueConversion(DATA);
 
         const opts = add.mock.calls[0][2];
         expect(opts.attempts).toBe(3);
         expect(opts.backoff).toEqual({ type: "exponential", delay: 2000 });
-        expect(opts.removeOnComplete).toBe(100);
-        expect(opts.removeOnFail).toBe(500);
+        // Immediate removal (not keep-N) is deliberate: replace-file reuses
+        // the versionId, and a lingering completed job record would silently
+        // dedupe the re-conversion into the old job.
+        expect(opts.removeOnComplete).toBe(true);
+        expect(opts.removeOnFail).toBe(true);
+    });
+
+    it("carries the version-flow fields (pdfKey, finalizeDocumentStatus) through", () => {
+        enqueueConversion({
+            ...DATA,
+            pdfKey: "converted-pdfs/user-1/doc-1/slug.pdf",
+            finalizeDocumentStatus: false,
+        });
+
+        const data = add.mock.calls[0][1];
+        expect(data.pdfKey).toBe("converted-pdfs/user-1/doc-1/slug.pdf");
+        expect(data.finalizeDocumentStatus).toBe(false);
     });
 });

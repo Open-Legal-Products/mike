@@ -27,9 +27,11 @@ import {
 import { extractRowColumns } from "../lib/tabular/tabular.extractRow";
 import { prepareTabularGenerate } from "../lib/tabular/tabular.generate";
 import {
+    awaitCellTerminal,
     streamTabularGenerateAsync,
     streamTabularRunView,
 } from "../lib/tabular/tabular.generateStream";
+import { enqueueExtraction } from "../lib/queue/extractionQueue";
 import {
     fetchSourceDocuments,
     loadReviewRows,
@@ -965,6 +967,58 @@ tabularRouter.post(
             .eq("review_id", reviewId)
             .eq("row_id", row.id)
             .eq("column_index", column_index);
+
+        // Async path: enqueue a single-cell job (deduped on
+        // extract:<review>:<row>:<col>) and wait for the cell to reach a
+        // terminal state, so the response keeps its synchronous JSON shape.
+        // The work itself is durable: if this request drops or times out the
+        // worker still finishes and the client catches up via the DB or the
+        // GET generate/stream view.
+        if (process.env.ASYNC_TABULAR_EXTRACTION === "true") {
+            try {
+                await enqueueExtraction({
+                    reviewId,
+                    userId,
+                    rowId: row.id,
+                    columnIndex: column_index,
+                });
+            } catch (err) {
+                console.error(
+                    "[tabular/regenerate-cell] enqueue failed",
+                    safeErrorLog(err),
+                );
+                await db
+                    .from("tabular_cells")
+                    .update({ status: "error" })
+                    .eq("review_id", reviewId)
+                    .eq("row_id", row.id)
+                    .eq("column_index", column_index);
+                return void res
+                    .status(500)
+                    .json({ detail: "Generation failed" });
+            }
+
+            const terminal = await awaitCellTerminal({
+                db,
+                reviewId,
+                rowId: row.id,
+                columnIndex: column_index,
+                log: console,
+            });
+            if (terminal === null)
+                // Still running after the wait budget — the job survives this
+                // response; the client keeps the cell "generating" and picks
+                // the result up from the resume stream or a reload.
+                return void res.status(202).json({
+                    status: "generating",
+                    detail: "Extraction still running",
+                });
+            if (terminal.status === "error")
+                return void res
+                    .status(500)
+                    .json({ detail: "Generation failed" });
+            return void res.json(terminal.content);
+        }
 
         const markdown = await loadRowDocumentText(db, row);
 

@@ -149,21 +149,26 @@ async function tailTabularRun(args: {
     if (pending.size === 0) return void finish();
 
     // Subscribe BEFORE enqueuing so a fast worker can't publish into the void.
-    try {
-        sub = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
-        await sub.subscribe(runProgressChannel(reviewId));
-        sub.on("message", (_channel, message) => {
-            try {
-                onUpdate(JSON.parse(message) as CellUpdate);
-            } catch {
-                /* ignore malformed frame */
-            }
-        });
-    } catch (err) {
-        log.error(
-            "[tabular/generate-async] subscribe failed",
-            { err: safeErrorLog(err), reviewId },
-        );
+    // Only when the async flag is on: the GET view is also reachable in
+    // synchronous (no-Redis) deployments, where dialing Redis would hang the
+    // stream — there the DB-poll backstop below does all the resolving.
+    if (process.env.ASYNC_TABULAR_EXTRACTION === "true") {
+        try {
+            sub = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
+            await sub.subscribe(runProgressChannel(reviewId));
+            sub.on("message", (_channel, message) => {
+                try {
+                    onUpdate(JSON.parse(message) as CellUpdate);
+                } catch {
+                    /* ignore malformed frame */
+                }
+            });
+        } catch (err) {
+            log.error(
+                "[tabular/generate-async] subscribe failed",
+                { err: safeErrorLog(err), reviewId },
+            );
+        }
     }
 
     if (afterSubscribe) await afterSubscribe();
@@ -214,6 +219,117 @@ async function tailTabularRun(args: {
 
     cap = setTimeout(finish, STREAM_MAX_MS);
     if (typeof cap.unref === "function") cap.unref();
+}
+
+/**
+ * Wait for one cell to reach a terminal state — the "view" half of an
+ * async regenerate-cell. The job is already enqueued; this subscribes to the
+ * review's progress channel (flag on) and polls the DB as a backstop, then
+ * returns the cell's terminal content, or null if `timeoutMs` elapses first
+ * (the job keeps running — the caller reports "still generating").
+ */
+export async function awaitCellTerminal(args: {
+    db: Db;
+    reviewId: string;
+    rowId: string;
+    columnIndex: number;
+    log: Log;
+    timeoutMs?: number;
+    pollMs?: number;
+}): Promise<
+    | { status: "done"; content: ReturnType<typeof parseCellContent> }
+    | { status: "error" }
+    | null
+> {
+    const { db, reviewId, rowId, columnIndex, log } = args;
+    const timeoutMs = args.timeoutMs ?? 120_000;
+    const pollMs = args.pollMs ?? 1_000;
+
+    let sub: IORedis | null = null;
+    let poll: ReturnType<typeof setInterval> | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    try {
+        return await new Promise((resolve) => {
+            let settled = false;
+            const settle = (
+                value:
+                    | { status: "done"; content: ReturnType<typeof parseCellContent> }
+                    | { status: "error" }
+                    | null,
+            ) => {
+                if (settled) return;
+                settled = true;
+                resolve(value);
+            };
+
+            const checkDb = async () => {
+                const { data: cell } = await db
+                    .from("tabular_cells")
+                    .select("status, content")
+                    .eq("review_id", reviewId)
+                    .eq("row_id", rowId)
+                    .eq("column_index", columnIndex)
+                    .maybeSingle();
+                if (!cell) return;
+                if (cell.status === "done" && cell.content)
+                    settle({
+                        status: "done",
+                        content: parseCellContent(cell.content),
+                    });
+                else if (cell.status === "error") settle({ status: "error" });
+            };
+
+            if (process.env.ASYNC_TABULAR_EXTRACTION === "true") {
+                try {
+                    sub = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
+                    void sub
+                        .subscribe(runProgressChannel(reviewId))
+                        .catch(() => {});
+                    sub.on("message", (_channel, message) => {
+                        try {
+                            const update = JSON.parse(message) as CellUpdate;
+                            if (
+                                update.row_id !== rowId ||
+                                update.column_index !== columnIndex
+                            )
+                                return;
+                            if (update.status === "done")
+                                settle({
+                                    status: "done",
+                                    content: update.content as ReturnType<
+                                        typeof parseCellContent
+                                    >,
+                                });
+                            else if (update.status === "error")
+                                settle({ status: "error" });
+                        } catch {
+                            /* ignore malformed frame */
+                        }
+                    });
+                } catch (err) {
+                    log.error("[tabular/regenerate-async] subscribe failed", {
+                        err: safeErrorLog(err),
+                        reviewId,
+                    });
+                }
+            }
+
+            poll = setInterval(() => {
+                void checkDb().catch((err) =>
+                    log.error("[tabular/regenerate-async] poll failed", {
+                        err: safeErrorLog(err),
+                        reviewId,
+                    }),
+                );
+            }, pollMs);
+            timer = setTimeout(() => settle(null), timeoutMs);
+        });
+    } finally {
+        if (poll) clearInterval(poll);
+        if (timer) clearTimeout(timer);
+        if (sub) void (sub as IORedis).quit().catch(() => {});
+    }
 }
 
 /** POST /:reviewId/generate — enqueue the outstanding work, then tail it. */

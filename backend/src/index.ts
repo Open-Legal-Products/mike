@@ -1,5 +1,6 @@
 import { app } from "./app";
 import { manifestPublicKey } from "./lib/manifestSigning";
+import { runStaleWorkSweep } from "./lib/maintenance/staleWork";
 import { anyWorkerEnabled, startWorkers, stopWorkers } from "./workers";
 
 const PORT = process.env.PORT ?? 3001;
@@ -26,6 +27,26 @@ const server = app.listen(PORT, () => {
     startWorkers();
   }
 });
+
+// Stale-work reaper: a crash between "status = processing/generating" and the
+// finalizing write strands rows in a transient state forever — nothing else
+// owns them. Sweep shortly after boot (crash recovery) and on an interval.
+// The sweep itself only dials Redis when an ASYNC_* flag is on.
+const SWEEP_INTERVAL_MS = (() => {
+  const raw = Number(process.env.STALE_SWEEP_INTERVAL_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 10 * 60 * 1000;
+})();
+const runSweep = () =>
+  void runStaleWorkSweep()
+    .then(({ documents, cells }) => {
+      if (documents || cells)
+        console.warn("[stale-sweep] flipped", { documents, cells });
+    })
+    .catch((err) => console.error("[stale-sweep] failed", err));
+const initialSweep = setTimeout(runSweep, 30_000);
+initialSweep.unref();
+const sweepTimer = setInterval(runSweep, SWEEP_INTERVAL_MS);
+sweepTimer.unref();
 
 // Graceful shutdown: on SIGTERM/SIGINT (orchestrator rollout, Ctrl-C), stop
 // accepting new connections, let in-flight requests/streams drain, close the

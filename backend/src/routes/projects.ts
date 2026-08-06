@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { requireAuth, requireMfaIfEnrolled } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
 import { recordAudit } from "../lib/audit";
+import { enqueueConversion } from "../lib/queue/conversionQueue";
 import { createClient } from "@supabase/supabase-js";
 import {
   attachActiveVersionPaths,
@@ -1448,9 +1449,16 @@ export async function handleDocumentUpload(
     ) as ArrayBuffer;
     const pageCount = suffix === "pdf" ? await countPdfPages(rawBuf) : null;
 
+    // When the job queue is enabled, defer Office → PDF conversion to the
+    // BullMQ worker instead of blocking the upload request on LibreOffice —
+    // the same deferral the single-document upload path makes.
+    const deferConversion =
+      shouldConvertToPdf(suffix) &&
+      process.env.ASYNC_DOCUMENT_CONVERSION === "true";
+
     // Convert Office files → PDF for display. PDFs are their own rendition.
     let pdfStoragePath: string | null = null;
-    if (shouldConvertToPdf(suffix)) {
+    if (!deferConversion && shouldConvertToPdf(suffix)) {
       try {
         const pdfBuf = await docxToPdf(content);
         const pdfKey = convertedPdfKey(userId, docId);
@@ -1501,10 +1509,22 @@ export async function handleDocumentUpload(
       .from("documents")
       .update({
         current_version_id: versionRow.id,
-        status: "ready",
+        // Deferred conversion leaves the doc "processing" until the worker
+        // produces the PDF and flips it to "ready".
+        status: deferConversion ? "processing" : "ready",
         updated_at: new Date().toISOString(),
       })
       .eq("id", docId);
+
+    if (deferConversion) {
+      await enqueueConversion({
+        documentId: docId,
+        versionId: versionRow.id as string,
+        userId,
+        storagePath: key,
+        fileType: suffix,
+      });
+    }
 
     const { data: updated } = await db
       .from("documents")

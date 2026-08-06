@@ -97,6 +97,63 @@ describe("runConversionJob", () => {
         expect(docUpdate?.update.status).toBe("ready");
     });
 
+    it("writes the rendition to the payload's pdfKey when provided", async () => {
+        downloadFile.mockResolvedValue(new ArrayBuffer(8));
+        docxToPdf.mockResolvedValue(Buffer.from("%PDF-1.7 fake"));
+        uploadFile.mockResolvedValue(undefined);
+        const db = makeDb();
+
+        await runConversionJob(
+            { ...JOB, pdfKey: "converted-pdfs/user-1/doc-1/slug.pdf" },
+            db as never,
+        );
+
+        expect(uploadFile).toHaveBeenCalledWith(
+            "converted-pdfs/user-1/doc-1/slug.pdf",
+            expect.anything(),
+            "application/pdf",
+        );
+        expect(db.calls).toContainEqual({
+            table: "document_versions",
+            update: {
+                pdf_storage_path: "converted-pdfs/user-1/doc-1/slug.pdf",
+            },
+        });
+    });
+
+    it("never touches documents.status when finalizeDocumentStatus is false", async () => {
+        downloadFile.mockResolvedValue(new ArrayBuffer(8));
+        docxToPdf.mockResolvedValue(Buffer.from("%PDF-1.7 fake"));
+        uploadFile.mockResolvedValue(undefined);
+        const db = makeDb();
+
+        await runConversionJob(
+            { ...JOB, finalizeDocumentStatus: false },
+            db as never,
+        );
+
+        expect(
+            db.calls.some((c) => c.table === "documents"),
+        ).toBe(false);
+        // The version row still gets its rendition.
+        expect(
+            db.calls.some((c) => c.table === "document_versions"),
+        ).toBe(true);
+    });
+
+    it("leaves the document alone on conversion failure when finalizeDocumentStatus is false", async () => {
+        downloadFile.mockResolvedValue(new ArrayBuffer(8));
+        docxToPdf.mockRejectedValue(new Error("soffice exploded"));
+        const db = makeDb();
+
+        await runConversionJob(
+            { ...JOB, finalizeDocumentStatus: false },
+            db as never,
+        );
+
+        expect(db.calls).toHaveLength(0);
+    });
+
     it("throws when the original is missing so BullMQ retries", async () => {
         downloadFile.mockResolvedValue(null);
         const db = makeDb();
