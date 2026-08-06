@@ -31,6 +31,25 @@ describe("extractionJobId", () => {
     it("is deterministic on (reviewId, rowId)", () => {
         expect(extractionJobId("rev-1", "row-1")).toBe("extract:rev-1:row-1");
     });
+
+    it("suffixes single-cell jobs so they never dedupe against full-row jobs", () => {
+        expect(extractionJobId("rev-1", "row-1", 2)).toBe(
+            "extract:rev-1:row-1:2",
+        );
+        expect(extractionJobId("rev-1", "row-1", 0)).toBe(
+            "extract:rev-1:row-1:0",
+        );
+    });
+});
+
+describe("enqueueExtraction (single-cell)", () => {
+    it("uses the column-suffixed jobId and carries columnIndex", () => {
+        enqueueExtraction({ ...DATA, columnIndex: 1 });
+
+        const [, data, opts] = add.mock.calls[0];
+        expect(data.columnIndex).toBe(1);
+        expect(opts.jobId).toBe("extract:rev-1:row-1:1");
+    });
 });
 
 describe("enqueueExtraction", () => {

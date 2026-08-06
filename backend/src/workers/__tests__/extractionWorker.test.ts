@@ -225,6 +225,43 @@ describe("runExtractionJob", () => {
         ).rejects.toThrow(/incomplete extraction/);
     });
 
+    it("restricts a single-cell job (columnIndex) to its one column", async () => {
+        const publish = vi.fn(async () => {});
+        const db = makeDb({
+            tabular_reviews: { select: { data: { columns_config: COLUMNS } } },
+            tabular_cells: {
+                select: {
+                    data: [
+                        // Both cells are outstanding, but the job only owns col 1.
+                        { id: "c0", column_index: 0, status: "pending", content: null },
+                        { id: "c1", column_index: 1, status: "generating", content: null },
+                    ],
+                },
+            },
+        });
+        queryTabularAllColumns.mockImplementation(
+            async (_m, _f, _t, cols, onResult) => {
+                for (const c of cols) await onResult(c.index, CELL(c.index, {}));
+            },
+        );
+
+        await runExtractionJob(
+            { ...DATA, columnIndex: 1 },
+            { db: db as never, publish },
+        );
+
+        // The LLM call was scoped to exactly one column.
+        const passedColumns = queryTabularAllColumns.mock.calls[0][3] as {
+            index: number;
+        }[];
+        expect(passedColumns.map((c) => c.index)).toEqual([1]);
+        // Only column 1's cell was touched.
+        const updates = db.calls.filter((c) => c.op === "update");
+        expect(
+            updates.every((c) => c.filters.column_index === 1 || c.filters.id === "c1"),
+        ).toBe(true);
+    });
+
     it("returns early when the review has no columns", async () => {
         const publish = vi.fn(async () => {});
         const db = makeDb({
@@ -253,6 +290,32 @@ describe("runExtractionJob", () => {
 });
 
 describe("markExtractionFailed", () => {
+    it("only touches its own column for a single-cell job", async () => {
+        const publish = vi.fn(async () => {});
+        const db = makeDb({
+            tabular_cells: {
+                select: {
+                    data: [
+                        { id: "c0", column_index: 0, status: "generating", content: null },
+                        { id: "c1", column_index: 1, status: "generating", content: null },
+                    ],
+                },
+            },
+        });
+
+        await markExtractionFailed(
+            { ...DATA, columnIndex: 1 },
+            { db: db as never, publish },
+        );
+
+        const errorUpdates = db.calls.filter(
+            (c) => c.op === "update" && c.payload?.status === "error",
+        );
+        expect(errorUpdates).toHaveLength(1);
+        expect(errorUpdates[0].filters.id).toBe("c1");
+        expect(publish).toHaveBeenCalledTimes(1);
+    });
+
     it("marks only unfinished cells error and publishes them", async () => {
         const publish = vi.fn(async () => {});
         const db = makeDb({
