@@ -2,7 +2,15 @@
 // Callers always speak OpenAI-style tools + { role, content } messages; each
 // provider translates internally.
 
-/** Provider identifier string — extensible, not a closed union. */
+/**
+ * Provider identifier string — extensible, not a closed union.
+ *
+ * Because this is an open string type, the compiler can no longer enforce
+ * exhaustive switches over providers.  Never branch on provider ids with a
+ * catch-all that assumes a specific provider; for display names use
+ * providerDisplayLabel() from the registry, which falls back to the raw id
+ * for providers it does not know.
+ */
 export type Provider = string;
 
 export type OpenAIToolSchema = {

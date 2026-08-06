@@ -34,7 +34,7 @@ export * from "./models";
  * OpenAI-compatible providers can be added the same way — call
  * registerProvider()/registerApiKeyProvider(), no core edits.
  */
-export { registerProvider } from "./registry";
+export { registerProvider, providerDisplayLabel } from "./registry";
 
 // ---------------------------------------------------------------------------
 // Register built-in providers
@@ -54,6 +54,7 @@ export { registerProvider } from "./registry";
 export function registerBuiltinProviders(): void {
     registerProvider({
         id: "openrouter",
+        label: "OpenRouter",
         // Router catalogs are fetched at runtime (see lib/routerModels), so
         // there is no static model list — the namespace prefix is the match.
         matchesModel: (m) => m.startsWith("openrouter/"),
@@ -63,6 +64,7 @@ export function registerBuiltinProviders(): void {
     });
     registerProvider({
         id: "vercel",
+        label: "Vercel AI Gateway",
         matchesModel: (m) => m.startsWith("vercel/"),
         stream: streamVercel,
         complete: completeVercelText,
@@ -70,6 +72,7 @@ export function registerBuiltinProviders(): void {
     });
     registerProvider({
         id: "opencode-go",
+        label: "OpenCode Go",
         matchesModel: (m) => m.startsWith("opencode-go/"),
         stream: streamOpenCodeGo,
         complete: completeOpenCodeGoText,
@@ -77,6 +80,7 @@ export function registerBuiltinProviders(): void {
     });
     registerProvider({
         id: "claude",
+        label: "Anthropic",
         matchesModel: (m) => m.startsWith("claude"),
         stream: streamClaude,
         complete: completeClaudeText,
@@ -84,6 +88,7 @@ export function registerBuiltinProviders(): void {
     });
     registerProvider({
         id: "gemini",
+        label: "Gemini",
         matchesModel: (m) => m.startsWith("gemini"),
         stream: streamGemini,
         complete: completeGeminiText,
@@ -91,6 +96,7 @@ export function registerBuiltinProviders(): void {
     });
     registerProvider({
         id: "openai",
+        label: "OpenAI",
         matchesModel: (m) => m.startsWith("gpt-"),
         stream: streamOpenAI,
         complete: completeOpenAIText,
@@ -98,6 +104,7 @@ export function registerBuiltinProviders(): void {
     });
     registerProvider({
         id: "ollama",
+        label: "Local (Ollama)",
         // Ollama models are detected dynamically (see GET /models/ollama);
         // any "ollama/<tag>" id routes here, so no static model list.
         matchesModel: (m) => m.startsWith("ollama"),
