@@ -161,3 +161,147 @@ describe("access helpers", () => {
         ).resolves.toMatchObject({ ok: true, isOwner: false });
     });
 });
+
+// ---------------------------------------------------------------------------
+// Multi-tenant org RBAC: the third access branch (row.org_id + membership).
+// ---------------------------------------------------------------------------
+describe("org RBAC access", () => {
+    // org-a belongs to alice; carol is a member, dave an admin. org-b belongs
+    // to bob and is entirely separate (cross-org isolation fixture).
+    const db = makeDb({
+        organizations: [
+            { id: "org-a", created_by: "alice", personal: true },
+            { id: "org-b", created_by: "bob", personal: true },
+        ],
+        org_members: [
+            { org_id: "org-a", user_id: "alice", role: "owner" },
+            { org_id: "org-a", user_id: "carol", role: "member" },
+            { org_id: "org-a", user_id: "dave", role: "admin" },
+            { org_id: "org-b", user_id: "bob", role: "owner" },
+        ],
+        projects: [
+            { id: "proj-a", user_id: "alice", shared_with: [], org_id: "org-a" },
+            { id: "proj-b", user_id: "bob", shared_with: [], org_id: "org-b" },
+        ],
+        documents: [
+            {
+                id: "doc-a",
+                user_id: "alice",
+                project_id: "proj-a",
+                org_id: "org-a",
+            },
+            {
+                id: "doc-b",
+                user_id: "bob",
+                project_id: "proj-b",
+                org_id: "org-b",
+            },
+        ],
+    });
+
+    it("grants an org member read access without ownership (viewer)", async () => {
+        await expect(
+            checkProjectAccess("proj-a", "carol", "carol@example.com", db),
+        ).resolves.toMatchObject({
+            ok: true,
+            isOwner: false,
+            role: "member",
+            canManage: false,
+            projectRole: "viewer",
+        });
+    });
+
+    it("marks org owners/admins as able to manage (manager)", async () => {
+        await expect(
+            checkProjectAccess("proj-a", "dave", "dave@example.com", db),
+        ).resolves.toMatchObject({
+            ok: true,
+            isOwner: false,
+            role: "admin",
+            canManage: true,
+            projectRole: "manager",
+        });
+    });
+
+    it("derives owner and editor roles on the non-org branches", async () => {
+        await expect(
+            checkProjectAccess("proj-a", "alice", "alice@example.com", db),
+        ).resolves.toMatchObject({ ok: true, projectRole: "owner" });
+
+        const sharedDb = makeDb({
+            projects: [
+                {
+                    id: "proj-s",
+                    user_id: "alice",
+                    shared_with: ["eve@example.com"],
+                    org_id: null,
+                },
+            ],
+        });
+        await expect(
+            checkProjectAccess("proj-s", "eve", "eve@example.com", sharedDb),
+        ).resolves.toMatchObject({
+            ok: true,
+            isOwner: false,
+            projectRole: "editor",
+        });
+    });
+
+    it("isolates users across orgs (cross-tenant denial)", async () => {
+        await expect(
+            checkProjectAccess("proj-a", "bob", "bob@example.com", db),
+        ).resolves.toEqual({ ok: false });
+    });
+
+    it("extends org access to that org's documents", async () => {
+        await expect(
+            ensureDocAccess(
+                { user_id: "alice", project_id: "proj-a", org_id: "org-a" },
+                "carol",
+                "carol@example.com",
+                db,
+            ),
+        ).resolves.toMatchObject({ ok: true, isOwner: false, role: "member" });
+
+        await expect(
+            ensureDocAccess(
+                { user_id: "bob", project_id: "proj-b", org_id: "org-b" },
+                "carol",
+                "carol@example.com",
+                db,
+            ),
+        ).resolves.toEqual({ ok: false });
+    });
+
+    it("extends org access to that org's reviews", async () => {
+        await expect(
+            ensureReviewAccess(
+                { user_id: "alice", project_id: null, org_id: "org-a" },
+                "carol",
+                "carol@example.com",
+                db,
+            ),
+        ).resolves.toMatchObject({ ok: true, isOwner: false });
+    });
+
+    it("lists org projects for members but not other tenants'", async () => {
+        const ids = await listAccessibleProjectIds(
+            "carol",
+            "carol@example.com",
+            db,
+        );
+        expect(ids).toContain("proj-a");
+        expect(ids).not.toContain("proj-b");
+    });
+
+    it("admits org documents but rejects other tenants' documents", async () => {
+        await expect(
+            filterAccessibleDocumentIds(
+                ["doc-a", "doc-b"],
+                "carol",
+                "carol@example.com",
+                db,
+            ),
+        ).resolves.toEqual(["doc-a"]);
+    });
+});

@@ -49,6 +49,8 @@ import { ApiKeyMissingPopup } from "../popups/ApiKeyMissingPopup";
 import { ConfirmPopup } from "../popups/ConfirmPopup";
 import { HeaderActionsMenu } from "../shared/HeaderActionsMenu";
 import { useAuth } from "@/app/contexts/AuthContext";
+import { can, roleFrom } from "@/app/lib/permissions";
+import type { OwnerGate } from "@/app/components/projects/ProjectWorkspace";
 import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import {
     getModelProvider,
@@ -95,7 +97,9 @@ export function TRView({ reviewId, projectId }: Props) {
     const [deleteReviewStatus, setDeleteReviewStatus] = useState<
         "idle" | "deleting" | "deleted"
     >("idle");
-    const [ownerOnlyAction, setOwnerOnlyAction] = useState<string | null>(null);
+    const [ownerOnlyAction, setOwnerOnlyAction] = useState<OwnerGate | null>(
+        null,
+    );
     const { user } = useAuth();
     const [expandedCell, setExpandedCell] = useState<TabularCell | null>(null);
     const [expandedCellCitation, setExpandedCellCitation] = useState<
@@ -192,6 +196,18 @@ export function TRView({ reviewId, projectId }: Props) {
         return (
             columns.reduce((max, column) => Math.max(max, column.index), -1) + 1
         );
+    }
+
+    // Role ladder for this review; "owner" until it loads. Column/document
+    // mutations and clearing cells are manager+ server-side; generation and
+    // chat are editor+; delete stays owner-only.
+    const reviewRole = review ? roleFrom(review) : "owner";
+    const canManageStructure = can(reviewRole, "structure.manage");
+
+    function requireStructure(action: string): boolean {
+        if (canManageStructure) return true;
+        setOwnerOnlyAction({ action, requiredRole: "manager" });
+        return false;
     }
 
     async function saveColumnsConfig(nextColumns: ColumnConfig[]) {
@@ -411,6 +427,7 @@ export function TRView({ reviewId, projectId }: Props) {
     }
 
     async function handleAddColumn(newColumns: ColumnConfig[]) {
+        if (!requireStructure("add columns")) return;
         const startIndex = getNextColumnIndex();
         const normalizedColumns = newColumns.map((column, index) => ({
             ...column,
@@ -473,6 +490,7 @@ export function TRView({ reviewId, projectId }: Props) {
     }
 
     async function handleUpdateColumn(nextColumn: ColumnConfig) {
+        if (!requireStructure("edit columns")) return;
         const nextColumns = columns.map((column) =>
             column.index === nextColumn.index ? nextColumn : column,
         );
@@ -487,6 +505,7 @@ export function TRView({ reviewId, projectId }: Props) {
     }
 
     async function handleDeleteColumn(columnIndex: number) {
+        if (!requireStructure("delete columns")) return;
         const previousColumns = columns;
         const nextColumns = columns.filter(
             (column) => column.index !== columnIndex,
@@ -568,16 +587,21 @@ export function TRView({ reviewId, projectId }: Props) {
     }
 
     async function handleClearResults() {
+        if (!requireStructure("clear results")) return;
         await clearResultsForRows([...selectedRowIds]);
     }
 
     async function handleClearAllResults() {
+        if (!requireStructure("clear results")) return;
         await clearResultsForRows(rows.map((row) => row.id));
     }
 
     function requestReviewDetails() {
-        if (review?.is_owner === false) {
-            setOwnerOnlyAction("edit tabular review details");
+        if (review && !canManageStructure) {
+            setOwnerOnlyAction({
+                action: "edit tabular review details",
+                requiredRole: "manager",
+            });
             return;
         }
         setDetailsOpen(true);
@@ -587,13 +611,16 @@ export function TRView({ reviewId, projectId }: Props) {
         title: string;
         projectId?: string | null;
     }) {
-        if (!review || review.is_owner === false) {
-            setOwnerOnlyAction("edit tabular review details");
+        if (!review || !requireStructure("edit tabular review details"))
             return;
-        }
+        // Only send project_id when it actually changes: moving a review
+        // between projects is owner-only server-side, and sending an
+        // unchanged value would 403 a manager editing just the title.
+        const nextProjectId = values.projectId ?? null;
+        const projectChanged = nextProjectId !== (review.project_id ?? null);
         const updated = await updateTabularReview(reviewId, {
             title: values.title,
-            project_id: values.projectId ?? null,
+            ...(projectChanged ? { project_id: nextProjectId } : {}),
         });
         setReview((prev) =>
             prev
@@ -612,7 +639,7 @@ export function TRView({ reviewId, projectId }: Props) {
     }
 
     function requestReviewDelete() {
-        if (review?.is_owner === false) {
+        if (review && !can(reviewRole, "container.delete")) {
             setOwnerOnlyAction("delete this tabular review");
             return;
         }
@@ -640,10 +667,7 @@ export function TRView({ reviewId, projectId }: Props) {
     }
 
     function requestWorkflow() {
-        if (review?.is_owner === false) {
-            setOwnerOnlyAction("apply a workflow");
-            return;
-        }
+        if (!requireStructure("apply a workflow")) return;
         setWorkflowModalOpen(true);
     }
 
@@ -1157,7 +1181,7 @@ export function TRView({ reviewId, projectId }: Props) {
                 open={detailsOpen}
                 review={review}
                 projects={project ? [project] : availableProjects}
-                canEdit={review?.is_owner !== false}
+                canEdit={canManageStructure}
                 lockProject={Boolean(projectId)}
                 onClose={() => setDetailsOpen(false)}
                 onSave={handleDetailsSave}
@@ -1174,10 +1198,11 @@ export function TRView({ reviewId, projectId }: Props) {
                     review?.title || "Untitled Review",
                     "People",
                 ]}
-                // Only the review owner may modify the member list. PeopleModal
-                // hides the add/remove controls when this prop is undefined.
+                // Managers and the owner may modify the member list.
+                // PeopleModal hides the add/remove controls when this prop
+                // is undefined.
                 onSharedWithChange={
-                    review?.is_owner === false
+                    !can(reviewRole, "members.manage")
                         ? undefined
                         : async (next) => {
                               const updated = await updateTabularReview(
@@ -1245,7 +1270,16 @@ export function TRView({ reviewId, projectId }: Props) {
 
             <OwnerOnlyPopup
                 open={!!ownerOnlyAction}
-                action={ownerOnlyAction ?? undefined}
+                action={
+                    typeof ownerOnlyAction === "string"
+                        ? ownerOnlyAction
+                        : ownerOnlyAction?.action
+                }
+                requiredRole={
+                    typeof ownerOnlyAction === "string"
+                        ? "owner"
+                        : ownerOnlyAction?.requiredRole
+                }
                 onClose={() => setOwnerOnlyAction(null)}
             />
 

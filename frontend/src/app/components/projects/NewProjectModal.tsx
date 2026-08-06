@@ -1,10 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Upload, User, X } from "lucide-react";
 import {
+    type Org,
     addDocumentToProject,
     createProject,
+    listOrgs,
     uploadProjectDocument,
 } from "@/app/lib/mikeApi";
 import { FileDirectory } from "../shared/FileDirectory";
@@ -15,7 +17,10 @@ import { useAuth } from "@/app/contexts/AuthContext";
 import { Modal } from "../modals/Modal";
 import { ModalFieldLabel } from "../modals/ModalFieldLabel";
 import { ModalTextInput } from "../modals/ModalTextInput";
+import { ModalSelect } from "../modals/ModalSelect";
 import { ProjectPracticeField } from "./ProjectPracticeField";
+
+const PERSONAL_WORKSPACE = "__personal__";
 
 interface Props {
     open: boolean;
@@ -29,6 +34,8 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
     const [cmNumber, setCmNumber] = useState("");
     const [practice, setPractice] = useState("");
     const [sharedUsers, setSharedUsers] = useState<UserLookupResult[]>([]);
+    const [orgs, setOrgs] = useState<Org[]>([]);
+    const [orgId, setOrgId] = useState<string>(PERSONAL_WORKSPACE);
     const [selectedDocuments, setSelectedDocuments] = useState<Document[]>([]);
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
     const [loading, setLoading] = useState(false);
@@ -37,6 +44,22 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
     const { user } = useAuth();
     const ownEmail = user?.email?.trim().toLowerCase() ?? null;
     const formId = "new-project-modal-form";
+
+    // Load the caller's organizations so a project can be created inside a
+    // firm instead of the private personal workspace. Best-effort: without
+    // orgs the field simply doesn't render.
+    useEffect(() => {
+        if (!open) return;
+        let cancelled = false;
+        listOrgs()
+            .then((rows) => {
+                if (!cancelled) setOrgs(rows.filter((o) => !o.personal));
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [open]);
 
     if (!open) return null;
 
@@ -76,6 +99,7 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
                           .map((user) => user.email)
                           .filter((email) => email !== ownEmail)
                     : sharedUsers.map((user) => user.email),
+                orgId !== PERSONAL_WORKSPACE ? orgId : undefined,
             );
             await Promise.all([
                 ...selectedDocuments.map((document) =>
@@ -104,6 +128,7 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
         setSharedUsers([]);
         setSelectedDocuments([]);
         setPendingFiles([]);
+        setOrgId(PERSONAL_WORKSPACE);
         setError("");
     }
 
@@ -249,6 +274,29 @@ export function NewProjectModal({ open, onClose, onCreated }: Props) {
                                 onChange={setPractice}
                             />
                         </div>
+
+                        {orgs.length > 0 && (
+                            <div>
+                                <ModalFieldLabel htmlFor="new-project-org">
+                                    Organization
+                                </ModalFieldLabel>
+                                <ModalSelect
+                                    id="new-project-org"
+                                    value={orgId}
+                                    onChange={setOrgId}
+                                    options={[
+                                        {
+                                            value: PERSONAL_WORKSPACE,
+                                            label: "Personal workspace",
+                                        },
+                                        ...orgs.map((org) => ({
+                                            value: org.id,
+                                            label: org.name,
+                                        })),
+                                    ]}
+                                />
+                            </div>
+                        )}
 
                         <div className="space-y-2">
                             <ModalFieldLabel as="p">

@@ -86,12 +86,16 @@ vi.mock("../../middleware/auth", () => ({
 
 // Every export of lib/access must be present — other routers (chat, documents,
 // downloads, tabular) import from it at app load.
-vi.mock("../../lib/access", () => ({
+vi.mock("../../lib/access", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("../../lib/access")>()),
     checkProjectAccess: (...args: unknown[]) => checkProjectAccess(...args),
     ensureDocAccess: vi.fn(async () => ({ ok: true, isOwner: true })),
     ensureReviewAccess: vi.fn(async () => ({ ok: true, isOwner: true })),
     filterAccessibleDocumentIds: vi.fn(async (ids: string[]) => ids),
     listAccessibleProjectIds: vi.fn(async () => []),
+    getOrgRole: vi.fn(async () => null),
+    getPersonalOrgId: vi.fn(async () => null),
+    resolveContentOrgId: vi.fn(async () => null),
 }));
 
 // user router imports all four cleanup helpers at module load.
@@ -126,6 +130,7 @@ describe("projects.routes", () => {
         checkProjectAccess.mockResolvedValue({
             ok: true,
             isOwner: true,
+            projectRole: "owner",
             project: { id: "p1", user_id: "u1", shared_with: null },
         });
         deleteUserProjects.mockResolvedValue(1);
@@ -306,6 +311,7 @@ describe("projects.routes", () => {
         });
 
         it("returns 404 when the caller is neither owner nor shared", async () => {
+            checkProjectAccess.mockResolvedValue({ ok: false });
             supabaseState.tables.projects = {
                 data: {
                     id: "p1",
@@ -321,7 +327,17 @@ describe("projects.routes", () => {
             expect(res.body.detail).toBe("Project not found");
         });
 
-        it("grants access to a shared member (is_owner false)", async () => {
+        it("grants access to a shared member (is_owner false, editor role)", async () => {
+            checkProjectAccess.mockResolvedValue({
+                ok: true,
+                isOwner: false,
+                projectRole: "editor",
+                project: {
+                    id: "p1",
+                    user_id: "someone-else",
+                    shared_with: ["u1@test.local"],
+                },
+            });
             supabaseState.tables.projects = {
                 data: {
                     id: "p1",
@@ -336,7 +352,11 @@ describe("projects.routes", () => {
             const res = await request(app).get("/projects/p1").set(...AUTH);
 
             expect(res.status).toBe(200);
-            expect(res.body).toMatchObject({ id: "p1", is_owner: false });
+            expect(res.body).toMatchObject({
+                id: "p1",
+                is_owner: false,
+                access_role: "editor",
+            });
         });
 
         it("returns 200 with documents/folders/is_owner when owned", async () => {
@@ -362,6 +382,57 @@ describe("projects.routes", () => {
                 documents: [{ id: "d1" }],
                 folders: [{ id: "f1" }],
             });
+        });
+    });
+
+    // ── DELETE /projects/:projectId/folders/:folderId (role ladder) ──────
+    // Folder deletion cascades into nested documents, so it is manager+:
+    // owner and org owner/admin pass; shared editors and org viewers do not.
+    describe("DELETE /projects/:projectId/folders/:folderId", () => {
+        const roleAccess = (projectRole: string) => ({
+            ok: true,
+            isOwner: projectRole === "owner",
+            projectRole,
+            project: { id: "p1", user_id: "u1", shared_with: null },
+        });
+
+        beforeEach(() => {
+            supabaseState.tables.project_subfolders = {
+                data: [{ id: "f1", parent_folder_id: null }],
+                error: null,
+            };
+            supabaseState.tables.documents = { data: [], error: null };
+        });
+
+        it("allows the owner (204)", async () => {
+            const res = await request(app)
+                .delete("/projects/p1/folders/f1")
+                .set(...AUTH);
+            expect(res.status).toBe(204);
+        });
+
+        it("allows an org owner/admin (manager) (204)", async () => {
+            checkProjectAccess.mockResolvedValue(roleAccess("manager"));
+            const res = await request(app)
+                .delete("/projects/p1/folders/f1")
+                .set(...AUTH);
+            expect(res.status).toBe(204);
+        });
+
+        it("blocks a shared editor (404)", async () => {
+            checkProjectAccess.mockResolvedValue(roleAccess("editor"));
+            const res = await request(app)
+                .delete("/projects/p1/folders/f1")
+                .set(...AUTH);
+            expect(res.status).toBe(404);
+        });
+
+        it("blocks a plain org member (viewer) (404)", async () => {
+            checkProjectAccess.mockResolvedValue(roleAccess("viewer"));
+            const res = await request(app)
+                .delete("/projects/p1/folders/f1")
+                .set(...AUTH);
+            expect(res.status).toBe(404);
         });
     });
 
