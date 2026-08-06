@@ -23,9 +23,9 @@ import {
 } from "../lib/chat";
 import {
     completeText,
+    providerDisplayLabel,
     providerForModel,
     streamChatWithTools,
-    type Provider,
     type UserApiKeys,
 } from "../lib/llm";
 import { getUserModelSettings } from "../lib/userSettings";
@@ -466,12 +466,6 @@ async function loadRowDocumentText(
     return sections.join("\n\n---\n\n");
 }
 
-function providerLabel(provider: Provider): string {
-    if (provider === "claude") return "Anthropic";
-    if (provider === "openai") return "OpenAI";
-    return "Gemini";
-}
-
 function missingModelApiKey(model: string, apiKeys: UserApiKeys) {
     const provider = providerForModel(model);
     if (provider === "ollama") return null; // local, no key
@@ -479,7 +473,7 @@ function missingModelApiKey(model: string, apiKeys: UserApiKeys) {
     return {
         provider,
         model,
-        detail: `${providerLabel(provider)} API key is required to use ${model}. Add an API key or select a different tabular review model.`,
+        detail: `${providerDisplayLabel(provider)} API key is required to use ${model}. Add an API key or select a different tabular review model.`,
     };
 }
 

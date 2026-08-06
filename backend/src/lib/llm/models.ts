@@ -1,7 +1,7 @@
-import type { Provider } from "./types";
+import { findProviderForModel, allRegisteredModels, matchesDynamicModel } from "./registry";
 
 // ---------------------------------------------------------------------------
-// Canonical model IDs
+// Canonical model IDs (built-in providers)
 // ---------------------------------------------------------------------------
 // Main-chat tier (top-end) — user picks one of these per message.
 export const CLAUDE_MAIN_MODELS = [
@@ -17,7 +17,8 @@ export const GEMINI_MAIN_MODELS = [
 ] as const;
 export const OPENAI_MAIN_MODELS = ["gpt-5.5", "gpt-5.4"] as const;
 // Ollama models are detected dynamically (see GET /models/ollama). Any id of
-// the form "ollama/<tag>" is valid — see providerForModel / resolveModel.
+// the form "ollama/<tag>" is valid — the ollama adapter registered in
+// index.ts declares this via its isDynamicModel() hook.
 
 // Mid-tier (used for tabular review) — user picks one in account settings.
 export const CLAUDE_MID_MODELS = ["claude-sonnet-4-6"] as const;
@@ -34,31 +35,33 @@ export const DEFAULT_MAIN_MODEL = "gemini-3-flash-preview";
 export const DEFAULT_TITLE_MODEL = "gemini-3.1-flash-lite-preview";
 export const DEFAULT_TABULAR_MODEL = "gemini-3-flash-preview";
 
-const ALL_MODELS = new Set<string>([
-    ...CLAUDE_MAIN_MODELS,
-    ...GEMINI_MAIN_MODELS,
-    ...OPENAI_MAIN_MODELS,
-    ...CLAUDE_MID_MODELS,
-    ...GEMINI_MID_MODELS,
-    ...OPENAI_MID_MODELS,
-    ...CLAUDE_LOW_MODELS,
-    ...GEMINI_LOW_MODELS,
-    ...OPENAI_LOW_MODELS,
-]);
-
 // ---------------------------------------------------------------------------
 // Provider inference
 // ---------------------------------------------------------------------------
+// Both functions below delegate to the provider registry — the single source
+// of truth for model→provider routing.  The registry is populated by
+// index.ts (built-in providers, on module load) and by registerProvider()
+// calls for third-party providers.  Callers must import "lib/llm" (index.ts),
+// never this file directly, so registration has always run first.
 
-export function providerForModel(model: string): Provider {
-    if (model.startsWith("ollama")) return "ollama";
-    if (model.startsWith("claude")) return "claude";
-    if (model.startsWith("gemini")) return "gemini";
-    if (model.startsWith("gpt-")) return "openai";
+/**
+ * Maps a model ID to its provider id.
+ *
+ * Routing is decided entirely by each registered adapter's matchesModel()
+ * (checked in registration order) — no prefix heuristics are duplicated
+ * here, so adding a provider never requires edits to this file.
+ */
+export function providerForModel(model: string): string {
+    const registered = findProviderForModel(model);
+    if (registered) return registered.id;
     throw new Error(`Unknown model id: ${model}`);
 }
 
+/**
+ * Returns id if it is a model declared by any registered provider,
+ * otherwise returns fallback.
+ */
 export function resolveModel(id: string | null | undefined, fallback: string): string {
-    if (id && (ALL_MODELS.has(id) || id.startsWith("ollama/"))) return id;
+    if (id && (allRegisteredModels().has(id) || matchesDynamicModel(id))) return id;
     return fallback;
 }
