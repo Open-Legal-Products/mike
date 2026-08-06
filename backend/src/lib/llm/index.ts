@@ -32,9 +32,9 @@ export { registerProvider, providerDisplayLabel } from "./registry";
 // ---------------------------------------------------------------------------
 // Register built-in providers
 // ---------------------------------------------------------------------------
-// Providers are imported above so that Vitest's vi.mock() hoisting works:
-// test files mock e.g. "../claude" before this module loads, so the mocked
-// function is captured here and ends up in the registry.
+// Registration runs at module load (see the call below), so any code that
+// imports "lib/llm" gets a fully populated registry before its first
+// streamChatWithTools()/completeText()/providerForModel() call.
 
 /** Register the built-in LLM providers (claude/gemini/openai/ollama). */
 export function registerBuiltinProviders(): void {
