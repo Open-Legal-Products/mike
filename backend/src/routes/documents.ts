@@ -79,6 +79,35 @@ documentsRouter.get("/", requireAuth, async (req, res) => {
   res.json(docs);
 });
 
+// GET /single-documents/:documentId
+// One document, same shape as a list entry. Exists so the client can poll a
+// single document's status while a deferred conversion runs, instead of
+// refetching the whole collection.
+documentsRouter.get("/:documentId", requireAuth, async (req, res) => {
+  const userId = res.locals.userId as string;
+  const userEmail = res.locals.userEmail as string | undefined;
+  const { documentId } = req.params;
+  const db = createServerSupabase();
+
+  const { data: doc } = await db
+    .from("documents")
+    .select("*")
+    .eq("id", documentId)
+    .single();
+  if (!doc) return void res.status(404).json({ detail: "Document not found" });
+  const access = await ensureDocAccess(doc, userId, userEmail, db);
+  if (!access.ok)
+    return void res.status(404).json({ detail: "Document not found" });
+
+  const docs = [doc] as unknown as {
+    id: string;
+    current_version_id?: string | null;
+  }[];
+  await attachLatestVersionNumbers(db, docs);
+  await attachActiveVersionPaths(db, docs);
+  res.json(docs[0]);
+});
+
 // POST /single-documents
 documentsRouter.post(
   "/",
@@ -478,6 +507,7 @@ documentsRouter.post(
     }
 
     let pdfStoragePath: string | null = null;
+    let deferConversion = false;
     if (suffix === "pdf") {
       pdfStoragePath = key;
     } else if (active.pdf_storage_path) {
@@ -492,23 +522,30 @@ documentsRouter.post(
         }
       }
     } else if (shouldConvertToPdf(suffix)) {
-      try {
-        const pdfBuf = await docxToPdf(Buffer.from(bytes));
-        const pdfKey = `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`;
-        await uploadFile(
-          pdfKey,
-          pdfBuf.buffer.slice(
-            pdfBuf.byteOffset,
-            pdfBuf.byteOffset + pdfBuf.byteLength,
-          ) as ArrayBuffer,
-          "application/pdf",
-        );
-        pdfStoragePath = pdfKey;
-      } catch (err) {
-        console.error(
-          `[versions/copy] Office→PDF conversion failed for ${filename}:`,
-          err,
-        );
+      // Only reached when the source has no rendition to copy — this is the
+      // one branch of the copy flow that pays for LibreOffice, so it's the
+      // branch the conversion queue takes over when the flag is on.
+      if (process.env.ASYNC_DOCUMENT_CONVERSION === "true") {
+        deferConversion = true;
+      } else {
+        try {
+          const pdfBuf = await docxToPdf(Buffer.from(bytes));
+          const pdfKey = `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`;
+          await uploadFile(
+            pdfKey,
+            pdfBuf.buffer.slice(
+              pdfBuf.byteOffset,
+              pdfBuf.byteOffset + pdfBuf.byteLength,
+            ) as ArrayBuffer,
+            "application/pdf",
+          );
+          pdfStoragePath = pdfKey;
+        } catch (err) {
+          console.error(
+            `[versions/copy] Office→PDF conversion failed for ${filename}:`,
+            err,
+          );
+        }
       }
     }
 
@@ -557,6 +594,18 @@ documentsRouter.post(
       return void res
         .status(500)
         .json({ detail: "Failed to update document current version." });
+    }
+
+    if (deferConversion) {
+      await enqueueConversion({
+        documentId,
+        versionId: versionRow.id as string,
+        userId,
+        storagePath: key,
+        fileType: suffix,
+        pdfKey: `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`,
+        finalizeDocumentStatus: false,
+      });
     }
 
     if (willDeleteSource) {
@@ -643,8 +692,14 @@ documentsRouter.post(
     // Render this version's bytes to PDF up front so /display can show
     // historical versions without on-demand conversion. Same logic as the
     // initial-upload pipeline; failures don't block the version row.
+    // With the job queue enabled the LibreOffice work is deferred to the
+    // conversion worker instead of blocking this request; the version row is
+    // created with pdf_storage_path null and the worker fills it in.
+    const deferConversion =
+      shouldConvertToPdf(suffix) &&
+      process.env.ASYNC_DOCUMENT_CONVERSION === "true";
     let pdfStoragePath: string | null = null;
-    if (shouldConvertToPdf(suffix)) {
+    if (!deferConversion && shouldConvertToPdf(suffix)) {
       try {
         const pdfBuf = await docxToPdf(file.buffer);
         const pdfKey = `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`;
@@ -730,6 +785,20 @@ documentsRouter.post(
       return void res
         .status(500)
         .json({ detail: "Failed to update document current version." });
+    }
+
+    if (deferConversion) {
+      // The document itself stays "ready" — only this version's rendition is
+      // pending, so the worker must not touch documents.status.
+      await enqueueConversion({
+        documentId,
+        versionId: versionRow.id as string,
+        userId,
+        storagePath: key,
+        fileType: suffix,
+        pdfKey: `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`,
+        finalizeDocumentStatus: false,
+      });
     }
 
     res.status(201).json(versionRow);
@@ -857,8 +926,15 @@ documentsRouter.put(
         .json({ detail: "Failed to upload replacement version." });
     }
 
+    // Same queue deferral as version uploads: the replacement's rendition is
+    // produced by the conversion worker when the flag is on. The old rendition
+    // is deleted below either way, so /display briefly falls back until the
+    // worker writes the new one.
+    const deferConversion =
+      shouldConvertToPdf(suffix) &&
+      process.env.ASYNC_DOCUMENT_CONVERSION === "true";
     let pdfStoragePath: string | null = null;
-    if (shouldConvertToPdf(suffix)) {
+    if (!deferConversion && shouldConvertToPdf(suffix)) {
       try {
         const pdfBuf = await docxToPdf(file.buffer);
         const pdfKey = `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`;
@@ -926,6 +1002,21 @@ documentsRouter.put(
         .filter((path): path is string => !!path)
         .map((path) => deleteFile(path).catch(() => {})),
     );
+
+    if (deferConversion) {
+      // Replace reuses the versionId, which is exactly why terminal jobs are
+      // removed from the queue immediately — this enqueue must not be deduped
+      // against a completed job for the same version.
+      await enqueueConversion({
+        documentId,
+        versionId,
+        userId,
+        storagePath: key,
+        fileType: suffix,
+        pdfKey: `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`,
+        finalizeDocumentStatus: false,
+      });
+    }
 
     res.json(updated);
   },

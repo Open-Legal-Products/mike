@@ -828,6 +828,10 @@ export async function listStandaloneDocuments(): Promise<Document[]> {
     return apiRequest<Document[]>("/single-documents");
 }
 
+export async function getDocument(documentId: string): Promise<Document> {
+    return apiRequest<Document>(`/single-documents/${documentId}`);
+}
+
 export async function deleteDocument(documentId: string): Promise<void> {
     await apiRequest(`/single-documents/${documentId}`, { method: "DELETE" });
 }
@@ -1198,11 +1202,24 @@ export async function deleteTabularReview(reviewId: string): Promise<void> {
 
 export async function streamTabularGeneration(
     reviewId: string,
+    signal?: AbortSignal,
 ): Promise<Response> {
     const authHeaders = await getAuthHeader();
     return fetch(`${API_BASE}/tabular-review/${reviewId}/generate`, {
         method: "POST",
         headers: { ...authHeaders },
+        signal: signal ?? undefined,
+    });
+}
+
+export async function streamTabularGenerationResume(
+    reviewId: string,
+    signal?: AbortSignal,
+): Promise<Response> {
+    const authHeaders = await getAuthHeader();
+    return fetch(`${API_BASE}/tabular-review/${reviewId}/generate/stream`, {
+        headers: { ...authHeaders },
+        signal: signal ?? undefined,
     });
 }
 
@@ -1323,11 +1340,15 @@ export async function regenerateTabularCell(
     reviewId: string,
     rowId: string,
     columnIndex: number,
-): Promise<{
-    summary: string;
-    flag: "green" | "grey" | "yellow" | "red";
-    reasoning: string;
-}> {
+): Promise<
+    | {
+          summary: string;
+          flag: "green" | "grey" | "yellow" | "red";
+          reasoning: string;
+      }
+    // HTTP 202 — regeneration continues in the background
+    | { status: "generating" }
+> {
     return apiRequest(`/tabular-review/${reviewId}/regenerate-cell`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

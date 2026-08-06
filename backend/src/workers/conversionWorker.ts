@@ -24,6 +24,7 @@ export async function runConversionJob(
     db: Db = createServerSupabase(),
 ): Promise<void> {
     const { documentId, versionId, userId, storagePath } = data;
+    const finalize = data.finalizeDocumentStatus !== false;
 
     const original = await downloadFile(storagePath);
     if (!original) {
@@ -35,7 +36,7 @@ export async function runConversionJob(
 
     try {
         const pdfBuf = await docxToPdf(Buffer.from(original));
-        const pdfKey = convertedPdfKey(userId, documentId);
+        const pdfKey = data.pdfKey ?? convertedPdfKey(userId, documentId);
         await uploadFile(
             pdfKey,
             pdfBuf.buffer.slice(
@@ -48,20 +49,33 @@ export async function runConversionJob(
             .from("document_versions")
             .update({ pdf_storage_path: pdfKey })
             .eq("id", versionId);
-        await db
-            .from("documents")
-            .update({ status: "ready", updated_at: new Date().toISOString() })
-            .eq("id", documentId);
+        if (finalize) {
+            await db
+                .from("documents")
+                .update({
+                    status: "ready",
+                    updated_at: new Date().toISOString(),
+                })
+                .eq("id", documentId);
+        }
         console.log("[conversion-worker] converted", { documentId, versionId });
     } catch (err) {
+        // Conversion failure is non-fatal (mirrors the sync path): the version
+        // stays usable without a PDF rendition. Only the initial-upload flow
+        // (finalize) needs the parked "processing" document flipped to ready.
         console.error(
             "[conversion-worker] DOCX→PDF failed; finalizing without a PDF rendition",
             { err, documentId, versionId },
         );
-        await db
-            .from("documents")
-            .update({ status: "ready", updated_at: new Date().toISOString() })
-            .eq("id", documentId);
+        if (finalize) {
+            await db
+                .from("documents")
+                .update({
+                    status: "ready",
+                    updated_at: new Date().toISOString(),
+                })
+                .eq("id", documentId);
+        }
     }
 }
 
@@ -123,8 +137,17 @@ export function createConversionWorker(): Worker<ConversionJobData> {
             );
             return;
         }
-        // Retries exhausted: the document is stuck "processing" with no PDF and
-        // no path forward — surface it to the user as a terminal "error".
+        // Retries exhausted. For the initial-upload flow the document is stuck
+        // "processing" with no path forward — surface it as a terminal
+        // "error". Version flows (finalizeDocumentStatus: false) belong to an
+        // already-healthy document: the version simply keeps no rendition.
+        if (job.data.finalizeDocumentStatus === false) {
+            console.error(
+                "[conversion-worker] version rendition permanently failed; document left untouched",
+                { jobId: job.id, versionId: job.data.versionId, err },
+            );
+            return;
+        }
         console.error(
             "[conversion-worker] job permanently failed; marking document error",
             { jobId: job.id, documentId: job.data.documentId, err },
