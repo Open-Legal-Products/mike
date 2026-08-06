@@ -114,11 +114,33 @@ export async function waitForMcpApprovalDecision(
         if (Date.now() >= deadline) break;
         await sleep(Math.min(POLL_INTERVAL_MS, deadline - Date.now()));
     }
-    await db
+    // Retire the still-undecided row (pending -> expired). The conditional
+    // UPDATE doubles as a race detector: its affected-row count tells us
+    // whether the row was still pending when we expired it.
+    const { data: expired, error: expireError } = await db
         .from("user_mcp_pending_tool_calls")
         .update({ status: "expired" })
         .eq("id", pendingId)
-        .eq("status", "pending");
+        .eq("status", "pending")
+        .select("id");
+    if (expireError) throw expireError;
+    if (((expired ?? []) as unknown[]).length > 0) return "expired";
+    // Zero rows matched: the user's decision landed in the gap between our
+    // last poll and the expiry UPDATE. The row is now permanently
+    // approved/denied, so returning "expired" here would desynchronize the
+    // ledger from what we tell the model (and, for an approval, strand a row
+    // that decideMcpPendingToolCall will never touch again). Re-read once
+    // and honor the decision that actually won.
+    const { data: after, error: afterError } = await db
+        .from("user_mcp_pending_tool_calls")
+        .select("status")
+        .eq("id", pendingId)
+        .single();
+    if (afterError) throw afterError;
+    const finalStatus = (after as { status: string }).status;
+    if (finalStatus === "approved" || finalStatus === "denied") {
+        return finalStatus;
+    }
     return "expired";
 }
 

@@ -199,6 +199,49 @@ describe("pending MCP tool call lifecycle", () => {
         );
     });
 
+    it("waitForMcpApprovalDecision honors a decision that lands in the gap before the expiry UPDATE", async () => {
+        // Race: the wait loop reads `pending`, gives up on deadline — and the
+        // user's "Approve" click commits in that instant, before the expiry
+        // UPDATE runs. The conditional UPDATE then matches nothing (status is
+        // no longer `pending`); the waiter must re-read and report the
+        // decision that actually won, not "expired" — otherwise the ledger
+        // says approved forever while the model was told the call expired.
+        const { db, rows } = createFakeDb();
+        const pending = await seedPending(db);
+
+        let queries = 0;
+        const gapDb = {
+            from(table: string) {
+                queries += 1;
+                const query = queries;
+                const api = (
+                    db as unknown as {
+                        from: (table: string) => {
+                            then: (
+                                resolve: (value: unknown) => void,
+                            ) => void;
+                        };
+                    }
+                ).from(table);
+                const originalThen = api.then.bind(api);
+                api.then = (resolve: (value: unknown) => void) =>
+                    originalThen((result: unknown) => {
+                        // Query 1 is the status poll that sees `pending`;
+                        // land the user's approval right after it, i.e. in
+                        // the gap before query 2 (the expiry UPDATE).
+                        if (query === 1) rows[0].status = "approved";
+                        resolve(result);
+                    });
+                return api;
+            },
+        } as unknown as Db;
+
+        expect(await waitForMcpApprovalDecision(pending.id, gapDb, 0)).toBe(
+            "approved",
+        );
+        expect(rows[0].status).toBe("approved");
+    });
+
     it("waitForMcpApprovalDecision retires an undecided call on timeout so a late click is inert", async () => {
         const { db, rows } = createFakeDb();
         const pending = await seedPending(db);
