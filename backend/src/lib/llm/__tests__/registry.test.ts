@@ -4,7 +4,6 @@ import {
     getRegisteredProvider,
     findProviderForModel,
     providerDisplayLabel,
-    registeredProviderIds,
     allRegisteredModels,
     _resetRegistryForTesting,
     type LLMProviderAdapter,
@@ -66,19 +65,6 @@ describe("findProviderForModel", () => {
         registerProvider(first);
         registerProvider(second);
         expect(findProviderForModel("shared-model")).toBe(first);
-    });
-});
-
-describe("registeredProviderIds", () => {
-    it("returns ids in insertion order", () => {
-        registerProvider(makeAdapter("c", ["c-"]));
-        registerProvider(makeAdapter("a", ["a-"]));
-        registerProvider(makeAdapter("b", ["b-"]));
-        expect(registeredProviderIds()).toEqual(["c", "a", "b"]);
-    });
-
-    it("returns an empty array when no providers are registered", () => {
-        expect(registeredProviderIds()).toEqual([]);
     });
 });
 
