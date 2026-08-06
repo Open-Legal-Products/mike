@@ -15,6 +15,12 @@
 -- states are written only after the MCP call actually finishes, so the
 -- ledger records what happened, not what was about to happen.
 --
+-- Retention: terminal rows (executed / failed / denied / expired) keep the
+-- full tool-argument payload, which can contain sensitive matter data, so
+-- they are not kept forever. The backend opportunistically deletes terminal
+-- rows older than a retention window whenever a new pending call is
+-- inserted (see sweepExpiredTerminalMcpToolCalls in lib/mcp/approvals.ts).
+--
 -- RLS is enabled with no browser policies, matching the other MCP tables:
 -- only the service-role backend reads or writes rows, and it always scopes
 -- queries by user_id.

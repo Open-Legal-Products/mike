@@ -5,6 +5,7 @@ import {
     decideMcpPendingToolCall,
     markMcpToolCallExecuted,
     markMcpToolCallFailed,
+    MCP_PENDING_CALL_RETENTION_MS,
     waitForMcpApprovalDecision,
 } from "../approvals";
 import type { ConnectorRow, Db, ToolCacheRow } from "../types";
@@ -23,7 +24,7 @@ function createFakeDb(initial: Row[] = []) {
 
     function from(_table: string) {
         const state = {
-            op: "select" as "select" | "insert" | "update",
+            op: "select" as "select" | "insert" | "update" | "delete",
             values: {} as Row,
             filters: [] as Array<(row: Row) => boolean>,
             single: false,
@@ -39,6 +40,10 @@ function createFakeDb(initial: Row[] = []) {
                 state.values = values;
                 return api;
             },
+            delete() {
+                state.op = "delete";
+                return api;
+            },
             select(_columns?: string) {
                 return api;
             },
@@ -49,6 +54,14 @@ function createFakeDb(initial: Row[] = []) {
             gt(key: string, value: unknown) {
                 // ISO timestamps compare correctly as strings.
                 state.filters.push((row) => String(row[key]) > String(value));
+                return api;
+            },
+            lt(key: string, value: unknown) {
+                state.filters.push((row) => String(row[key]) < String(value));
+                return api;
+            },
+            in(key: string, values: unknown[]) {
+                state.filters.push((row) => values.includes(row[key]));
                 return api;
             },
             single() {
@@ -76,6 +89,10 @@ function createFakeDb(initial: Row[] = []) {
                     if (state.op === "update") {
                         for (const row of matched)
                             Object.assign(row, state.values);
+                    }
+                    if (state.op === "delete") {
+                        for (const row of matched)
+                            rows.splice(rows.indexOf(row), 1);
                     }
                     data = state.single
                         ? matched[0]
@@ -121,6 +138,50 @@ describe("pending MCP tool call lifecycle", () => {
             Date.now(),
         );
         expect(rows).toHaveLength(1);
+    });
+
+    it("inserting a new pending call sweeps terminal rows past the retention window", async () => {
+        // Terminal rows carry the full tool-argument payload (sensitive
+        // matter data), so each new pending-call insert opportunistically
+        // deletes terminal rows older than the retention window. Live rows
+        // and recent terminal rows are untouched.
+        const beyondRetention = new Date(
+            Date.now() - MCP_PENDING_CALL_RETENTION_MS - 60_000,
+        ).toISOString();
+        const { db, rows } = createFakeDb([
+            {
+                id: "old-executed",
+                status: "executed",
+                created_at: beyondRetention,
+            },
+            {
+                id: "old-expired",
+                status: "expired",
+                created_at: beyondRetention,
+            },
+            {
+                id: "recent-denied",
+                status: "denied",
+                created_at: new Date().toISOString(),
+            },
+            {
+                // Old but non-terminal: the sweep must never delete the
+                // approval flow's live state, whatever its age.
+                id: "old-pending",
+                status: "pending",
+                created_at: beyondRetention,
+                expires_at: new Date(Date.now() + 60_000).toISOString(),
+            },
+        ]);
+
+        await seedPending(db);
+
+        const ids = rows.map((row) => row.id);
+        expect(ids).not.toContain("old-executed");
+        expect(ids).not.toContain("old-expired");
+        expect(ids).toContain("recent-denied");
+        expect(ids).toContain("old-pending");
+        expect(rows).toHaveLength(3);
     });
 
     it("approves only for the owning user; a stranger's decision changes nothing", async () => {

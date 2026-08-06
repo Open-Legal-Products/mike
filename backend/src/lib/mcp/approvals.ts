@@ -12,7 +12,40 @@ export const MCP_APPROVAL_TTL_MS = 2 * 60 * 1000;
 export const MCP_APPROVAL_WAIT_MS = 90 * 1000;
 const POLL_INTERVAL_MS = 1_500;
 
+// Terminal ledger rows keep the full tool-argument payload — which in a
+// legal product can contain sensitive matter data — so they must not
+// accumulate forever. They stay long enough to debug a session and to
+// answer "what ran today?", then get swept.
+export const MCP_PENDING_CALL_RETENTION_MS = 24 * 60 * 60 * 1000;
+const TERMINAL_STATUSES = ["executed", "failed", "denied", "expired"];
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Opportunistic retention sweep, piggybacked on every new pending-call
+ * insert (the same insert-time cleanup pattern the OAuth state store uses):
+ * no cron/job infrastructure, and the table only sees traffic when the
+ * approval flow is in use anyway. Only TERMINAL rows past the retention
+ * window are deleted — live pending/approved/executing rows are the
+ * approval flow's working state and are never touched. Best-effort by
+ * design: a failed sweep must not block the approval the user is waiting
+ * on; the next insert retries it.
+ */
+async function sweepExpiredTerminalMcpToolCalls(db: Db): Promise<void> {
+    const cutoff = new Date(
+        Date.now() - MCP_PENDING_CALL_RETENTION_MS,
+    ).toISOString();
+    const { error } = await db
+        .from("user_mcp_pending_tool_calls")
+        .delete()
+        .in("status", TERMINAL_STATUSES)
+        .lt("created_at", cutoff);
+    if (error) {
+        console.error("[mcp-approvals] retention sweep failed", {
+            error: error.message,
+        });
+    }
+}
 
 /**
  * Record the EXACT call the model proposed. What the user later approves is
@@ -26,6 +59,7 @@ export async function createPendingMcpToolCall(
     args: Record<string, unknown>,
     db: Db = createServerSupabase(),
 ): Promise<PendingToolCallRow> {
+    await sweepExpiredTerminalMcpToolCalls(db);
     const { data, error } = await db
         .from("user_mcp_pending_tool_calls")
         .insert({
