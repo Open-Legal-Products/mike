@@ -22,6 +22,7 @@ import {
     removeTeamMember,
     type OrgResult,
 } from "../lib/orgs";
+import { findProfileUserByEmail } from "../lib/userLookup";
 
 export const orgsRouter = Router();
 
@@ -53,19 +54,15 @@ function sendFailure(
     }
 }
 
-// Resolve an email to a user id via the admin API (mirrors the lookup pattern
-// in routes/projects.ts /people). Returns null when unknown.
+// Resolve an email to a user id via the indexed user_profiles lookup — the
+// same helper routes/user.ts /lookup uses (routes/projects.ts /people relies
+// on the sibling user_profiles helpers). Returns null when unknown.
 async function resolveUserIdByEmail(
     db: Db,
     email: string,
 ): Promise<string | null> {
-    const normalized = email.trim().toLowerCase();
-    if (!normalized) return null;
-    const { data } = await db.auth.admin.listUsers({ perPage: 1000 });
-    for (const u of data?.users ?? []) {
-        if (u.email && u.email.toLowerCase() === normalized) return u.id;
-    }
-    return null;
+    const user = await findProfileUserByEmail(db, email);
+    return user?.id ?? null;
 }
 
 // GET /orgs — orgs the caller belongs to (with their role).
