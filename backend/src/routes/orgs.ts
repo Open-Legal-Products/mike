@@ -175,13 +175,19 @@ orgsRouter.get("/:orgId/teams", requireAuth, async (req, res) => {
     const teams = result.teams as { id: string }[];
     if (teams.length === 0) return void res.json([]);
 
-    const [{ data: memberRows }, { userById }] = await Promise.all([
+    const [membersRes, { userById }] = await Promise.all([
         db
             .from("team_members")
             .select("team_id, user_id")
             .in("team_id", teams.map((t) => t.id)),
         loadProfileUsersByEmail(db),
     ]);
+    // A failed roster query must fail the request. Destructuring only `data`
+    // would silently render every team with an empty member list on a DB
+    // error — indistinguishable from teams that genuinely have no members.
+    if (membersRes.error)
+        return void res.status(500).json({ detail: membersRes.error.message });
+    const memberRows = membersRes.data;
     const membersByTeam = new Map<
         string,
         { user_id: string; email: string | null; display_name: string | null }[]
