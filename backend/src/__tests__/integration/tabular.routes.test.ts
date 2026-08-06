@@ -720,7 +720,7 @@ describe("tabular.routes", () => {
             const res = await request(app)
                 .post("/tabular-review/r1/clear-cells")
                 .set(...AUTH)
-                .send({ document_ids: ["d1"] });
+                .send({ row_ids: ["row-1"] });
 
             expect(res.status).toBe(403);
             expect(res.body.detail).toBe("Only a review manager can clear cells");
