@@ -5,6 +5,7 @@ import {
     findProviderForModel,
     providerDisplayLabel,
     allRegisteredModels,
+    matchesDynamicModel,
     _resetRegistryForTesting,
     type LLMProviderAdapter,
 } from "../registry";
@@ -93,5 +94,21 @@ describe("allRegisteredModels", () => {
 
     it("returns an empty set when no providers are registered", () => {
         expect(allRegisteredModels().size).toBe(0);
+    });
+});
+
+describe("matchesDynamicModel", () => {
+    it("returns true when a provider's isDynamicModel claims the id", () => {
+        registerProvider({
+            ...makeAdapter("local", ["local"]),
+            isDynamicModel: (m) => m.startsWith("local/"),
+        });
+        expect(matchesDynamicModel("local/some-runtime-tag")).toBe(true);
+    });
+
+    it("returns false when no provider declares isDynamicModel", () => {
+        registerProvider(makeAdapter("static", ["static-"], ["static-1"]));
+        expect(matchesDynamicModel("static-1")).toBe(false);
+        expect(matchesDynamicModel("static/anything")).toBe(false);
     });
 });

@@ -71,6 +71,7 @@ export function registerBuiltinProviders(): void {
         stream: streamOllama,
         complete: completeOllamaText,
         models: [],
+        isDynamicModel: (m) => m.startsWith("ollama/"),
     });
 }
 

@@ -1,4 +1,4 @@
-import { findProviderForModel, allRegisteredModels } from "./registry";
+import { findProviderForModel, allRegisteredModels, matchesDynamicModel } from "./registry";
 
 // ---------------------------------------------------------------------------
 // Canonical model IDs (built-in providers)
@@ -17,7 +17,8 @@ export const GEMINI_MAIN_MODELS = [
 ] as const;
 export const OPENAI_MAIN_MODELS = ["gpt-5.5", "gpt-5.4"] as const;
 // Ollama models are detected dynamically (see GET /models/ollama). Any id of
-// the form "ollama/<tag>" is valid — see providerForModel / resolveModel.
+// the form "ollama/<tag>" is valid — the ollama adapter registered in
+// index.ts declares this via its isDynamicModel() hook.
 
 // Mid-tier (used for tabular review) — user picks one in account settings.
 export const CLAUDE_MID_MODELS = ["claude-sonnet-4-6"] as const;
@@ -61,8 +62,6 @@ export function providerForModel(model: string): string {
  * otherwise returns fallback.
  */
 export function resolveModel(id: string | null | undefined, fallback: string): string {
-    // "ollama/<tag>" ids are discovered dynamically (see GET /models/ollama),
-    // so they are valid even though they never appear in a static model list.
-    if (id && (allRegisteredModels().has(id) || id.startsWith("ollama/"))) return id;
+    if (id && (allRegisteredModels().has(id) || matchesDynamicModel(id))) return id;
     return fallback;
 }
