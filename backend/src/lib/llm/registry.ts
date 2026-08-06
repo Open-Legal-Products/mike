@@ -1,4 +1,4 @@
-import type { StreamChatParams, StreamChatResult, CompleteTextParams } from "./types";
+import type { Provider, StreamChatParams, StreamChatResult, CompleteTextParams } from "./types";
 
 /**
  * Contract every LLM provider adapter must satisfy.
@@ -13,6 +13,11 @@ import type { StreamChatParams, StreamChatResult, CompleteTextParams } from "./t
 export interface LLMProviderAdapter {
     /** Stable identifier, e.g. "claude", "gemini", "openai", "ollama". */
     readonly id: string;
+    /**
+     * Human-readable display name shown in user-facing messages,
+     * e.g. "Anthropic" for id "claude".
+     */
+    readonly label: string;
     /**
      * Return true if this provider handles the given model string.
      * Checked in registration order; the first match wins.
@@ -65,6 +70,15 @@ export function findProviderForModel(model: string): LLMProviderAdapter | undefi
 /** IDs of all currently registered providers in insertion order. */
 export function registeredProviderIds(): string[] {
     return [..._registry.keys()];
+}
+
+/**
+ * Human-readable display label for a provider id, taken from the registered
+ * adapter.  Unknown/unregistered providers fall back to the raw id itself,
+ * so user-facing messages never mislabel a provider they don't know.
+ */
+export function providerDisplayLabel(providerId: Provider): string {
+    return _registry.get(providerId)?.label ?? providerId;
 }
 
 /**

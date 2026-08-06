@@ -3,6 +3,7 @@ import {
     registerProvider,
     getRegisteredProvider,
     findProviderForModel,
+    providerDisplayLabel,
     registeredProviderIds,
     allRegisteredModels,
     _resetRegistryForTesting,
@@ -12,6 +13,7 @@ import {
 function makeAdapter(id: string, prefixes: string[], models: string[] = []): LLMProviderAdapter {
     return {
         id,
+        label: `${id}-label`,
         matchesModel: (m) => prefixes.some((p) => m.startsWith(p)),
         stream: async () => ({ fullText: "" }),
         complete: async () => "",
@@ -77,6 +79,18 @@ describe("registeredProviderIds", () => {
 
     it("returns an empty array when no providers are registered", () => {
         expect(registeredProviderIds()).toEqual([]);
+    });
+});
+
+describe("providerDisplayLabel", () => {
+    it("returns the registered adapter's label", () => {
+        registerProvider(makeAdapter("claude", ["claude-"]));
+        expect(providerDisplayLabel("claude")).toBe("claude-label");
+    });
+
+    it("falls back to the raw id for unknown providers (never mislabels)", () => {
+        registerProvider(makeAdapter("claude", ["claude-"]));
+        expect(providerDisplayLabel("ollama")).toBe("ollama");
     });
 });
 
