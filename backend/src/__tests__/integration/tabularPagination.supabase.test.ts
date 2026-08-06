@@ -443,4 +443,61 @@ maybeDescribe("Supabase tabular-review org visibility", () => {
         // Org membership grants visibility, not ownership.
         expect(rows.every((row) => row.is_owner === false)).toBe(true);
     });
+
+    it("shows a colleague's org reviews to a plain member via the ids overview RPC", async () => {
+        // Backs GET /tabular-review/ids ("select all matching"). Its
+        // visibility predicate is a duplicated copy of the overview's, so
+        // this guards against the two drifting apart: if the org branch were
+        // missing here, bulk selection would silently omit rows the member
+        // can see in the list.
+        const result = await admin.rpc("get_tabular_review_ids_overview", {
+            p_user_id: memberId,
+            p_user_email: memberEmail,
+            p_project_id: null,
+            p_scope: "all",
+            p_search_term: "org colleague",
+            p_limit: 1000,
+            p_offset: 0,
+        });
+
+        expect(result.error).toBeNull();
+        const rows = (result.data ?? []) as { id: string; user_id: string }[];
+        const ids = new Set(rows.map((row) => row.id));
+        expect(ids.has(inProjectReviewId)).toBe(true);
+        expect(ids.has(standaloneReviewId)).toBe(true);
+        expect(rows.every((row) => row.user_id === colleagueId)).toBe(true);
+    });
+
+    it("keeps the paginated overview and the ids overview in visibility lockstep", async () => {
+        // The drift the two RPCs are prone to, asserted directly: everything
+        // the member sees in the list must also be bulk-selectable.
+        const overview = await admin.rpc("get_tabular_reviews_overview", {
+            p_user_id: memberId,
+            p_user_email: memberEmail,
+            p_project_id: null,
+            p_scope: "all",
+            p_limit: 1000,
+            p_offset: 0,
+            p_search_term: "org colleague",
+            p_sort_key: "created",
+            p_sort_direction: "desc",
+        });
+        const ids = await admin.rpc("get_tabular_review_ids_overview", {
+            p_user_id: memberId,
+            p_user_email: memberEmail,
+            p_project_id: null,
+            p_scope: "all",
+            p_search_term: "org colleague",
+            p_limit: 1000,
+            p_offset: 0,
+        });
+
+        expect(overview.error).toBeNull();
+        expect(ids.error).toBeNull();
+        const overviewIds = new Set(
+            (overview.data ?? []).map((row) => row.id as string),
+        );
+        const idsIds = new Set((ids.data ?? []).map((row) => row.id as string));
+        expect(idsIds).toEqual(overviewIds);
+    });
 });
