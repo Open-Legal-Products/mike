@@ -217,6 +217,12 @@ export async function updateMember(
     const targetRole = await getOrgRole(params.targetUserId, params.orgId, db);
     if (!targetRole) return { ok: false, kind: "not_found" };
 
+    // Rank guard: an actor may only act on targets at or below their own
+    // rank. Concretely, only an owner may change another owner's role — an
+    // admin must not be able to demote an owner.
+    if (targetRole === "owner" && actorRole !== "owner")
+        return { ok: false, kind: "forbidden" };
+
     // Last-owner protection: demoting the sole owner would strand the org.
     if (targetRole === "owner" && nextRole !== "owner") {
         const owners = await countOwners(db, params.orgId);
@@ -252,6 +258,12 @@ export async function removeMember(
 
     const targetRole = await getOrgRole(params.targetUserId, params.orgId, db);
     if (!targetRole) return { ok: false, kind: "not_found" };
+
+    // Rank guard: only an owner may remove another owner — an admin must
+    // not be able to eject one. Self-leave by an owner is fine (isSelf ⇒
+    // actorRole === targetRole === "owner"), subject to last-owner below.
+    if (targetRole === "owner" && actorRole !== "owner")
+        return { ok: false, kind: "forbidden" };
 
     // Last-owner protection: never remove the sole owner.
     if (targetRole === "owner") {
