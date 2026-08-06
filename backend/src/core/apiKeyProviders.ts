@@ -36,10 +36,6 @@ export function getRegisteredProviders(): readonly string[] {
     return [..._providerRegistry.keys()];
 }
 
-export function isApiKeyProvider(value: string): boolean {
-    return _providerRegistry.has(value);
-}
-
 export function normalizeApiKeyProvider(value: string): string | null {
     return _providerRegistry.has(value) ? value : null;
 }

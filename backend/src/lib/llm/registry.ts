@@ -67,11 +67,6 @@ export function findProviderForModel(model: string): LLMProviderAdapter | undefi
     return undefined;
 }
 
-/** IDs of all currently registered providers in insertion order. */
-export function registeredProviderIds(): string[] {
-    return [..._registry.keys()];
-}
-
 /**
  * Human-readable display label for a provider id, taken from the registered
  * adapter.  Unknown/unregistered providers fall back to the raw id itself,
