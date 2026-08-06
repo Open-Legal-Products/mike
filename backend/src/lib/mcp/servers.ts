@@ -22,6 +22,7 @@ import {
     claimApprovedMcpToolCall,
     createPendingMcpToolCall,
     markMcpToolCallExecuted,
+    markMcpToolCallFailed,
     waitForMcpApprovalDecision,
 } from "./approvals";
 import {
@@ -612,6 +613,10 @@ export async function executeMcpToolCall(
 
     const { connector, tool, needsApproval } = resolved;
     let callArgs = args;
+    // Set once an approved pending row is claimed; the claim ('executing')
+    // provides single-use safety, and this id lets us write the honest
+    // terminal status ('executed' / 'failed') once the call finishes.
+    let claimedPendingId: string | null = null;
 
     if (needsApproval) {
         // Store the exact proposed call, show it to the user, and execute
@@ -686,7 +691,7 @@ export async function executeMcpToolCall(
             };
         }
         callArgs = claimed.arguments ?? {};
-        await markMcpToolCallExecuted(pending.id, db);
+        claimedPendingId = pending.id;
     }
 
     const started = Date.now();
@@ -710,6 +715,10 @@ export async function executeMcpToolCall(
                 ),
             db,
         );
+        // The call really happened — only now does the ledger say so.
+        if (claimedPendingId) {
+            await markMcpToolCallExecuted(claimedPendingId, db);
+        }
         const content = stringifyMcpResult(result);
         await insertMcpAuditLog(db, {
             user_id: userId,
@@ -735,6 +744,11 @@ export async function executeMcpToolCall(
     } catch (err) {
         const message =
             err instanceof Error ? err.message : "MCP tool call failed.";
+        // The attempt errored: the approval is spent (never replayable), but
+        // the ledger must not claim the call executed.
+        if (claimedPendingId) {
+            await markMcpToolCallFailed(claimedPendingId, db);
+        }
         await insertMcpAuditLog(db, {
             user_id: userId,
             connector_id: connector.id,

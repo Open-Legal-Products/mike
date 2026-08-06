@@ -5,11 +5,15 @@
 -- user; the tool executes only after the user approves THAT row. Approval is
 -- bound to (user, pending call id, stored payload), short-lived (expires_at)
 -- and single-use: the status column is a one-way state machine
---   pending -> approved -> executing -> executed
+--   pending -> approved -> executing -> executed  (MCP call completed)
+--   pending -> approved -> executing -> failed    (MCP call errored)
 --   pending -> denied
 --   pending -> expired
 -- enforced by conditional UPDATEs in the backend (status must match the
 -- expected prior state), so a decision or execution can never happen twice.
+-- `executing` is the single-use claim; the terminal `executed` / `failed`
+-- states are written only after the MCP call actually finishes, so the
+-- ledger records what happened, not what was about to happen.
 --
 -- RLS is enabled with no browser policies, matching the other MCP tables:
 -- only the service-role backend reads or writes rows, and it always scopes
@@ -24,7 +28,7 @@ CREATE TABLE IF NOT EXISTS public.user_mcp_pending_tool_calls (
   openai_tool_name text NOT NULL,
   arguments jsonb NOT NULL DEFAULT '{}'::jsonb,
   status text NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending', 'approved', 'denied', 'executing', 'executed', 'expired')),
+    CHECK (status IN ('pending', 'approved', 'denied', 'executing', 'executed', 'failed', 'expired')),
   created_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz NOT NULL,
   decided_at timestamptz,
