@@ -1,5 +1,8 @@
 import { createServerSupabase } from "./supabase";
-import { resolveModel } from "./llm/models";
+// Import via the package index, never "./llm/models" directly: loading
+// index.ts registers the built-in providers, and resolveModel() validates
+// against that registry.
+import { resolveModel } from "./llm";
 
 type Db = ReturnType<typeof createServerSupabase>;
 

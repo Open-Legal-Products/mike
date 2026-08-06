@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
 import { authHeaders } from "../lib/llm/ollama";
-import { isSupportedOpenCodeGoModel } from "../lib/llm/models";
+import { isSupportedOpenCodeGoModel } from "../lib/llm";
 import { createServerSupabase } from "../lib/supabase";
 import { getUserApiKeys } from "../lib/userApiKeys";
 

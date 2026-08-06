@@ -25,9 +25,11 @@ vi.mock("../../middleware/auth", () => ({
         next(),
 }));
 
-// user.ts only needs the model constants + resolveModel from the llm barrel;
-// importing the real barrel would load every provider adapter.
-vi.mock("../../lib/llm", async () => vi.importActual("../../lib/llm/models"));
+// user.ts needs the model constants + resolveModel from the llm barrel. Take
+// the real barrel, not "../../lib/llm/models": loading index.ts is what
+// registers the built-in providers, and resolveModel() validates against that
+// registry. Importing the adapters is inert — no provider SDK is called.
+vi.mock("../../lib/llm", async () => vi.importActual("../../lib/llm"));
 
 vi.mock("../../lib/audit", () => ({ recordAudit: vi.fn() }));
 vi.mock("../../lib/userLookup", () => ({ findProfileUserByEmail: vi.fn() }));

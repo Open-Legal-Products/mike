@@ -20,7 +20,10 @@ import {
     isOpenCodeGoChatCompletionsModel,
     isOpenCodeGoMessagesModel,
     isSupportedOpenCodeGoModel,
-} from "../llm/models";
+    // Import via the package index (not "../llm/models" directly): loading
+    // index.ts registers the built-in providers, and both functions under
+    // test route through that registry.
+} from "../llm";
 
 // ---------------------------------------------------------------------------
 // providerForModel

@@ -4,10 +4,13 @@ const { streamChatWithTools } = vi.hoisted(() => ({
     streamChatWithTools: vi.fn(async () => ({ fullText: "" })),
 }));
 
-// Keep the real model catalog/constants but stub the adapter dispatch so no
-// provider SDK is touched; the assertion is which model reaches the adapter.
+// Keep the real llm package (importActual on the index, not on
+// "../../llm/models": loading index.ts is what registers the built-in
+// providers that resolveModel/providerForModel route through) and stub only
+// the adapter dispatch, so no provider SDK is actually called; the assertion
+// is which model reaches the adapter.
 vi.mock("../../llm", async () => ({
-    ...(await vi.importActual<Record<string, unknown>>("../../llm/models")),
+    ...(await vi.importActual<Record<string, unknown>>("../../llm")),
     streamChatWithTools: (...args: unknown[]) => streamChatWithTools(...args),
 }));
 
