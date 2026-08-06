@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 
 // Hoisted mock fn so the vi.mock factory below (which is itself hoisted above
@@ -85,7 +85,18 @@ vi.mock("../../lib/userSettings", () => ({
     getUserApiKeys: vi.fn(async () => ({})),
 }));
 
+// generate-title calls completeText; stub it so the success-path tests don't
+// reach a real LLM. Everything else in lib/llm stays real.
+vi.mock("../../lib/llm", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("../../lib/llm")>();
+    return {
+        ...actual,
+        completeText: vi.fn(async () => "Generated Title"),
+    };
+});
+
 import { app } from "../../app";
+import { createServerSupabase } from "../../lib/supabase";
 
 const VALID_BODY = { messages: [{ role: "user", content: "hello" }] };
 
@@ -222,5 +233,162 @@ describe("PATCH /chat/:chatId", () => {
 
         expect(res.status).toBe(400);
         expect(res.body.detail).toBe("title is required");
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Org RBAC on chat writes.
+//
+// Scenario: chat "chat-1" lives in project "proj-1", owned by "colleague-1",
+// inside org "org-1". The authenticated caller is "u1" (see the auth mock).
+// A table-aware supabase stub lets us vary u1's org role: "member" derives a
+// "viewer" project role (may read, must not write), "admin" derives "manager"
+// (may write). The security property under test: POST /chat with an existing
+// chat_id and POST /chat/:chatId/generate-title are WRITES and must require
+// content.edit, while GET /chat/:chatId stays a read open to viewers.
+// ---------------------------------------------------------------------------
+
+function tableQuery(row: Record<string, unknown> | null) {
+    const q: Record<string, unknown> = {};
+    const chain = [
+        "select", "insert", "update", "delete", "upsert",
+        "eq", "neq", "in", "is", "or", "lt", "gt", "gte", "lte",
+        "filter", "order", "limit", "range", "contains",
+    ];
+    for (const m of chain) q[m] = vi.fn(() => q);
+    q.single = vi.fn(() => Promise.resolve({ data: row, error: null }));
+    q.maybeSingle = vi.fn(() => Promise.resolve({ data: row, error: null }));
+    q.then = (
+        resolve: (v: unknown) => unknown,
+        reject?: (e: unknown) => unknown,
+    ) =>
+        Promise.resolve({ data: row ? [row] : [], error: null }).then(
+            resolve,
+            reject,
+        );
+    return q;
+}
+
+function makeRbacDb(
+    orgRole: "admin" | "member" | null,
+    chatUserId = "colleague-1",
+) {
+    return {
+        from: vi.fn((table: string) => {
+            if (table === "chats")
+                return tableQuery({
+                    id: "chat-1",
+                    title: "Existing chat",
+                    user_id: chatUserId,
+                    project_id: "proj-1",
+                });
+            if (table === "projects")
+                return tableQuery({
+                    id: "proj-1",
+                    user_id: "colleague-1",
+                    shared_with: [],
+                    org_id: "org-1",
+                });
+            if (table === "org_members")
+                return tableQuery(orgRole ? { role: orgRole } : null);
+            return tableQuery(null);
+        }),
+        rpc: vi.fn(() => Promise.resolve({ data: null, error: null })),
+        auth: {
+            getUser: () =>
+                Promise.resolve({ data: { user: { id: "u1" } }, error: null }),
+        },
+    };
+}
+
+describe("chat writes are gated on content.edit (org RBAC)", () => {
+    const mockedCreate = vi.mocked(createServerSupabase);
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        runLLMStream.mockResolvedValue({
+            fullText: "hi there",
+            events: [],
+            citations: [],
+        });
+    });
+
+    afterEach(() => {
+        // Restore the permissive default stub for the other describe blocks.
+        mockedCreate.mockImplementation(() => mockSupabase() as never);
+    });
+
+    it("403s an org viewer POSTing to an existing chat in a colleague's project", async () => {
+        mockedCreate.mockImplementation(() => makeRbacDb("member") as never);
+
+        const res = await request(app)
+            .post("/chat")
+            .set("Authorization", "Bearer test")
+            .send({ ...VALID_BODY, chat_id: "chat-1" });
+
+        expect(res.status).toBe(403);
+        expect(res.body).toHaveProperty("detail");
+        expect(runLLMStream).not.toHaveBeenCalled();
+    });
+
+    it("403s an org viewer calling generate-title on a colleague's chat", async () => {
+        mockedCreate.mockImplementation(() => makeRbacDb("member") as never);
+
+        const res = await request(app)
+            .post("/chat/chat-1/generate-title")
+            .set("Authorization", "Bearer test")
+            .send({ message: "hello there" });
+
+        expect(res.status).toBe(403);
+        expect(res.body).toHaveProperty("detail");
+    });
+
+    it("still lets the chat owner POST to their own chat", async () => {
+        // The chat row belongs to the caller (u1): owner role, full access.
+        mockedCreate.mockImplementation(() => makeRbacDb(null, "u1") as never);
+
+        const res = await request(app)
+            .post("/chat")
+            .set("Authorization", "Bearer test")
+            .send({ ...VALID_BODY, chat_id: "chat-1" });
+
+        expect(res.status).toBe(200);
+        expect(res.text).toContain('"type":"chat_id"');
+        expect(runLLMStream).toHaveBeenCalledTimes(1);
+    });
+
+    it("still lets an org admin (manager) POST to a colleague's chat", async () => {
+        mockedCreate.mockImplementation(() => makeRbacDb("admin") as never);
+
+        const res = await request(app)
+            .post("/chat")
+            .set("Authorization", "Bearer test")
+            .send({ ...VALID_BODY, chat_id: "chat-1" });
+
+        expect(res.status).toBe(200);
+        expect(runLLMStream).toHaveBeenCalledTimes(1);
+    });
+
+    it("still lets an org admin (manager) generate a title", async () => {
+        mockedCreate.mockImplementation(() => makeRbacDb("admin") as never);
+
+        const res = await request(app)
+            .post("/chat/chat-1/generate-title")
+            .set("Authorization", "Bearer test")
+            .send({ message: "hello there" });
+
+        expect(res.status).toBe(200);
+        expect(res.body.title).toBe("Generated Title");
+    });
+
+    it("still lets an org viewer GET the chat (reads stay project.view)", async () => {
+        mockedCreate.mockImplementation(() => makeRbacDb("member") as never);
+
+        const res = await request(app)
+            .get("/chat/chat-1")
+            .set("Authorization", "Bearer test");
+
+        expect(res.status).toBe(200);
+        expect(res.body.chat).toMatchObject({ id: "chat-1" });
     });
 });

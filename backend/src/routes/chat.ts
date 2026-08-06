@@ -28,6 +28,7 @@ import {
     getUserModelSettings,
 } from "../lib/userSettings";
 import { checkProjectAccess } from "../lib/access";
+import { can, type ProjectRole } from "../lib/permissions";
 import { safeErrorLog, safeErrorMessage } from "../lib/safeError";
 
 export const chatRouter = Router();
@@ -60,27 +61,39 @@ async function validateAccessibleProjectId(
     db: Db,
 ): Promise<{ ok: true } | { ok: false; status: number; detail: string }> {
     if (!projectId) return { ok: true };
+    // Creating a chat under a project contributes content to it: editor+.
     const access = await checkProjectAccess(projectId, userId, userEmail, db);
-    if (!access.ok)
+    if (!access.ok || !can(access.projectRole, "content.edit"))
         return { ok: false, status: 404, detail: "Project not found" };
     return { ok: true };
 }
 
+type ChatAccess =
+    | { ok: true; chat: AccessibleChat; projectRole: ProjectRole }
+    | { ok: false };
+
+// Resolve a chat AND the caller's role for it, so callers can gate reads and
+// writes separately: "can you see it" (project.view) and "can you write to
+// it" (content.edit) are different questions. The chat owner is always
+// "owner"; for project chats everyone else inherits their project role
+// (lib/access.ts) — org admins are "manager", plain org members "viewer".
+// Chats without a project stay owner-only.
 async function getAccessibleChat(
     chatId: string,
     userId: string,
     userEmail: string | null | undefined,
     db: Db,
-): Promise<AccessibleChat | null> {
+): Promise<ChatAccess> {
     const { data: chat, error } = await db
         .from("chats")
         .select("*")
         .eq("id", chatId)
         .maybeSingle();
-    if (error || !chat) return null;
+    if (error || !chat) return { ok: false };
 
     const row = chat as AccessibleChat;
-    if (row.user_id === userId) return row;
+    if (row.user_id === userId)
+        return { ok: true, chat: row, projectRole: "owner" };
 
     if (row.project_id) {
         const access = await checkProjectAccess(
@@ -89,10 +102,11 @@ async function getAccessibleChat(
             userEmail,
             db,
         );
-        if (access.ok) return row;
+        if (access.ok)
+            return { ok: true, chat: row, projectRole: access.projectRole };
     }
 
-    return null;
+    return { ok: false };
 }
 
 // GET /chat
@@ -155,9 +169,12 @@ chatRouter.get("/:chatId", requireAuth, async (req, res) => {
     const { chatId } = req.params;
     const db = createServerSupabase();
 
-    const chat = await getAccessibleChat(chatId, userId, userEmail, db);
-    if (!chat)
+    // Reading a chat only needs visibility (project.view) — org viewers
+    // are allowed here even though they cannot write to the chat.
+    const access = await getAccessibleChat(chatId, userId, userEmail, db);
+    if (!access.ok)
         return void res.status(404).json({ detail: "Chat not found" });
+    const chat = access.chat;
 
     const { data: messages } = await db
         .from("chat_messages")
@@ -331,9 +348,15 @@ chatRouter.post("/:chatId/generate-title", requireAuth, async (req, res) => {
         return void res.status(400).json({ detail: "message is required" });
 
     const db = createServerSupabase();
-    const chat = await getAccessibleChat(chatId, userId, userEmail, db);
-    if (!chat)
+    const access = await getAccessibleChat(chatId, userId, userEmail, db);
+    if (!access.ok)
         return void res.status(404).json({ detail: "Chat not found" });
+    // Generating a title UPDATEs the chat row — a write, so being able to
+    // *see* the chat is not enough. Org viewers get 403 here.
+    if (!can(access.projectRole, "content.edit"))
+        return void res
+            .status(403)
+            .json({ detail: "You do not have permission to modify this chat" });
 
     try {
         const { title_model, api_keys } = await getUserModelSettings(
@@ -424,9 +447,17 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     let resolvedProjectId: string | null = parsedProjectId.value.projectId;
 
     if (chatId) {
-        const existing = await getAccessibleChat(chatId, userId, userEmail, db);
-        if (!existing)
+        const access = await getAccessibleChat(chatId, userId, userEmail, db);
+        if (!access.ok)
             return void res.status(404).json({ detail: "Chat not found" });
+        // Appending messages (and triggering LLM generation) writes to the
+        // chat: editor+ only, mirroring the new-chat path below. Org viewers
+        // can read this chat (GET) but must not be able to write into it.
+        if (!can(access.projectRole, "content.edit"))
+            return void res.status(403).json({
+                detail: "You do not have permission to modify this chat",
+            });
+        const existing = access.chat;
 
         const existingProjectId = existing.project_id ?? null;
         if (
