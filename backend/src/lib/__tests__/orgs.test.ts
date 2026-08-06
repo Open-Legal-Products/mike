@@ -260,6 +260,54 @@ describe("orgs.service RBAC", () => {
         ).resolves.toMatchObject({ ok: true });
     });
 
+    // Rank guard: even with two owners (so last-owner protection is not in
+    // play), an admin must never be able to demote or remove an owner —
+    // only a peer owner outranks-or-equals an owner target.
+    function twoOwnerOrg() {
+        return makeDb({
+            organizations: [{ id: "o1", name: "Duo", created_by: "owner1" }],
+            org_members: [
+                { org_id: "o1", user_id: "owner1", role: "owner" },
+                { org_id: "o1", user_id: "owner2", role: "owner" },
+                { org_id: "o1", user_id: "admin1", role: "admin" },
+            ],
+        });
+    }
+
+    it("forbids an admin from demoting an owner even when owners remain", async () => {
+        const db = twoOwnerOrg();
+        await expect(
+            updateMember(db, {
+                actorId: "admin1",
+                orgId: "o1",
+                targetUserId: "owner2",
+                role: "member",
+            }),
+        ).resolves.toEqual({ ok: false, kind: "forbidden" });
+    });
+
+    it("forbids an admin from removing an owner even when owners remain", async () => {
+        const db = twoOwnerOrg();
+        await expect(
+            removeMember(db, {
+                actorId: "admin1",
+                orgId: "o1",
+                targetUserId: "owner2",
+            }),
+        ).resolves.toEqual({ ok: false, kind: "forbidden" });
+    });
+
+    it("still lets an owner leave when another owner remains", async () => {
+        const db = twoOwnerOrg();
+        await expect(
+            removeMember(db, {
+                actorId: "owner2",
+                orgId: "o1",
+                targetUserId: "owner2",
+            }),
+        ).resolves.toMatchObject({ ok: true });
+    });
+
     it("gates team creation on owner/admin and requires org membership to join a team", async () => {
         const db = seededOrg();
         await expect(
