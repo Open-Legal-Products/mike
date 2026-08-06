@@ -14,6 +14,7 @@ import {
     openaiToolName,
     toConnectorSummary,
     toolRequiresConfirmation,
+    toolRowRequiresConfirmation,
     validateCustomHeaders,
     validateRemoteMcpUrl,
 } from "./client";
@@ -452,7 +453,7 @@ export async function buildUserMcpTools(
     const { data, error } = await db
         .from("user_mcp_connector_tools")
         .select(
-            "openai_tool_name, tool_name, title, description, input_schema, requires_confirmation, enabled, user_mcp_connectors!inner(id, user_id, name, enabled, tool_policy)",
+            "openai_tool_name, tool_name, title, description, input_schema, annotations, requires_confirmation, enabled, user_mcp_connectors!inner(id, user_id, name, enabled, tool_policy)",
         )
         .eq("enabled", true)
         .eq("user_mcp_connectors.user_id", userId)
@@ -475,8 +476,17 @@ export async function buildUserMcpTools(
             ? connector[0]
             : connector;
         const connectorName = connectorRow?.name;
+        // Recompute the confirmation policy live from the stored annotations:
+        // requires_confirmation is only a cache and may predate the fail-safe
+        // policy (see toolRowRequiresConfirmation).
         const needsApproval = mcpCallNeedsApproval({
-            requiresConfirmation: raw.requires_confirmation === true,
+            requiresConfirmation: toolRowRequiresConfirmation({
+                requires_confirmation: raw.requires_confirmation === true,
+                annotations: (raw.annotations ?? null) as Record<
+                    string,
+                    unknown
+                > | null,
+            }),
             toolPolicy: connectorRow?.tool_policy,
         });
         const toolName = String(raw.tool_name);
@@ -526,8 +536,12 @@ async function resolveCallableTool(
     return {
         connector,
         tool: row,
+        // The execution gate must not trust the cached requires_confirmation
+        // boolean: rows classified under an older, more lenient policy would
+        // otherwise auto-run once the connector is trusted. Recompute from
+        // the row's annotations live (see toolRowRequiresConfirmation).
         needsApproval: mcpCallNeedsApproval({
-            requiresConfirmation: row.requires_confirmation === true,
+            requiresConfirmation: toolRowRequiresConfirmation(row),
             toolPolicy: connector.tool_policy,
         }),
     };

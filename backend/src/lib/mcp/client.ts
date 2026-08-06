@@ -206,6 +206,27 @@ export function toolRequiresConfirmation(
 }
 
 /**
+ * The call-time gate over a cached tool row. The requires_confirmation
+ * column is only a display cache written at tool-refresh time — rows written
+ * before the fail-safe policy existed (or by any older, more lenient policy)
+ * can carry a stale `false`. Trusting that stale boolean would let an
+ * unannotated / open-world tool auto-run the moment the user trusts the
+ * connector, which is exactly the failure the fail-safe policy exists to
+ * prevent. So the gate recomputes the policy LIVE from the row's stored
+ * annotations and gates when EITHER signal says gate: the live computation
+ * is authoritative, and an explicit stored `true` is still honored so a
+ * cached "gate this" can never be silently downgraded.
+ */
+export function toolRowRequiresConfirmation(
+    row: Pick<ToolCacheRow, "annotations" | "requires_confirmation">,
+): boolean {
+    return (
+        row.requires_confirmation === true ||
+        toolRequiresConfirmation(row.annotations)
+    );
+}
+
+/**
  * The locally controlled trust decision: annotations come from the server,
  * but this flag comes from the USER, who must explicitly mark a connector's
  * annotations as trustworthy before any of its tools can skip per-call

@@ -3,6 +3,7 @@ import {
     connectorTrustsAnnotations,
     mcpCallNeedsApproval,
     toolRequiresConfirmation,
+    toolRowRequiresConfirmation,
 } from "../client";
 
 // Fail-safe confirmation policy for legal data: a tool's annotations are only
@@ -113,6 +114,51 @@ describe("toolRequiresConfirmation (annotation classification)", () => {
                 }),
             ).toBe(true);
         });
+    });
+});
+
+describe("toolRowRequiresConfirmation (cached rows must not weaken the gate)", () => {
+    it("stale cached false with gating annotations → still requires confirmation", () => {
+        // A row classified under an older, lenient policy: the column says
+        // "no confirmation" but the annotations are empty/ambiguous, which the
+        // fail-safe policy gates. The live recomputation must win.
+        expect(
+            toolRowRequiresConfirmation({
+                requires_confirmation: false,
+                annotations: {},
+            }),
+        ).toBe(true);
+        expect(
+            toolRowRequiresConfirmation({
+                requires_confirmation: false,
+                annotations: null,
+            }),
+        ).toBe(true);
+        expect(
+            toolRowRequiresConfirmation({
+                requires_confirmation: false,
+                annotations: { readOnlyHint: true }, // open-world by default
+            }),
+        ).toBe(true);
+    });
+
+    it("cached true is honored even when annotations look safe", () => {
+        // A stored "gate this" can never be silently downgraded.
+        expect(
+            toolRowRequiresConfirmation({
+                requires_confirmation: true,
+                annotations: { readOnlyHint: true, openWorldHint: false },
+            }),
+        ).toBe(true);
+    });
+
+    it("cached false with positively-safe annotations → no confirmation", () => {
+        expect(
+            toolRowRequiresConfirmation({
+                requires_confirmation: false,
+                annotations: { readOnlyHint: true, openWorldHint: false },
+            }),
+        ).toBe(false);
     });
 });
 
