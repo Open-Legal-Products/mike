@@ -1,0 +1,146 @@
+# CI: schema-drift check — do schema.sql and the migrations still agree?
+#
+# This repo maintains the database shape twice, on purpose:
+#
+#   backend/schema.sql   -> the complete shape a FRESH install runs, once
+#   backend/migrations/  -> dated steps an EXISTING deployment applies to
+#                           move forward from the version it is on
+#
+# Nothing structurally forces those two to stay in agreement — they are
+# edited by hand, in parallel. If a PR merges a migration without folding it
+# into schema.sql (or edits schema.sql without shipping a migration), fresh
+# installs and upgraded deployments silently diverge, and no test notices,
+# because every test environment is built fresh.
+#
+# This workflow closes that gap by building both real installation paths and
+# demanding they converge:
+#
+#   upgraded:  schema.sql as of a pinned baseline commit
+#              + only the migrations ADDED since that commit  (git knows)
+#   fresh:     today's schema.sql
+#
+# Each database is reduced to a canonical, order-independent fingerprint
+# (backend/scripts/schema-fingerprint.sql — see its header for why a raw
+# pg_dump diff would false-positive on column order) and the two are diffed.
+# Any hunk in that diff is a table, column, policy, function, trigger, or
+# privilege that one class of real deployment has and the other does not.
+#
+# This is deliberately NOT a replay of the full migration history on top of
+# the current schema — that sequence is not a real installation path and
+# old migrations are not required to survive it (see PR #256 review).
+#
+# Everything runs on the runner: no secrets, no external services.
+name: Schema drift
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, upstream-main]
+  workflow_dispatch:
+
+concurrency:
+  group: schema-drift-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+env:
+  # The upgrade-path baseline: a commit where schema.sql and the migrations
+  # were in agreement. 9a1277b (2026-06-15, "refactor: add table primitive
+  # and migrations by date; feat: add mcp connectors") is the commit that
+  # introduced the dated-migration convention itself. A deployment created
+  # from this commit's schema.sql, upgraded by the book ever since, is the
+  # "existing deployment" this check impersonates. Advance the pin
+  # deliberately (to another known-good sync point) — never to silence a
+  # failure, because a failure means the two shapes genuinely differ.
+  BASELINE_REF: 9a1277ba99cbd7dfae77e5b882e5cef8521fca2f
+
+jobs:
+  drift:
+    name: Fresh install vs upgraded deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the baseline schema is read straight out of git
+          # (`git show $BASELINE_REF:backend/schema.sql`), and the migration
+          # list is "files added since the baseline" (`git diff
+          # --diff-filter=A`). A shallow clone has neither.
+          fetch-depth: 0
+
+      # Pinned to match stack-tests.yml so both workflows test against the
+      # same Postgres; bump the two together.
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.108.0
+
+      # Same minimal service set as stack-tests.yml: Postgres for the
+      # schemas under test, GoTrue because schema.sql references auth.users
+      # (foreign keys and the signup trigger), Kong/PostgREST as the
+      # non-excludable plumbing around them.
+      - name: Start local Supabase stack
+        run: |
+          supabase init
+          supabase start -x studio,imgproxy,inbucket,analytics,vector,realtime,storage,edge-runtime,functions,meta
+
+      - name: Export stack connection env
+        run: |
+          STATUS="$(supabase status -o json)"
+          read_key() { node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(String(JSON.parse(s)['$1']??'')))" <<<"$STATUS"; }
+          echo "SUPABASE_TEST_DB_URL=$(read_key DB_URL)" >> "$GITHUB_ENV"
+
+      # Both databases are built in the same Postgres instance (so role OIDs
+      # and versions are identical), one after the other, each starting from
+      # an identically reset `public` schema. All of Mike's application
+      # objects live in `public`; the only outside reference is auth.users,
+      # which the reset leaves untouched (schema.sql re-creates its trigger
+      # with `drop trigger if exists` first).
+      - name: Build upgraded and fresh databases, fingerprint both
+        run: |
+          test -n "$SUPABASE_TEST_DB_URL"
+
+          reset_public() {
+            psql "$SUPABASE_TEST_DB_URL" -X --set ON_ERROR_STOP=1 \
+              -c 'drop schema public cascade;' \
+              -c 'create schema public;' \
+              -c 'grant usage on schema public to anon, authenticated, service_role;'
+          }
+          fingerprint() {
+            psql "$SUPABASE_TEST_DB_URL" -XAtq \
+              --set ON_ERROR_STOP=1 \
+              -f backend/scripts/schema-fingerprint.sql > "$1"
+          }
+
+          echo "::group::Upgraded path: baseline schema.sql ($BASELINE_REF) + migrations added since"
+          reset_public
+          git show "$BASELINE_REF:backend/schema.sql" > /tmp/baseline-schema.sql
+          psql "$SUPABASE_TEST_DB_URL" -X --set ON_ERROR_STOP=1 --file /tmp/baseline-schema.sql
+          for migration in $(git diff --name-only --diff-filter=A "$BASELINE_REF" HEAD -- backend/migrations | LC_ALL=C sort); do
+            echo "Applying $migration"
+            psql "$SUPABASE_TEST_DB_URL" -X --set ON_ERROR_STOP=1 --file "$migration"
+          done
+          fingerprint /tmp/upgraded.txt
+          echo "::endgroup::"
+
+          echo "::group::Fresh path: current schema.sql"
+          reset_public
+          psql "$SUPABASE_TEST_DB_URL" -X --set ON_ERROR_STOP=1 --file backend/schema.sql
+          fingerprint /tmp/fresh.txt
+          echo "::endgroup::"
+
+      - name: Compare fingerprints
+        run: |
+          if diff -u /tmp/upgraded.txt /tmp/fresh.txt; then
+            echo "No drift: an upgraded deployment and a fresh install converge on the same schema."
+          else
+            echo
+            echo "::error::schema.sql and the migrations have drifted apart."
+            echo "Lines with '-' exist only on the UPGRADED path (baseline + migrations)."
+            echo "Lines with '+' exist only on a FRESH install (current schema.sql)."
+            echo
+            echo "To fix: if a migration was merged without being folded into schema.sql,"
+            echo "update schema.sql. If schema.sql was edited without a migration, add a"
+            echo "new dated migration so existing deployments receive the change too."
+            echo "Never edit an already-shipped migration to make this check pass."
+            exit 1
+          fi
