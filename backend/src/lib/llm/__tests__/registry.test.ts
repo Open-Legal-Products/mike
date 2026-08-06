@@ -15,7 +15,7 @@ function makeAdapter(id: string, prefixes: string[], models: string[] = []): LLM
         matchesModel: (m) => prefixes.some((p) => m.startsWith(p)),
         stream: async () => ({ fullText: "" }),
         complete: async () => "",
-        models: { main: models, mid: [], low: [] },
+        models,
     };
 }
 
