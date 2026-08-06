@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { requireAuth } from "../middleware/auth";
-import { getCourtlistenerCaseOpinions } from "../lib/courtlistener";
-import { createServerSupabase } from "../lib/supabase";
-import { getUserModelSettings } from "../lib/userSettings";
+import { requireAuth } from "../../middleware/auth";
+import { getCourtlistenerCaseOpinions } from "../../lib/courtlistener";
+import { createServerSupabase } from "../../lib/supabase";
+import { getUserModelSettings } from "../../lib/userSettings";
 
 export const caseLawRouter = Router();
 

@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { requireAuth } from "../middleware/auth";
-import { authHeaders } from "../lib/llm/ollama";
+import { requireAuth } from "../../middleware/auth";
+import { authHeaders } from "../../lib/llm/ollama";
 
 export const modelsRouter = Router();
 

@@ -1,15 +1,19 @@
-import { Router, type NextFunction, type Request, type Response } from "express";
-import { requireAuth } from "../middleware/auth";
-import { createServerSupabase } from "../lib/supabase";
+// Business logic + data access for the workflows module.
+//
+// These functions take an explicit Supabase client (`db`) plus
+// request-derived primitives, perform the workflow / share / hidden-list
+// orchestration, and RETURN typed results. They never touch req/res — the
+// thin route handlers in workflows.routes.ts map the results onto HTTP
+// status codes and response bodies.
+
+import { createServerSupabase } from "../../lib/supabase";
 import {
   SYSTEM_WORKFLOW_IDS,
   SYSTEM_WORKFLOWS,
   type SystemWorkflow,
-} from "../lib/systemWorkflows";
-import { findMissingUserEmails } from "../lib/userLookup";
-import { workflowNameFromSkillMd } from "../lib/workflowName";
-
-export const workflowsRouter = Router();
+} from "../../lib/systemWorkflows";
+import { findMissingUserEmails } from "../../lib/userLookup";
+import { workflowNameFromSkillMd } from "../../lib/workflowName";
 
 type Db = ReturnType<typeof createServerSupabase>;
 const isDev = process.env.NODE_ENV !== "production";
@@ -17,7 +21,7 @@ const devLog = (...args: Parameters<typeof console.log>) => {
   if (isDev) console.log(...args);
 };
 
-type WorkflowRecord = {
+export type WorkflowRecord = {
   id: string;
   user_id: string | null;
   is_system?: boolean;
@@ -33,16 +37,16 @@ type WorkflowRecord = {
   [key: string]: unknown;
 };
 
-type WorkflowType = "assistant" | "tabular";
+export type WorkflowType = "assistant" | "tabular";
 
-type WorkflowContributor = {
+export type WorkflowContributor = {
   name: string;
   organisation: string | null;
   role: string | null;
   linkedin: string | null;
 };
 
-type WorkflowMetadata = {
+export type WorkflowMetadata = {
   name: string | null;
   title: string;
   description: string | null;
@@ -53,9 +57,9 @@ type WorkflowMetadata = {
   practice: string | null;
   jurisdictions: string[] | null;
 };
-type OpenSourceSubmissionStatus = "pending" | "approved" | "rejected";
+export type OpenSourceSubmissionStatus = "pending" | "approved" | "rejected";
 
-type OpenSourceSubmissionRow = {
+export type OpenSourceSubmissionRow = {
   id: string;
   workflow_id: string;
   submitted_by_user_id: string;
@@ -70,7 +74,7 @@ type OpenSourceSubmissionRow = {
   review_notes?: string | null;
 };
 
-type OpenSourceSubmissionSummary = Pick<
+export type OpenSourceSubmissionSummary = Pick<
   OpenSourceSubmissionRow,
   "id" | "status" | "submitted_at" | "updated_at"
 > & {
@@ -86,24 +90,16 @@ const DEFAULT_WORKFLOW_CONTRIBUTOR: WorkflowContributor = {
 const DEFAULT_WORKFLOW_LANGUAGE = "English";
 const DEFAULT_WORKFLOW_PRACTICE = "General Transactions";
 const DEFAULT_WORKFLOW_JURISDICTIONS = ["General"];
-const WORKFLOW_CONTRIBUTIONS_ENABLED =
+export const WORKFLOW_CONTRIBUTIONS_ENABLED =
   process.env.WORKFLOW_CONTRIBUTIONS_ENABLED === "true";
 
-type WorkflowAccess =
+export type WorkflowAccess =
   | {
       workflow: WorkflowRecord;
       allowEdit: boolean;
       isOwner: boolean;
     }
   | null;
-
-type AsyncRoute = (req: Request, res: Response) => Promise<unknown>;
-
-function asyncRoute(handler: AsyncRoute) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    void handler(req, res).catch(next);
-  };
-}
 
 function withWorkflowAccess<T extends object>(
   workflow: T,
@@ -127,11 +123,17 @@ function withOpenSourceSubmission<T extends object>(
   };
 }
 
-function withSystemWorkflowAccess(workflow: SystemWorkflow) {
+export function withSystemWorkflowAccess(workflow: SystemWorkflow) {
   return withWorkflowAccess(workflow, {
     allowEdit: false,
     isOwner: false,
   });
+}
+
+export function findSystemWorkflow(
+  workflowId: string,
+): SystemWorkflow | undefined {
+  return SYSTEM_WORKFLOWS.find((workflow) => workflow.id === workflowId);
 }
 
 function workflowTypeFrom(value: unknown): WorkflowType {
@@ -217,10 +219,10 @@ function contributorFromName(name: unknown): WorkflowContributor {
 }
 
 async function resolveWorkflowAccess(
+  db: Db,
   workflowId: string,
   userId: string,
   userEmail: string | null | undefined,
-  db: Db,
 ): Promise<WorkflowAccess> {
   const { data: workflow } = await db
     .from("workflows")
@@ -245,6 +247,184 @@ async function resolveWorkflowAccess(
   if (!share) return null;
 
   return { workflow: workflowRecord, allowEdit: !!share.allow_edit, isOwner: false };
+}
+
+export async function listWorkflows(
+  db: Db,
+  params: { userId: string; userEmail: string | undefined; type: string | null },
+): Promise<{ ok: true; data: unknown } | { ok: false; detail: string }> {
+  const { userId, userEmail, type: workflowType } = params;
+  const { data, error } = await db.rpc("get_workflows_overview", {
+    p_user_id: userId,
+    p_user_email: userEmail ?? null,
+    p_type: workflowType,
+  });
+  if (error) {
+    return { ok: false, detail: error.message };
+  }
+
+  const systemWorkflows = SYSTEM_WORKFLOWS.filter(
+    (workflow) => !workflowType || workflow.metadata.type === workflowType,
+  ).map(withSystemWorkflowAccess);
+  const databaseWorkflows = ((data ?? []) as WorkflowRecord[]).filter(
+    (workflow) => !SYSTEM_WORKFLOW_IDS.has(workflow.id),
+  ).map(withDatabaseWorkflow);
+
+  return { ok: true, data: [...systemWorkflows, ...databaseWorkflows] };
+}
+
+export async function createWorkflow(
+  db: Db,
+  params: {
+    userId: string;
+    title: string;
+    type: WorkflowType;
+    skill_md?: string;
+    columns_config?: unknown;
+    metadata?: Partial<WorkflowMetadata>;
+  },
+): Promise<
+  | { ok: true; workflow: Record<string, unknown> }
+  | { ok: false; detail: string }
+> {
+  const { userId, title, type, skill_md, columns_config, metadata } = params;
+  devLog("[workflows/create] request", {
+    userId,
+    title: title.trim(),
+    type,
+    hasSkill: typeof skill_md === "string" && skill_md.length > 0,
+    columnCount: Array.isArray(columns_config) ? columns_config.length : null,
+    language:
+      normalizeOptionalString(metadata?.language) ?? DEFAULT_WORKFLOW_LANGUAGE,
+    practice: metadata?.practice ?? null,
+    jurisdictions:
+      normalizeJurisdictions(metadata?.jurisdictions) ??
+      DEFAULT_WORKFLOW_JURISDICTIONS,
+  });
+  const { data, error } = await db
+    .from("workflows")
+    .insert({
+      user_id: userId,
+      title: title.trim(),
+      type,
+      prompt_md: skill_md ?? null,
+      columns_config: columns_config ?? null,
+      language:
+        normalizeOptionalString(metadata?.language) ?? DEFAULT_WORKFLOW_LANGUAGE,
+      practice:
+        normalizeOptionalString(metadata?.practice) ?? DEFAULT_WORKFLOW_PRACTICE,
+      jurisdictions:
+        normalizeJurisdictions(metadata?.jurisdictions) ??
+        DEFAULT_WORKFLOW_JURISDICTIONS,
+    })
+    .select("*")
+    .single();
+  if (error) {
+    devLog("[workflows/create] insert error", {
+      userId,
+      title: title.trim(),
+      type,
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
+    return { ok: false, detail: error.message };
+  }
+  devLog("[workflows/create] inserted", {
+    id: data?.id,
+    user_id: data?.user_id,
+    title: data?.title,
+    type: data?.type,
+  });
+  return { ok: true, workflow: withDatabaseWorkflow(data as WorkflowRecord) };
+}
+
+export type UpdateWorkflowResult =
+  | { ok: true; body: Record<string, unknown> }
+  | { ok: false; kind: "not_editable" };
+
+export async function updateWorkflow(
+  db: Db,
+  params: {
+    workflowId: string;
+    userId: string;
+    userEmail: string | undefined;
+    body: {
+      metadata?: Partial<WorkflowMetadata>;
+      skill_md?: unknown;
+      columns_config?: unknown;
+    };
+  },
+): Promise<UpdateWorkflowResult> {
+  const { workflowId, userId, userEmail, body } = params;
+  const updates: Record<string, unknown> = {};
+  const metadata = body.metadata;
+  if (metadata?.title != null) updates.title = metadata.title;
+  if (body.skill_md != null) updates.prompt_md = body.skill_md;
+  if (body.columns_config != null)
+    updates.columns_config = body.columns_config;
+  if (metadata && "language" in metadata)
+    updates.language = normalizeOptionalString(metadata.language);
+  if (metadata && "practice" in metadata)
+    updates.practice = metadata.practice ?? null;
+  if (metadata && "jurisdictions" in metadata)
+    updates.jurisdictions = normalizeJurisdictions(metadata.jurisdictions);
+
+  const access = await resolveWorkflowAccess(db, workflowId, userId, userEmail);
+  if (!access || !access.allowEdit) {
+    return { ok: false, kind: "not_editable" };
+  }
+  const { data, error } = await db
+    .from("workflows")
+    .update(updates)
+    .eq("id", workflowId)
+    .select("*")
+    .single();
+  if (error || !data) return { ok: false, kind: "not_editable" };
+  return {
+    ok: true,
+    body: withWorkflowAccess(withDatabaseWorkflow(data as WorkflowRecord), {
+      allowEdit: access.allowEdit,
+      isOwner: access.isOwner,
+    }),
+  };
+}
+
+export async function deleteWorkflow(
+  db: Db,
+  userId: string,
+  workflowId: string,
+): Promise<{ ok: true } | { ok: false; detail: string }> {
+  const { error } = await db
+    .from("workflows")
+    .delete()
+    .eq("id", workflowId)
+    .eq("user_id", userId);
+  if (error) return { ok: false, detail: error.message };
+  return { ok: true };
+}
+
+export async function getWorkflowDetail(
+  db: Db,
+  params: { workflowId: string; userId: string; userEmail: string | undefined },
+): Promise<{ ok: true; body: Record<string, unknown> } | { ok: false }> {
+  const { workflowId, userId, userEmail } = params;
+  const access = await resolveWorkflowAccess(db, workflowId, userId, userEmail);
+  if (!access) return { ok: false };
+  const openSourceSubmission = access.isOwner
+    ? await getLatestOpenSourceSubmission(db, workflowId, userId)
+    : null;
+  return {
+    ok: true,
+    body: withOpenSourceSubmission(
+      withWorkflowAccess(withDatabaseWorkflow(access.workflow), {
+        allowEdit: access.allowEdit,
+        isOwner: access.isOwner,
+      }),
+      openSourceSubmission,
+    ),
+  };
 }
 
 function toOpenSourceSubmissionSummary(
@@ -308,234 +488,30 @@ function validateOpenSourceWorkflow(workflow: WorkflowRecord): string | null {
   return "Workflow type must be 'assistant' or 'tabular'.";
 }
 
-// GET /workflows
-workflowsRouter.get("/", requireAuth, asyncRoute(async (req, res) => {
-  const userId = res.locals.userId as string;
-  const userEmail = res.locals.userEmail as string | undefined;
-  const { type } = req.query as { type?: string };
-  const db = createServerSupabase();
-  const workflowType = typeof type === "string" && type ? type : null;
+export type SubmitOpenSourceWorkflowResult =
+  | {
+      ok: true;
+      status: number;
+      body: OpenSourceSubmissionSummary & { mode: "created" | "updated" };
+    }
+  | { ok: false; kind: "not_found" }
+  | { ok: false; kind: "validation"; detail: string }
+  | { ok: false; kind: "db_error"; detail: string };
 
-  const { data, error } = await db.rpc("get_workflows_overview", {
-    p_user_id: userId,
-    p_user_email: userEmail ?? null,
-    p_type: workflowType,
-  });
-  if (error) {
-    return void res.status(500).json({ detail: error.message });
-  }
-
-  const systemWorkflows = SYSTEM_WORKFLOWS.filter(
-    (workflow) => !workflowType || workflow.metadata.type === workflowType,
-  ).map(withSystemWorkflowAccess);
-  const databaseWorkflows = ((data ?? []) as WorkflowRecord[]).filter(
-    (workflow) => !SYSTEM_WORKFLOW_IDS.has(workflow.id),
-  ).map(withDatabaseWorkflow);
-
-  res.json([...systemWorkflows, ...databaseWorkflows]);
-}));
-
-// POST /workflows
-workflowsRouter.post("/", requireAuth, asyncRoute(async (req, res) => {
-  const userId = res.locals.userId as string;
-  const {
-    metadata,
-    skill_md,
-    columns_config,
-  } = req.body as {
-    metadata?: Partial<WorkflowMetadata>;
-    skill_md?: string;
-    columns_config?: unknown;
-  };
-  const title = metadata?.title;
-  const type = metadata?.type;
-  if (!title?.trim())
-    return void res.status(400).json({ detail: "metadata.title is required" });
-  if (type !== "assistant" && type !== "tabular")
-    return void res
-      .status(400)
-      .json({ detail: "metadata.type must be 'assistant' or 'tabular'" });
-
-  const db = createServerSupabase();
-  devLog("[workflows/create] request", {
-    userId,
-    title: title.trim(),
-    type,
-    hasSkill: typeof skill_md === "string" && skill_md.length > 0,
-    columnCount: Array.isArray(columns_config) ? columns_config.length : null,
-    language:
-      normalizeOptionalString(metadata?.language) ?? DEFAULT_WORKFLOW_LANGUAGE,
-    practice: metadata?.practice ?? null,
-    jurisdictions:
-      normalizeJurisdictions(metadata?.jurisdictions) ??
-      DEFAULT_WORKFLOW_JURISDICTIONS,
-  });
-  const { data, error } = await db
-    .from("workflows")
-    .insert({
-      user_id: userId,
-      title: title.trim(),
-      type,
-      prompt_md: skill_md ?? null,
-      columns_config: columns_config ?? null,
-      language:
-        normalizeOptionalString(metadata?.language) ?? DEFAULT_WORKFLOW_LANGUAGE,
-      practice:
-        normalizeOptionalString(metadata?.practice) ?? DEFAULT_WORKFLOW_PRACTICE,
-      jurisdictions:
-        normalizeJurisdictions(metadata?.jurisdictions) ??
-        DEFAULT_WORKFLOW_JURISDICTIONS,
-    })
-    .select("*")
-    .single();
-  if (error) {
-    devLog("[workflows/create] insert error", {
-      userId,
-      title: title.trim(),
-      type,
-      code: error.code,
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-    });
-    return void res.status(500).json({ detail: error.message });
-  }
-  devLog("[workflows/create] inserted", {
-    id: data?.id,
-    user_id: data?.user_id,
-    title: data?.title,
-    type: data?.type,
-  });
-  res.status(201).json(withDatabaseWorkflow(data as WorkflowRecord));
-}));
-
-async function handleWorkflowUpdate(req: Request, res: Response) {
-  const userId = res.locals.userId as string;
-  const userEmail = res.locals.userEmail as string | undefined;
-  const { workflowId } = req.params;
-  const updates: Record<string, unknown> = {};
-  const metadata = req.body.metadata as Partial<WorkflowMetadata> | undefined;
-  if (metadata?.title != null) updates.title = metadata.title;
-  if (req.body.skill_md != null) updates.prompt_md = req.body.skill_md;
-  if (req.body.columns_config != null)
-    updates.columns_config = req.body.columns_config;
-  if (metadata && "language" in metadata)
-    updates.language = normalizeOptionalString(metadata.language);
-  if (metadata && "practice" in metadata)
-    updates.practice = metadata.practice ?? null;
-  if (metadata && "jurisdictions" in metadata)
-    updates.jurisdictions = normalizeJurisdictions(metadata.jurisdictions);
-
-  const db = createServerSupabase();
-  const access = await resolveWorkflowAccess(workflowId, userId, userEmail, db);
-  if (!access || !access.allowEdit) {
-    return void res
-      .status(404)
-      .json({ detail: "Workflow not found or not editable" });
-  }
-  const { data, error } = await db
-    .from("workflows")
-    .update(updates)
-    .eq("id", workflowId)
-    .select("*")
-    .single();
-  if (error || !data)
-    return void res
-      .status(404)
-      .json({ detail: "Workflow not found or not editable" });
-  res.json(
-    withWorkflowAccess(withDatabaseWorkflow(data as WorkflowRecord), {
-      allowEdit: access.allowEdit,
-      isOwner: access.isOwner,
-    }),
-  );
-}
-
-// PUT /workflows/:workflowId
-workflowsRouter.put("/:workflowId", requireAuth, asyncRoute(handleWorkflowUpdate));
-
-// PATCH /workflows/:workflowId
-workflowsRouter.patch("/:workflowId", requireAuth, asyncRoute(handleWorkflowUpdate));
-
-// DELETE /workflows/:workflowId
-workflowsRouter.delete("/:workflowId", requireAuth, asyncRoute(async (req, res) => {
-  const userId = res.locals.userId as string;
-  const { workflowId } = req.params;
-  const systemWorkflow = SYSTEM_WORKFLOWS.find(
-    (workflow) => workflow.id === workflowId,
-  );
-  if (systemWorkflow) {
-    return void res.json(withSystemWorkflowAccess(systemWorkflow));
-  }
-
-  const db = createServerSupabase();
-  const { error } = await db
-    .from("workflows")
-    .delete()
-    .eq("id", workflowId)
-    .eq("user_id", userId);
-  if (error) return void res.status(500).json({ detail: error.message });
-  res.status(204).send();
-}));
-
-// GET /workflows/hidden
-workflowsRouter.get("/hidden", requireAuth, asyncRoute(async (req, res) => {
-  const userId = res.locals.userId as string;
-  const db = createServerSupabase();
-  const { data, error } = await db
-    .from("hidden_workflows")
-    .select("workflow_id")
-    .eq("user_id", userId);
-  if (error) return void res.status(500).json({ detail: error.message });
-  res.json((data ?? []).map((r) => r.workflow_id));
-}));
-
-// POST /workflows/hidden
-workflowsRouter.post("/hidden", requireAuth, asyncRoute(async (req, res) => {
-  const userId = res.locals.userId as string;
-  const { workflow_id } = req.body as { workflow_id: string };
-  if (!workflow_id?.trim())
-    return void res.status(400).json({ detail: "workflow_id is required" });
-  const db = createServerSupabase();
-  const { error } = await db
-    .from("hidden_workflows")
-    .upsert({ user_id: userId, workflow_id }, { onConflict: "user_id,workflow_id" });
-  if (error) return void res.status(500).json({ detail: error.message });
-  res.status(204).send();
-}));
-
-// DELETE /workflows/hidden/:workflowId
-workflowsRouter.delete("/hidden/:workflowId", requireAuth, asyncRoute(async (req, res) => {
-  const userId = res.locals.userId as string;
-  const { workflowId } = req.params;
-  const db = createServerSupabase();
-  const { error } = await db
-    .from("hidden_workflows")
-    .delete()
-    .eq("user_id", userId)
-    .eq("workflow_id", workflowId);
-  if (error) return void res.status(500).json({ detail: error.message });
-  res.status(204).send();
-}));
-
-// POST /workflows/:workflowId/open-source
-workflowsRouter.post("/:workflowId/open-source", requireAuth, asyncRoute(async (req, res) => {
-  if (!WORKFLOW_CONTRIBUTIONS_ENABLED) {
-    return void res.status(404).json({ detail: "Workflow contributions are disabled" });
-  }
-
-  const userId = res.locals.userId as string;
-  const userEmail = res.locals.userEmail as string | undefined;
-  const { workflowId } = req.params;
-  const openSourceBody = req.body as {
-    contributor_mode?: unknown;
-    contributor?: unknown;
-  };
+export async function submitOpenSourceWorkflow(
+  db: Db,
+  params: {
+    workflowId: string;
+    userId: string;
+    userEmail: string | undefined;
+    body: { contributor_mode?: unknown; contributor?: unknown };
+  },
+): Promise<SubmitOpenSourceWorkflowResult> {
+  const { workflowId, userId, userEmail, body: openSourceBody } = params;
   const requestedContributorMode =
     openSourceBody.contributor_mode === "named"
       ? "named"
       : "anonymous";
-  const db = createServerSupabase();
 
   const { data: workflow, error: workflowError } = await db
     .from("workflows")
@@ -544,18 +520,16 @@ workflowsRouter.post("/:workflowId/open-source", requireAuth, asyncRoute(async (
     .eq("user_id", userId)
     .maybeSingle();
   if (workflowError) {
-    return void res.status(500).json({ detail: workflowError.message });
+    return { ok: false, kind: "db_error", detail: workflowError.message };
   }
   if (!workflow) {
-    return void res
-      .status(404)
-      .json({ detail: "Workflow not found or not open-sourceable" });
+    return { ok: false, kind: "not_found" };
   }
 
   const workflowRecord = workflow as WorkflowRecord;
   const validationError = validateOpenSourceWorkflow(workflowRecord);
   if (validationError) {
-    return void res.status(400).json({ detail: validationError });
+    return { ok: false, kind: "validation", detail: validationError };
   }
 
   const { data: profile } = await db
@@ -589,7 +563,7 @@ workflowsRouter.post("/:workflowId/open-source", requireAuth, asyncRoute(async (
     .eq("status", "pending")
     .maybeSingle();
   if (pendingError) {
-    return void res.status(500).json({ detail: pendingError.message });
+    return { ok: false, kind: "db_error", detail: pendingError.message };
   }
 
   if (pendingSubmission) {
@@ -607,14 +581,20 @@ workflowsRouter.post("/:workflowId/open-source", requireAuth, asyncRoute(async (
       .select("id, status, submitted_at, updated_at, reviewed_at")
       .single();
     if (updateError || !updated) {
-      return void res.status(500).json({
+      return {
+        ok: false,
+        kind: "db_error",
         detail: updateError?.message ?? "Failed to update submission",
-      });
+      };
     }
-    return void res.json({
-      ...toOpenSourceSubmissionSummary(updated as OpenSourceSubmissionRow),
-      mode: "updated",
-    });
+    return {
+      ok: true,
+      status: 200,
+      body: {
+        ...toOpenSourceSubmissionSummary(updated as OpenSourceSubmissionRow),
+        mode: "updated",
+      },
+    };
   }
 
   const { data: created, error: createError } = await db
@@ -634,52 +614,74 @@ workflowsRouter.post("/:workflowId/open-source", requireAuth, asyncRoute(async (
     .select("id, status, submitted_at, updated_at, reviewed_at")
     .single();
   if (createError || !created) {
-    return void res.status(500).json({
+    return {
+      ok: false,
+      kind: "db_error",
       detail: createError?.message ?? "Failed to create submission",
-    });
+    };
   }
 
-  res.status(201).json({
-    ...toOpenSourceSubmissionSummary(created as OpenSourceSubmissionRow),
-    mode: "created",
-  });
-}));
+  return {
+    ok: true,
+    status: 201,
+    body: {
+      ...toOpenSourceSubmissionSummary(created as OpenSourceSubmissionRow),
+      mode: "created",
+    },
+  };
+}
 
-// GET /workflows/:workflowId
-workflowsRouter.get("/:workflowId", requireAuth, asyncRoute(async (req, res) => {
-  const userId = res.locals.userId as string;
-  const userEmail = res.locals.userEmail as string | undefined;
-  const { workflowId } = req.params;
-  const systemWorkflow = SYSTEM_WORKFLOWS.find(
-    (workflow) => workflow.id === workflowId,
-  );
-  if (systemWorkflow) {
-    return void res.json(withSystemWorkflowAccess(systemWorkflow));
-  }
+export async function listHiddenWorkflows(
+  db: Db,
+  userId: string,
+): Promise<{ ok: true; ids: unknown[] } | { ok: false; detail: string }> {
+  const { data, error } = await db
+    .from("hidden_workflows")
+    .select("workflow_id")
+    .eq("user_id", userId);
+  if (error) return { ok: false, detail: error.message };
+  return { ok: true, ids: (data ?? []).map((r) => r.workflow_id) };
+}
 
-  const db = createServerSupabase();
-  const access = await resolveWorkflowAccess(workflowId, userId, userEmail, db);
-  if (!access)
-    return void res.status(404).json({ detail: "Workflow not found" });
-  const openSourceSubmission = access.isOwner
-    ? await getLatestOpenSourceSubmission(db, workflowId, userId)
-    : null;
-  res.json(
-    withOpenSourceSubmission(
-      withWorkflowAccess(withDatabaseWorkflow(access.workflow), {
-        allowEdit: access.allowEdit,
-        isOwner: access.isOwner,
-      }),
-      openSourceSubmission,
-    ),
-  );
-}));
+export async function hideWorkflow(
+  db: Db,
+  userId: string,
+  workflowId: string,
+): Promise<{ ok: true } | { ok: false; detail: string }> {
+  const { error } = await db
+    .from("hidden_workflows")
+    .upsert(
+      { user_id: userId, workflow_id: workflowId },
+      { onConflict: "user_id,workflow_id" },
+    );
+  if (error) return { ok: false, detail: error.message };
+  return { ok: true };
+}
 
-// GET /workflows/:workflowId/shares
-workflowsRouter.get("/:workflowId/shares", requireAuth, asyncRoute(async (req, res) => {
-  const userId = res.locals.userId as string;
-  const { workflowId } = req.params;
-  const db = createServerSupabase();
+export async function unhideWorkflow(
+  db: Db,
+  userId: string,
+  workflowId: string,
+): Promise<{ ok: true } | { ok: false; detail: string }> {
+  const { error } = await db
+    .from("hidden_workflows")
+    .delete()
+    .eq("user_id", userId)
+    .eq("workflow_id", workflowId);
+  if (error) return { ok: false, detail: error.message };
+  return { ok: true };
+}
+
+export type ListSharesResult =
+  | { ok: true; shares: unknown[] }
+  | { ok: false; kind: "not_found" }
+  | { ok: false; kind: "db_error"; detail: string };
+
+export async function listWorkflowShares(
+  db: Db,
+  params: { workflowId: string; userId: string },
+): Promise<ListSharesResult> {
+  const { workflowId, userId } = params;
 
   const { data: wf } = await db
     .from("workflows")
@@ -687,23 +689,23 @@ workflowsRouter.get("/:workflowId/shares", requireAuth, asyncRoute(async (req, r
     .eq("id", workflowId)
     .eq("user_id", userId)
     .single();
-  if (!wf) return void res.status(404).json({ detail: "Workflow not found or not editable" });
+  if (!wf) return { ok: false, kind: "not_found" };
 
   const { data: shares, error } = await db
     .from("workflow_shares")
     .select("id, shared_with_email, allow_edit, created_at")
     .eq("workflow_id", workflowId)
     .order("created_at", { ascending: true });
-  if (error) return void res.status(500).json({ detail: error.message });
+  if (error) return { ok: false, kind: "db_error", detail: error.message };
 
-  res.json(shares ?? []);
-}));
+  return { ok: true, shares: shares ?? [] };
+}
 
-// DELETE /workflows/:workflowId/shares/:shareId
-workflowsRouter.delete("/:workflowId/shares/:shareId", requireAuth, asyncRoute(async (req, res) => {
-  const userId = res.locals.userId as string;
-  const { workflowId, shareId } = req.params;
-  const db = createServerSupabase();
+export async function deleteWorkflowShare(
+  db: Db,
+  params: { workflowId: string; shareId: string; userId: string },
+): Promise<{ ok: true } | { ok: false; kind: "not_found" }> {
+  const { workflowId, shareId, userId } = params;
 
   const { data: wf } = await db
     .from("workflows")
@@ -711,20 +713,34 @@ workflowsRouter.delete("/:workflowId/shares/:shareId", requireAuth, asyncRoute(a
     .eq("id", workflowId)
     .eq("user_id", userId)
     .single();
-  if (!wf) return void res.status(404).json({ detail: "Workflow not found" });
+  if (!wf) return { ok: false, kind: "not_found" };
 
   await db.from("workflow_shares").delete().eq("id", shareId).eq("workflow_id", workflowId);
-  res.status(204).send();
-}));
+  return { ok: true };
+}
 
-// POST /workflows/:workflowId/share
-workflowsRouter.post("/:workflowId/share", requireAuth, asyncRoute(async (req, res) => {
-  const userId = res.locals.userId as string;
-  const userEmail = res.locals.userEmail as string | undefined;
-  const { workflowId } = req.params;
-  const { emails, allow_edit } = req.body as { emails: string[]; allow_edit: boolean };
+export type ShareWorkflowResult =
+  | { ok: true }
+  | {
+      ok: false;
+      kind: "validation" | "self_share" | "missing_user";
+      detail: string;
+    }
+  | { ok: false; kind: "not_found" }
+  | { ok: false; kind: "db_error"; detail: string };
 
-  if (!emails?.length) return void res.status(400).json({ detail: "emails is required" });
+export async function shareWorkflow(
+  db: Db,
+  params: {
+    workflowId: string;
+    userId: string;
+    userEmail: string | undefined;
+    emails: string[];
+    allow_edit: boolean | undefined;
+  },
+): Promise<ShareWorkflowResult> {
+  const { workflowId, userId, userEmail, emails, allow_edit } = params;
+
   const normalizedEmails = [
     ...new Set(
       emails
@@ -733,21 +749,24 @@ workflowsRouter.post("/:workflowId/share", requireAuth, asyncRoute(async (req, r
     ),
   ];
   if (normalizedEmails.length === 0) {
-    return void res.status(400).json({ detail: "emails is required" });
+    return { ok: false, kind: "validation", detail: "emails is required" };
   }
   const normalizedUserEmail = userEmail?.trim().toLowerCase();
   if (normalizedUserEmail && normalizedEmails.includes(normalizedUserEmail)) {
-    return void res
-      .status(400)
-      .json({ detail: "You cannot share a workflow with yourself." });
+    return {
+      ok: false,
+      kind: "self_share",
+      detail: "You cannot share a workflow with yourself.",
+    };
   }
 
-  const db = createServerSupabase();
   const missingSharedUsers = await findMissingUserEmails(db, normalizedEmails);
   if (missingSharedUsers.length > 0) {
-    return void res.status(400).json({
+    return {
+      ok: false,
+      kind: "missing_user",
       detail: `${missingSharedUsers[0]} does not belong to a Mike user.`,
-    });
+    };
   }
 
   // Verify ownership
@@ -757,7 +776,7 @@ workflowsRouter.post("/:workflowId/share", requireAuth, asyncRoute(async (req, r
     .eq("id", workflowId)
     .eq("user_id", userId)
     .single();
-  if (!wf) return void res.status(404).json({ detail: "Workflow not found or not editable" });
+  if (!wf) return { ok: false, kind: "not_found" };
 
   const rows = normalizedEmails.map((email: string) => ({
     workflow_id: workflowId,
@@ -770,15 +789,7 @@ workflowsRouter.post("/:workflowId/share", requireAuth, asyncRoute(async (req, r
   const { error } = await db
     .from("workflow_shares")
     .upsert(rows, { onConflict: "workflow_id,shared_with_email" });
-  if (error) return void res.status(500).json({ detail: error.message });
+  if (error) return { ok: false, kind: "db_error", detail: error.message };
 
-  res.status(204).send();
-}));
-
-workflowsRouter.use(
-  (err: unknown, _req: Request, res: Response, next: NextFunction) => {
-    if (res.headersSent) return next(err);
-    console.error("[workflows] unhandled route error", err);
-    res.status(500).json({ detail: "Failed to process workflow request" });
-  },
-);
+  return { ok: true };
+}
