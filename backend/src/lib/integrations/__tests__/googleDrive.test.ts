@@ -78,15 +78,11 @@ function encryptedTokenRow(overrides: Partial<Record<string, unknown>> = {}) {
 const PRIOR_ENV = {
     driveId: process.env.GOOGLE_DRIVE_OAUTH_CLIENT_ID,
     driveSecret: process.env.GOOGLE_DRIVE_OAUTH_CLIENT_SECRET,
-    mcpId: process.env.GOOGLE_MCP_OAUTH_CLIENT_ID,
-    mcpSecret: process.env.GOOGLE_MCP_OAUTH_CLIENT_SECRET,
 };
 
 beforeEach(() => {
     process.env.GOOGLE_DRIVE_OAUTH_CLIENT_ID = "drive-client-id";
     process.env.GOOGLE_DRIVE_OAUTH_CLIENT_SECRET = "drive-client-secret";
-    delete process.env.GOOGLE_MCP_OAUTH_CLIENT_ID;
-    delete process.env.GOOGLE_MCP_OAUTH_CLIENT_SECRET;
     // encryptString/decryptString derive their AES key from this secret.
     process.env.MCP_CONNECTORS_ENCRYPTION_SECRET ??= "test-encryption-secret";
 });
@@ -99,8 +95,6 @@ afterEach(() => {
     };
     restore("GOOGLE_DRIVE_OAUTH_CLIENT_ID", PRIOR_ENV.driveId);
     restore("GOOGLE_DRIVE_OAUTH_CLIENT_SECRET", PRIOR_ENV.driveSecret);
-    restore("GOOGLE_MCP_OAUTH_CLIENT_ID", PRIOR_ENV.mcpId);
-    restore("GOOGLE_MCP_OAUTH_CLIENT_SECRET", PRIOR_ENV.mcpSecret);
 });
 
 describe("startGoogleDriveOAuth", () => {

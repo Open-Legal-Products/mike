@@ -52,22 +52,13 @@ export class GoogleDriveAuthRequiredError extends Error {
     }
 }
 
-/**
- * The integration reuses the Google OAuth client configured for MCP
- * connectors when a dedicated one isn't set — one Cloud Console setup serves
- * both features.
- */
 export function googleDriveOAuthEnv(): {
     clientId?: string;
     clientSecret?: string;
 } {
     return {
-        clientId:
-            process.env.GOOGLE_DRIVE_OAUTH_CLIENT_ID ||
-            process.env.GOOGLE_MCP_OAUTH_CLIENT_ID,
-        clientSecret:
-            process.env.GOOGLE_DRIVE_OAUTH_CLIENT_SECRET ||
-            process.env.GOOGLE_MCP_OAUTH_CLIENT_SECRET,
+        clientId: process.env.GOOGLE_DRIVE_OAUTH_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_DRIVE_OAUTH_CLIENT_SECRET,
     };
 }
 
@@ -90,7 +81,7 @@ export async function startGoogleDriveOAuth(
                 `Web application) with authorized redirect URI ${redirectUri}, enable the ` +
                 "Google Drive API (drive.googleapis.com), then set " +
                 "GOOGLE_DRIVE_OAUTH_CLIENT_ID and GOOGLE_DRIVE_OAUTH_CLIENT_SECRET " +
-                "(or the GOOGLE_MCP_OAUTH_* equivalents) in backend/.env and restart.",
+                "in backend/.env and restart.",
         );
     }
 
