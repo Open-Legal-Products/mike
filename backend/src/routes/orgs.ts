@@ -24,7 +24,7 @@ import {
 } from "../lib/orgs";
 import {
     findProfileUserByEmail,
-    loadProfileUsersByEmail,
+    loadProfileUsersByIds,
 } from "../lib/userLookup";
 import { getOrgRole, roleCanManage } from "../lib/access";
 
@@ -104,8 +104,16 @@ orgsRouter.get("/:orgId/members", requireAuth, async (req, res) => {
     const db = createServerSupabase();
     const result = await listMembers(db, { userId, orgId: req.params.orgId });
     if (!result.ok) return sendFailure(res, result);
-    const { userById } = await loadProfileUsersByEmail(db);
-    const members = (result.members as { user_id: string }[]).map((m) => {
+    const memberRows = result.members as { user_id: string }[];
+    // Targeted lookup: only the profiles for these members, not the whole
+    // user_profiles table.
+    const { userById, error: profileError } = await loadProfileUsersByIds(
+        db,
+        memberRows.map((m) => m.user_id),
+    );
+    if (profileError)
+        return void res.status(500).json({ detail: profileError.message });
+    const members = memberRows.map((m) => {
         const info = userById.get(m.user_id);
         return {
             ...m,
@@ -186,19 +194,25 @@ orgsRouter.get("/:orgId/teams", requireAuth, async (req, res) => {
     const teams = result.teams as { id: string }[];
     if (teams.length === 0) return void res.json([]);
 
-    const [membersRes, { userById }] = await Promise.all([
-        db
-            .from("team_members")
-            .select("team_id, user_id")
-            .in("team_id", teams.map((t) => t.id)),
-        loadProfileUsersByEmail(db),
-    ]);
     // A failed roster query must fail the request. Destructuring only `data`
     // would silently render every team with an empty member list on a DB
     // error — indistinguishable from teams that genuinely have no members.
-    if (membersRes.error)
-        return void res.status(500).json({ detail: membersRes.error.message });
-    const memberRows = membersRes.data;
+    const { data: memberRows, error: memberError } = await db
+        .from("team_members")
+        .select("team_id, user_id")
+        .in("team_id", teams.map((t) => t.id));
+    if (memberError)
+        return void res.status(500).json({ detail: memberError.message });
+
+    // The profile lookup now depends on the roster's user ids (targeted
+    // .in("user_id", ...) instead of a full-table scan), so it runs after
+    // the roster query rather than in parallel with it.
+    const { userById, error: profileError } = await loadProfileUsersByIds(
+        db,
+        ((memberRows ?? []) as { user_id: string }[]).map((r) => r.user_id),
+    );
+    if (profileError)
+        return void res.status(500).json({ detail: profileError.message });
     const membersByTeam = new Map<
         string,
         { user_id: string; email: string | null; display_name: string | null }[]
