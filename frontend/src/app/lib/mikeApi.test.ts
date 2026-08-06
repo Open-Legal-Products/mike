@@ -949,7 +949,7 @@ describe("tabular cell operations", () => {
 
         const cell = await regenerateTabularCell("r1", "row-1", 2);
 
-        expect(cell.flag).toBe("green");
+        expect(cell).toEqual({ summary: "s", flag: "green", reasoning: "r" });
         const { url, init } = lastFetchCall();
         expect(url).toBe(
             "http://localhost:3001/tabular-review/r1/regenerate-cell",
