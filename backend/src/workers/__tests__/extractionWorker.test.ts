@@ -6,7 +6,7 @@ vi.mock("../../lib/supabase", () => ({
 
 const loadReviewRow = vi.fn();
 const loadRowDocumentText = vi.fn();
-vi.mock("../../lib/tabular/tabular.rows", () => ({
+vi.mock("../../modules/tabular/tabular.rows", () => ({
     loadReviewRow: (...a: unknown[]) => loadReviewRow(...a),
     loadRowDocumentText: (...a: unknown[]) => loadRowDocumentText(...a),
 }));
@@ -19,7 +19,7 @@ vi.mock("../../lib/userSettings", () => ({
 }));
 
 const queryTabularAllColumns = vi.fn();
-vi.mock("../../lib/tabular/tabular.extract", () => ({
+vi.mock("../../modules/tabular/tabular.extract", () => ({
     queryTabularAllColumns: (...a: unknown[]) => queryTabularAllColumns(...a),
 }));
 

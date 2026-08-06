@@ -9,9 +9,9 @@ import {
     type CellUpdate,
 } from "../lib/queue/runProgress";
 import { getUserModelSettings } from "../lib/userSettings";
-import { extractRowColumns } from "../lib/tabular/tabular.extractRow";
-import { loadReviewRow } from "../lib/tabular/tabular.rows";
-import type { Column } from "../lib/tabular/tabular.shared";
+import { extractRowColumns } from "../modules/tabular/tabular.extractRow";
+import { loadReviewRow } from "../modules/tabular/tabular.rows";
+import type { Column } from "../modules/tabular/tabular.shared";
 import { createServerSupabase } from "../lib/supabase";
 
 type Db = ReturnType<typeof createServerSupabase>;
