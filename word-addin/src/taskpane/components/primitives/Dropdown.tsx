@@ -29,17 +29,27 @@ export const DropdownItem = React.forwardRef<
         selected?: boolean;
     }
 >(function DropdownItem({ className, selected = false, ...props }, ref) {
+    const { onPointerMove, ...itemProps } = props;
+
     return (
         <DropdownPrimitive.Item
             ref={ref}
             data-selected={selected ? "true" : undefined}
             className={cn(
-        "flex cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 py-2 outline-none transition-colors hover:bg-gray-100 focus:bg-gray-100 data-[highlighted]:bg-gray-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+                "flex cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 py-2 outline-none transition-colors hover:bg-gray-100 focus:bg-gray-100 data-[highlighted]:bg-gray-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>*]:pointer-events-none",
                 selected &&
                     "bg-gray-200 text-gray-900 hover:bg-gray-200 focus:bg-gray-200 data-[highlighted]:bg-gray-200",
                 className,
             )}
-            {...props}
+            onPointerMove={(event) => {
+                onPointerMove?.(event);
+                // Radix focuses an item on every mouse movement, which causes
+                // highlight-state render churn and cursor flicker in Word's
+                // embedded webview. CSS hover already covers mouse users;
+                // keyboard focus and navigation remain handled by Radix.
+                if (event.pointerType === "mouse") event.preventDefault();
+            }}
+            {...itemProps}
         />
     );
 });

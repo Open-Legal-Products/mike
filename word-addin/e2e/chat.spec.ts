@@ -71,6 +71,8 @@ test("uses a floating icon header with no logo, tabs, or visible sign-out button
     "background-color",
     "oklch(0.967 0.003 264.542)"
   );
+  await expect(quickActionsItem).toHaveCSS("cursor", "pointer");
+  await expect(quickActionsItem).not.toHaveAttribute("data-highlighted", "");
   await expect(quickActionsItem).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Projects" })).toHaveCount(0);
   await page.keyboard.press("Escape");
