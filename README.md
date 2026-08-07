@@ -96,11 +96,21 @@ anywhere.
 - `frontend/` - Next.js application
 - `backend/` - Express API, Supabase access, document processing, and database
   schema
+- `word-addin/` - Microsoft Word task pane add-in (currently in beta)
 - `backend/schema.sql` - Supabase schema for fresh databases
 - `backend/migrations/` - dated, incremental schema migrations for existing
   deployments
 - `docker-compose.yml` - complete local application and infrastructure stack
 - `docs/` - testing, deployment safety, and feature-specific guides
+
+## Microsoft Word add-in (Beta)
+
+The Mike Word add-in is currently in beta. It brings Mike into a Word task
+pane for chatting about the open document, running quick actions and workflows,
+attaching supporting files, and applying suggested changes as tracked edits.
+
+See the [Word add-in guide](word-addin/README.md) for prerequisites, local
+development, sideloading, and troubleshooting instructions.
 
 ## System Workflows
 

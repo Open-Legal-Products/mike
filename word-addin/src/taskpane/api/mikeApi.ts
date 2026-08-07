@@ -72,3 +72,20 @@ export async function listProjectDocuments(
   }
   return res.json() as Promise<Document[]>;
 }
+
+export interface OllamaModelOption {
+  id: string;
+  label: string;
+  group: "Local";
+}
+
+/** Dynamic local-model list used by the add-in's frontend-style model toggle. */
+export async function getOllamaModels(): Promise<OllamaModelOption[]> {
+  const res = await fetchWithRefresh(`${BASE_URL}/models/ollama`, {
+    cache: "no-store",
+    headers: { Accept: "application/json", ...(await getAuthHeaders()) },
+  });
+  if (!res.ok) return [];
+  const body = (await res.json()) as { models?: OllamaModelOption[] };
+  return body.models ?? [];
+}

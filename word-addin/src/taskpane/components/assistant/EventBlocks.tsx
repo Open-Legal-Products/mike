@@ -50,7 +50,7 @@ export function DocReadBlock({
   isStreaming,
   showConnector,
 }: {
-  filename: string;
+  filename?: string;
   isStreaming?: boolean;
   showConnector?: boolean;
 }): React.ReactElement {
@@ -64,10 +64,14 @@ export function DocReadBlock({
         <span className="shrink-0 font-medium">
           {isStreaming ? "Reading" : "Read"}
         </span>
-        <span className="truncate">
-          {filename}
-          {isStreaming && "..."}
-        </span>
+        {filename ? (
+          <span className="truncate">
+            {filename}
+            {isStreaming && "..."}
+          </span>
+        ) : isStreaming ? (
+          <span>...</span>
+        ) : null}
       </div>
     </EventBlock>
   );

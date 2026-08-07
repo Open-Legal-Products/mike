@@ -1,5 +1,5 @@
 /**
- * E2E coverage for the Document Actions tab (DocumentActions.tsx).
+ * E2E coverage for the Quick Actions view (DocumentActions.tsx).
  *
  * The tab exposes four AI actions, all streamed from POST /chat:
  *   1. Improve Writing  — rewrites the current SELECTION; on success offers
@@ -11,7 +11,7 @@
  *   4. Draft Clause     — drafts from a free-text prompt; offers "Insert at
  *      below cursor, tracked or untracked (insertParagraph after).
  *
- * Every test starts signed-in (seeded token) and lands on the Actions tab.
+ * Every test starts signed-in (seeded token) and lands on Quick Actions.
  * The /chat SSE stream and document/selection state are mocked/seeded so the
  * suite is fully hermetic and deterministic.
  */
@@ -20,15 +20,16 @@ import type { Addin } from "./support/fixtures";
 
 const TOKEN = "test-jwt";
 
-/** Sign in (seeded token), open the task pane, switch to the Actions tab. */
+/** Sign in (seeded token), open the task pane, switch to Quick Actions. */
 async function gotoActions(
   addin: Addin,
   opts: { documentText?: string; selectionText?: string } = {}
 ): Promise<void> {
   await addin.gotoTaskpane({ token: TOKEN, ...opts });
   await addin.expectAuthedShell();
-  await addin.page.getByRole("tab", { name: "Actions" }).click();
-  // Confirm the Actions panel mounted.
+  await addin.page.getByRole("button", { name: "Open menu" }).click();
+  await addin.page.getByRole("menuitem", { name: "Quick Actions" }).click();
+  // Confirm the Quick Actions panel mounted.
   await expect(
     addin.page.getByRole("button", { name: "Improve selected text" })
   ).toBeVisible();
@@ -414,7 +415,7 @@ test.describe("Draft Clause", () => {
     ).toBeEnabled();
   });
 
-  test("streams a drafted clause and offers insert options", async ({
+  test("streams a drafted clause without insertion controls", async ({
     addin,
     page,
   }) => {
@@ -434,78 +435,8 @@ test.describe("Draft Clause", () => {
         "The Receiving Party shall keep all Confidential Information secret."
       )
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Insert below cursor" })
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Insert below (tracked)" })
-    ).toBeVisible();
-  });
-
-  test("inserts the drafted clause at the cursor", async ({ addin, page }) => {
-    await addin.mockChatStream(["This is the drafted clause."]);
-    await gotoActions(addin);
-
-    await page
-      .getByPlaceholder("e.g. limitation of liability for SaaS product")
-      .fill("indemnity clause");
-    await page.getByRole("button", { name: "Draft clause" }).click();
-    await expect(page.getByText("This is the drafted clause.")).toBeVisible();
-    await page.getByRole("button", { name: "Insert below cursor" }).click();
-
-    const calls = await addin.wordCalls();
-    expect(calls.inserts).toEqual([
-      { text: "This is the drafted clause.", location: "After" },
-    ]);
-    expect(calls.trackedChanges).toEqual([]);
-  });
-
-  test("applies the drafted clause as a tracked paragraph insertion", async ({
-    addin,
-    page,
-  }) => {
-    await addin.mockChatStream(["This is the drafted clause."]);
-    await gotoActions(addin);
-
-    await page
-      .getByPlaceholder("e.g. limitation of liability for SaaS product")
-      .fill("indemnity clause");
-    await page.getByRole("button", { name: "Draft clause" }).click();
-    await expect(page.getByText("This is the drafted clause.")).toBeVisible();
-    await page.getByRole("button", { name: "Insert below (tracked)" }).click();
-
-    const calls = await addin.wordCalls();
-    expect(calls.trackedChanges).toEqual([
-      { text: "This is the drafted clause.", location: "After" },
-    ]);
-    expect(calls.changeTrackingMode).toBe("TrackAll");
-    expect(calls.inserts).toEqual([]);
-  });
-
-  test("normalises model Markdown into ordered Word paragraphs", async ({
-    addin,
-    page,
-  }) => {
-    await addin.mockChatStream([
-      "```markdown\n## Confidentiality\n\n- Keep **Information** confidential.\n- Notify [Acme](https://example.com).\n```",
-    ]);
-    await gotoActions(addin, { selectionText: "Existing paragraph." });
-
-    await page
-      .getByPlaceholder("e.g. limitation of liability for SaaS product")
-      .fill("confidentiality clause");
-    await page.getByRole("button", { name: "Draft clause" }).click();
-    await expect(page.getByText("Confidentiality")).toBeVisible();
-    await page.getByRole("button", { name: "Insert below cursor" }).click();
-
-    const calls = await addin.wordCalls();
-    expect(calls.inserts).toEqual([
-      { text: "Confidentiality", location: "After" },
-      { text: "", location: "After" },
-      { text: "• Keep Information confidential.", location: "After" },
-      { text: "• Notify Acme.", location: "After" },
-    ]);
-    expect(calls.trackedChanges).toHaveLength(0);
+    await expect(page.getByText("Insert below cursor")).toHaveCount(0);
+    await expect(page.getByText("Insert below (tracked)")).toHaveCount(0);
   });
 
   test("surfaces a streaming error message", async ({ addin, page }) => {

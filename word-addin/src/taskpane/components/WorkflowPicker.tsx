@@ -20,7 +20,7 @@ export function WorkflowPicker(): React.ReactElement {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState("");
   const [runError, setRunError] = useState<string | null>(null);
-  const { readDocumentText, insertBelowSelection } = useWordDoc();
+  const { readDocumentText } = useWordDoc();
 
   // Track mount + the in-flight run so switching tabs mid-run aborts the SSE
   // stream (the backend stops the LLM call instead of billing tokens for a
@@ -206,21 +206,12 @@ export function WorkflowPicker(): React.ReactElement {
       )}
 
       {result && (
-        <div className="flex min-h-0 flex-1 flex-col gap-2">
+        <div className="flex min-h-0 flex-1 flex-col">
           <div
             className={`min-h-0 flex-1 overflow-y-auto p-3 font-serif text-[15px] leading-relaxed text-gray-900 ${RESPONSE_GLASS_SURFACE}`}
           >
             <Markdown>{result}</Markdown>
           </div>
-          {!running && (
-            <PillButton
-              tone="white"
-              className="self-start"
-              onClick={() => void insertBelowSelection(result)}
-            >
-              Insert below cursor
-            </PillButton>
-          )}
         </div>
       )}
     </div>

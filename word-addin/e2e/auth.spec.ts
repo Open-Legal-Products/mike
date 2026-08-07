@@ -2,7 +2,7 @@
  * Auth flow E2E coverage for the Mike Word add-in.
  *
  * Exercises the real, user-visible behaviour of the login gate:
- *   - App.tsx loading spinner -> token gate -> LoginPage / tab shell / Sign out
+ *   - App.tsx loading spinner -> token gate -> LoginPage / floating shell / Sign out
  *   - auth/LoginPage.tsx submit-disabled gate + error alert
  *   - auth/useAuth.ts token persistence in OfficeRuntime.storage
  *
@@ -26,7 +26,7 @@ test.describe("auth flow", () => {
     await expect(page.getByText("Loading…")).toBeHidden();
 
     // No app shell, no token.
-    await expect(page.getByRole("tab", { name: "Chat" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Open menu" })).toHaveCount(0);
     expect(await addin.getToken()).toBeNull();
   });
 
@@ -71,11 +71,11 @@ test.describe("auth flow", () => {
 
     // Failed login leaves the user on the login page with no token persisted.
     await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Chat" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Open menu" })).toHaveCount(0);
     expect(await addin.getToken()).toBeNull();
   });
 
-  test("valid credentials persist the token and render the tab shell", async ({
+  test("valid credentials persist the token and render the app shell", async ({
     addin,
     page,
   }) => {
@@ -86,7 +86,7 @@ test.describe("auth flow", () => {
     await page.getByRole("textbox", { name: "Password" }).fill("correct-password");
     await page.getByRole("button", { name: "Sign in" }).click();
 
-    // Successful grant swaps the LoginPage for the authenticated 4-tab shell.
+    // Successful grant swaps the LoginPage for the authenticated floating shell.
     await addin.expectAuthedShell();
     await expect(page.getByRole("button", { name: "Sign in" })).toHaveCount(0);
 
@@ -104,11 +104,12 @@ test.describe("auth flow", () => {
     // Pre-seeded token => app shell renders straight away.
     await addin.expectAuthedShell();
 
-    await page.getByRole("button", { name: "Sign out" }).click();
+    await page.getByRole("button", { name: "Open menu" }).click();
+    await page.getByRole("menuitem", { name: "Sign out" }).click();
 
     // Logout drops the token and falls back to the LoginPage.
     await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Chat" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Open menu" })).toHaveCount(0);
     expect(await addin.getToken()).toBeNull();
   });
 
@@ -160,15 +161,15 @@ test.describe("session refresh", () => {
       })
     );
 
-    // /projects rejects the stale token and only accepts the refreshed one —
+    // /workflows rejects the stale token and only accepts the refreshed one —
     // proving the client refreshed AND retried rather than giving up on the 401.
-    await page.route("**/projects", (route, request) => {
+    await page.route("**/workflows**", (route, request) => {
       const auth = request.headers()["authorization"] ?? "";
       if (auth === "Bearer fresh-access") {
         return route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify([{ id: "p1", name: "Alpha Matter" }]),
+          body: "[]",
         });
       }
       return route.fulfill({
@@ -177,16 +178,13 @@ test.describe("session refresh", () => {
         body: JSON.stringify({ detail: "Invalid or expired token" }),
       });
     });
-    await page.route("**/projects/p1/documents", (route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: "[]" })
-    );
-
     await addin.gotoTaskpane();
     await addin.expectAuthedShell();
-    await page.getByRole("tab", { name: "Projects" }).click();
+    await page.getByRole("button", { name: "Open menu" }).click();
+    await page.getByRole("menuitem", { name: "Workflows" }).click();
 
     // The list rendered, so the retried request succeeded.
-    await expect(page.getByRole("option", { name: "Alpha Matter" })).toBeAttached();
+    await expect(page.getByText("No workflows found.")).toBeVisible();
 
     // The rotated tokens were persisted for subsequent calls.
     expect(await addin.getToken()).toBe("fresh-access");
@@ -208,8 +206,8 @@ test.describe("session refresh", () => {
         body: JSON.stringify({ error: "invalid_grant" }),
       })
     );
-    // Every /projects call 401s; the refresh can't rescue it.
-    await page.route("**/projects", (route) =>
+    // Every /workflows call 401s; the refresh can't rescue it.
+    await page.route("**/workflows**", (route) =>
       route.fulfill({
         status: 401,
         contentType: "application/json",
@@ -219,7 +217,8 @@ test.describe("session refresh", () => {
 
     await addin.gotoTaskpane();
     await addin.expectAuthedShell();
-    await page.getByRole("tab", { name: "Projects" }).click();
+    await page.getByRole("button", { name: "Open menu" }).click();
+    await page.getByRole("menuitem", { name: "Workflows" }).click();
 
     // The dead session is cleared and the login gate returns.
     await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
