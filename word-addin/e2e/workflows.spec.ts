@@ -11,8 +11,6 @@
  *                                 skill_md server-side, same as the web app) and
  *                                 the document text as document_context; streams
  *                                 the answer into a result box
- *   - Insert below cursor      -> paragraph insertion after the current paragraph
- *                                 with track-changes OFF -> wordCalls.inserts
  *
  * All network is mocked via the shared fixture; no live backend is contacted.
  */
@@ -70,7 +68,8 @@ async function openWorkflows(
   await addin.mockApiJson("GET", "**/workflows**", workflows);
   await addin.gotoTaskpane({ documentText });
   await addin.expectAuthedShell();
-  await addin.page.getByRole("tab", { name: "Workflows" }).click();
+  await addin.page.getByRole("button", { name: "Open menu" }).click();
+  await addin.page.getByRole("menuitem", { name: "Workflows" }).click();
 }
 
 test("lists runnable workflows and selects the first by default", async ({
@@ -136,7 +135,8 @@ test("surfaces an error when the workflow list fails to load", async ({
   await addin.mockApiError("GET", "**/workflows**", 500, "boom");
   await addin.gotoTaskpane({ documentText: "Doc" });
   await addin.expectAuthedShell();
-  await page.getByRole("tab", { name: "Workflows" }).click();
+  await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("menuitem", { name: "Workflows" }).click();
 
   // listWorkflows() throws a MikeApiError ("API error: 500"), shown verbatim.
   await expect(page.getByText(/API error: 500/)).toBeVisible();
@@ -178,29 +178,6 @@ test("runs the selected workflow and streams the result", async ({
   ).toBeEnabled();
 });
 
-test("inserts the workflow result below the cursor without replacing text", async ({ addin, page }) => {
-  await openWorkflows(addin, WORKFLOWS);
-  await addin.mockChatStream(["Draft clause: ", "indemnification applies."]);
-
-  await page
-    .getByRole("button", { name: "Run workflow on document" })
-    .click();
-  await expect(
-    page.getByText("Draft clause: indemnification applies.")
-  ).toBeVisible();
-
-  await page.getByRole("button", { name: "Insert below cursor" }).click();
-
-  // Generated blocks are inserted after the current paragraph and never replace.
-  const calls = await addin.wordCalls();
-  expect(calls.inserts).toHaveLength(1);
-  expect(calls.inserts[0]).toMatchObject({
-    text: "Draft clause: indemnification applies.",
-    location: "After",
-  });
-  expect(calls.trackedChanges).toHaveLength(0);
-});
-
 test("surfaces a streaming error when the workflow run fails", async ({
   addin,
   page,
@@ -214,10 +191,6 @@ test("surfaces a streaming error when the workflow run fails", async ({
 
   // The pre-[DONE] error event makes streamAssistant throw; runError renders it.
   await expect(page.getByText("model unavailable")).toBeVisible();
-  // No result was produced, so no Insert button appears.
-  await expect(
-    page.getByRole("button", { name: "Insert below cursor" })
-  ).toHaveCount(0);
 });
 
 test("clears a previous result when switching workflows", async ({
@@ -232,13 +205,10 @@ test("clears a previous result when switching workflows", async ({
     .click();
   await expect(page.getByText("Summary text.")).toBeVisible();
 
-  // Changing the selected workflow resets the result + Insert button.
+  // Changing the selected workflow resets the result.
   await page
     .getByRole("combobox", { name: "Select workflow" })
     .selectOption({ label: "Identify risks" });
 
   await expect(page.getByText("Summary text.")).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Insert below cursor" })
-  ).toHaveCount(0);
 });

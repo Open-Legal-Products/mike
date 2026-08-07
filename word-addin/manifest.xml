@@ -89,7 +89,7 @@
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="GroupLabel" DefaultValue="Mike Legal AI" />
-        <bt:String id="TaskpaneButton.Label" DefaultValue="Open Mike" />
+        <bt:String id="TaskpaneButton.Label" DefaultValue="Mike" />
       </bt:ShortStrings>
       <bt:LongStrings>
         <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Open the Mike AI legal assistant pane" />

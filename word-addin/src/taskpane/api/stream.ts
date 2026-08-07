@@ -20,12 +20,14 @@ export async function streamAssistant(
     messages: {
       role: string;
       content: string;
+      files?: { filename: string; document_id?: string }[];
       // Workflow runs travel as a reference — the backend resolves the body
       // server-side (inside the <workflow-instructions> fence), same as the web.
       workflow?: { id: string; title: string };
     }[];
     documentContext?: string;
     model?: string;
+    chatId?: string;
     signal?: AbortSignal;
   },
   onText: (text: string) => void
@@ -33,6 +35,7 @@ export async function streamAssistant(
   const res = await streamChat({
     messages: params.messages,
     model: params.model ?? DEFAULT_MODEL,
+    chat_id: params.chatId,
     document_context: params.documentContext,
     signal: params.signal,
   });

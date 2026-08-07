@@ -165,7 +165,6 @@ export function DocumentActions(): React.ReactElement {
     releaseSelection,
     replaceSelection,
     applyTrackedEdits,
-    insertBelowSelection,
   } = useWordDoc();
 
   const [improve, setImprove] = useState<ActionSectionState>(emptySection());
@@ -554,25 +553,7 @@ export function DocumentActions(): React.ReactElement {
         </PillButton>
         {draft.loading && <WorkingRow label="Drafting…" />}
         {draft.result && (
-          <>
-            <ResultBox>{draft.result}</ResultBox>
-            {!draft.loading && !draft.error && (
-              <div className="flex flex-wrap gap-2">
-                <PillButton
-                  tone="white"
-                  onClick={() => void insertBelowSelection(draft.result)}
-                >
-                  Insert below cursor
-                </PillButton>
-                <PillButton
-                  tone="white"
-                  onClick={() => void insertBelowSelection(draft.result, true)}
-                >
-                  Insert below (tracked)
-                </PillButton>
-              </div>
-            )}
-          </>
+          <ResultBox>{draft.result}</ResultBox>
         )}
       </Section>
     </div>

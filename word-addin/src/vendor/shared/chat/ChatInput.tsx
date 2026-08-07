@@ -15,6 +15,8 @@ interface ChatInputProps {
     disabled?: boolean;
     /** Accessory controls rendered on the left of the action row (e.g. a toggle). */
     leftSlot?: React.ReactNode;
+    /** Accessory controls rendered immediately before the send/stop button. */
+    rightSlot?: React.ReactNode;
     className?: string;
 }
 
@@ -35,6 +37,7 @@ export function ChatInput({
     placeholder = "Ask Mike…",
     disabled = false,
     leftSlot,
+    rightSlot,
     className,
 }: ChatInputProps) {
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
@@ -77,24 +80,27 @@ export function ChatInput({
                     className="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-sm leading-6 text-gray-900 outline-none placeholder:text-gray-400 disabled:opacity-60"
                 />
             </div>
-            <div className="flex items-center justify-between gap-2 p-2 pl-3.5">
+            <div className="flex items-center justify-between gap-2 p-2">
                 <div className="flex min-w-0 items-center gap-2">{leftSlot}</div>
-                <button
-                    type="button"
-                    onClick={() => (isLoading ? onCancel?.() : canSend && onSubmit())}
-                    disabled={!isLoading && !canSend}
-                    aria-label={isLoading ? "Stop" : "Send"}
-                    className={cn(
-                        "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-white/30 bg-gradient-to-b from-neutral-700 to-black text-white backdrop-blur-xl transition-all duration-150 cursor-pointer active:enabled:scale-95 disabled:cursor-default disabled:from-neutral-600 disabled:to-black",
-                        "shadow-[0_5px_14px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.24)]"
-                    )}
-                >
-                    {isLoading ? (
-                        <Square className="h-4 w-4" fill="currentColor" strokeWidth={0} />
-                    ) : (
-                        <ArrowRight className="h-4 w-4" />
-                    )}
-                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                    {rightSlot}
+                    <button
+                        type="button"
+                        onClick={() => (isLoading ? onCancel?.() : canSend && onSubmit())}
+                        disabled={!isLoading && !canSend}
+                        aria-label={isLoading ? "Stop" : "Send"}
+                        className={cn(
+                            "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-white/30 bg-gradient-to-b from-neutral-700 to-black text-white backdrop-blur-xl transition-all duration-150 cursor-pointer active:enabled:scale-95 disabled:cursor-default disabled:from-neutral-600 disabled:to-black",
+                            "shadow-[0_5px_14px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.24)]"
+                        )}
+                    >
+                        {isLoading ? (
+                            <Square className="h-4 w-4" fill="currentColor" strokeWidth={0} />
+                        ) : (
+                            <ArrowRight className="h-4 w-4" />
+                        )}
+                    </button>
+                </div>
             </div>
         </div>
     );

@@ -69,10 +69,9 @@ module.exports = async (_env, options) => {
     // (HTTP requests from an HTTPS page). The Mike API and local Supabase only
     // serve HTTP, so calling them directly fails with "Load failed". Proxy them
     // through this HTTPS dev server instead, so the pane makes only same-origin
-    // HTTPS calls (REACT_APP_SUPABASE_URL=https://localhost:3000,
-    // REACT_APP_API_BASE_URL=https://localhost:3000/api) that webpack forwards to
-    // the local HTTP backends server-side. Targets are overridable so the proxy
-    // tracks whatever ports the backend is actually on.
+    // calls (`/auth/...` and `/api/...`) that webpack forwards to the local HTTP
+    // backends server-side. Targets are overridable so the proxy tracks whatever
+    // ports the backend is actually on.
     const supaTarget =
       process.env.SUPABASE_PROXY_TARGET || "http://127.0.0.1:54321";
     const apiTarget = process.env.API_PROXY_TARGET || "http://localhost:3001";
@@ -150,6 +149,13 @@ module.exports = async (_env, options) => {
           test: /\.css$/,
           use: ["style-loader", "css-loader", "postcss-loader"],
         },
+        {
+          test: /\.svg$/i,
+          type: "asset/resource",
+          generator: {
+            filename: "icons/[name].[contenthash][ext]",
+          },
+        },
       ],
     },
     plugins: [
@@ -165,9 +171,15 @@ module.exports = async (_env, options) => {
       }),
       // Expose env vars to the bundle so TypeScript process.env calls compile
       new webpack.EnvironmentPlugin({
-        REACT_APP_API_BASE_URL: isDev ? "http://localhost:3001" : undefined,
+        // Relative URL is intentional: the HTTPS dev server proxies /api to the
+        // HTTP backend, avoiding mixed-content failures inside Word's webview.
+        REACT_APP_API_BASE_URL: isDev ? "/api" : undefined,
         REACT_APP_SUPABASE_URL: isDev ? "" : undefined,
-        REACT_APP_SUPABASE_ANON_KEY: isDev ? "" : undefined,
+        // Keep the key sourced by scripts/dev.sh; only the URL is made
+        // same-origin so authentication also travels through the HTTPS proxy.
+        REACT_APP_SUPABASE_ANON_KEY: isDev
+          ? process.env.REACT_APP_SUPABASE_ANON_KEY || ""
+          : undefined,
         REACT_APP_DEFAULT_MODEL: "claude-sonnet-4-6",
         // The Mike web app origin — the task pane links here (e.g. the
         // account/api-keys page); it never fetches from it.

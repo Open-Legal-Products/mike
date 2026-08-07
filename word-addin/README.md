@@ -1,6 +1,6 @@
 # Mike Word Add-in
 
-An Office.js task pane add-in that brings the Mike legal AI platform directly into Microsoft Word. From the task pane you can chat with an AI about the open document (with optional full-document context), apply AI suggestions as tracked-change redlines, run one-click actions (improve writing, proofread, anonymise, draft clause), execute saved Mike workflows against the document, and browse or upload to Mike projects — all without leaving Word.
+An Office.js task pane add-in that brings the Mike legal AI platform directly into Microsoft Word. From the task pane you can chat with an AI about the open document, attach additional documents and workflows, choose a model, apply AI suggestions as tracked-change redlines, run quick actions (improve writing, proofread, anonymise, draft clause), and execute saved Mike workflows against the document — all without leaving Word.
 
 The add-in talks to the **same API and Supabase project as the web app**: sign-in goes directly to Supabase (`/auth/v1/token`), while chat, actions, workflows, projects, and uploads call the Mike API (`http://localhost:3001` in local development).
 
@@ -60,15 +60,17 @@ The sections below explain each step the script automates, and the manual / web 
 
    ```bash
    # word-addin/.env.development
-   REACT_APP_SUPABASE_URL=https://your-project.supabase.co
+   REACT_APP_SUPABASE_URL=https://localhost:3000
    REACT_APP_SUPABASE_ANON_KEY=<your Supabase anon / publishable key>
-   REACT_APP_API_BASE_URL=http://localhost:3001
+   REACT_APP_API_BASE_URL=https://localhost:3000/api
+   SUPABASE_PROXY_TARGET=https://your-project.supabase.co
+   API_PROXY_TARGET=http://localhost:3001
    ```
 
-   - `REACT_APP_SUPABASE_URL` / `REACT_APP_SUPABASE_ANON_KEY` — the same values as `frontend/.env.local`'s `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY` (from the Supabase dashboard).
-   - `REACT_APP_API_BASE_URL` — the Mike backend; default is `http://localhost:3001`.
+   - `REACT_APP_SUPABASE_ANON_KEY` — the same publishable key as `frontend/.env.local`.
+   - The `REACT_APP_*_URL` values point the HTTPS task pane at its same-origin proxy. `SUPABASE_PROXY_TARGET` and `API_PROXY_TARGET` identify the real upstream services.
 
-   > **Mixed content / HTTPS:** Word serves the task pane over HTTPS (`https://localhost:3000`), and its WebView blocks plain-HTTP requests to the local backend. The `dev.sh` script avoids this by pointing the bundle at the dev server's same-origin HTTPS proxy (it sets the URLs to `https://localhost:3000` and proxies `/api` → `http://localhost:3001` and `/auth` etc. → Supabase). If you set the raw URLs above by hand, use `dev.sh` or replicate that proxy when testing in desktop Word.
+   > **Mixed content / HTTPS:** Word serves the task pane over HTTPS and blocks plain-HTTP browser requests. Keep the compiled URLs on `https://localhost:3000`; webpack proxies `/api` to the Mike API and `/auth` to Supabase. The recommended `scripts/dev.sh` configures this automatically.
 
    Because this is a custom webpack build (not Create React App), `.env.development` is **not** read automatically. Source it before running npm commands:
 
@@ -100,7 +102,7 @@ The sections below explain each step the script automates, and the manual / web 
    npm start
    ```
 
-   This runs `office-addin-debugging start manifest.xml`, which starts the webpack dev server on `https://localhost:3000` **and** automatically opens Word with the add-in sideloaded. The task pane appears under **Home → Mike Legal AI → Open Mike**.
+   This runs `office-addin-debugging start manifest.xml`, which starts the webpack dev server on `https://localhost:3000` **and** automatically opens Word with the add-in sideloaded. The task pane appears under **Home → Mike Legal AI → Mike**.
 
 ---
 
@@ -148,14 +150,24 @@ The build writes the task-pane assets and a deployable, URL-rewritten manifest t
 
 ## Features
 
-### Chat tab
+### Chat
 
-Ask any question about the open document. Toggle **Use document as context** to send the full document text to the AI with each message (posted to the backend as `documentContext`, which `POST /chat` nonce-fences into the system prompt as reference data). Responses stream in real time. On any AI response you can:
+Ask any question about the open document. The add-in always reads the current document into `document_context` and always asks the model to return applyable tracked-edit blocks when it proposes textual changes. Responses stream in real time.
+
+The composer mirrors the web assistant controls:
+
+- **Add documents** opens the same library-style selector used by the web assistant. Search and select files, templates, or project documents, or upload new files from inside the modal; confirmed documents appear as removable chips and are attached to the next message.
+- **Add workflows** opens the assistant workflow picker. The selected workflow appears as a removable chip and is attached to the next message.
+- **Model** opens the same grouped Anthropic, Google, OpenAI, and dynamically discovered Ollama choices used by the web app.
+
+The chat header and composer float over the message surface. Use **New chat** to clear the current conversation, **Chat history** to reopen a saved conversation, and the hamburger menu to access Quick Actions, Workflows, or Sign out.
+
+On any AI response you can:
 
 - **Insert below cursor** — inserts one or more real paragraphs after the paragraph containing the current selection; selected text is never overwritten
 - **Insert below (tracked)** — performs the same paragraph-aware insertion with change tracking enabled, then restores the user's prior tracking mode
 
-### Actions tab
+### Quick Actions
 
 One-click AI operations, each streaming their result into a result box:
 
@@ -166,19 +178,15 @@ One-click AI operations, each streaming their result into a result box:
 | **Anonymise** | Scans the **entire document** for PII (names, addresses, phone numbers, dates of birth, IDs, etc.) and streams proposed anonymised replacements in the same format. **Apply N redactions (tracked)** replaces every occurrence of each PII string as a tracked change. |
 | **Draft Clause** | Enter a description of the clause you need, then click **Draft clause**. The result is normalised from model Markdown into Word paragraphs and can be inserted below the cursor with or without tracking. |
 
-### Workflows tab
+### Workflows
 
 Select a saved Mike workflow from the dropdown and click **Run workflow on document**. The workflow instruction and document context are sent to the API. Results stream in and can be inserted as paragraphs below the cursor.
-
-### Projects tab
-
-Browse Mike projects you have access to. Selecting a project shows all documents currently in it. Click **Upload current document to project** to export the open Word document as a `.docx` file and upload it to the selected project via the Mike backend.
 
 ---
 
 ## Signing in
 
-Enter the same email and password you use for the Mike web app. The add-in authenticates directly against Supabase (`/auth/v1/token`) and stores the access token in `OfficeRuntime.storage` (persists across task pane reloads). Click **Sign out** in the header to clear the token.
+Enter the same email and password you use for the Mike web app. The add-in authenticates directly against Supabase (`/auth/v1/token`) and stores the access token in `OfficeRuntime.storage` (persists across task pane reloads). Open the hamburger menu and click **Sign out** to clear the token.
 
 ---
 
@@ -193,7 +201,7 @@ npm run build:e2e
 npm run test:e2e
 ```
 
-It builds the bundle with test env vars, serves it over plain HTTP, injects an Office.js mock (`e2e/support/office-mock.ts`), and drives every task-pane flow (auth, chat, actions, workflows, projects).
+It builds the bundle with test env vars, serves it over plain HTTP, injects an Office.js mock (`e2e/support/office-mock.ts`), and drives the exposed task-pane flows (auth, chat, quick actions, and workflows). Project-view coverage is retained but skipped while that view is not exposed.
 
 ---
 

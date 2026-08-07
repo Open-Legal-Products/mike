@@ -18,11 +18,13 @@ import { test, expect } from "./support/fixtures";
 
 const TOKEN = "seeded-jwt";
 
-/** Reveal the ProjectPicker by switching to the Projects tab. */
+/** Retained for when the Projects view is exposed again. */
 async function openProjectsTab(page: import("@playwright/test").Page): Promise<void> {
-  await page.getByRole("tab", { name: "Projects" }).click();
+  await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("menuitem", { name: "Projects" }).click();
 }
 
+test.describe.skip("Projects view (not currently exposed)", () => {
 test("renders the project list after loading and selects the first project", async ({
   addin,
   page,
@@ -165,4 +167,5 @@ test("shows an error when the upload fails", async ({ addin, page }) => {
   // it as error text.
   await expect(page.getByText(/bad file/)).toBeVisible();
   await expect(page.getByText("Document uploaded successfully.")).toHaveCount(0);
+});
 });

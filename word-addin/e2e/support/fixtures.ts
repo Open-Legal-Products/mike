@@ -87,7 +87,7 @@ export interface Addin {
    * navigate to the task pane, and wait for React to mount (login OR app shell).
    */
   gotoTaskpane(opts?: OfficeSeed): Promise<void>;
-  /** Assert the authenticated 4-tab shell is showing (Chat/Actions/Workflows/Projects). */
+  /** Assert the authenticated floating chat shell is showing. */
   expectAuthedShell(): Promise<void>;
 
   // ----- live document state (call any time) -----
@@ -168,6 +168,28 @@ export const test = base.extend<{ addin: Addin }>({
       });
     });
 
+    // The composer model toggle probes local Ollama models on mount. Keep the
+    // default hermetic and let specs override this route when testing locals.
+    await page.route("**/models/ollama", (route, request) => {
+      if (request.method() !== "GET") return route.fallback();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ models: [] }),
+      });
+    });
+
+    // Empty-chat InitialView greeting. Keep profile reads deterministic and
+    // hermetic while allowing a spec to override this route newest-first.
+    await page.route("**/user/profile", (route, request) => {
+      if (request.method() !== "GET") return route.fallback();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ displayName: "Test User" }),
+      });
+    });
+
     let seed: OfficeSeed = {};
 
     /** Add a method-scoped JSON route; falls through to other routes on mismatch. */
@@ -207,18 +229,21 @@ export const test = base.extend<{ addin: Addin }>({
         seed = { ...seed, ...(opts ?? {}) };
         await page.addInitScript(installOfficeMock, seed);
         await page.goto(TASKPANE_PATH);
-        // "Mike" appears in both the login title and the app header, so this
-        // resolves once React has mounted past the loading spinner either way.
-        await expect(page.getByText("Mike").first()).toBeVisible({
+        // Resolve once React has mounted past the loading spinner into either
+        // the login gate or the authenticated floating shell.
+        await expect(
+          page
+            .getByRole("button", { name: /^(Sign in|Open menu)$/ })
+            .first()
+        ).toBeVisible({
           timeout: 15_000,
         });
       },
 
       async expectAuthedShell() {
-        await expect(page.getByRole("tab", { name: "Chat" })).toBeVisible();
-        await expect(page.getByRole("tab", { name: "Actions" })).toBeVisible();
-        await expect(page.getByRole("tab", { name: "Workflows" })).toBeVisible();
-        await expect(page.getByRole("tab", { name: "Projects" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "New chat" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Chat history" })).toBeVisible();
       },
 
       async setDocumentText(text) {

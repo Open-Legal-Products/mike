@@ -1,6 +1,6 @@
 /// <reference types="office-js" />
 
-import { toWordParagraphs, toWordText } from "../lib/wordText";
+import { toWordText } from "../lib/wordText";
 import type { RedlineEdit } from "../lib/redline";
 
 export interface WordSelectionAnchor {
@@ -212,62 +212,6 @@ export function useWordDoc() {
       }
     });
 
-  /**
-   * Insert generated content below the paragraph containing the current
-   * selection. This never overwrites selected text. Each model paragraph is a
-   * real Word paragraph and inherits the surrounding paragraph style and
-   * direct spacing/indentation, instead of inserting raw Markdown into one run.
-   */
-  const insertBelowSelection = (text: string, tracked = false): Promise<void> =>
-    Word.run(async (context) => {
-      const doc = context.document;
-      const source = doc.getSelection().paragraphs.getLast();
-      source.load([
-        "style",
-        "alignment",
-        "firstLineIndent",
-        "leftIndent",
-        "lineSpacing",
-        "rightIndent",
-        "spaceAfter",
-        "spaceBefore",
-      ]);
-      doc.load("changeTrackingMode");
-      await context.sync();
-
-      const paragraphs = toWordParagraphs(text);
-      if (paragraphs.length === 0) throw new Error("There is no text to insert.");
-
-      const originalMode = doc.changeTrackingMode;
-
-      try {
-        if (tracked) doc.changeTrackingMode = Word.ChangeTrackingMode.trackAll;
-
-        let previous = source;
-        for (const paragraphText of paragraphs) {
-          const inserted = previous.insertParagraph(
-            paragraphText,
-            Word.InsertLocation.after
-          );
-          inserted.style = source.style;
-          inserted.alignment = source.alignment;
-          inserted.firstLineIndent = source.firstLineIndent;
-          inserted.leftIndent = source.leftIndent;
-          inserted.lineSpacing = source.lineSpacing;
-          inserted.rightIndent = source.rightIndent;
-          inserted.spaceAfter = source.spaceAfter;
-          inserted.spaceBefore = source.spaceBefore;
-          previous = inserted;
-        }
-        await context.sync();
-      } finally {
-        if (tracked) {
-          doc.changeTrackingMode = originalMode;
-          await context.sync();
-        }
-      }
-    });
-
   return {
     readDocumentText,
     getDocxBlob,
@@ -275,6 +219,5 @@ export function useWordDoc() {
     releaseSelection,
     replaceSelection,
     applyTrackedEdits,
-    insertBelowSelection,
   };
 }
