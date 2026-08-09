@@ -29,7 +29,6 @@ export default defineConfig({
 
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? BASE_URL,
-    ignoreHTTPSErrors: true,
     screenshot: "only-on-failure",
     trace: "on-first-retry",
     // PW_VIDEO=1 records a webm per test (for demo/review reels); off by

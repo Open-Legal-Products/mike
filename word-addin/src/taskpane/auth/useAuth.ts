@@ -13,7 +13,7 @@ import {
 // API client can share it; this hook just subscribes mounted components to it.
 // ---------------------------------------------------------------------------
 
-export interface AuthState {
+interface AuthState {
   token: string | null;
   loading: boolean;
   error: string | null;

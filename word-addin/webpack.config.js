@@ -1,10 +1,21 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
 const path = require("path");
+const fs = require("fs");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 const webpack = require("webpack");
 
 module.exports = async (_env, options) => {
   const isDev = options.mode !== "production";
+
+  // npm and webpack do not read .env files themselves. Load the add-in's
+  // local development configuration here so `npm run dev`, `bun dev`, and
+  // `npm start` all receive the same values without a shell-specific `source`
+  // step. Node's loader preserves variables already supplied by the shell, so
+  // explicit CI/deployment overrides continue to win.
+  const localEnvPath = path.join(__dirname, ".env");
+  if (isDev && fs.existsSync(localEnvPath)) {
+    process.loadEnvFile(localEnvPath);
+  }
 
   if (!isDev) {
     const required = [
@@ -94,51 +105,28 @@ module.exports = async (_env, options) => {
 
   /** @type {import('webpack').Configuration} */
   const config = {
-    devtool: "source-map",
+    // Keep readable stack traces locally without publishing application source
+    // and embedded source content in production artifacts.
+    devtool: isDev ? "source-map" : false,
     entry: {
-      // process-shim MUST load first: it installs a browser `process` global so
-      // the shared @mike/api-client's module-eval-time `process?.env?.…` reads
-      // don't throw "process is not defined" (see src/process-shim.ts).
-      taskpane: ["./src/process-shim.ts", "./src/taskpane/index.tsx"],
-      commands: ["./src/process-shim.ts", "./src/commands/commands.ts"],
+      taskpane: "./src/taskpane/index.tsx",
+      commands: "./src/commands/commands.ts",
     },
     output: {
       path: path.resolve(__dirname, "dist"),
-      filename: "[name].js",
+      filename: isDev ? "[name].js" : "[name].[contenthash:8].js",
+      chunkFilename: isDev ? "[id].js" : "[id].[contenthash:8].js",
       clean: true,
     },
     resolve: {
       extensions: [".ts", ".tsx", ".js", ".jsx"],
-      alias: {
-        // Shared design system (the @mike/shared package). In the fork this
-        // lives in the monorepo's packages/; here the files are vendored under
-        // src/vendor. Same name the fork's web app imports.
-        "@mike/shared": path.resolve(__dirname, "src/vendor/shared"),
-        // Shared typed API client + core types/enums. Point at the TS entry so
-        // ts-loader compiles them (transpileOnly) exactly like @mike/shared
-        // above — these resolve purely by alias (no package.json dependency).
-        // @mike/api-client transitively imports @mike/core, so both are aliased.
-        "@mike/api-client": path.resolve(
-          __dirname,
-          "src/vendor/api-client/index.ts"
-        ),
-        "@mike/core": path.resolve(__dirname, "src/vendor/core/index.ts"),
-        // De-dupe React when resolving the shared sources.
-        react: path.resolve(__dirname, "node_modules/react"),
-        "react-dom": path.resolve(__dirname, "node_modules/react-dom"),
-      },
-      // Resolve bare imports (cva, lucide-react, radix, …) from the add-in's
-      // own node_modules; the trailing "node_modules" keeps default walk-up
-      // behaviour.
       modules: [path.resolve(__dirname, "node_modules"), "node_modules"],
     },
     module: {
       rules: [
         {
           test: /\.tsx?$/,
-          // transpileOnly so ts-loader compiles the shared .tsx sources that
-          // live outside this project's rootDir without cross-project type
-          // errors; type-checking is done separately via `tsc --noEmit`.
+          // Type-checking is done separately via `tsc --noEmit`.
           use: {
             loader: "ts-loader",
             options: { transpileOnly: true },
@@ -171,10 +159,14 @@ module.exports = async (_env, options) => {
       }),
       // Expose env vars to the bundle so TypeScript process.env calls compile
       new webpack.EnvironmentPlugin({
-        // Relative URL is intentional: the HTTPS dev server proxies /api to the
-        // HTTP backend, avoiding mixed-content failures inside Word's webview.
-        REACT_APP_API_BASE_URL: isDev ? "/api" : undefined,
-        REACT_APP_SUPABASE_URL: isDev ? "" : undefined,
+        // Development defaults stay on the HTTPS dev-server origin, whose
+        // proxies reach the HTTP backends without mixed-content failures.
+        REACT_APP_API_BASE_URL: isDev
+          ? process.env.REACT_APP_API_BASE_URL || "/api"
+          : undefined,
+        REACT_APP_SUPABASE_URL: isDev
+          ? process.env.REACT_APP_SUPABASE_URL || ""
+          : undefined,
         // Keep the key sourced by scripts/dev.sh; only the URL is made
         // same-origin so authentication also travels through the HTTPS proxy.
         REACT_APP_SUPABASE_ANON_KEY: isDev
@@ -183,8 +175,9 @@ module.exports = async (_env, options) => {
         REACT_APP_DEFAULT_MODEL: "claude-sonnet-4-6",
         // The Mike web app origin — the task pane links here (e.g. the
         // account/api-keys page); it never fetches from it.
-        REACT_APP_WEB_APP_URL: isDev ? "http://localhost:3000" : undefined,
-        NODE_ENV: isDev ? "development" : "production",
+        REACT_APP_WEB_APP_URL: isDev
+          ? process.env.REACT_APP_WEB_APP_URL || "https://app.mikeoss.com"
+          : undefined,
       }),
     ],
     devServer: devServerConfig,

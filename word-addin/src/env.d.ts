@@ -2,7 +2,7 @@
 
 /**
  * Ambient declaration for webpack EnvironmentPlugin substitutions.
- * These values are replaced at build time; runtime access is a no-op guard.
+ * These values are replaced while webpack builds the task-pane bundle.
  */
 declare const process: {
   readonly env: {

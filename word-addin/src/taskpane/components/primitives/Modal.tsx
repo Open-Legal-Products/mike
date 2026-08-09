@@ -1,13 +1,14 @@
 import React, { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
-import { cn } from "@mike/shared/lib/utils";
-import { PillButton } from "../assistant/PillButton";
+import { cn } from "../../../shared/lib/utils";
+import { PillButton } from "./PillButton";
 
 interface ModalProps {
   open: boolean;
   onClose: () => void;
   title: string;
+  parentLabel?: string;
   children: ReactNode;
   primaryAction?: {
     label: string;
@@ -33,6 +34,7 @@ export function Modal({
   open,
   onClose,
   title,
+  parentLabel = "Assistant",
   children,
   primaryAction,
   secondaryAction,
@@ -67,7 +69,7 @@ export function Modal({
       >
         <header className="flex items-center justify-between gap-3 p-4 pl-5">
           <div className="flex min-w-0 items-center gap-1.5 text-xs leading-none text-gray-400">
-            <span>Assistant</span>
+            <span>{parentLabel}</span>
             <span>›</span>
             <span className="truncate text-gray-700">{title}</span>
           </div>

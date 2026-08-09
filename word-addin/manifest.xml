@@ -3,7 +3,6 @@
   xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
-  xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
   xsi:type="TaskPaneApp">
 
   <Id>a1b2c3d4-e5f6-7890-abcd-ef1234567890</Id>
@@ -26,7 +25,7 @@
   </Hosts>
 
   <Requirements>
-    <Sets DefaultMinVersion="1.4">
+    <Sets DefaultMinVersion="1.6">
       <Set Name="WordApi" />
     </Sets>
   </Requirements>

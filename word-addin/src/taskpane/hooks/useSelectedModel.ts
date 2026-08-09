@@ -1,9 +1,10 @@
 import { useCallback, useState } from "react";
 
 const STORAGE_KEY = "mike.selectedModel";
+// Substituted at bundle time; a `typeof process` guard is false in the browser
+// and would silently pin the fallback instead of the configured model.
 const DEFAULT_MODEL =
-  (typeof process !== "undefined" && process.env.REACT_APP_DEFAULT_MODEL) ||
-  "claude-sonnet-4-6";
+  process.env.REACT_APP_DEFAULT_MODEL || "claude-sonnet-4-6";
 
 function readStoredModel(): string {
   try {

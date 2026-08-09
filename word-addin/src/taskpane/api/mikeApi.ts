@@ -1,33 +1,33 @@
 /// <reference types="office-js" />
 /**
- * Configured @mike/api-client barrel for the Word add-in — the single place the
- * shared typed client is wired to the add-in's Office session. Mirrors
- * apps/web/src/app/lib/mikeApi.ts, but its auth comes from ../auth/session
+ * Configured API barrel for the Word add-in — the single place the typed client
+ * is wired to the add-in's Office session. Mirrors
+ * frontend/src/app/lib/mikeApi.ts, but its auth comes from ../auth/session
  * (OfficeRuntime.storage-backed) instead of Supabase's browser SDK.
  *
- * Components import API functions FROM THIS MODULE (not from "@mike/api-client"
+ * Components import API functions FROM THIS MODULE (not from the base client
  * directly) so that importing any of them runs the side-effecting
  * configureMikeApiClient() below before the first request leaves.
  */
-import { configureMikeApiClient } from "@mike/api-client";
-import type { Document } from "@mike/core";
+import { configureMikeApiClient } from "./client";
+import type { Chat, Document, Message } from "../types";
 import { getFreshAccessToken, refreshSession } from "../auth/session";
 
-// Guard the `process` reference: webpack's EnvironmentPlugin only substitutes
-// registered vars, and a stale dev server can leave a literal `process.env...`
-// that throws "process is not defined" in the browser — the typeof guard
-// short-circuits before touching `process`, falling back safely.
+// EnvironmentPlugin substitutes this exact expression at bundle time. Do NOT
+// guard it with `typeof process`: the browser has no `process` global, so the
+// guard is false at runtime and silently selects the fallback below — which is
+// plain HTTP, and Word's HTTPS pane blocks it as mixed content ("Load failed").
+// Node tooling that imports this outside webpack has a real `process` anyway.
 const BASE_URL: string =
-  (typeof process !== "undefined" && process.env.REACT_APP_API_BASE_URL) ||
-  "http://localhost:3001";
+  process.env.REACT_APP_API_BASE_URL || "http://localhost:3001";
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const token = await getFreshAccessToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-// Reactive 401 recovery in ONE place (replaces the old client.ts replay): if a
-// request is rejected, refresh the session once and replay with the new token.
+// Centralized reactive 401 recovery: refresh the session once, then replay the
+// rejected request with the new token.
 const fetchWithRefresh: typeof fetch = async (input, init) => {
   const res = await fetch(input, init);
   if (res.status !== 401) return res;
@@ -44,10 +44,22 @@ configureMikeApiClient({
   fetchImpl: fetchWithRefresh,
 });
 
-export * from "@mike/api-client";
+export {
+  createWorkflow,
+  getApiKeyStatus,
+  getLibrary,
+  getUserProfile,
+  listProjects,
+  listWorkflows,
+  readSSE,
+  streamWordChat,
+  updateWorkflow,
+  uploadStandaloneDocument,
+} from "./client";
+export type { ApiKeyStatus } from "./client";
 
 /**
- * List a project's documents (GET /projects/:id/documents). @mike/api-client
+ * List a project's documents (GET /projects/:id/documents). The base client
  * exposes no wrapper for this endpoint (the web app reads project.documents off
  * GET /projects/:id instead), so this thin helper reuses the SAME configured
  * auth + 401-refresh transport as the rest of the client rather than
@@ -73,7 +85,7 @@ export async function listProjectDocuments(
   return res.json() as Promise<Document[]>;
 }
 
-export interface OllamaModelOption {
+interface OllamaModelOption {
   id: string;
   label: string;
   group: "Local";
@@ -88,4 +100,94 @@ export async function getOllamaModels(): Promise<OllamaModelOption[]> {
   if (!res.ok) return [];
   const body = (await res.json()) as { models?: OllamaModelOption[] };
   return body.models ?? [];
+}
+
+interface WordChatServerMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string | WordChatServerEvent[] | null;
+  files?: { filename: string; document_id?: string }[] | null;
+  workflow?: { id: string; title: string } | null;
+}
+
+interface WordChatServerEvent {
+  type?: unknown;
+  text?: unknown;
+}
+
+async function throwWordChatResponseError(
+  response: Response,
+  fallback: string
+): Promise<never> {
+  const body = await response.text().catch(() => "");
+  throw new Error(body || `${fallback} (${response.status}).`);
+}
+
+export async function listCloudWordChats(
+  documentId: string,
+  limit: number,
+  signal?: AbortSignal
+): Promise<Chat[]> {
+  const params = new URLSearchParams({
+    document_id: documentId,
+    limit: String(limit),
+  });
+  const res = await fetchWithRefresh(`${BASE_URL}/word-chat?${params}`, {
+    cache: "no-store",
+    signal,
+    headers: { Accept: "application/json", ...(await getAuthHeaders()) },
+  });
+  if (!res.ok) {
+    await throwWordChatResponseError(res, "Failed to load Word chats");
+  }
+  return res.json() as Promise<Chat[]>;
+}
+
+export async function getCloudWordChat(
+  documentId: string,
+  chatId: string
+): Promise<{ chat: Chat; messages: Message[] }> {
+  const params = new URLSearchParams({ document_id: documentId });
+  const res = await fetchWithRefresh(
+    `${BASE_URL}/word-chat/${encodeURIComponent(chatId)}?${params}`,
+    {
+      cache: "no-store",
+      headers: { Accept: "application/json", ...(await getAuthHeaders()) },
+    }
+  );
+  if (!res.ok) {
+    await throwWordChatResponseError(res, "Failed to open Word chat");
+  }
+  const raw = (await res.json()) as {
+    chat: Chat;
+    messages: WordChatServerMessage[];
+  };
+  return {
+    chat: raw.chat,
+    messages: raw.messages.map((message): Message => {
+      if (message.role === "user") {
+        return {
+          id: message.id,
+          role: "user",
+          content: typeof message.content === "string" ? message.content : "",
+          files: message.files ?? undefined,
+          workflow: message.workflow ?? undefined,
+        };
+      }
+      return {
+        id: message.id,
+        role: "assistant",
+        content:
+          (Array.isArray(message.content)
+            ? message.content
+                .filter(
+                  (event) =>
+                    event.type === "content" && typeof event.text === "string"
+                )
+                .map((event) => event.text)
+                .join("")
+            : message.content) ?? "",
+      };
+    }),
+  };
 }

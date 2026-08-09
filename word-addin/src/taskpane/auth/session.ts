@@ -15,8 +15,8 @@
  * This module fixes that by persisting the refresh token alongside the access
  * token and transparently exchanging it for a new access token when the current
  * one is expired (proactively, before a request leaves) or rejected (reactively,
- * when the API answers 401). Both the React auth hook (useAuth) and the bare
- * API client (api/client.ts) obtain their token through here, so a refresh
+ * when the API answers 401). Both the React auth hook and the configured API
+ * transport obtain their token through here, so a refresh
  * triggered by one is instantly visible to the other, and a refresh that
  * genuinely fails clears the session and drops every view back to the login
  * gate rather than looping on dead 401s.
@@ -24,6 +24,8 @@
 
 const ACCESS_KEY = "mike_token";
 const REFRESH_KEY = "mike_refresh_token";
+
+import { describeNetworkFailure } from "../lib/networkError";
 
 const SUPABASE_URL: string = process.env.REACT_APP_SUPABASE_URL ?? "";
 const SUPABASE_ANON_KEY: string = process.env.REACT_APP_SUPABASE_ANON_KEY ?? "";
@@ -45,6 +47,8 @@ let _error: string | null = null;
 let _initialized = false; // guards the hook's one-time load + loading flip
 let _loadPromise: Promise<void> | null = null; // guards the storage read itself
 let _refreshPromise: Promise<string | null> | null = null; // de-dupes concurrent refreshes
+let _sessionGeneration = 0; // invalidates auth work superseded by sign-in/out
+let _storageOperation: Promise<void> = Promise.resolve();
 
 const _subscribers = new Set<() => void>();
 
@@ -59,7 +63,7 @@ export function subscribe(fn: () => void): () => void {
   };
 }
 
-export interface SessionState {
+interface SessionState {
   token: string | null;
   loading: boolean;
   error: string | null;
@@ -92,29 +96,44 @@ function ensureLoaded(): Promise<void> {
   return _loadPromise;
 }
 
-/** Persist a freshly minted session (login or refresh) and notify subscribers. */
+function queueStorageOperation(operation: () => Promise<void>): Promise<void> {
+  const next = _storageOperation.then(operation, operation);
+  _storageOperation = next.catch(() => undefined);
+  return next;
+}
+
+/** Persist a freshly minted session unless a newer auth action superseded it. */
 async function writeSession(
   access: string,
-  refresh: string | null
-): Promise<void> {
+  refresh: string | null,
+  generation: number
+): Promise<boolean> {
+  if (generation !== _sessionGeneration) return false;
+  await queueStorageOperation(async () => {
+    if (generation !== _sessionGeneration) return;
+    await OfficeRuntime.storage.setItem(ACCESS_KEY, access).catch(() => {});
+    if (refresh) {
+      await OfficeRuntime.storage.setItem(REFRESH_KEY, refresh).catch(() => {});
+    } else {
+      await OfficeRuntime.storage.removeItem(REFRESH_KEY).catch(() => {});
+    }
+  });
+  if (generation !== _sessionGeneration) return false;
   _accessToken = access;
   _refreshToken = refresh;
-  await OfficeRuntime.storage.setItem(ACCESS_KEY, access).catch(() => {});
-  if (refresh) {
-    await OfficeRuntime.storage.setItem(REFRESH_KEY, refresh).catch(() => {});
-  } else {
-    await OfficeRuntime.storage.removeItem(REFRESH_KEY).catch(() => {});
-  }
   broadcast();
+  return true;
 }
 
 /** Drop the session from memory + storage and notify subscribers. */
 async function clearSession(): Promise<void> {
   _accessToken = null;
   _refreshToken = null;
-  await OfficeRuntime.storage.removeItem(ACCESS_KEY).catch(() => {});
-  await OfficeRuntime.storage.removeItem(REFRESH_KEY).catch(() => {});
   broadcast();
+  await queueStorageOperation(async () => {
+    await OfficeRuntime.storage.removeItem(ACCESS_KEY).catch(() => {});
+    await OfficeRuntime.storage.removeItem(REFRESH_KEY).catch(() => {});
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -187,7 +206,9 @@ export function refreshSession(): Promise<string | null> {
 
 async function doRefresh(): Promise<string | null> {
   await ensureLoaded();
-  if (!_refreshToken) {
+  const generation = _sessionGeneration;
+  const refreshToken = _refreshToken;
+  if (!refreshToken) {
     // Nothing to refresh with (e.g. a pre-refresh-era stored token). Force a
     // clean re-login rather than spinning on 401s.
     await clearSession();
@@ -202,10 +223,17 @@ async function doRefresh(): Promise<string | null> {
         "Content-Type": "application/json",
         apikey: SUPABASE_ANON_KEY,
       },
-      body: JSON.stringify({ refresh_token: _refreshToken }),
+      body: JSON.stringify({ refresh_token: refreshToken }),
     });
   } catch {
     // Network blip — keep the session and let the caller surface the failure.
+    return null;
+  }
+
+  if (
+    generation !== _sessionGeneration ||
+    refreshToken !== _refreshToken
+  ) {
     return null;
   }
 
@@ -219,6 +247,12 @@ async function doRefresh(): Promise<string | null> {
     access_token?: string;
     refresh_token?: string;
   };
+  if (
+    generation !== _sessionGeneration ||
+    refreshToken !== _refreshToken
+  ) {
+    return null;
+  }
   if (!data.access_token) {
     await clearSession();
     return null;
@@ -226,8 +260,12 @@ async function doRefresh(): Promise<string | null> {
 
   // Supabase rotates refresh tokens — persist the new one (falling back to the
   // existing token if the response omitted it).
-  await writeSession(data.access_token, data.refresh_token ?? _refreshToken);
-  return data.access_token;
+  const saved = await writeSession(
+    data.access_token,
+    data.refresh_token ?? refreshToken,
+    generation
+  );
+  return saved ? data.access_token : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -245,28 +283,54 @@ export function initialize(): void {
 }
 
 export async function signIn(email: string, password: string): Promise<void> {
+  const generation = ++_sessionGeneration;
   _loading = true;
   _error = null;
   broadcast();
 
+  const url = `${SUPABASE_URL}/auth/v1/token?grant_type=password`;
   try {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({ email, password }),
-    });
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ email, password }),
+      });
+    } catch (error) {
+      throw new Error(
+        describeNetworkFailure(error, { method: "POST", url }),
+        { cause: error }
+      );
+    }
 
     if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as {
+      const raw = await res.text().catch(() => "");
+      let parsed: {
+        // GoTrue returns `msg`; older/other shapes use these.
+        msg?: string;
         error_description?: string;
         message?: string;
         error?: string;
-      };
+      } = {};
+      try {
+        parsed = raw ? JSON.parse(raw) : {};
+      } catch {
+        // Keep the raw body below rather than discarding what the server said.
+      }
+      const detail =
+        parsed.msg ??
+        parsed.error_description ??
+        parsed.message ??
+        parsed.error ??
+        raw.slice(0, 300);
       throw new Error(
-        body.error_description ?? body.message ?? body.error ?? "Login failed"
+        detail
+          ? `${detail} (HTTP ${res.status} from ${url})`
+          : `Sign-in failed: HTTP ${res.status} from ${url}`
       );
     }
 
@@ -274,11 +338,17 @@ export async function signIn(email: string, password: string): Promise<void> {
       access_token: string;
       refresh_token?: string;
     };
-    await writeSession(data.access_token, data.refresh_token ?? null);
+    const saved = await writeSession(
+      data.access_token,
+      data.refresh_token ?? null,
+      generation
+    );
+    if (!saved) return;
     _loading = false;
     _error = null;
     broadcast();
   } catch (e) {
+    if (generation !== _sessionGeneration) return;
     _loading = false;
     _error = e instanceof Error ? e.message : "Login failed";
     broadcast();
@@ -286,6 +356,7 @@ export async function signIn(email: string, password: string): Promise<void> {
 }
 
 export async function signOut(): Promise<void> {
+  _sessionGeneration += 1;
   _error = null;
   await clearSession();
 }
