@@ -94,10 +94,11 @@ export async function enrichWithPriorEvents(
   db: ReturnType<typeof createServerSupabase>,
   docIndex: DocIndex,
   nonce?: string,
+  messageTable = "chat_messages",
 ): Promise<ChatMessage[]> {
   if (!chatId) return messages;
   const { data: rows } = await db
-    .from("chat_messages")
+    .from(messageTable)
     .select("content, created_at")
     .eq("chat_id", chatId)
     .eq("role", "assistant")
@@ -205,7 +206,7 @@ export async function enrichWithPriorEvents(
 }
 
 // ---------------------------------------------------------------------------
-// Word add-in document context (`document_context` on POST /chat)
+// Word add-in document context (`document_context` on POST /word-chat)
 // ---------------------------------------------------------------------------
 
 /** Cap so an oversized document body can't blow the model's context window. */
@@ -213,7 +214,7 @@ export const MAX_DOCUMENT_CONTEXT_CHARS = 200_000;
 
 /**
  * Parses the optional `document_context` field the Word add-in sends on
- * POST /chat: the plain-text body of the user's active document, read via
+ * POST /word-chat: the plain-text body of the user's active document, read via
  * Word.run() and posted inline rather than uploaded (there is no stored
  * document record). Absent/empty values normalize to `undefined`; anything
  * that is present but not a string is a 400.
@@ -403,13 +404,14 @@ export async function appendAskInputsResponseToLastAssistantMessage(
   db: ReturnType<typeof createServerSupabase>,
   chatId: string,
   response: AskInputsResponseRequest,
+  messageTable = "chat_messages",
 ) {
   await appendAssistantEventsToLastAssistantMessage(db, chatId, [
     {
       type: "ask_inputs_response" as const,
       responses: response.responses,
     },
-  ]);
+  ], undefined, messageTable);
 }
 
 export async function appendAssistantEventsToLastAssistantMessage(
@@ -417,12 +419,13 @@ export async function appendAssistantEventsToLastAssistantMessage(
   chatId: string,
   events: AssistantEvent[],
   citations?: unknown[],
+  messageTable = "chat_messages",
 ) {
   if (events.length === 0 && (!citations || citations.length === 0)) {
     return;
   }
   const { data: rows, error: selectError } = await db
-    .from("chat_messages")
+    .from(messageTable)
     .select("id, content, citations")
     .eq("chat_id", chatId)
     .eq("role", "assistant")
@@ -455,7 +458,7 @@ export async function appendAssistantEventsToLastAssistantMessage(
       ? [...existingCitations, ...citations]
       : existingCitations;
   const { error: updateError } = await db
-    .from("chat_messages")
+    .from(messageTable)
     .update({
       content: next.length ? next : null,
       citations: nextCitations.length ? nextCitations : null,
@@ -496,6 +499,7 @@ export async function buildDocContext(
   userId: string,
   db: ReturnType<typeof createServerSupabase>,
   chatId?: string | null,
+  messageTable = "chat_messages",
 ): Promise<{ docIndex: DocIndex; docStore: DocStore }> {
   const docIndex: DocIndex = {};
   const docStore: DocStore = new Map();
@@ -515,7 +519,7 @@ export async function buildDocContext(
   // them, and can't call edit_document / read_document on them.
   if (chatId) {
     const { data: rows } = await db
-      .from("chat_messages")
+      .from(messageTable)
       .select("content")
       .eq("chat_id", chatId)
       .eq("role", "assistant");
@@ -679,7 +683,7 @@ export async function buildWorkflowStore(
   userEmail: string | null | undefined,
   db: ReturnType<typeof createServerSupabase>,
 ): Promise<WorkflowStore> {
-  const { SYSTEM_ASSISTANT_WORKFLOWS } = await import("../systemWorkflows");
+  const { SYSTEM_ASSISTANT_WORKFLOWS } = await import("../systemWorkflows.js");
   const store: WorkflowStore = new Map();
   const normalizedUserEmail = (userEmail ?? "").trim().toLowerCase();
 

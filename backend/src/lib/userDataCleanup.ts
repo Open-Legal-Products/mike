@@ -154,13 +154,15 @@ async function removeEmailFromSharedWith(
 }
 
 export async function deleteAllUserChats(db: Db, userId: string) {
-    const [assistantChats, tabularChats] = await Promise.all([
+    const [assistantChats, tabularChats, wordDocuments] = await Promise.all([
         db.from("chats").delete().eq("user_id", userId),
         db.from("tabular_review_chats").delete().eq("user_id", userId),
+        db.from("word_documents").delete().eq("user_id", userId),
     ]);
 
     await throwIfError(assistantChats.error, "Failed to delete assistant chats");
     await throwIfError(tabularChats.error, "Failed to delete tabular chats");
+    await throwIfError(wordDocuments.error, "Failed to delete Word chats");
 }
 
 export async function deleteAllUserTabularReviews(db: Db, userId: string) {
@@ -319,6 +321,7 @@ export async function deleteUserAccountData(
         db.from("tabular_review_chats").delete().eq("user_id", userId),
         db.from("tabular_reviews").delete().eq("user_id", userId),
         db.from("chats").delete().eq("user_id", userId),
+        db.from("word_documents").delete().eq("user_id", userId),
         db.from("project_subfolders").delete().eq("user_id", userId),
         db.from("hidden_workflows").delete().eq("user_id", userId),
         db

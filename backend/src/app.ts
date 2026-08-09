@@ -4,6 +4,7 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { chatRouter } from "./routes/chat";
+import { wordChatRouter } from "./routes/wordChat";
 import { projectsRouter } from "./routes/projects";
 import { projectChatRouter } from "./routes/projectChat";
 import { documentsRouter } from "./routes/documents";
@@ -139,6 +140,7 @@ app.use(
 app.use(generalLimiter);
 
 app.post("/chat", chatLimiter);
+app.post("/word-chat", chatLimiter);
 app.post("/projects/:projectId/chat", chatLimiter);
 app.post("/tabular-review/:reviewId/chat", chatLimiter);
 app.post("/tabular-review/:reviewId/generate", chatLimiter);
@@ -164,6 +166,7 @@ app.delete("/user/tabular-reviews", dataDeleteLimiter);
 app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
 app.use("/chat", chatRouter);
+app.use("/word-chat", wordChatRouter);
 app.use("/models", modelsRouter);
 app.use("/projects", projectsRouter);
 app.use("/projects/:projectId/chat", projectChatRouter);

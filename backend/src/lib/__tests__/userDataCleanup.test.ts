@@ -123,7 +123,7 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("deleteAllUserChats", () => {
-    it("deletes only the target user's assistant and tabular chats", async () => {
+    it("deletes only the target user's assistant, Word, and tabular chats", async () => {
         const { db, tables } = makeDb({
             chats: [
                 { id: "c1", user_id: "u1" },
@@ -133,10 +133,15 @@ describe("deleteAllUserChats", () => {
                 { id: "tc1", user_id: "u1" },
                 { id: "tc2", user_id: "u2" },
             ],
+            word_documents: [
+                { id: "wd1", user_id: "u1" },
+                { id: "wd2", user_id: "u2" },
+            ],
         });
         await deleteAllUserChats(db, "u1");
         expect(ids(tables.chats)).toEqual(["c2"]);
         expect(ids(tables.tabular_review_chats)).toEqual(["tc2"]);
+        expect(ids(tables.word_documents)).toEqual(["wd2"]);
     });
 
     it("surfaces delete failures with context", async () => {
