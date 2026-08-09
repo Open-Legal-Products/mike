@@ -6,11 +6,11 @@
  * paragraph boundaries, but removes presentation-only Markdown. Word then
  * applies the surrounding document's paragraph formatting during insertion.
  */
-export function toWordParagraphs(value: string): string[] {
+function toWordParagraphs(value: string): string[] {
   let text = value.replace(/\r\n?/g, "\n").trim();
 
   const fenced = text.match(/^```[^\n]*\n([\s\S]*?)\n```$/);
-  if (fenced) text = fenced[1].trim();
+  if (fenced?.[1] !== undefined) text = fenced[1].trim();
 
   const paragraphs: string[] = [];
   let previousWasBlank = false;

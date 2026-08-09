@@ -2,25 +2,29 @@ import React, { useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { EDIT_SECTION_SURFACE } from "./messageStyles";
 
+interface EditCardsSectionProps {
+  summary: string;
+  /**
+   * Caller-owned grouped actions, typically Accept all and Reject all
+   * PillButtons. The section deliberately owns no mutation behavior.
+   */
+  actions?: ReactNode;
+  /** Accessible name for the grouped action row. */
+  actionsLabel?: string;
+  children: ReactNode;
+}
+
 /**
  * Duplicated from the web app's EditCardsSection: a white glass container
- * with a "N tracked changes" summary row, an actions row (the pane's
- * Apply / Insert pills slot in where the web puts Accept all / Reject
- * all), and a chevron-collapsible list of EditCards.
+ * with a tracked-change summary, a caller-supplied grouped actions row, and a
+ * chevron-collapsible list of EditCards.
  */
 export function EditCardsSection({
   summary,
   actions,
-  status,
+  actionsLabel = "Tracked change actions",
   children,
-}: {
-  summary: string;
-  /** Action pills row (e.g. "Apply 2 tracked edits"). */
-  actions?: ReactNode;
-  /** Status/report content shown under the actions (apply summary, Found events). */
-  status?: ReactNode;
-  children: ReactNode;
-}): React.ReactElement {
+}: EditCardsSectionProps): React.ReactElement {
   const [isOpen, setIsOpen] = useState(true);
 
   return (
@@ -41,9 +45,14 @@ export function EditCardsSection({
         </button>
       </div>
       {actions && (
-        <div className="flex flex-wrap items-center gap-2 px-3 pt-3">{actions}</div>
+        <div
+          className="flex flex-wrap items-center gap-2 px-3 pt-3"
+          role="group"
+          aria-label={actionsLabel}
+        >
+          {actions}
+        </div>
       )}
-      {status && <div className="px-3 pt-3">{status}</div>}
       {isOpen && (
         <div className="flex flex-col gap-2 px-3 pb-3 pt-3">{children}</div>
       )}

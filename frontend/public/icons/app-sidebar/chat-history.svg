@@ -1,0 +1,59 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="historyFace" cx="36%" cy="28%" r="74%">
+      <stop offset="0" stop-color="#F1F5F9"/>
+      <stop offset="0.68" stop-color="#E9EEF4"/>
+      <stop offset="1" stop-color="#D7DEE7"/>
+    </radialGradient>
+    <!-- Brushed metal, matching settings.svg. User-space so the arc and the
+         arrowhead share one light ramp instead of each resolving its own
+         against its own bounding box. -->
+    <linearGradient
+      id="historyMetal"
+      x1="32"
+      y1="4"
+      x2="32"
+      y2="60"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#A2AEBC"/>
+      <stop offset="0.22" stop-color="#8895A6"/>
+      <stop offset="0.48" stop-color="#6E7C8E"/>
+      <stop offset="0.70" stop-color="#556274"/>
+      <stop offset="0.86" stop-color="#46525F"/>
+      <stop offset="1" stop-color="#7A8695"/>
+    </linearGradient>
+    <linearGradient
+      id="historyMetalRim"
+      x1="32"
+      y1="4"
+      x2="32"
+      y2="60"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.72"/>
+      <stop offset="0.5" stop-color="#CBD5E1" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#0F172A" stop-opacity="0.62"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Clock face -->
+  <circle cx="32.5" cy="33.5" r="16.6" fill="url(#historyFace)" stroke="#E2E8F0" stroke-width="1.2"/>
+
+  <!-- Hands, matching the Lucide History symbol -->
+  <path d="M32.5 23.5V33.5L41 37.8" fill="none" stroke="#475569" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32.5" cy="33.5" r="2.2" fill="#64748B" stroke="#FFFFFF" stroke-width="0.8"/>
+
+  <!-- Dimensional rewind ring, open at the upper left, with a counter-clockwise
+       arrowhead whose tip sits on the 10:30 spoke. -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="url(#historyMetalRim)" stroke-width="7.8">
+      <path d="M21.04 16.51A20.5 20.5 0 1 1 12.31 29.94"/>
+      <path d="M24.71 18.87L17.74 18.74L20.23 12.22"/>
+    </g>
+    <g stroke="url(#historyMetal)" stroke-width="6">
+      <path d="M21.04 16.51A20.5 20.5 0 1 1 12.31 29.94"/>
+      <path d="M24.71 18.87L17.74 18.74L20.23 12.22"/>
+    </g>
+  </g>
+</svg>

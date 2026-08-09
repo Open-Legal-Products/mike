@@ -1,8 +1,8 @@
 # Mike Word Add-in
 
-An Office.js task pane add-in that brings the Mike legal AI platform directly into Microsoft Word. From the task pane you can chat with an AI about the open document, attach additional documents and workflows, choose a model, apply AI suggestions as tracked-change redlines, run quick actions (improve writing, proofread, anonymise, draft clause), and execute saved Mike workflows against the document — all without leaving Word.
+An Office.js task pane add-in that brings the Mike legal AI platform directly into Microsoft Word. From the task pane you can chat with an AI about the open document, attach additional documents and workflows, choose a model, receive suggestions that are applied immediately as tracked-change redlines, accept or reject them individually or as a group, launch configurable quick actions, and execute saved Mike workflows against the document — all without leaving Word.
 
-The add-in talks to the **same API and Supabase project as the web app**: sign-in goes directly to Supabase (`/auth/v1/token`), while chat, actions, workflows, projects, and uploads call the Mike API (`http://localhost:3001` in local development).
+The add-in talks to the **same API and Supabase project as the web app**: sign-in goes directly to Supabase (`/auth/v1/token`), while Word chat, workflows, document uploads, profiles, and model discovery call the Mike API (`http://localhost:3001` in local development). Word conversations use dedicated `word_*` tables and never appear in the web assistant's ordinary chat history.
 
 ---
 
@@ -18,7 +18,7 @@ The add-in talks to the **same API and Supabase project as the web app**: sign-i
 
 ## Quick start (one command)
 
-If the API is already running and `frontend/.env.local` is filled in, this script does everything below for you — reads the Supabase URL + publishable key, writes `.env.development`, installs dependencies, installs the trusted dev certificate, and launches the add-in into Word:
+If the API is already running and `frontend/.env.local` is filled in, this script does everything below for you — reads the Supabase URL + publishable key, writes `.env`, installs dependencies, installs the trusted dev certificate, and launches the add-in into Word:
 
 ```bash
 bash word-addin/scripts/dev.sh
@@ -56,27 +56,28 @@ The sections below explain each step the script automates, and the manual / web 
 
 2. **Set environment variables**
 
-   The webpack build reads these from `process.env` at compile time. Create a file called `.env.development` in `word-addin/`:
+   Webpack loads `word-addin/.env` automatically for local development. Copy the example file or create it directly:
 
    ```bash
-   # word-addin/.env.development
+   cp .env.example .env
+   # then edit word-addin/.env
    REACT_APP_SUPABASE_URL=https://localhost:3000
    REACT_APP_SUPABASE_ANON_KEY=<your Supabase anon / publishable key>
    REACT_APP_API_BASE_URL=https://localhost:3000/api
+   REACT_APP_WEB_APP_URL=https://app.mikeoss.com
    SUPABASE_PROXY_TARGET=https://your-project.supabase.co
    API_PROXY_TARGET=http://localhost:3001
    ```
 
    - `REACT_APP_SUPABASE_ANON_KEY` — the same publishable key as `frontend/.env.local`.
-   - The `REACT_APP_*_URL` values point the HTTPS task pane at its same-origin proxy. `SUPABASE_PROXY_TARGET` and `API_PROXY_TARGET` identify the real upstream services.
+   - The API and Supabase `REACT_APP_*_URL` values point the HTTPS task pane at its same-origin proxy. `SUPABASE_PROXY_TARGET` and `API_PROXY_TARGET` identify the real upstream services.
+   - `REACT_APP_WEB_APP_URL` is used only for account links such as **Set up API keys**. It defaults to the deployed Mike app because the local frontend cannot share port 3000 with the add-in; override it if you run the frontend on another port.
 
    > **Mixed content / HTTPS:** Word serves the task pane over HTTPS and blocks plain-HTTP browser requests. Keep the compiled URLs on `https://localhost:3000`; webpack proxies `/api` to the Mike API and `/auth` to Supabase. The recommended `scripts/dev.sh` configures this automatically.
 
-   Because this is a custom webpack build (not Create React App), `.env.development` is **not** read automatically. Source it before running npm commands:
+   Existing shell variables take precedence over `.env`, which keeps CI and deployed builds configurable without modifying the file. Production builds continue to require their values from the deployment environment.
 
-   ```bash
-   set -a && source .env.development && set +a
-   ```
+   `scripts/dev.sh` regenerates `.env` from the frontend configuration while preserving explicit add-in overrides. If you edit `.env` while webpack is running, restart the add-in dev server because the file is loaded only at startup.
 
 3. **Trust the dev SSL certificate (one time only)**
 
@@ -90,7 +91,7 @@ The sections below explain each step the script automates, and the manual / web 
 
 4. **Start the Mike backend**
 
-   From the repo root:
+   From the `word-addin` directory:
 
    ```bash
    (cd ../backend && npm run dev)
@@ -128,7 +129,7 @@ Restart Word, then: **Insert → Add-ins → My Add-ins → Mike**
 > node e2e-live/manual-session.mjs             # opens Word online with the pane ready
 > ```
 
-The manifest requires `WordApi 1.4`, which includes the change-tracking APIs. Word will not activate the add-in on a host that does not satisfy that requirement set.
+The manifest requires `WordApi 1.6`, which includes the tracked-change inspection, accept, and reject APIs used by assistant edit cards. Word will not activate the add-in on a host that does not satisfy that requirement set.
 
 ## Production build
 
@@ -152,7 +153,9 @@ The build writes the task-pane assets and a deployable, URL-rewritten manifest t
 
 ### Chat
 
-Ask any question about the open document. The add-in always reads the current document into `document_context` and always asks the model to return applyable tracked-edit blocks when it proposes textual changes. Responses stream in real time.
+Ask any question about the open document. The add-in sends Word conversations to the dedicated `POST /word-chat` route with the active document in `document_context`. That route adds the Word-specific system prompt server-side, while persisted user messages contain only the text the user typed. Responses stream in real time.
+
+Chat storage defaults to **Cloud**. Open **Settings** from the hamburger menu to switch to **This device only**, which bypasses server chat persistence and stores document-scoped conversations in IndexedDB. Switching locations does not copy or delete existing conversations; Chat History displays the currently selected location. Cloud storage requires the `20260809_01_word_addin_chats.sql` backend migration on existing databases (fresh databases receive the same tables from `backend/schema.sql`).
 
 The composer mirrors the web assistant controls:
 
@@ -162,25 +165,17 @@ The composer mirrors the web assistant controls:
 
 The chat header and composer float over the message surface. Use **New chat** to clear the current conversation, **Chat history** to reopen a saved conversation, and the hamburger menu to access Quick Actions, Workflows, or Sign out.
 
-On any AI response you can:
-
-- **Insert below cursor** — inserts one or more real paragraphs after the paragraph containing the current selection; selected text is never overwritten
-- **Insert below (tracked)** — performs the same paragraph-aware insertion with change tracking enabled, then restores the user's prior tracking mode
+When an answer proposes document edits, it streams each change using `<original>`, `<replacement>`, and `<reason>` tags. The task pane hides those transport tags, renders edit cards immediately, applies sealed edits to Word as tracked changes, and provides **Accept** and **Reject** controls for review.
 
 ### Quick Actions
 
-One-click AI operations, each streaming their result into a result box:
+Quick Actions are shortcuts that prepare the Assistant rather than running a separate execution screen. Selecting one attaches its linked workflow and fills the composer with a complete starting prompt; the user can review or edit that prompt before sending it.
 
-| Action | What it does |
-|---|---|
-| **Improve Writing** | Captures the exact selected range and rewrites it for clarity and professionalism. The result can replace that captured range with or without tracking. It never searches for and replaces a different duplicate elsewhere, and it refuses to apply if the selected range changed while the model was responding. |
-| **Proofread** | Reviews the **entire document** for grammar, typos, punctuation, and stylistic issues. Streams each problem as an `ORIGINAL` / `REPLACEMENT` / `REASON` block, then offers **Apply N corrections (tracked)**: each original snippet is located in the document (exact, case-sensitive search) and replaced under `TrackAll`, producing genuine redlines the user can accept or reject in Word's Review tab. Corrections whose text can no longer be found (e.g. the document was edited after the scan) are skipped and reported, never guessed at. |
-| **Anonymise** | Scans the **entire document** for PII (names, addresses, phone numbers, dates of birth, IDs, etc.) and streams proposed anonymised replacements in the same format. **Apply N redactions (tracked)** replaces every occurrence of each PII string as a tracked change. |
-| **Draft Clause** | Enter a description of the clause you need, then click **Draft clause**. The result is normalised from model Markdown into Word paragraphs and can be inserted below the cursor with or without tracking. |
+The built-in actions are **Proofread**, **Compare documents**, **Extract key terms**, and **Draft from template**. Open **Quick Actions** from the hamburger menu to inspect each action's prompt and linked workflow or hide it from the Assistant's initial view.
 
 ### Workflows
 
-Select a saved Mike workflow from the dropdown and click **Run workflow on document**. The workflow instruction and document context are sent to the API. Results stream in and can be inserted as paragraphs below the cursor.
+Open **Workflows** from the hamburger menu to browse assistant workflows. Editable workflows use the same Tiptap Markdown editor as the web app, with rich-text formatting, tables, raw Markdown mode, and automatic saving. Use the header **+** button to create an assistant workflow, optionally importing its instructions from a `.md` or `.markdown` file. The **Use** action returns to Assistant and attaches the selected workflow to the next message.
 
 ---
 
@@ -201,7 +196,7 @@ npm run build:e2e
 npm run test:e2e
 ```
 
-It builds the bundle with test env vars, serves it over plain HTTP, injects an Office.js mock (`e2e/support/office-mock.ts`), and drives the exposed task-pane flows (auth, chat, quick actions, and workflows). Project-view coverage is retained but skipped while that view is not exposed.
+It builds the bundle with test env vars, serves it over plain HTTP, injects an Office.js mock (`e2e/support/office-mock.ts`), and drives the exposed task-pane flows (auth, chat, quick actions, workflows, chat history, storage, and tracked-edit persistence).
 
 ---
 
@@ -215,7 +210,7 @@ node e2e-live/anthropic-stub.mjs &                          # listens on :4141
 (cd ../backend && ANTHROPIC_BASE_URL=http://127.0.0.1:4141 npm run dev)
 ```
 
-The stub's answers are static, so exercise it with the document flaws it scripts against (see the constants at the top of `anthropic-stub.mjs` and `e2e-live/word-web-full-demo.mjs`). The full live demo — every button against real Word on the web, recorded to video — runs with `node e2e-live/word-web-full-demo.mjs`.
+The stub's answers are static, so exercise it with the document flaws it scripts against (see the constants at the top of `anthropic-stub.mjs`). For manual Word-on-the-web testing, capture a Microsoft session with `node e2e-live/word-web-session.mjs --login`, then run `node e2e-live/manual-session.mjs` to sideload the current add-in.
 
 ---
 
@@ -244,6 +239,9 @@ Then **fully quit Word (Cmd-Q)** — its webview caches trust decisions — and 
 **`npm start` fails with `EEXIST: file already exists, link 'manifest.xml' -> …/wef/….manifest.xml`**
 A previous run exited without deregistering (crash, Ctrl-C) and left the sideload hard-link behind. `npm start` now clears this automatically via its `prestart` hook; if you hit it anyway, run `npm run stop` and retry.
 
+**`npm start` fails with `Cannot find module 'semver'` from `office-addin-dev-settings`**
+Run `npm install` in `word-addin/`. `semver` is intentionally a direct development dependency because the Office sideloading tool loads it at runtime without reliably declaring it in every affected dependency graph; do not remove it as “unused.”
+
 **`npm start` / `dev.sh` complains port 3000 is in use**
 The add-in dev server and the manifest are hardwired to `https://localhost:3000`, which collides with the Mike web app's dev server. Find the holder with `lsof -nP -iTCP:3000 -sTCP:LISTEN` and stop it (usually `npm run dev` in `frontend/`).
 
@@ -251,18 +249,18 @@ The add-in dev server and the manifest are hardwired to `https://localhost:3000`
 See the caveat under [Word on the web](#word-on-the-web) — Chrome's Local Network Access checks silently block the localhost iframe; use `e2e-live/manual-session.mjs`.
 
 **Add-in shows blank after the cert is trusted**
-Right-click the task pane → **Inspect** and check the console for errors. A common cause is a missing or wrong `REACT_APP_SUPABASE_URL` / `REACT_APP_SUPABASE_ANON_KEY` — the bundle compiles with empty strings if the env vars were not exported before `npm start`.
+Right-click the task pane → **Inspect** and check the console for errors. A common cause is a missing or wrong `REACT_APP_SUPABASE_URL` / `REACT_APP_SUPABASE_ANON_KEY` in `.env`.
 
 **Login fails with "Login failed" or a 401**
-Confirm the `REACT_APP_SUPABASE_URL` / `REACT_APP_SUPABASE_ANON_KEY` in `.env.development` match `frontend/.env.local`, and that the URL has no trailing slash.
+Confirm the `REACT_APP_SUPABASE_URL` / `REACT_APP_SUPABASE_ANON_KEY` in `.env` match `frontend/.env.local`, and that the URL has no trailing slash.
 
-**Tracked insertion is unavailable**
-The add-in requires WordApi 1.4. Confirm the Word host and build support that requirement set; otherwise use a supported Microsoft 365 Word client.
+**Tracked edit review is unavailable**
+The add-in requires WordApi 1.6. Confirm the Word host and build support that requirement set; otherwise use a supported Microsoft 365 Word client.
 
 **Document upload fails**
 - Confirm the Mike API is running (`npm run dev` in `backend/`) and reachable at `http://localhost:3001`
 - Confirm the API's configured object-storage bucket exists
 - Check the backend logs for the specific error
 
-**Workflows tab shows "No workflows found"**
+**Workflows page shows "No workflows found"**
 Workflows are fetched from `GET /workflows` on the Mike backend. Confirm the backend is running and that at least one workflow exists in the database.

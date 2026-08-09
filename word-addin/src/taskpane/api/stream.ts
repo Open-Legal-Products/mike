@@ -1,19 +1,11 @@
 /**
- * Add-in chat streaming helper — replaces the old client.ts `stream()`.
+ * Word-chat streaming boundary for the task pane.
  *
- * Preserves that behaviour exactly: injects a keyed DEFAULT_MODEL when the
- * caller supplies none, passes documentContext through, renders only
- * `content_delta` frames, throws on a pre-`[DONE]` `error` frame, and (via
- * readSSE's terminal `[DONE]`) ignores the harmless trailing post-`[DONE]`
- * error frame. Framing/parse rules live in @mike/api-client's readSSE now.
+ * Passes documentContext through, renders only `content_delta` frames, throws
+ * on a pre-`[DONE]` `error` frame, and rejects a response that ends without a
+ * terminal `[DONE]`. Framing rules live in the local HTTP client's readSSE.
  */
-import { streamChat, readSSE } from "./mikeApi";
-
-// Guard `process` like client.ts did — a stale dev server can leave the
-// substitution unapplied, and bare `process` throws in the browser.
-const DEFAULT_MODEL: string =
-  (typeof process !== "undefined" && process.env.REACT_APP_DEFAULT_MODEL) ||
-  "claude-sonnet-4-6";
+import { streamWordChat, readSSE } from "./mikeApi";
 
 export async function streamAssistant(
   params: {
@@ -26,17 +18,25 @@ export async function streamAssistant(
       workflow?: { id: string; title: string };
     }[];
     documentContext?: string;
-    model?: string;
+    model: string;
     chatId?: string;
+    wordDocumentId: string;
+    wordChatStorage: "cloud" | "local";
     signal?: AbortSignal;
+    onMetadata?: (metadata: {
+      chatId?: string;
+      assistantMessageId?: string;
+    }) => void;
   },
   onText: (text: string) => void
 ): Promise<void> {
-  const res = await streamChat({
+  const res = await streamWordChat({
     messages: params.messages,
-    model: params.model ?? DEFAULT_MODEL,
+    model: params.model,
     chat_id: params.chatId,
     document_context: params.documentContext,
+    document_id: params.wordDocumentId,
+    storage: params.wordChatStorage,
     signal: params.signal,
   });
   if (!res.ok) {
@@ -44,12 +44,21 @@ export async function streamAssistant(
     throw new Error(`Chat request failed (${res.status}): ${body}`);
   }
   let streamError: string | null = null;
-  await readSSE(
+  const result = await readSSE(
     res,
     (data) => {
       const d = data as Record<string, unknown>;
       if (d.type === "content_delta" && typeof d.text === "string" && d.text) {
         onText(d.text);
+      } else if (d.type === "chat_id") {
+        const chatId = typeof d.chatId === "string" ? d.chatId : undefined;
+        const assistantMessageId =
+          typeof d.assistantMessageId === "string"
+            ? d.assistantMessageId
+            : undefined;
+        if (chatId || assistantMessageId) {
+          params.onMetadata?.({ chatId, assistantMessageId });
+        }
       } else if (d.type === "error") {
         streamError = typeof d.message === "string" ? d.message : "Stream error";
       }
@@ -57,4 +66,7 @@ export async function streamAssistant(
     { signal: params.signal }
   );
   if (streamError) throw new Error(streamError);
+  if (!result.done && !params.signal?.aborted) {
+    throw new Error("Chat stream ended before the completion marker.");
+  }
 }

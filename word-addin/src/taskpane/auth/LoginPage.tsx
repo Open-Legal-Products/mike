@@ -1,10 +1,14 @@
 import React, { useState } from "react";
 import { useAuth } from "./useAuth";
-import { Button } from "@mike/shared/ui/button";
-import { Input } from "@mike/shared/ui/input";
-import { Label } from "@mike/shared/ui/label";
-import { Spinner } from "@mike/shared/ui/spinner";
-import { MikeIcon } from "@mike/shared/chat/mike-icon";
+import { Input } from "../../shared/ui/input";
+import { Label } from "../../shared/ui/label";
+import { WordAddinLogo } from "../components/shell/WordAddinLogo";
+import { PillButton } from "../components/primitives/PillButton";
+
+const authGlassCardClassName =
+  "rounded-3xl border border-white/70 bg-gray-50/95 p-6 shadow-[0_14px_40px_rgba(15,23,42,0.101),0_5px_14px_rgba(15,23,42,0.067)] backdrop-blur-2xl @sm:p-8";
+const authInputClassName =
+  "rounded-xl border border-white/70 bg-white/55 px-3 text-gray-700 shadow-[0_3px_9px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.86),inset_0_-1px_0_rgba(255,255,255,0.58)] backdrop-blur-xl transition-[color,box-shadow,background-color,border-color] placeholder:text-gray-400 hover:bg-white/65 focus-visible:border-white/90 focus-visible:bg-white/75 focus-visible:ring-2 focus-visible:ring-white/70";
 
 export function LoginPage(): React.ReactElement {
   const { login, loading, error } = useAuth();
@@ -18,71 +22,82 @@ export function LoginPage(): React.ReactElement {
   };
 
   return (
-    <div className="flex h-full items-center justify-center overflow-y-auto bg-background px-5 py-8 @sm:px-6">
-      <form
-        className="flex w-full max-w-[320px] flex-col gap-5"
-        onSubmit={handleSubmit}
-        noValidate
-      >
-        <div className="flex flex-col items-center gap-2.5 text-center">
-          <MikeIcon size={44} />
-          <div className="space-y-1">
-            <h1 className="text-xl font-semibold tracking-tight text-foreground">
-              Welcome to Mike
+    <div className="h-full overflow-y-auto bg-gray-50/80">
+      <main className="relative flex min-h-full items-center justify-center px-4 py-24 @sm:px-6">
+        <div className="absolute top-5 left-1/2 -translate-x-1/2 @sm:top-6">
+          <WordAddinLogo size="lg" />
+        </div>
+
+        <div className="w-full max-w-md">
+          <div data-testid="login-card" className={authGlassCardClassName}>
+            <h1 className="mb-6 text-left font-serif text-2xl font-medium text-gray-950">
+              Log In
             </h1>
-            <p className="text-sm text-muted-foreground">
-              AI-powered legal assistant
-            </p>
+
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+              <div>
+                <Label
+                  htmlFor="email"
+                  className="mb-2 block text-sm font-medium text-gray-700"
+                >
+                  Email
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your email"
+                  disabled={loading}
+                  autoComplete="email"
+                  required
+                  className={`w-full ${authInputClassName}`}
+                />
+              </div>
+
+              <div>
+                <Label
+                  htmlFor="password"
+                  className="mb-2 block text-sm font-medium text-gray-700"
+                >
+                  Password
+                </Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  disabled={loading}
+                  autoComplete="current-password"
+                  required
+                  className={`w-full ${authInputClassName}`}
+                />
+              </div>
+
+              {error && (
+                <div
+                  className="rounded bg-red-50 p-3 text-sm text-red-600"
+                  role="alert"
+                >
+                  {error}
+                </div>
+              )}
+
+              <div className="flex justify-end pt-1">
+                <PillButton
+                  type="submit"
+                  tone="black"
+                  size="normal"
+                  disabled={loading || !email.trim() || !password}
+                >
+                  {loading ? "Logging in..." : "Log in"}
+                </PillButton>
+              </div>
+            </form>
           </div>
         </div>
-
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="email">Email address</Label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@firm.com"
-              disabled={loading}
-              autoComplete="email"
-              required
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              disabled={loading}
-              autoComplete="current-password"
-              required
-            />
-          </div>
-
-          {error && (
-            <p
-              className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
-              role="alert"
-            >
-              {error}
-            </p>
-          )}
-
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={loading || !email.trim() || !password}
-          >
-            {loading ? <Spinner label="Signing in…" /> : "Sign in"}
-          </Button>
-        </div>
-      </form>
+      </main>
     </div>
   );
 }

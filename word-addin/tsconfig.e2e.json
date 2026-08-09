@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "@playwright/test", "office-runtime"]
+  },
+  "include": ["e2e/**/*.ts", "playwright.config.ts"],
+  "exclude": ["dist", "node_modules"]
+}

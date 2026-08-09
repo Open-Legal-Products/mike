@@ -17,11 +17,16 @@
  *
  * Network mocks may be registered before OR after gotoTaskpane(); they apply to
  * any matching request that fires afterwards (logins/sends happen on click).
- * Seed-* setters affecting the initial mount (token) must be called BEFORE
- * gotoTaskpane(); live setters (setDocumentText/setSelection) work any time.
+ * Seed setters affecting the initial mount must be called before
+ * gotoTaskpane().
  */
 import { test as base, expect, Page } from "@playwright/test";
-import { installOfficeMock, OfficeSeed, WordCalls } from "./office-mock";
+import {
+  installOfficeMock,
+  OfficeSeed,
+  WordCalls,
+  WordDocumentSnapshot,
+} from "./office-mock";
 
 /** Static path the production bundle is served at (see playwright.config.ts). */
 const TASKPANE_PATH = "/taskpane.html";
@@ -32,37 +37,41 @@ const OFFICE_JS_GLOB = "https://appsforoffice.microsoft.com/**";
 // Route globs for every endpoint the add-in calls. Host-agnostic on purpose so
 // they match regardless of REACT_APP_* build values.
 const AUTH_GLOB = "**/auth/v1/token**";
-const CHAT_GLOB = "**/chat";
+const CHAT_GLOB = "**/word-chat";
 
-export type HttpMethod = "GET" | "POST" | "DELETE" | "PUT" | "PATCH";
+type HttpMethod = "GET" | "POST" | "DELETE" | "PUT" | "PATCH";
 
-export interface MockLoginOk {
+interface MockLoginOk {
   ok: true;
   /** access_token returned to the client; defaults to "test-access-token". */
   accessToken?: string;
 }
-export interface MockLoginError {
+interface MockLoginError {
   /** Surfaced by LoginPage as the error message. */
   error: string;
   /** HTTP status for the failed grant (default 400). */
   status?: number;
 }
-export type MockLoginArg = MockLoginOk | MockLoginError;
+type MockLoginArg = MockLoginOk | MockLoginError;
 
-export interface ChatStreamOpts {
+interface ChatStreamOpts {
   /** Emit a `{"type":"error","message"}` event BEFORE `[DONE]` (surfaces as a throw). */
   errorBefore?: string;
   /** Return a non-2xx HTTP response instead of a stream (>=400 triggers the failure path). */
   status?: number;
   /**
-   * Hold the `/chat` response pending for this many milliseconds before
+   * Hold the `/word-chat` response pending for this many milliseconds before
    * fulfilling. Lets a test deterministically observe the in-flight streaming
    * state (e.g. input/Send disabled) before the stream completes.
    */
   holdMs?: number;
+  /** Stable chat identity emitted in the leading `chat_id` SSE event. */
+  chatId?: string;
+  /** Stable assistant-message UUID used to persist Word edit anchors. */
+  assistantMessageId?: string;
 }
 
-export interface MockJsonOpts {
+interface MockJsonOpts {
   /** HTTP status for the response (default 200). */
   status?: number;
 }
@@ -76,10 +85,6 @@ export interface Addin {
   seedToken(token: string): void;
   /** Pre-seed the `mike_refresh_token` so an expired access token can refresh. */
   seedRefreshToken(token: string): void;
-  /** Pre-seed the document body text returned by readDocumentText(). */
-  seedDocumentText(text: string): void;
-  /** Pre-seed the user's selected Word range text. */
-  seedSelection(text: string): void;
 
   // ----- navigation -----
   /**
@@ -87,14 +92,10 @@ export interface Addin {
    * navigate to the task pane, and wait for React to mount (login OR app shell).
    */
   gotoTaskpane(opts?: OfficeSeed): Promise<void>;
+  /** Reload the task pane while preserving the open mock Word document. */
+  reloadTaskpane(): Promise<void>;
   /** Assert the authenticated floating chat shell is showing. */
   expectAuthedShell(): Promise<void>;
-
-  // ----- live document state (call any time) -----
-  /** Update the document body text after mount. */
-  setDocumentText(text: string): Promise<void>;
-  /** Update the user's selection after mount. */
-  setSelection(text: string): Promise<void>;
 
   // ----- reads -----
   /** Read the current `mike_token` from Office storage (null if logged out). */
@@ -103,12 +104,29 @@ export interface Addin {
   getRefreshToken(): Promise<string | null>;
   /** Read the recorded write-side Word calls for assertions. */
   wordCalls(): Promise<WordCalls>;
+  /** Inspect bookmarks and add-in settings saved inside the mock document. */
+  wordDocument(): Promise<WordDocumentSnapshot>;
+  /** Replace a setting in the open mock document and its active settings copy. */
+  setWordDocumentSetting(key: string, value: unknown): Promise<void>;
+  /** Remove a setting from the open mock document and its active settings copy. */
+  removeWordDocumentSetting(key: string): Promise<void>;
+  /** Simulate accepting/rejecting a bookmarked revision directly in Word. */
+  resolveBookmarkExternally(
+    bookmarkName: string,
+    decision: "accepted" | "rejected"
+  ): Promise<boolean>;
+  /** Add an unrelated pending revision inside an existing bookmark range. */
+  injectRevisionIntoBookmark(
+    bookmarkName: string,
+    type: "Added" | "Deleted",
+    text: string
+  ): Promise<boolean>;
 
   // ----- network mocks -----
   /** Mock the Supabase password grant: success ({ ok }) or failure ({ error }). */
   mockLogin(arg: MockLoginArg): Promise<void>;
   /**
-   * Mock the `/chat` SSE stream. Emits one `content_delta` per chunk, then
+   * Mock the `/word-chat` SSE stream. Emits one `content_delta` per chunk, then
    * `[DONE]`. `opts.errorBefore` injects a pre-`[DONE]` error event;
    * `opts.status` (>=400) returns an HTTP failure instead.
    */
@@ -190,6 +208,19 @@ export const test = base.extend<{ addin: Addin }>({
       });
     });
 
+    // Chat history preloads on every authenticated Assistant mount. Keep that
+    // eager GET hermetic so unrelated specs never leak to a developer's live
+    // backend (where a 401 can clear the seeded test session). History specs
+    // register their own route later and therefore override this default.
+    await page.route("**/word-chat?*", (route, request) => {
+      if (request.method() !== "GET") return route.fallback();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "[]",
+      });
+    });
+
     let seed: OfficeSeed = {};
 
     /** Add a method-scoped JSON route; falls through to other routes on mismatch. */
@@ -218,13 +249,6 @@ export const test = base.extend<{ addin: Addin }>({
       seedRefreshToken(token) {
         seed.refreshToken = token;
       },
-      seedDocumentText(text) {
-        seed.documentText = text;
-      },
-      seedSelection(text) {
-        seed.selectionText = text;
-      },
-
       async gotoTaskpane(opts) {
         seed = { ...seed, ...(opts ?? {}) };
         await page.addInitScript(installOfficeMock, seed);
@@ -233,7 +257,7 @@ export const test = base.extend<{ addin: Addin }>({
         // the login gate or the authenticated floating shell.
         await expect(
           page
-            .getByRole("button", { name: /^(Sign in|Open menu)$/ })
+            .getByRole("button", { name: /^(Log in|Open menu)$/ })
             .first()
         ).toBeVisible({
           timeout: 15_000,
@@ -246,19 +270,6 @@ export const test = base.extend<{ addin: Addin }>({
         await expect(page.getByRole("button", { name: "Chat history" })).toBeVisible();
       },
 
-      async setDocumentText(text) {
-        await page.evaluate((t) => {
-          (window as unknown as { __OFFICE_SEED__: { documentText: string } }).__OFFICE_SEED__.documentText =
-            t;
-        }, text);
-      },
-      async setSelection(text) {
-        await page.evaluate((t) => {
-          (window as unknown as { __OFFICE_SEED__: { selectionText: string } }).__OFFICE_SEED__.selectionText =
-            t;
-        }, text);
-      },
-
       async getToken() {
         return page.evaluate(() =>
           (
@@ -267,6 +278,15 @@ export const test = base.extend<{ addin: Addin }>({
             }
           ).OfficeRuntime.storage.getItem("mike_token")
         );
+      },
+
+      async reloadTaskpane() {
+        await page.reload();
+        await expect(
+          page
+            .getByRole("button", { name: /^(Log in|Open menu)$/ })
+            .first()
+        ).toBeVisible({ timeout: 15_000 });
       },
 
       async getRefreshToken() {
@@ -282,6 +302,80 @@ export const test = base.extend<{ addin: Addin }>({
       async wordCalls() {
         return page.evaluate(
           () => (window as unknown as { __WORD_CALLS__: WordCalls }).__WORD_CALLS__
+        );
+      },
+
+      async wordDocument() {
+        return page.evaluate(() =>
+          (
+            window as unknown as {
+              __WORD_TEST__: { snapshotDocument(): WordDocumentSnapshot };
+            }
+          ).__WORD_TEST__.snapshotDocument()
+        );
+      },
+
+      async setWordDocumentSetting(key, value) {
+        await page.evaluate(
+          ({ settingKey, settingValue }) => {
+            (
+              window as unknown as {
+                __WORD_TEST__: {
+                  setSetting(key: string, value: unknown): void;
+                };
+              }
+            ).__WORD_TEST__.setSetting(settingKey, settingValue);
+          },
+          { settingKey: key, settingValue: value }
+        );
+      },
+
+      async removeWordDocumentSetting(key) {
+        await page.evaluate((settingKey) => {
+          (
+            window as unknown as {
+              __WORD_TEST__: { removeSetting(key: string): void };
+            }
+          ).__WORD_TEST__.removeSetting(settingKey);
+        }, key);
+      },
+
+      async resolveBookmarkExternally(bookmarkName, decision) {
+        return page.evaluate(
+          ({ name, resolution }) =>
+            (
+              window as unknown as {
+                __WORD_TEST__: {
+                  resolveBookmarkExternally(
+                    bookmarkName: string,
+                    decision: "accepted" | "rejected"
+                  ): boolean;
+                };
+              }
+            ).__WORD_TEST__.resolveBookmarkExternally(name, resolution),
+          { name: bookmarkName, resolution: decision }
+        );
+      },
+
+      async injectRevisionIntoBookmark(bookmarkName, type, text) {
+        return page.evaluate(
+          ({ name, revisionType, revisionText }) =>
+            (
+              window as unknown as {
+                __WORD_TEST__: {
+                  injectRevisionIntoBookmark(
+                    bookmarkName: string,
+                    type: "Added" | "Deleted",
+                    text: string
+                  ): boolean;
+                };
+              }
+            ).__WORD_TEST__.injectRevisionIntoBookmark(
+              name,
+              revisionType,
+              revisionText
+            ),
+          { name: bookmarkName, revisionType: type, revisionText: text }
         );
       },
 
@@ -313,7 +407,8 @@ export const test = base.extend<{ addin: Addin }>({
       },
 
       async mockChatStream(chunks, opts) {
-        await page.route(CHAT_GLOB, async (route) => {
+        await page.route(CHAT_GLOB, async (route, request) => {
+          if (request.method() !== "POST") return route.fallback();
           if (opts?.status && opts.status >= 400) {
             return route.fulfill({
               status: opts.status,
@@ -327,6 +422,15 @@ export const test = base.extend<{ addin: Addin }>({
             await new Promise((resolve) => setTimeout(resolve, opts.holdMs));
           }
           let body = "";
+          if (opts?.chatId || opts?.assistantMessageId) {
+            body += `data: ${JSON.stringify({
+              type: "chat_id",
+              ...(opts.chatId ? { chatId: opts.chatId } : {}),
+              ...(opts.assistantMessageId
+                ? { assistantMessageId: opts.assistantMessageId }
+                : {}),
+            })}\n\n`;
+          }
           for (const chunk of chunks) {
             body += `data: ${JSON.stringify({
               type: "content_delta",
@@ -367,4 +471,4 @@ export const test = base.extend<{ addin: Addin }>({
 });
 
 export { expect };
-export type { OfficeSeed, WordCalls, WordCall } from "./office-mock";
+export type { WordBookmarkSnapshot } from "./office-mock";

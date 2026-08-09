@@ -1,10 +1,8 @@
 import React, { type ReactNode } from "react";
 
 /**
- * Duplicated from the web app's assistant EventBlocks (the subset the task
- * pane can honestly report): the dot-and-connector event row, "Read" for
- * document reads, and "Found" for the Word searches performed while
- * applying tracked edits. Class strings match the web originals.
+ * Adapted from the web assistant's EventBlocks: a dot-and-connector activity
+ * row plus Word-specific document-read and tracked-edit states.
  */
 
 function EventConnector(): React.ReactElement {
@@ -77,28 +75,67 @@ export function DocReadBlock({
   );
 }
 
-export function DocFindBlock({
-  query,
-  totalMatches,
-  filename = "the document",
-  showConnector,
-}: {
-  query: string;
-  totalMatches: number;
-  filename?: string;
+export type DocEditStatus =
+  | "applying"
+  | "pending"
+  | "accepted"
+  | "rejected"
+  | "skipped"
+  | "unmanaged"
+  | "error";
+
+interface DocEditBlockProps {
+  status: DocEditStatus;
+  changeNumber?: number;
+  /** Optional context appended after the lifecycle label. */
+  detail?: ReactNode;
   showConnector?: boolean;
-}): React.ReactElement {
-  const matchSuffix = ` (${totalMatches} ${totalMatches === 1 ? "match" : "matches"})`;
+}
+
+/** A compact event-stream row for a tracked edit's live Word lifecycle. */
+export function DocEditBlock({
+  status,
+  changeNumber,
+  detail,
+  showConnector,
+}: DocEditBlockProps): React.ReactElement {
+  const subject =
+    changeNumber === undefined ? "tracked change" : `change ${changeNumber}`;
+  const label =
+    status === "applying"
+      ? `Applying ${subject}…`
+      : status === "pending"
+        ? changeNumber === undefined
+          ? "Tracked change ready for review"
+          : `Change ${changeNumber} ready for review`
+        : status === "accepted"
+          ? `Accepted ${subject}`
+          : status === "rejected"
+            ? `Rejected ${subject}`
+            : status === "skipped"
+              ? `Skipped ${subject}`
+              : status === "unmanaged"
+                ? `Edited ${subject} in Word`
+                : `Couldn’t apply ${subject}`;
+  const dotColor =
+    status === "error"
+      ? "red"
+      : status === "pending" || status === "accepted"
+        ? "green"
+        : "gray";
+
   return (
     <EventBlock
       showConnector={showConnector}
-      dotColor={totalMatches > 0 ? "green" : "gray"}
+      isStreaming={status === "applying"}
+      dotColor={dotColor}
     >
-      <span className="font-medium">Found</span>{" "}
-      <span>
-        &ldquo;{query}&rdquo;{matchSuffix}
-        <span className="ml-1 text-gray-400">in {filename}</span>
+      <span
+        className={`font-medium ${status === "error" ? "text-red-500" : ""}`}
+      >
+        {label}
       </span>
+      {detail && <span className="ml-1 text-gray-400">{detail}</span>}
     </EventBlock>
   );
 }

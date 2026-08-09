@@ -4,17 +4,16 @@
 // message_start -> content_block_start -> content_block_delta* ->
 // content_block_stop -> message_delta -> message_stop.
 //
-// Responses are scripted per prompt shape so the add-in's redline contract
-// (ORIGINAL/REPLACEMENT/REASON) is exercised exactly as a real model would.
-// Each flow targets DIFFERENT document text so tracked changes never collide:
-//   chat redlines  -> "Suplier", "reciept"
-//   proofread      -> "Schedual", "writen"
-//   anonymise      -> "John Smith", "10 Downing Street, London"
-//   improve #1     -> clause 4 ("do the work good")     [tracked replace]
-//   improve #2     -> clause 5 ("keep things confidential") [plain replace]
+// The response exercises the add-in's tagged Word-edit contract
+// (<original>/<replacement>/<reason>) when the Word-chat system prompt asks for
+// exact source text. Other prompts receive a short document summary.
 import http from "node:http";
 
 const PORT = 4141;
+
+function editBlock(original, replacement, reason) {
+  return `<original>${original}</original>\n<replacement>${replacement}</replacement>\n<reason>${reason}</reason>`;
+}
 
 function pickResponse(body) {
   const messages = body.messages ?? [];
@@ -25,61 +24,26 @@ function pickResponse(body) {
       : (last?.content ?? [])
           .map((block) => (typeof block === "string" ? block : block.text ?? ""))
           .join("\n");
+  const systemText =
+    typeof body.system === "string"
+      ? body.system
+      : (body.system ?? []).map((block) => block.text ?? "").join("\n");
+  const promptText = `${systemText}\n${text}`;
 
-  // The proofread prompt is instruction-only; the document body arrives via
-  // the fenced document_context in the system prompt, not the user turn.
-  if (text.includes("Proofread the legal document provided as document context")) {
+  if (promptText.includes("character-for-character")) {
     return [
-      "ORIGINAL: described in Schedual 1",
-      "REPLACEMENT: described in Schedule 1",
-      "REASON: Spelling — \"Schedual\" should be \"Schedule\".",
-      "",
-      "ORIGINAL: sixty (60) days writen notice",
-      "REPLACEMENT: sixty (60) days' written notice",
-      "REASON: Spelling — \"writen\" should be \"written\" (with possessive apostrophe).",
-    ].join("\n");
-  }
-  if (text.includes("personally identifiable information")) {
-    return [
-      "ORIGINAL: John Smith",
-      "REPLACEMENT: [PARTY A]",
-      "REASON: Person name.",
-      "",
-      "ORIGINAL: 10 Downing Street, London",
-      "REPLACEMENT: [ADDRESS 1]",
-      "REASON: Postal address.",
-    ].join("\n");
-  }
-  if (text.includes("Draft a professional legal clause")) {
-    return [
-      "Confidentiality. Each party (the \"Receiving Party\") shall keep confidential all non-public information disclosed by the other party (the \"Disclosing Party\") in connection with this Agreement, shall use such information solely to perform its obligations hereunder, and shall not disclose it to any third party except to employees and advisers who need to know it and are bound by obligations of confidence no less protective than this clause.",
-      "",
-      "This clause shall survive termination of this Agreement for a period of five (5) years.",
-    ].join("\n");
-  }
-  if (text.includes("character-for-character")) {
-    return [
-      "I reviewed the agreement and found two spelling errors worth fixing:",
-      "",
-      "ORIGINAL: The Suplier shall provide",
-      "REPLACEMENT: The Supplier shall provide",
-      "REASON: Spelling — \"Suplier\" should be \"Supplier\".",
-      "",
-      "ORIGINAL: within thirty (30) days of reciept",
-      "REPLACEMENT: within thirty (30) days of receipt",
-      "REASON: Spelling — \"reciept\" should be \"receipt\".",
-      "",
+      editBlock(
+        "The Suplier shall provide",
+        "The Supplier shall provide",
+        'Spelling — "Suplier" should be "Supplier".',
+      ),
+      editBlock(
+        "within thirty (30) days of reciept",
+        "within thirty (30) days of receipt",
+        'Spelling — "reciept" should be "receipt".',
+      ),
       "Both fixes preserve the clause numbering and meaning.",
     ].join("\n");
-  }
-  if (text.includes("Rewrite the following selected legal text")) {
-    if (text.includes("keep things confidential")) {
-      return "5. The parties shall maintain the confidentiality of all information exchanged in connection with this agreement.";
-    }
-    if (text.includes("do the work good")) {
-      return "4. The Consultant shall perform the services diligently, to a professional standard, and in a timely manner.";
-    }
-    return "The Supplier shall provide the consulting services described in Schedule 1 exercising reasonable skill and care.";
   }
   return "This is a services agreement between Acme Consulting Ltd and a consultant. It covers the services to be provided (clause 1), payment terms of thirty days (clause 2), termination on sixty days' notice (clause 3), the standard of work required (clause 4), and confidentiality between the parties (clause 5).";
 }

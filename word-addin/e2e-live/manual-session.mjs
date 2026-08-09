@@ -7,8 +7,8 @@
  *
  * The browser runs with Chrome's Local Network Access checks disabled,
  * which a dev sideload needs (Word's public editor frame iframes
- * https://localhost:3000). Prereqs: add-in dev server on :3000, backend
- * on :3001 (see word-web-full-demo.mjs header).
+ * https://localhost:3000). Prerequisites: the add-in dev server on :3000 and
+ * the Mike backend on :3001 (the same services used by scripts/dev.sh).
  */
 import { chromium } from "@playwright/test";
 import os from "node:os";
