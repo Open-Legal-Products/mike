@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
 import type {
   StreamChatParams,
   StreamChatResult,
@@ -39,7 +38,8 @@ function apiKey(override?: string | null): string {
   return key;
 }
 
-function client(override?: string | null): GoogleGenAI {
+async function client(override?: string | null) {
+  const { GoogleGenAI } = await import("@google/genai");
   return new GoogleGenAI({ apiKey: apiKey(override) });
 }
 
@@ -170,7 +170,7 @@ export async function streamGemini(
     enableThinking,
   } = params;
   const maxIter = params.maxIterations ?? 10;
-  const ai = client(apiKeys?.gemini);
+  const ai = await client(apiKeys?.gemini);
   const functionDeclarations = toGeminiTools(tools);
 
   const contents: GeminiContent[] = toNativeContents(params.messages);
@@ -334,7 +334,7 @@ export async function completeGeminiText(params: {
   user: string;
   apiKeys?: { gemini?: string | null };
 }): Promise<string> {
-  const ai = client(params.apiKeys?.gemini);
+  const ai = await client(params.apiKeys?.gemini);
   let resp: Awaited<ReturnType<typeof ai.models.generateContent>>;
   try {
     resp = await ai.models.generateContent({

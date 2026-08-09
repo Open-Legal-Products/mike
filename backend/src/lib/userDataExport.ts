@@ -80,6 +80,22 @@ async function loadUserChats(db: Db, userId: string) {
     return { chats, messages };
 }
 
+async function loadUserWordChats(db: Db, userId: string) {
+    const documents = await selectAll(db, "word_documents", (query) =>
+        query.eq("user_id", userId).order("created_at", { ascending: true }),
+    );
+    const chats = await selectAll(db, "word_chats", (query) =>
+        query.eq("user_id", userId).order("created_at", { ascending: true }),
+    );
+    const messages = await selectByIds(
+        db,
+        "word_chat_messages",
+        "chat_id",
+        idsFrom(chats),
+    );
+    return { documents, chats, messages };
+}
+
 async function loadUserTabularChats(db: Db, userId: string) {
     const chats = await selectAll(db, "tabular_review_chats", (query) =>
         query.eq("user_id", userId).order("created_at", { ascending: true }),
@@ -114,8 +130,9 @@ export async function buildUserChatsExport(
     userId: string,
     userEmail?: string | null,
 ) {
-    const [assistant, tabular] = await Promise.all([
+    const [assistant, wordAddin, tabular] = await Promise.all([
         loadUserChats(db, userId),
+        loadUserWordChats(db, userId),
         loadUserTabularChats(db, userId),
     ]);
 
@@ -123,6 +140,7 @@ export async function buildUserChatsExport(
         exported_at: new Date().toISOString(),
         user: { id: userId, email: userEmail ?? null },
         assistant_chats: assistant,
+        word_addin_chats: wordAddin,
         tabular_review_chats: tabular,
     };
 }
