@@ -69,6 +69,8 @@ interface ChatStreamOpts {
   chatId?: string;
   /** Stable assistant-message UUID used to persist Word edit anchors. */
   assistantMessageId?: string;
+  /** Emit model-triggered read start/completion frames before answer content. */
+  docReads?: string[];
 }
 
 interface MockJsonOpts {
@@ -113,13 +115,13 @@ export interface Addin {
   /** Simulate accepting/rejecting a bookmarked revision directly in Word. */
   resolveBookmarkExternally(
     bookmarkName: string,
-    decision: "accepted" | "rejected"
+    decision: "accepted" | "rejected",
   ): Promise<boolean>;
   /** Add an unrelated pending revision inside an existing bookmark range. */
   injectRevisionIntoBookmark(
     bookmarkName: string,
     type: "Added" | "Deleted",
-    text: string
+    text: string,
   ): Promise<boolean>;
 
   // ----- network mocks -----
@@ -136,14 +138,14 @@ export interface Addin {
     method: HttpMethod,
     urlGlob: string,
     json: unknown,
-    opts?: MockJsonOpts
+    opts?: MockJsonOpts,
   ): Promise<void>;
   /** Mock any Mike API endpoint returning an error status for METHOD + URL glob. */
   mockApiError(
     method: HttpMethod,
     urlGlob: string,
     status: number,
-    message?: string
+    message?: string,
   ): Promise<void>;
 }
 
@@ -155,7 +157,7 @@ export const test = base.extend<{ addin: Addin }>({
         status: 200,
         contentType: "application/javascript",
         body: "/* office.js stubbed for E2E */",
-      })
+      }),
     );
 
     // Default the API-key status probe (fired on every authed mount by
@@ -228,7 +230,7 @@ export const test = base.extend<{ addin: Addin }>({
       method: HttpMethod,
       glob: string,
       status: number,
-      body: unknown
+      body: unknown,
     ) => {
       await page.route(glob, (route, request) => {
         if (request.method().toUpperCase() !== method) return route.fallback();
@@ -256,36 +258,40 @@ export const test = base.extend<{ addin: Addin }>({
         // Resolve once React has mounted past the loading spinner into either
         // the login gate or the authenticated floating shell.
         await expect(
-          page
-            .getByRole("button", { name: /^(Log in|Open menu)$/ })
-            .first()
+          page.getByRole("button", { name: /^(Log in|Open menu)$/ }).first(),
         ).toBeVisible({
           timeout: 15_000,
         });
       },
 
       async expectAuthedShell() {
-        await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible();
-        await expect(page.getByRole("button", { name: "New chat" })).toBeVisible();
-        await expect(page.getByRole("button", { name: "Chat history" })).toBeVisible();
+        await expect(
+          page.getByRole("button", { name: "Open menu" }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole("button", { name: "New chat" }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole("button", { name: "Chat history" }),
+        ).toBeVisible();
       },
 
       async getToken() {
         return page.evaluate(() =>
           (
             window as unknown as {
-              OfficeRuntime: { storage: { getItem(k: string): Promise<string | null> } };
+              OfficeRuntime: {
+                storage: { getItem(k: string): Promise<string | null> };
+              };
             }
-          ).OfficeRuntime.storage.getItem("mike_token")
+          ).OfficeRuntime.storage.getItem("mike_token"),
         );
       },
 
       async reloadTaskpane() {
         await page.reload();
         await expect(
-          page
-            .getByRole("button", { name: /^(Log in|Open menu)$/ })
-            .first()
+          page.getByRole("button", { name: /^(Log in|Open menu)$/ }).first(),
         ).toBeVisible({ timeout: 15_000 });
       },
 
@@ -293,15 +299,18 @@ export const test = base.extend<{ addin: Addin }>({
         return page.evaluate(() =>
           (
             window as unknown as {
-              OfficeRuntime: { storage: { getItem(k: string): Promise<string | null> } };
+              OfficeRuntime: {
+                storage: { getItem(k: string): Promise<string | null> };
+              };
             }
-          ).OfficeRuntime.storage.getItem("mike_refresh_token")
+          ).OfficeRuntime.storage.getItem("mike_refresh_token"),
         );
       },
 
       async wordCalls() {
         return page.evaluate(
-          () => (window as unknown as { __WORD_CALLS__: WordCalls }).__WORD_CALLS__
+          () =>
+            (window as unknown as { __WORD_CALLS__: WordCalls }).__WORD_CALLS__,
         );
       },
 
@@ -311,7 +320,7 @@ export const test = base.extend<{ addin: Addin }>({
             window as unknown as {
               __WORD_TEST__: { snapshotDocument(): WordDocumentSnapshot };
             }
-          ).__WORD_TEST__.snapshotDocument()
+          ).__WORD_TEST__.snapshotDocument(),
         );
       },
 
@@ -326,7 +335,7 @@ export const test = base.extend<{ addin: Addin }>({
               }
             ).__WORD_TEST__.setSetting(settingKey, settingValue);
           },
-          { settingKey: key, settingValue: value }
+          { settingKey: key, settingValue: value },
         );
       },
 
@@ -348,12 +357,12 @@ export const test = base.extend<{ addin: Addin }>({
                 __WORD_TEST__: {
                   resolveBookmarkExternally(
                     bookmarkName: string,
-                    decision: "accepted" | "rejected"
+                    decision: "accepted" | "rejected",
                   ): boolean;
                 };
               }
             ).__WORD_TEST__.resolveBookmarkExternally(name, resolution),
-          { name: bookmarkName, resolution: decision }
+          { name: bookmarkName, resolution: decision },
         );
       },
 
@@ -366,16 +375,16 @@ export const test = base.extend<{ addin: Addin }>({
                   injectRevisionIntoBookmark(
                     bookmarkName: string,
                     type: "Added" | "Deleted",
-                    text: string
+                    text: string,
                   ): boolean;
                 };
               }
             ).__WORD_TEST__.injectRevisionIntoBookmark(
               name,
               revisionType,
-              revisionText
+              revisionText,
             ),
-          { name: bookmarkName, revisionType: type, revisionText: text }
+          { name: bookmarkName, revisionType: type, revisionText: text },
         );
       },
 
@@ -429,6 +438,16 @@ export const test = base.extend<{ addin: Addin }>({
               ...(opts.assistantMessageId
                 ? { assistantMessageId: opts.assistantMessageId }
                 : {}),
+            })}\n\n`;
+          }
+          for (const filename of opts?.docReads ?? []) {
+            body += `data: ${JSON.stringify({
+              type: "doc_read_start",
+              filename,
+            })}\n\n`;
+            body += `data: ${JSON.stringify({
+              type: "doc_read",
+              filename,
             })}\n\n`;
           }
           for (const chunk of chunks) {

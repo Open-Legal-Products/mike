@@ -6,13 +6,15 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "webpack serve --mode development",
+    "predev": "node scripts/clear-sideload.js",
+    "dev": "office-addin-debugging start manifest.xml --dev-server \"bun run dev:server\" --dev-server-port 3000",
+    "dev:server": "webpack serve --mode development",
     "typecheck": "npm run typecheck:app && npm run typecheck:e2e",
     "typecheck:app": "tsc --noEmit -p tsconfig.json",
     "typecheck:e2e": "tsc --noEmit -p tsconfig.e2e.json",
     "build": "npm run typecheck && webpack --mode production && node scripts/build-manifest.js",
     "prestart": "node scripts/clear-sideload.js",
-    "start": "office-addin-debugging start manifest.xml --dev-server \"npm run dev\" --dev-server-port 3000",
+    "start": "office-addin-debugging start manifest.xml --dev-server \"npm run dev:server\" --dev-server-port 3000",
     "stop": "office-addin-debugging stop manifest.xml",
     "build:e2e": "npm run typecheck && REACT_APP_API_BASE_URL=http://localhost:3001 REACT_APP_SUPABASE_URL=http://localhost:54321 REACT_APP_SUPABASE_ANON_KEY=test-anon-key REACT_APP_WEB_APP_URL=http://localhost:3000 webpack --mode production",
     "serve:e2e": "http-server dist -p 3100 -a 127.0.0.1 -c-1 --silent",

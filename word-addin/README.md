@@ -101,9 +101,11 @@ The sections below explain each step the script automates, and the manual / web 
 
    ```bash
    npm start
+   # or
+   bun dev
    ```
 
-   This runs `office-addin-debugging start manifest.xml`, which starts the webpack dev server on `https://localhost:3000` **and** automatically opens Word with the add-in sideloaded. The task pane appears under **Home → Mike Legal AI → Mike**.
+   Both commands run `office-addin-debugging start manifest.xml`, which starts the webpack dev server on `https://localhost:3000` **and** automatically opens Word with the add-in sideloaded. The task pane appears under **Home → Mike Legal AI → Mike**. Use `bun run dev:server` only when you intentionally want the raw webpack server without sideloading Word.
 
 ---
 

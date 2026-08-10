@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { RESPONSE_GLASS_SURFACE } from "./messageStyles";
+import { RESPONSE_GLASS_SURFACE } from "./message/messageStyles";
 
 /**
  * Duplicated from the web app's assistant PreResponseWrapper so the pane's
@@ -33,7 +33,9 @@ export function PreResponseWrapper({
   }, [shouldMinimize, userToggled]);
 
   const stepWord = `step${stepCount === 1 ? "" : "s"}`;
-  const label = isStreaming ? "Working" : `Completed in ${stepCount} ${stepWord}`;
+  const label = isStreaming
+    ? "Working"
+    : `Completed in ${stepCount} ${stepWord}`;
 
   return (
     <div className={`${RESPONSE_GLASS_SURFACE} px-3 py-2`}>

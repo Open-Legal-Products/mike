@@ -1463,6 +1463,18 @@ export async function readDocumentContent(
       })}\n\n`,
     );
   try {
+    // The Word add-in supplies the active document's plain-text snapshot with
+    // the request. Keep it in the same document-tool pipeline as stored files:
+    // availability metadata is visible up front, but the body is returned only
+    // after the model explicitly calls read_document.
+    if (docInfo.inline_text !== undefined) {
+      devLog(
+        `[read_document] using request-scoped inline text (chars=${docInfo.inline_text.length}) for filename="${docInfo.filename}"`,
+      );
+      emitDocRead();
+      return docInfo.inline_text;
+    }
+
     // Prefer the current tracked-changes version (if any) so read_document
     // reflects accepted/pending edits rather than the original upload.
     let raw: ArrayBuffer | null = null;

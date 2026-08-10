@@ -1,8 +1,5 @@
 import { expect, test } from "@playwright/test";
-import {
-  configureMikeApiClient,
-  readSSE,
-} from "../src/taskpane/api/client";
+import { configureMikeApiClient, readSSE } from "../src/taskpane/api/client";
 import { streamAssistant } from "../src/taskpane/api/stream";
 
 function streamResponse(chunks: Uint8Array[]): Response {
@@ -12,7 +9,7 @@ function streamResponse(chunks: Uint8Array[]): Response {
         for (const chunk of chunks) controller.enqueue(chunk);
         controller.close();
       },
-    })
+    }),
   );
 }
 
@@ -23,7 +20,7 @@ function encodedResponse(value: string): Response {
 test.describe("SSE parser", () => {
   test("reassembles fragmented frames and requires the DONE marker", async () => {
     const encoded = new TextEncoder().encode(
-      'data: {"type":"content_delta","text":"café"}\n\ndata: [DONE]\n\n'
+      'data: {"type":"content_delta","text":"café"}\n\ndata: [DONE]\n\n',
     );
     const received: unknown[] = [];
 
@@ -33,19 +30,17 @@ test.describe("SSE parser", () => {
         encoded.slice(13, 45),
         encoded.slice(45),
       ]),
-      (event) => received.push(event)
+      (event) => received.push(event),
     );
 
     expect(result.done).toBe(true);
-    expect(received).toEqual([
-      { type: "content_delta", text: "café" },
-    ]);
+    expect(received).toEqual([{ type: "content_delta", text: "café" }]);
   });
 
   test("reports an EOF before DONE as incomplete", async () => {
     const result = await readSSE(
       encodedResponse('data: {"type":"content_delta","text":"partial"}\n\n'),
-      () => undefined
+      () => undefined,
     );
 
     expect(result.done).toBe(false);
@@ -55,9 +50,9 @@ test.describe("SSE parser", () => {
     const received: unknown[] = [];
     const result = await readSSE(
       encodedResponse(
-        'data: not-json\n\ndata: {"type":"content_delta","text":"ok"}\n\ndata: [DONE]\n\n'
+        'data: not-json\n\ndata: {"type":"content_delta","text":"ok"}\n\ndata: [DONE]\n\n',
       ),
-      (event) => received.push(event)
+      (event) => received.push(event),
     );
 
     expect(result.done).toBe(true);
@@ -70,8 +65,8 @@ test.describe("SSE parser", () => {
         encodedResponse('data: {"type":"content_delta","text":"ok"}\n\n'),
         () => {
           throw new Error("callback failed");
-        }
-      )
+        },
+      ),
     ).rejects.toThrow("callback failed");
   });
 
@@ -82,7 +77,7 @@ test.describe("SSE parser", () => {
     const result = await readSSE(
       encodedResponse('data: {"type":"content_delta","text":"ignored"}\n\n'),
       () => undefined,
-      { signal: controller.signal }
+      { signal: controller.signal },
     );
 
     expect(result.done).toBe(false);
@@ -95,11 +90,11 @@ test.describe("SSE parser", () => {
         start(streamController) {
           streamController.enqueue(
             new TextEncoder().encode(
-              'data: {"type":"content_delta","text":"late"}'
-            )
+              'data: {"type":"content_delta","text":"late"}',
+            ),
           );
         },
-      })
+      }),
     );
     const received: unknown[] = [];
     const reading = readSSE(response, (event) => received.push(event), {
@@ -115,14 +110,64 @@ test.describe("SSE parser", () => {
 });
 
 test.describe("Word chat stream policy", () => {
-  test("rejects a successful response that ends without DONE", async () => {
+  test("surfaces only valid document-read lifecycle events", async () => {
     configureMikeApiClient({
       baseUrl: "http://word-chat.test",
       getAuthHeaders: async () => ({}),
       fetchImpl: async () =>
         encodedResponse(
-          'data: {"type":"content_delta","text":"partial"}\n\n'
+          [
+            'data: {"type":"reasoning_delta","text":"Inspect the "}',
+            'data: {"type":"reasoning_delta","text":"agreement."}',
+            'data: {"type":"reasoning_block_end"}',
+            'data: {"type":"doc_read_start","filename":"contract.pdf","document_id":"document-2"}',
+            'data: {"type":"doc_read","filename":"contract.pdf","document_id":"document-2"}',
+            'data: {"type":"doc_read"}',
+            'data: {"type":"content_delta","text":"Reviewed."}',
+            "data: [DONE]",
+            "",
+          ].join("\n\n"),
         ),
+    });
+    const reads: unknown[] = [];
+    const reasoning: string[] = [];
+    const text: string[] = [];
+
+    await streamAssistant(
+      {
+        messages: [{ role: "user", content: "Review this" }],
+        model: "test-model",
+        wordDocumentId: "document-1",
+        wordChatStorage: "local",
+        onReasoningDelta: (delta) => reasoning.push(delta),
+        onReasoningBlockEnd: () => reasoning.push("[END]"),
+        onDocumentRead: (event) => reads.push(event),
+      },
+      (chunk) => text.push(chunk),
+    );
+
+    expect(reasoning).toEqual(["Inspect the ", "agreement.", "[END]"]);
+    expect(reads).toEqual([
+      {
+        type: "doc_read_start",
+        filename: "contract.pdf",
+        documentId: "document-2",
+      },
+      {
+        type: "doc_read",
+        filename: "contract.pdf",
+        documentId: "document-2",
+      },
+    ]);
+    expect(text).toEqual(["Reviewed."]);
+  });
+
+  test("rejects a successful response that ends without DONE", async () => {
+    configureMikeApiClient({
+      baseUrl: "http://word-chat.test",
+      getAuthHeaders: async () => ({}),
+      fetchImpl: async () =>
+        encodedResponse('data: {"type":"content_delta","text":"partial"}\n\n'),
     });
 
     await expect(
@@ -133,8 +178,8 @@ test.describe("Word chat stream policy", () => {
           wordDocumentId: "document-1",
           wordChatStorage: "local",
         },
-        () => undefined
-      )
+        () => undefined,
+      ),
     ).rejects.toThrow("Chat stream ended before the completion marker.");
   });
 });
