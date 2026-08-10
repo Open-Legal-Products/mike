@@ -86,7 +86,7 @@ export function FloatingHeader({
       <div
         aria-hidden="true"
         data-testid="header-scrim"
-        className="pointer-events-none absolute inset-x-0 -bottom-2 top-0 z-0"
+        className="pointer-events-none absolute -bottom-2 left-0 right-2 top-0 z-0"
       >
         <div className="absolute inset-0 backdrop-blur-[1px] [mask-image:linear-gradient(to_bottom,black_0%,black_55%,transparent_100%)]" />
         <div className="absolute inset-0 backdrop-blur-[2px] [mask-image:linear-gradient(to_bottom,black_0%,black_35%,transparent_78%)]" />

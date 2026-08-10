@@ -193,28 +193,45 @@ export function ChatView({
 
     useEffect(() => {
         const container = messagesContainerRef.current;
-        const latestUser = latestUserMessageRef.current;
-        if (!container || !latestUser) return;
+        if (!container) return;
 
-        const firstUser = container.querySelector<HTMLElement>(
-            "[data-message-id]",
-        );
-        if (!firstUser) return;
+        const updateMinHeight = (): void => {
+            const latestUser = latestUserMessageRef.current;
+            const firstUser = container.querySelector<HTMLElement>(
+                "[data-message-id]",
+            );
+            if (!latestUser || !firstUser) return;
 
-        const containerStyle = window.getComputedStyle(container);
-        const messageGap = Number.parseFloat(containerStyle.rowGap) || 0;
-        const paddingBottom =
-            Number.parseFloat(containerStyle.paddingBottom) || 0;
-        const firstMessageTop = firstUser.offsetTop;
-        const nextMinHeight = Math.max(
-            0,
-            container.clientHeight -
-                firstMessageTop -
-                latestUser.offsetHeight -
-                messageGap * 2 -
-                paddingBottom,
-        );
-        setAssistantMinHeight(`${nextMinHeight}px`);
+            const containerStyle = window.getComputedStyle(container);
+            const messageGap = Number.parseFloat(containerStyle.rowGap) || 0;
+            const paddingBottom =
+                Number.parseFloat(containerStyle.paddingBottom) || 0;
+            const nextMinHeight = Math.max(
+                0,
+                container.clientHeight -
+                    firstUser.offsetTop -
+                    latestUser.offsetHeight -
+                    messageGap * 2 -
+                    paddingBottom,
+            );
+            setAssistantMinHeight(`${nextMinHeight}px`);
+        };
+
+        updateMinHeight();
+        if (typeof ResizeObserver === "undefined") return;
+        let resizeFrame: number | null = null;
+        const observer = new ResizeObserver(() => {
+            if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+            resizeFrame = requestAnimationFrame(() => {
+                resizeFrame = null;
+                updateMinHeight();
+            });
+        });
+        observer.observe(container);
+        return () => {
+            observer.disconnect();
+            if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+        };
     }, [messages.length]);
 
     useEffect(() => {

@@ -67,6 +67,18 @@ test("uses the frontend assistant spacer while a new answer grows", async ({
     expect.soft(layer.boxShadow).toBe("none");
   }
 
+  const [headerBounds, scrimBounds] = await Promise.all([
+    floatingHeader.boundingBox(),
+    page.getByTestId("header-scrim").boundingBox(),
+  ]);
+  expect(headerBounds).not.toBeNull();
+  expect(scrimBounds).not.toBeNull();
+  expect(
+    headerBounds!.x +
+      headerBounds!.width -
+      (scrimBounds!.x + scrimBounds!.width),
+  ).toBe(8);
+
   const streamedParagraphs = Array.from(
     { length: 18 },
     (_, index) =>
@@ -189,6 +201,10 @@ test("uses the frontend assistant spacer while a new answer grows", async ({
               clientHeight: candidate.clientHeight,
               top: candidate.getBoundingClientRect().top,
               paddingBottom: Number.parseFloat(style.paddingBottom),
+              rowGap: Number.parseFloat(style.rowGap),
+              firstMessageTop:
+                candidate.querySelector<HTMLElement>("[data-message-id]")
+                  ?.offsetTop ?? 0,
             };
           }
           candidate = candidate.parentElement;
@@ -218,8 +234,14 @@ test("uses the frontend assistant spacer while a new answer grows", async ({
 
   const early = await readLayout();
   expect(early.scrollTop).toBeGreaterThan(100);
-  const expectedMinHeight =
-    early.viewportHeight - (56 + 24 * 3 + early.userHeight + 116);
+  const expectedMinHeight = Math.max(
+    0,
+    early.clientHeight -
+      early.firstMessageTop -
+      early.userHeight -
+      early.rowGap * 2 -
+      early.paddingBottom,
+  );
   expect(
     Math.abs(early.assistantMinHeight - expectedMinHeight),
   ).toBeLessThanOrEqual(1);
@@ -240,11 +262,14 @@ test("uses the frontend assistant spacer while a new answer grows", async ({
   await expect
     .poll(async () => {
       const resized = await readLayout();
-      const headerHeight = resized.viewportWidth < 768 ? 56 : 0;
-      const messageGap = resized.viewportWidth < 768 ? 24 : 32;
-      const resizedExpectedMinHeight =
-        resized.viewportHeight -
-        (headerHeight + messageGap * 3 + resized.userHeight + 116);
+      const resizedExpectedMinHeight = Math.max(
+        0,
+        resized.clientHeight -
+          resized.firstMessageTop -
+          resized.userHeight -
+          resized.rowGap * 2 -
+          resized.paddingBottom,
+      );
       return {
         minHeightDelta: Math.round(
           Math.abs(resized.assistantMinHeight - resizedExpectedMinHeight),
