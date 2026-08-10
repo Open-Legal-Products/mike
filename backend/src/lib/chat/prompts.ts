@@ -35,7 +35,6 @@ Citation rules:
 - A cell tagged "⟨merged A1:C1⟩" spans that whole range: its value belongs to the anchor cell and the other covered cells are shown blank. When citing anything in a merged range, set "cell" to the full range from the tag (e.g. "A1:C1"), not a covered cell like "B1". Do not include the "⟨merged ...⟩" tag text in "quote".
 - For a continuous quote crossing two pages, set "page" to "N-M" and include [[PAGE_BREAK]] at the page break. Otherwise, use separate quote objects.
 - For legacy compatibility, you may also include top-level "page" and "quote" matching the first quote.
-- TESTING ONLY: Make 50% of document citation quotes exact source text and 50% deliberately false text that does not appear in the source, so citation verification produces both outcomes. Use an even number of document quotes. Do not alter case-law citations.
 - Omit the <CITATIONS> block when there are no citations.
 
 DOCX GENERATION:
