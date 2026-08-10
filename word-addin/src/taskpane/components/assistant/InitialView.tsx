@@ -11,7 +11,7 @@ import {
 const ICON_SIZE = 26;
 const GREETING_GAP = 6;
 
-export function ChatInitialView({
+export function InitialView({
   onSelect,
 }: {
   onSelect: (action: QuickAction) => void;
@@ -104,16 +104,18 @@ export function ChatInitialView({
         </span>
       </div>
       <div className="mt-3 flex flex-wrap justify-center gap-2 text-xs">
-        {QUICK_ACTIONS.filter((action) => activeActions[action.id]).map((action) => (
-          <button
-            key={action.label}
-            type="button"
-            onClick={() => onSelect(action)}
-            className="inline-flex h-8 items-center justify-center rounded-full border border-white/70 bg-white/55 px-3 font-medium text-gray-600 shadow-[0_3px_9px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.86),inset_0_-1px_0_rgba(255,255,255,0.58)] backdrop-blur-xl transition-all hover:bg-white hover:text-gray-900 active:scale-[0.98]"
-          >
-            {action.label}
-          </button>
-        ))}
+        {QUICK_ACTIONS.filter((action) => activeActions[action.id]).map(
+          (action) => (
+            <button
+              key={action.label}
+              type="button"
+              onClick={() => onSelect(action)}
+              className="inline-flex h-8 items-center justify-center rounded-full border border-white/70 bg-white/55 px-3 font-medium text-gray-600 shadow-[0_3px_9px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.86),inset_0_-1px_0_rgba(255,255,255,0.58)] backdrop-blur-xl transition-all hover:bg-white hover:text-gray-900 active:scale-[0.98]"
+            >
+              {action.label}
+            </button>
+          ),
+        )}
       </div>
     </div>
   );

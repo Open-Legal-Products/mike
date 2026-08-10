@@ -207,13 +207,14 @@ export const TOOLS = [
     function: {
       name: "read_document",
       description:
-        "Read the full text content of a document attached by the user. Always call this before answering questions about, summarising, citing from, or editing a document, but call it at most once per document/version in a single response. After this returns, use the prior tool result or find_in_document for targeted checks instead of reading the same document/version again.",
+        "Read the full text content of an available document. Always call this before answering questions about, summarising, citing from, or editing a document, but call it at most once per document/version in a single response. After this returns, use the prior tool result or find_in_document for targeted checks instead of reading the same document/version again.",
       parameters: {
         type: "object",
         properties: {
           doc_id: {
             type: "string",
-            description: "The document ID to read (e.g. 'doc-0', 'doc-1')",
+            description:
+              "The document ID to read (e.g. 'doc-0', 'doc-1', or 'active-word-document')",
           },
         },
         required: ["doc_id"],

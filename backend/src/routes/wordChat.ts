@@ -4,6 +4,8 @@ import { requireAuth } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
 import {
   AssistantStreamError,
+  ACTIVE_WORD_DOCUMENT_FILENAME,
+  ACTIVE_WORD_DOCUMENT_LABEL,
   buildCancelledAssistantMessage,
   buildDocContext,
   buildMessages,
@@ -309,10 +311,30 @@ wordChatRouter.post("/", requireAuth, async (req, res) => {
     persistChat ? chatId : null,
     "word_chat_messages",
   );
-  const docAvailability = Object.entries(docIndex).map(([doc_id, info]) => ({
-    doc_id,
-    filename: info.filename,
-  }));
+  const activeDocumentText = parsedDocumentContext.documentContext;
+  if (activeDocumentText !== undefined) {
+    docStore.set(ACTIVE_WORD_DOCUMENT_LABEL, {
+      // This is an in-memory identity, never a Supabase storage path.
+      storage_path: `inline:word-document:${clientDocumentId}`,
+      file_type: "text/plain",
+      filename: ACTIVE_WORD_DOCUMENT_FILENAME,
+      inline_text: activeDocumentText,
+    });
+  }
+  const docAvailability = [
+    ...(activeDocumentText !== undefined
+      ? [
+          {
+            doc_id: ACTIVE_WORD_DOCUMENT_LABEL,
+            filename: ACTIVE_WORD_DOCUMENT_FILENAME,
+          },
+        ]
+      : []),
+    ...Object.entries(docIndex).map(([doc_id, info]) => ({
+      doc_id,
+      filename: info.filename,
+    })),
+  ];
   const nonce = generateSpotlightNonce();
   const enrichedMessages = await enrichWithPriorEvents(
     messages,
@@ -322,17 +344,15 @@ wordChatRouter.post("/", requireAuth, async (req, res) => {
     nonce,
     "word_chat_messages",
   );
-  const { api_keys: apiKeys, legal_research_us: legalResearchUs } =
-    await getUserModelSettings(userId, db);
+  const { api_keys: configuredApiKeys } = await getUserModelSettings(userId, db);
+  const apiKeys = { ...configuredApiKeys };
+  delete apiKeys.courtlistener;
   const apiMessages = buildMessages(
     enrichedMessages,
     docAvailability,
-    buildWordChatSystemPrompt(
-      parsedDocumentContext.documentContext ?? null,
-      nonce,
-    ),
+    buildWordChatSystemPrompt(),
     docIndex,
-    legalResearchUs,
+    false,
     nonce,
   );
   const workflowStore = await buildWorkflowStore(userId, userEmail, db);
@@ -400,7 +420,9 @@ wordChatRouter.post("/", requireAuth, async (req, res) => {
       db,
       write,
       workflowStore,
-      includeResearchTools: legalResearchUs,
+      // CourtListener is intentionally unavailable in document-scoped Word
+      // chats. Legal research remains a web-assistant capability.
+      includeResearchTools: false,
       model,
       apiKeys,
       signal: streamAbort.signal,

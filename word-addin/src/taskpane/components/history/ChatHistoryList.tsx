@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import type { Message } from "../../types";
 import { Spinner } from "../../../shared/ui/spinner";
@@ -66,7 +66,7 @@ export function ChatHistoryList({
     active,
     documentId,
     ownerId,
-    storageMode
+    storageMode,
   );
 
   return (
@@ -98,16 +98,44 @@ export function ChatHistoryListView({
     pagination;
   const [loadingChatId, setLoadingChatId] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
+  const mountedRef = useRef(false);
+  const detailRequestGenerationRef = useRef(0);
+  const detailContext = JSON.stringify([documentId, ownerId, storageMode]);
+  const detailContextRef = useRef(detailContext);
+  detailContextRef.current = detailContext;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      detailRequestGenerationRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    detailRequestGenerationRef.current += 1;
+    setLoadingChatId(null);
+    setOpenError(null);
+  }, [detailContext]);
+
   const filteredChats = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return chats;
     return chats.filter((chat) =>
-      (chat.title?.trim() || "Untitled chat").toLowerCase().includes(query)
+      (chat.title?.trim() || "Untitled chat").toLowerCase().includes(query),
     );
   }, [chats, search]);
 
   const openChat = async (chatId: string): Promise<void> => {
     if (loadingChatId) return;
+    const requestGeneration = detailRequestGenerationRef.current + 1;
+    detailRequestGenerationRef.current = requestGeneration;
+    const requestContext = detailContext;
+    const requestIsCurrent = (): boolean =>
+      mountedRef.current &&
+      detailRequestGenerationRef.current === requestGeneration &&
+      detailContextRef.current === requestContext;
+
     setLoadingChatId(chatId);
     setOpenError(null);
     try {
@@ -115,13 +143,15 @@ export function ChatHistoryListView({
         storageMode === "cloud"
           ? await getCloudWordChat(documentId, chatId)
           : await getLocalWordChat(documentId, ownerId, chatId);
+      if (!requestIsCurrent()) return;
       onSelect(chatId, detail.messages);
     } catch (reason) {
+      if (!requestIsCurrent()) return;
       setOpenError(
-        reason instanceof Error ? reason.message : "Failed to open this chat."
+        reason instanceof Error ? reason.message : "Failed to open this chat.",
       );
     } finally {
-      setLoadingChatId(null);
+      if (requestIsCurrent()) setLoadingChatId(null);
     }
   };
 

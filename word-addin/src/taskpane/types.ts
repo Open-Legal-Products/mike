@@ -33,12 +33,78 @@ export interface Chat {
   created_at: string;
 }
 
+/** A document read the model completed during an assistant turn. */
+export interface DocumentReadActivity {
+  filename: string;
+  /** Stable for stored documents; absent for the request-scoped active document. */
+  documentId?: string;
+  status: "reading" | "read";
+}
+
+export type WordThinkingEvent = {
+  type: "thinking";
+  isStreaming?: boolean;
+};
+
+export type WordReasoningEvent = {
+  type: "reasoning";
+  text: string;
+  isStreaming?: boolean;
+};
+
+export type WordContentEvent = {
+  type: "content";
+  text: string;
+  isStreaming?: boolean;
+};
+
+export type WordDocumentReadEvent = {
+  type: "doc_read";
+  filename: string;
+  documentId?: string;
+  status: DocumentReadActivity["status"];
+};
+
+export type WordErrorEvent = { type: "error"; message: string };
+
+/**
+ * A backend-persisted assistant activity the Word surface does not render yet.
+ *
+ * The web assistant stores its event array directly in the message `content`
+ * column. Keep the same JSON object here instead of discarding activity types
+ * the smaller Word renderer does not understand. Rendering remains explicitly
+ * allow-listed through the guards in `lib/wordChatEvents.ts`.
+ */
+export interface WordAssistantStoredEvent {
+  type: string;
+  [field: string]: unknown;
+}
+
+/** Durable and live assistant events, retained in their original order. */
+export type WordAssistantEvent =
+  | WordThinkingEvent
+  | WordReasoningEvent
+  | WordContentEvent
+  | WordDocumentReadEvent
+  | WordErrorEvent
+  | WordAssistantStoredEvent;
+
 export interface Message {
   id?: string;
   role: "user" | "assistant";
   content: string;
   files?: { filename: string; document_id?: string }[];
   workflow?: { id: string; title: string };
+  /**
+   * Assistant turns only. Persisted messages contain completed (`read`) rows;
+   * the live panel may temporarily use `reading` while the tool is running.
+   */
+  docReads?: DocumentReadActivity[];
+  /**
+   * Preserves frontend-style event chronology for new Word chats. `content`
+   * and `docReads` remain as the backward-compatible storage projection.
+   */
+  events?: WordAssistantEvent[];
 }
 
 export interface Workflow {

@@ -181,7 +181,7 @@ function serializeWordMutation<T>(operation: () => Promise<T>): Promise<T> {
   const result = wordMutationTail.then(operation);
   wordMutationTail = result.then(
     () => undefined,
-    () => undefined
+    () => undefined,
   );
   return result;
 }
@@ -193,7 +193,7 @@ function createTrackedEditHandle(): TrackedEditHandle {
 
 function rememberTerminalState(
   handle: TrackedEditHandle,
-  state: TerminalTrackedEditState
+  state: TerminalTrackedEditState,
 ): void {
   terminalTrackedEdits.set(handle, state);
   if (terminalTrackedEdits.size <= MAX_TERMINAL_HANDLE_HISTORY) return;
@@ -231,7 +231,7 @@ function getErrorMessage(error: unknown): string {
 
 function trackedChangesMatchEdit(
   changes: readonly Word.TrackedChange[],
-  edit: RedlineEdit
+  edit: RedlineEdit,
 ): boolean {
   if (changes.length === 0) return false;
   const addedText = changes
@@ -254,7 +254,7 @@ function trackedChangesMatchEdit(
 }
 
 function trackedObjectsFor(
-  entry: PendingTrackedEdit
+  entry: PendingTrackedEdit,
 ): OfficeExtension.ClientObject[] {
   return [...entry.parentCollections, ...entry.changes, ...entry.ranges];
 }
@@ -267,7 +267,7 @@ function untrackEntry(entry: PendingTrackedEdit): void {
 
 /** Delete document-persistent anchor data without changing the edit outcome. */
 async function removePersistentAnchorForEntry(
-  entry: PendingTrackedEdit
+  entry: PendingTrackedEdit,
 ): Promise<string | undefined> {
   const errors: string[] = [];
   if (entry.bookmarkName) {
@@ -302,7 +302,7 @@ class ChangedRevisionSetError extends Error {}
 async function resolveThroughAnchor(
   range: Word.Range,
   decision: TrackedEditDecision,
-  expectedEdit: RedlineEdit
+  expectedEdit: RedlineEdit,
 ): Promise<"resolved" | "empty" | "changed"> {
   return Word.run([range], async (context) => {
     const collection = range.getTrackedChanges();
@@ -327,7 +327,7 @@ async function resolveThroughAnchor(
 /** Resolve one retained logical edit without touching any other revisions. */
 async function resolveTrackedEditNow(
   handle: TrackedEditHandle,
-  decision: TrackedEditDecision
+  decision: TrackedEditDecision,
 ): Promise<TrackedEditResolutionResult> {
   const entry = pendingTrackedEdits.get(handle);
   if (!entry) {
@@ -368,7 +368,7 @@ async function resolveTrackedEditNow(
           const result = await resolveThroughAnchor(
             range,
             decision,
-            entry.expectedEdit
+            entry.expectedEdit,
           );
           if (result === "resolved") {
             resolved = true;
@@ -450,7 +450,7 @@ async function resolveTrackedEditNow(
       status: "error",
       error: describeWordFailure(
         error,
-        "Word couldn’t update this change. Review it directly in Word before retrying."
+        "Word couldn’t update this change. Review it directly in Word before retrying.",
       ),
     };
   }
@@ -461,13 +461,14 @@ async function resolveTrackedEditNow(
  * the user on the revision rather than describing where to find it.
  */
 export function revealTrackedEdit(
-  handle: TrackedEditHandle
+  handle: TrackedEditHandle,
 ): Promise<TrackedEditRevealResult> {
   return serializeWordMutation(async () => {
     const entry = pendingTrackedEdits.get(handle);
     if (!entry) {
       const terminal = terminalTrackedEdits.get(handle);
-      if (terminal === "released") return { handle, status: "released" as const };
+      if (terminal === "released")
+        return { handle, status: "released" as const };
       if (terminal) {
         return {
           handle,
@@ -510,7 +511,7 @@ export function revealTrackedEdit(
  */
 export function restoreTrackedEdit(
   stableEditId: string,
-  edit: RedlineEdit
+  edit: RedlineEdit,
 ): Promise<TrackedEditRestoreResult> {
   return serializeWordMutation(async () => {
     for (const [handle, entry] of pendingTrackedEdits) {
@@ -534,9 +535,8 @@ export function restoreTrackedEdit(
 
     try {
       const restored = await Word.run(async (context) => {
-        const range = context.document.getBookmarkRangeOrNullObject(
-          bookmarkName
-        );
+        const range =
+          context.document.getBookmarkRangeOrNullObject(bookmarkName);
         range.load("isNullObject");
         await context.sync();
         if (range.isNullObject) return { status: "not-found" as const };
@@ -581,9 +581,9 @@ export function restoreTrackedEdit(
           (error) => {
             console.error(
               "[tracked-edit/restore] Failed to repair the document anchor registry.",
-              { stableEditId, bookmarkName, error }
+              { stableEditId, bookmarkName, error },
             );
-          }
+          },
         );
       }
       if (restored.status === "view-only") {
@@ -606,7 +606,7 @@ export function restoreTrackedEdit(
         status: "error",
         error: describeWordFailure(
           error,
-          "Word couldn’t restore this tracked change. Review it from Word’s Review tab."
+          "Word couldn’t restore this tracked change. Review it from Word’s Review tab.",
         ),
       };
     }
@@ -615,7 +615,7 @@ export function restoreTrackedEdit(
 
 /** Navigate through a persistent bookmark when exact review controls are unsafe. */
 export function revealPersistedTrackedEdit(
-  stableEditId: string
+  stableEditId: string,
 ): Promise<PersistedTrackedEditRevealResult> {
   return serializeWordMutation(async () => {
     let bookmarkName = bookmarkNameForEdit(stableEditId);
@@ -628,9 +628,8 @@ export function revealPersistedTrackedEdit(
 
     try {
       const status = await Word.run(async (context) => {
-        const range = context.document.getBookmarkRangeOrNullObject(
-          bookmarkName
-        );
+        const range =
+          context.document.getBookmarkRangeOrNullObject(bookmarkName);
         range.load("isNullObject");
         await context.sync();
         if (range.isNullObject) {
@@ -662,14 +661,14 @@ export function revealPersistedTrackedEdit(
     } catch (error) {
       console.error(
         "[tracked-edit/view] Word failed while revealing the persistent bookmark.",
-        { stableEditId, bookmarkName, error }
+        { stableEditId, bookmarkName, error },
       );
       return {
         stableEditId,
         status: "error",
         error: describeWordFailure(
           error,
-          "Word couldn’t scroll to this tracked change."
+          "Word couldn’t scroll to this tracked change.",
         ),
       };
     }
@@ -678,14 +677,14 @@ export function revealPersistedTrackedEdit(
 
 export function resolveTrackedEdit(
   handle: TrackedEditHandle,
-  decision: TrackedEditDecision
+  decision: TrackedEditDecision,
 ): Promise<TrackedEditResolutionResult> {
   return serializeWordMutation(() => resolveTrackedEditNow(handle, decision));
 }
 
 export function resolveTrackedEdits(
   handles: readonly TrackedEditHandle[],
-  decision: TrackedEditDecision
+  decision: TrackedEditDecision,
 ): Promise<TrackedEditResolutionResult[]> {
   return serializeWordMutation(async () => {
     const results: TrackedEditResolutionResult[] = [];
@@ -701,7 +700,7 @@ export function resolveTrackedEdits(
  * This does not accept or reject any document revision.
  */
 export function releaseTrackedEdits(
-  handles: readonly TrackedEditHandle[]
+  handles: readonly TrackedEditHandle[],
 ): Promise<TrackedEditReleaseResult[]> {
   return serializeWordMutation(async () => {
     const results: TrackedEditReleaseResult[] = [];
@@ -734,8 +733,9 @@ export function releaseTrackedEdits(
         results.push({ handle, status: "released" });
       } catch (error) {
         // A proxy that failed to untrack is not safe to hand back to a later
-        // ChatPanel instance. Evict it so a reload reconstructs fresh proxies
-        // from the document bookmark instead of shadowing that valid anchor.
+        // tracked-edit controller. Evict it so a reload reconstructs fresh
+        // proxies from the document bookmark instead of shadowing that valid
+        // anchor.
         pendingTrackedEdits.delete(handle);
         rememberTerminalState(handle, "released");
         results.push({
@@ -764,7 +764,7 @@ export function useWordDoc() {
         body.load("text");
         await context.sync();
         return body.text;
-      })
+      }),
     );
 
   /**
@@ -779,7 +779,7 @@ export function useWordDoc() {
    * document, or the model mis-copied) are reported, never guessed at.
    */
   const applyTrackedEdits = (
-    edits: PersistedRedlineEdit[]
+    edits: PersistedRedlineEdit[],
   ): Promise<RedlineApplyReport> =>
     serializeWordMutation(() =>
       Word.run(async (context) => {
@@ -871,7 +871,7 @@ export function useWordDoc() {
 
               if (
                 existingCollections.some(
-                  (collection) => collection.items.length > 0
+                  (collection) => collection.items.length > 0,
                 )
               ) {
                 result.status = "skipped";
@@ -891,7 +891,7 @@ export function useWordDoc() {
                 // proxy stale, which Word then reports as a bare exception.
                 const inserted = match.insertText(
                   wordReplacement,
-                  Word.InsertLocation.replace
+                  Word.InsertLocation.replace,
                 );
                 if (inserted) insertedRanges.push(inserted);
                 const collection = match.getTrackedChanges();
@@ -904,7 +904,7 @@ export function useWordDoc() {
               result.appliedMatches = matches.items.length;
 
               const generatedChanges = generatedCollections.flatMap(
-                (collection) => collection.items
+                (collection) => collection.items,
               );
               candidateCollections = generatedCollections;
               candidateChanges = generatedChanges;
@@ -917,7 +917,7 @@ export function useWordDoc() {
               let exactRevisions =
                 generatedChanges.length > 0 &&
                 generatedCollections.every(
-                  (collection) => collection.items.length > 0
+                  (collection) => collection.items.length > 0,
                 );
 
               if (!exactRevisions) {
@@ -972,7 +972,7 @@ export function useWordDoc() {
                   persistentRanges;
                 if (firstPersistentRange) {
                   const candidateBookmarkName = bookmarkNameForEdit(
-                    edit.stableEditId
+                    edit.stableEditId,
                   );
                   try {
                     let bookmarkRange = firstPersistentRange;
@@ -991,7 +991,7 @@ export function useWordDoc() {
                   } catch (error) {
                     result.error = describeWordFailure(
                       error,
-                      "The change is reviewable now, but its View link may not survive reopening the add-in."
+                      "The change is reviewable now, but its View link may not survive reopening the add-in.",
                     );
                   }
                 }
@@ -1034,7 +1034,10 @@ export function useWordDoc() {
               result.reason = "word-error";
               result.error = mutationApplied
                 ? "Applied in Word, but Mike couldn’t retain its review controls. Review it from Word’s Review tab."
-                : describeWordFailure(error, "Word couldn’t apply this change.");
+                : describeWordFailure(
+                    error,
+                    "Word couldn’t apply this change.",
+                  );
               report.edits.push(result);
             }
           }
@@ -1045,7 +1048,7 @@ export function useWordDoc() {
           } catch (error) {
             report.warning = describeWordFailure(
               error,
-              "Word couldn’t restore the previous change-tracking mode."
+              "Word couldn’t restore the previous change-tracking mode.",
             );
           }
         }
@@ -1060,17 +1063,17 @@ export function useWordDoc() {
           try {
             await persistWordEditAnchor(
               anchor.stableEditId,
-              anchor.bookmarkName
+              anchor.bookmarkName,
             );
           } catch (error) {
             anchor.result.error = describeWordFailure(
               error,
-              "The change is reviewable now, but its View link may not survive reopening the document."
+              "The change is reviewable now, but its View link may not survive reopening the document.",
             );
           }
         }
         return report;
-      })
+      }),
     );
 
   return {

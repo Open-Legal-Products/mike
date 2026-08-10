@@ -16,7 +16,7 @@ function makeChats(count: number) {
 async function mockPaginatedHistory(
   page: Page,
   count: number,
-  requests: number[]
+  requests: number[],
 ): Promise<void> {
   const chats = makeChats(count);
   await page.route("**/word-chat?*", async (route, request) => {
@@ -47,7 +47,7 @@ test("header dropdown loads 10 chats and fetches 10 more at the bottom", async (
   const dropdown = page.getByRole("menu");
   await expect(dropdown).toHaveCSS("height", "360px");
   await expect(dropdown.getByText("Chat History", { exact: true })).toHaveCount(
-    0
+    0,
   );
   const search = dropdown.getByPlaceholder("Search recent chats...");
   await expect(search).toBeVisible();
@@ -88,10 +88,10 @@ test("Chat History page searches and loads 20 more chats at the bottom", async (
   await historyItem.click();
 
   await expect(page.getByTestId("chat-history-page-title")).toHaveText(
-    "Chat History"
+    "Chat History",
   );
   await expect(page.getByTestId("chat-history-page-title")).toHaveClass(
-    /font-serif/
+    /font-serif/,
   );
   const list = page.getByTestId("chat-history-list-20");
   await expect(list.getByRole("button")).toHaveCount(20);
@@ -140,11 +140,214 @@ test("history reports a failed request and retries it", async ({
 
   const dropdown = page.getByRole("menu");
   await expect(dropdown.getByRole("alert")).toContainText(
-    "History temporarily unavailable"
+    "History temporarily unavailable",
   );
   await dropdown.getByRole("button", { name: "Retry" }).click();
-  await expect(
-    dropdown.getByRole("button", { name: /Chat 1/ })
-  ).toBeVisible();
+  await expect(dropdown.getByRole("button", { name: /Chat 1/ })).toBeVisible();
   expect(attempts).toBe(2);
+});
+
+test("a dismissed history load cannot replace a newer chat selection", async ({
+  addin,
+  page,
+}) => {
+  const requests: number[] = [];
+  await mockPaginatedHistory(page, 2, requests);
+
+  let firstDetailRequested = false;
+  let releaseFirstDetail: () => void = () => {
+    throw new Error("First history detail request was not initialized.");
+  };
+  const firstDetailGate = new Promise<void>((resolve) => {
+    releaseFirstDetail = resolve;
+  });
+  await page.route("**/word-chat/chat-1?*", async (route, request) => {
+    if (request.method() !== "GET") return route.fallback();
+    firstDetailRequested = true;
+    await firstDetailGate;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        chat: makeChats(1)[0],
+        messages: [
+          {
+            id: "stale-user",
+            role: "user",
+            content: "Stale stored question",
+          },
+        ],
+      }),
+    });
+  });
+  await page.route("**/word-chat/chat-2?*", async (route, request) => {
+    if (request.method() !== "GET") return route.fallback();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        chat: makeChats(2)[1],
+        messages: [
+          {
+            id: "current-user",
+            role: "user",
+            content: "Current stored question",
+          },
+        ],
+      }),
+    });
+  });
+
+  await addin.gotoTaskpane({ token: TOKEN });
+  await addin.expectAuthedShell();
+
+  await page.getByRole("button", { name: "Chat history" }).click();
+  await page
+    .getByRole("menu")
+    .getByRole("button", { name: /Chat 1/ })
+    .click();
+  await expect.poll(() => firstDetailRequested).toBe(true);
+
+  // Dismissing the dropdown invalidates its pending detail request. A newly
+  // opened dropdown may then select a different chat while the first network
+  // response is still outstanding.
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await page.getByRole("button", { name: "Chat history" }).click();
+  await page
+    .getByRole("menu")
+    .getByRole("button", { name: /Chat 2/ })
+    .click();
+  await expect(page.getByText("Current stored question")).toBeVisible();
+
+  const staleResponse = page.waitForResponse((response) =>
+    new URL(response.url()).pathname.endsWith("/word-chat/chat-1"),
+  );
+  releaseFirstDetail();
+  await staleResponse;
+  await page.waitForTimeout(50);
+
+  await expect(page.getByText("Current stored question")).toBeVisible();
+  await expect(page.getByText("Stale stored question")).toHaveCount(0);
+});
+
+test("a persisted cloud stream failure refreshes history once but cancellation does not", async ({
+  addin,
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const testWindow = window as typeof window & {
+      __WORD_HISTORY_EVENT_COUNT__?: number;
+    };
+    testWindow.__WORD_HISTORY_EVENT_COUNT__ = 0;
+    window.addEventListener("mike-word-chat-history-changed", () => {
+      testWindow.__WORD_HISTORY_EVENT_COUNT__ =
+        (testWindow.__WORD_HISTORY_EVENT_COUNT__ ?? 0) + 1;
+    });
+
+    const originalFetch = window.fetch.bind(window);
+    let requestCount = 0;
+    window.fetch = (async (input, init) => {
+      const requestUrl =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      const requestMethod =
+        init?.method ?? (input instanceof Request ? input.method : "GET");
+      if (
+        requestMethod.toUpperCase() !== "POST" ||
+        !new URL(requestUrl, window.location.href).pathname.endsWith(
+          "/word-chat",
+        )
+      ) {
+        return originalFetch(input, init);
+      }
+
+      requestCount += 1;
+      const encoder = new TextEncoder();
+      const frame = (value: unknown): Uint8Array =>
+        encoder.encode(`data: ${JSON.stringify(value)}\n\n`);
+
+      if (requestCount === 1) {
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                frame({
+                  type: "chat_id",
+                  chatId: "failed-cloud-chat",
+                  assistantMessageId: "failed-cloud-assistant",
+                }),
+              );
+              controller.enqueue(
+                frame({ type: "content_delta", text: "Partial answer." }),
+              );
+              controller.enqueue(
+                frame({ type: "error", message: "Persisted stream failure" }),
+              );
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              controller.close();
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        );
+      }
+
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              frame({
+                type: "chat_id",
+                chatId: "failed-cloud-chat",
+                assistantMessageId: "cancelled-cloud-assistant",
+              }),
+            );
+            // Stay open: AbortSignal makes readSSE cancel its reader normally.
+          },
+        }),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      );
+    }) as typeof window.fetch;
+  });
+
+  await addin.gotoTaskpane({ token: TOKEN });
+  await addin.expectAuthedShell();
+
+  const composer = page.getByPlaceholder("Ask Mike…");
+  await composer.fill("Fail after persistence");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "Error: Persisted stream failure",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              __WORD_HISTORY_EVENT_COUNT__?: number;
+            }
+          ).__WORD_HISTORY_EVENT_COUNT__ ?? 0,
+      ),
+    )
+    .toBe(1);
+
+  await composer.fill("Cancel this response");
+  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Stop" }).click();
+  await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+  await page.waitForTimeout(100);
+  expect(
+    await page.evaluate(
+      () =>
+        (
+          window as typeof window & {
+            __WORD_HISTORY_EVENT_COUNT__?: number;
+          }
+        ).__WORD_HISTORY_EVENT_COUNT__ ?? 0,
+    ),
+  ).toBe(1);
 });

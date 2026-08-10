@@ -1,22 +1,8 @@
 import React from "react";
 import type { RedlineEdit } from "../../lib/redline";
-import { EDIT_CARD_SURFACE } from "./messageStyles";
+import { EDIT_CARD_SURFACE } from "./message/messageStyles";
 import { PillButton } from "../primitives/PillButton";
-
-export type EditCardStatus =
-  | "receiving"
-  | "applying"
-  | "restoring"
-  | "pending"
-  | "view-only"
-  | "accepted"
-  | "rejected"
-  | "skipped"
-  | "ambiguous"
-  | "incomplete"
-  | "unmanaged"
-  | "error"
-  | "historical";
+import type { EditCardStatus } from "../../lib/wordChatTypes";
 
 interface EditCardProps {
   /** Fields can arrive independently while a streamed edit is being parsed. */
@@ -46,7 +32,10 @@ const STATUS_COPY: Record<
   },
   accepted: { copy: "Accepted.", className: "text-green-700" },
   rejected: { copy: "Rejected.", className: "text-gray-500" },
-  skipped: { copy: "Skipped — source text was not found.", className: "text-gray-500" },
+  skipped: {
+    copy: "Skipped — source text was not found.",
+    className: "text-gray-500",
+  },
   ambiguous: {
     copy: "Skipped — source text appears more than once.",
     className: "text-gray-500",

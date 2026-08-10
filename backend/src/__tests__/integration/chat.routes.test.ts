@@ -302,15 +302,33 @@ describe("POST /chat — streaming endpoint", () => {
             ]),
         );
         const call = vi.mocked(chatLib.buildMessages).mock.calls[0];
+        const docAvailability = call[1] as {
+            doc_id: string;
+            filename: string;
+        }[];
         const systemPromptExtra = call[2] as string;
-        const nonce = call[5] as string;
+        const streamArgs = runLLMStream.mock.calls[0]?.[0] as {
+            docStore: Map<
+                string,
+                {
+                    filename: string;
+                    inline_text?: string;
+                }
+            >;
+        };
         expect(systemPromptExtra).toContain("WORD ADD-IN MODE");
         expect(systemPromptExtra).toContain(
             "<original>exact text copied from the active Word document</original>",
         );
-        expect(systemPromptExtra).toContain(
-            `<untrusted-content nonce="${nonce}">\nGOVERNED BY DELAWARE LAW\n</untrusted-content nonce="${nonce}">`,
-        );
+        expect(systemPromptExtra).not.toContain("GOVERNED BY DELAWARE LAW");
+        expect(docAvailability).toContainEqual({
+            doc_id: "active-word-document",
+            filename: "Active Word document",
+        });
+        expect(streamArgs.docStore.get("active-word-document")).toMatchObject({
+            filename: "Active Word document",
+            inline_text: "GOVERNED BY DELAWARE LAW",
+        });
         expect(
             dbInserts.find(
                 ({ table, value }) =>
@@ -631,7 +649,7 @@ describe("POST /chat — streaming endpoint", () => {
         expect(runLLMStream).not.toHaveBeenCalled();
     });
 
-    it("adds document_context to the server-only Word system prompt", async () => {
+    it("makes document_context tool-readable without adding it to the system prompt", async () => {
         const chatLib = await import("../../lib/chat");
         const res = await request(app)
             .post("/word-chat")
@@ -644,12 +662,56 @@ describe("POST /chat — streaming endpoint", () => {
 
         expect(res.status).toBe(200);
         const call = vi.mocked(chatLib.buildMessages).mock.calls[0];
+        const docAvailability = call[1] as {
+            doc_id: string;
+            filename: string;
+        }[];
         const systemPromptExtra = call[2] as string;
-        const nonce = call[5] as string;
         expect(systemPromptExtra).toContain("WORD ADD-IN MODE");
-        expect(systemPromptExtra).toContain(
-            `<untrusted-content nonce="${nonce}">\nGOVERNED BY DELAWARE LAW\n</untrusted-content nonce="${nonce}">`,
+        expect(systemPromptExtra).toContain("read_document");
+        expect(systemPromptExtra).not.toContain("GOVERNED BY DELAWARE LAW");
+        expect(docAvailability).toContainEqual({
+            doc_id: "active-word-document",
+            filename: "Active Word document",
+        });
+
+        const streamArgs = runLLMStream.mock.calls[0]?.[0] as {
+            docStore: Map<string, { inline_text?: string }>;
+        };
+        expect(streamArgs.docStore.get("active-word-document")?.inline_text).toBe(
+            "GOVERNED BY DELAWARE LAW",
         );
+    });
+
+    it("keeps CourtListener disabled for Word chats even when legal research is enabled", async () => {
+        const chatLib = await import("../../lib/chat");
+        const userSettings = await import("../../lib/userSettings");
+        vi.mocked(userSettings.getUserModelSettings).mockResolvedValueOnce({
+            title_model: "test-model",
+            tabular_model: "test-model",
+            legal_research_us: true,
+            api_keys: { courtlistener: "configured-but-unused" },
+        });
+
+        const res = await request(app)
+            .post("/word-chat")
+            .set("Authorization", "Bearer test")
+            .send({
+                ...VALID_BODY,
+                document_id: "6f783e59-35c4-4ddc-896a-94aa4d05a767",
+                document_context: "Contract text",
+            });
+
+        expect(res.status).toBe(200);
+        const buildMessagesCall = vi.mocked(chatLib.buildMessages).mock.calls[0];
+        expect(buildMessagesCall[4]).toBe(false);
+        expect(runLLMStream).toHaveBeenCalledWith(
+            expect.objectContaining({ includeResearchTools: false }),
+        );
+        const streamArgs = runLLMStream.mock.calls[0]?.[0] as {
+            apiKeys?: { courtlistener?: string };
+        };
+        expect(streamArgs.apiKeys?.courtlistener).toBeUndefined();
     });
 
 });

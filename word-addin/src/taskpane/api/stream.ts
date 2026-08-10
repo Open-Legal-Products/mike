@@ -1,11 +1,18 @@
 /**
  * Word-chat streaming boundary for the task pane.
  *
- * Passes documentContext through, renders only `content_delta` frames, throws
- * on a pre-`[DONE]` `error` frame, and rejects a response that ends without a
- * terminal `[DONE]`. Framing rules live in the local HTTP client's readSSE.
+ * Passes documentContext through, surfaces answer deltas plus model-triggered
+ * document-read lifecycle frames, throws on a pre-`[DONE]` `error` frame, and
+ * rejects a response that ends without a terminal `[DONE]`. Framing rules live
+ * in the local HTTP client's readSSE.
  */
 import { streamWordChat, readSSE } from "./mikeApi";
+
+export interface WordChatDocumentReadEvent {
+  type: "doc_read_start" | "doc_read";
+  filename: string;
+  documentId?: string;
+}
 
 export async function streamAssistant(
   params: {
@@ -27,8 +34,14 @@ export async function streamAssistant(
       chatId?: string;
       assistantMessageId?: string;
     }) => void;
+    /** Streams the model's user-visible reasoning summary in arrival order. */
+    onReasoningDelta?: (text: string) => void;
+    /** Finalizes the current reasoning block before the next activity. */
+    onReasoningBlockEnd?: () => void;
+    /** Called only when the backend reports a model-triggered document read. */
+    onDocumentRead?: (event: WordChatDocumentReadEvent) => void;
   },
-  onText: (text: string) => void
+  onText: (text: string) => void,
 ): Promise<void> {
   const res = await streamWordChat({
     messages: params.messages,
@@ -50,6 +63,14 @@ export async function streamAssistant(
       const d = data as Record<string, unknown>;
       if (d.type === "content_delta" && typeof d.text === "string" && d.text) {
         onText(d.text);
+      } else if (
+        d.type === "reasoning_delta" &&
+        typeof d.text === "string" &&
+        d.text
+      ) {
+        params.onReasoningDelta?.(d.text);
+      } else if (d.type === "reasoning_block_end") {
+        params.onReasoningBlockEnd?.();
       } else if (d.type === "chat_id") {
         const chatId = typeof d.chatId === "string" ? d.chatId : undefined;
         const assistantMessageId =
@@ -59,11 +80,24 @@ export async function streamAssistant(
         if (chatId || assistantMessageId) {
           params.onMetadata?.({ chatId, assistantMessageId });
         }
+      } else if (
+        (d.type === "doc_read_start" || d.type === "doc_read") &&
+        typeof d.filename === "string" &&
+        d.filename
+      ) {
+        params.onDocumentRead?.({
+          type: d.type,
+          filename: d.filename,
+          ...(typeof d.document_id === "string" && d.document_id
+            ? { documentId: d.document_id }
+            : {}),
+        });
       } else if (d.type === "error") {
-        streamError = typeof d.message === "string" ? d.message : "Stream error";
+        streamError =
+          typeof d.message === "string" ? d.message : "Stream error";
       }
     },
-    { signal: params.signal }
+    { signal: params.signal },
   );
   if (streamError) throw new Error(streamError);
   if (!result.done && !params.signal?.aborted) {

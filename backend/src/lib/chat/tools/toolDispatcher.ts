@@ -677,6 +677,25 @@ export async function runToolCalls(
     } else if (tc.function.name === "find_in_document") {
       const rawDocId = args.doc_id as string;
       const docId = resolveDocLabel(rawDocId, docStore, docIndex) ?? rawDocId;
+      const docInfo = docStore.get(docId);
+      // Request-scoped inline documents (currently the active Word document)
+      // must enter model context only through read_document/fetch_documents.
+      // Those paths emit the visible read lifecycle and nonce-fence the entire
+      // body. find_in_document otherwise returns raw, user-controlled snippets
+      // and would silently bypass both guarantees.
+      if (docInfo?.inline_text !== undefined) {
+        toolResults.push({
+          role: "tool",
+          tool_call_id: tc.id,
+          content: JSON.stringify({
+            ok: false,
+            error:
+              "Request-scoped documents must be opened with read_document before they can be searched.",
+            next_required_action: `Call read_document with doc_id "${docId}".`,
+          }),
+        });
+        continue;
+      }
       const query = (args.query as string) ?? "";
       const maxResults =
         typeof args.max_results === "number" ? args.max_results : undefined;
@@ -692,7 +711,7 @@ export async function runToolCalls(
         docIndex,
         db,
       });
-      const filename = docStore.get(docId)?.filename;
+      const filename = docInfo?.filename;
       if (filename) {
         let totalMatches = 0;
         try {
