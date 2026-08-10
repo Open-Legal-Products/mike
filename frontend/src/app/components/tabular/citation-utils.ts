@@ -8,6 +8,12 @@ export interface ParsedCitation {
     sheet?: string;
     cell?: string;
     quote: string;
+    /**
+     * Set when server-side verification could not locate the quote in the
+     * source document. Unverified citations render as warnings, not as
+     * working pinpoint citations.
+     */
+    unverified?: boolean;
 }
 
 /**
@@ -38,13 +44,14 @@ export function preprocessCitations(text: string): {
 
 function parsePageCitation(metadata: string): ParsedCitation | null {
     const match = metadata.match(
-        /^(?:document:([^|]+)\|\|)?page:(\d+)\|\|(?:quote:)?([\s\S]+)$/i,
+        /^(?:document:([^|]+)\|\|)?page:(\d+)\|\|(?:unverified:(true)\|\|)?(?:quote:)?([\s\S]+)$/i,
     );
     if (!match) return null;
     return {
         documentId: match[1]?.trim() || undefined,
         page: parseInt(match[2], 10),
-        quote: match[3].trim(),
+        quote: match[4].trim(),
+        ...(match[3] ? { unverified: true } : {}),
     };
 }
 
@@ -79,5 +86,8 @@ function parseSpreadsheetCitation(metadata: string): ParsedCitation | null {
         sheet,
         cell,
         quote,
+        ...(fields.get("unverified")?.toLowerCase() === "true"
+            ? { unverified: true }
+            : {}),
     };
 }

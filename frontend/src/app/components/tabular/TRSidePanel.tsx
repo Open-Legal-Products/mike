@@ -758,7 +758,12 @@ function CitationBadge({
             data-cell={citation.cell}
             data-document-id={citation.documentId}
             data-quote={citation.quote}
-            title={`${formatCitationLocation(citation)}: "${citation.quote}"`}
+            data-unverified={citation.unverified ? "true" : undefined}
+            title={
+                citation.unverified
+                    ? `Could not verify quote — not found in the source. ${formatCitationLocation(citation)}: "${citation.quote}"`
+                    : `${formatCitationLocation(citation)}: "${citation.quote}"`
+            }
             onClick={() =>
                 onClick({
                     quote: citation.quote,
@@ -769,7 +774,11 @@ function CitationBadge({
                     citationRef: index + 1,
                 })
             }
-            className="inline-flex items-center justify-center rounded-full bg-gray-200 w-3.5 h-3.5 text-[9px] font-medium text-gray-700 align-super cursor-pointer hover:bg-gray-300 transition-colors"
+            className={`inline-flex items-center justify-center rounded-full w-3.5 h-3.5 text-[9px] font-medium align-super cursor-pointer transition-colors ${
+                citation.unverified
+                    ? "bg-red-100 text-red-700 hover:bg-red-200"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+            }`}
         >
             {index + 1}
         </button>

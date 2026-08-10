@@ -36,6 +36,10 @@ import {
 } from "../lib/access";
 import { safeErrorLog, safeErrorMessage } from "../lib/safeError";
 import {
+    verifyTabularCellResult,
+    type TabularCellSources,
+} from "../lib/chat/verifyTabularCitations";
+import {
     findMissingUserEmails,
     loadProfileUsersByEmail,
 } from "../lib/userLookup";
@@ -431,14 +435,15 @@ async function loadReviewRows(
     }));
 }
 
-async function loadRowDocumentText(
+async function loadRowDocumentSources(
     db: SupabaseDb,
     row: ReviewRow,
-): Promise<string> {
+): Promise<TabularCellSources> {
     const sourceIds =
         row.source_document_ids ?? (row.document_id ? [row.document_id] : []);
     const docs = await fetchSourceDocuments(db, sourceIds);
     const sections: string[] = [];
+    const byDocId = new Map<string, string>();
     for (const doc of docs) {
         const storagePath = (doc as SourceDocument & { storage_path?: string })
             .storage_path;
@@ -459,11 +464,12 @@ async function loadRowDocumentText(
                 }
             }
         }
+        byDocId.set(String(doc.id), markdown);
         sections.push(
             `## Source document: ${doc.filename}\nSource document ID: ${doc.id}\n\n${markdown}`,
         );
     }
-    return sections.join("\n\n---\n\n");
+    return { combined: sections.join("\n\n---\n\n"), byDocId };
 }
 
 function providerLabel(provider: Provider): string {
@@ -1111,19 +1117,19 @@ tabularRouter.post(
             .eq("row_id", row.id)
             .eq("column_index", column_index);
 
-        const markdown = await loadRowDocumentText(db, row);
+        const sources = await loadRowDocumentSources(db, row);
 
-        const result = await queryTabularCell(
+        const rawResult = await queryTabularCell(
             tabular_model,
             row.label,
-            markdown,
+            sources.combined,
             column.prompt,
             column.format,
             column.tags,
             api_keys,
         );
 
-        if (!result) {
+        if (!rawResult) {
             await db
                 .from("tabular_cells")
                 .update({ status: "error" })
@@ -1132,6 +1138,8 @@ tabularRouter.post(
                 .eq("column_index", column_index);
             return void res.status(500).json({ detail: "Generation failed" });
         }
+
+        const result = verifyTabularCellResult(rawResult, sources);
 
         await db
             .from("tabular_cells")
@@ -1214,10 +1222,7 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
     try {
         await Promise.all(
             rows.map(async (row) => {
-                const markdown = await loadRowDocumentText(
-                    db,
-                    row,
-                );
+                const sources = await loadRowDocumentSources(db, row);
 
                 // Filter to only columns that need processing
                 const columnsToProcess = columns.filter((col) => {
@@ -1254,10 +1259,14 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
                     await queryTabularAllColumns(
                         tabular_model,
                         row.label,
-                        markdown,
+                        sources.combined,
                         columnsToProcess,
-                        async (columnIndex, result) => {
+                        async (columnIndex, rawResult) => {
                             receivedColumns.add(columnIndex);
+                            const result = verifyTabularCellResult(
+                                rawResult,
+                                sources,
+                            );
                             await db
                                 .from("tabular_cells")
                                 .update({

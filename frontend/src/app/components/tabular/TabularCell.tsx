@@ -121,9 +121,12 @@ function CellMarkdown({
                         const idx = parseInt(citMatch[1]);
                         const citation = citations[idx];
                         if (citation) {
+                            const title = citation.unverified
+                                ? `Could not verify quote — not found in the source. ${formatCitationLocation(citation)}: "${citation.quote}"`
+                                : `${formatCitationLocation(citation)}: "${citation.quote}"`;
                             return (
                                 <span
-                                    title={`${formatCitationLocation(citation)}: "${citation.quote}"`}
+                                    title={title}
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         if (onCitationClick) {
@@ -139,7 +142,11 @@ function CellMarkdown({
                                             onExpand();
                                         }
                                     }}
-                                    className="mx-0.5 inline-flex items-center justify-center rounded-full bg-gray-200 w-3.5 h-3.5 text-[9px] font-medium text-gray-700 align-super cursor-pointer hover:bg-gray-300 transition-colors"
+                                    className={`mx-0.5 inline-flex items-center justify-center rounded-full w-3.5 h-3.5 text-[9px] font-medium align-super cursor-pointer transition-colors ${
+                                        citation.unverified
+                                            ? "bg-red-100 text-red-700 hover:bg-red-200"
+                                            : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                                    }`}
                                 >
                                     {idx + 1}
                                 </span>
