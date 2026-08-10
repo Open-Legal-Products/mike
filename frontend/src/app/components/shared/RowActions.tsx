@@ -12,6 +12,7 @@ import {
     Download,
     Eye,
     EyeOff,
+    FolderOpen,
     FolderMinus,
     Hash,
     History,
@@ -43,6 +44,7 @@ interface Props {
     onRemoveFromFolder?: () => void;
     onShowAllVersions?: () => void;
     onUploadNewVersion?: () => void;
+    onOpenInTritium?: () => void;
     onNewSubfolder?: () => void;
     deleting?: boolean;
     deleteDisabled?: boolean;
@@ -74,6 +76,7 @@ export const RowActionMenuItems = forwardRef<
     onRemoveFromFolder,
     onShowAllVersions,
     onUploadNewVersion,
+    onOpenInTritium,
     onNewSubfolder,
     deleting,
     deleteDisabled = false,
@@ -156,6 +159,15 @@ export const RowActionMenuItems = forwardRef<
                 >
                     <Upload className="h-3.5 w-3.5 shrink-0" />
                     Upload new version
+                </LiquidDropdownButton>
+            )}
+            {onOpenInTritium && (
+                <LiquidDropdownButton
+                    onClick={() => { onClose(); onOpenInTritium(); }}
+                    className={ROW_ACTION_LEFT_ITEM_CLASS}
+                >
+                    <FolderOpen className="h-3.5 w-3.5 shrink-0" />
+                    Open in Tritium
                 </LiquidDropdownButton>
             )}
             {onRemoveFromFolder && (
