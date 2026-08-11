@@ -36,13 +36,14 @@ describe("buildSystemPrompt", () => {
         }
     });
 
-    it("protects workflow assets and Library Templates with copy-before-edit rules", () => {
+    it("separates workflows and Library Templates with copy-before-edit rules", () => {
         for (const prompt of [buildSystemPrompt(true), buildSystemPrompt(false)]) {
+            expect(prompt).toContain("WORKFLOWS:");
+            expect(prompt).toContain("LIBRARY TEMPLATES:");
+            expect(prompt).toContain("Workflow reference files are immutable");
+            expect(prompt).toContain("Library Templates are immutable");
             expect(prompt).toContain(
-                "Library Templates and workflow reference files are immutable source material",
-            );
-            expect(prompt).toContain(
-                "first call replicate_document with a descriptive new_filename",
+                "call replicate_document with a descriptive new_filename",
             );
             expect(prompt).toContain(
                 "open the relevant files with read_document before continuing",
