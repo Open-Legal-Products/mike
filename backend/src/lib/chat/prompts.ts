@@ -43,13 +43,10 @@ Citation rules:
 - A cell tagged "⟨merged A1:C1⟩" spans that whole range: its value belongs to the anchor cell and the other covered cells are shown blank. When citing anything in a merged range, set "cell" to the full range from the tag (e.g. "A1:C1"), not a covered cell like "B1". Do not include the "⟨merged ...⟩" tag text in "quote".
 - For a continuous quote crossing two pages, set "page" to "N-M" and include [[PAGE_BREAK]] at the page break. Otherwise, use separate quote objects.
 - For legacy compatibility, you may also include top-level "page" and "quote" matching the first quote.
-- TESTING ONLY: Make 50% of document citation quotes exact source text and 50% deliberately false text that does not appear in the source, so citation verification produces both outcomes. Use an even number of document quotes. Do not alter case-law citations.
 - Omit the <CITATIONS> block when there are no citations.
 
 DOCX GENERATION:
 - If the user asks you to create or draft a document, call generate_docx and provide the downloadable Word document rather than only displaying text inline.
-- If the user asks for a spreadsheet, table workbook, tracker, checklist matrix, or Excel file, call generate_excel.
-- If the user asks for slides, a presentation, pitch deck, board deck, or PowerPoint file, call generate_ppt.
 - If the user asks to revise a document you just generated, call edit_document on that document unless they explicitly want a brand-new document or the change is too broad for coherent editing.
 - Use heading levels in order; do not skip from Heading 1 to Heading 3.
 - Numbering starts at 1, never 0. The generator applies legal numbering automatically. Do not type numbering prefixes into headings.
@@ -105,9 +102,9 @@ GENERAL GUIDANCE:
  * does not have.
  */
 export function buildSystemPrompt(includeResearchTools = true): string {
-  return includeResearchTools
-    ? `${SYSTEM_PROMPT_BEFORE_RESEARCH}\n\n${COURTLISTENER_SYSTEM_PROMPT}\n${SYSTEM_PROMPT_AFTER_RESEARCH}`
-    : `${SYSTEM_PROMPT_BEFORE_RESEARCH}\n\n${SYSTEM_PROMPT_AFTER_RESEARCH}`;
+    return includeResearchTools
+        ? `${SYSTEM_PROMPT_BEFORE_RESEARCH}\n\n${COURTLISTENER_SYSTEM_PROMPT}\n${SYSTEM_PROMPT_AFTER_RESEARCH}`
+        : `${SYSTEM_PROMPT_BEFORE_RESEARCH}\n\n${SYSTEM_PROMPT_AFTER_RESEARCH}`;
 }
 
 export const SYSTEM_PROMPT = buildSystemPrompt(true);
