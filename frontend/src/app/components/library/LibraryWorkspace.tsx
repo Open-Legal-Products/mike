@@ -345,6 +345,7 @@ export function LibraryCollectionPage({ kind }: { kind: LibraryKind }) {
                         handleCreateFolderActionChange
                     }
                     enableHeaderFilters
+                    defaultSort={{ key: "updated", direction: "desc" }}
                     emptyDropLabel={
                         kind === "templates"
                             ? "Drop template files here"

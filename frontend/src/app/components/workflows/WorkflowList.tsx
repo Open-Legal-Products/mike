@@ -35,11 +35,14 @@ import {
   TableBody,
   TableCell,
   TableEmptyState,
+  TableFilters,
+  type TableFilterOption,
   TableHeaderCell,
   TableHeaderRow,
   TablePrimaryCell,
   TableRow,
   TableScrollArea,
+  type TableSortDirection,
   TableStickyCell,
 } from "../shared/TablePrimitive";
 
@@ -51,6 +54,28 @@ const WORKFLOW_TABS: { id: WorkflowListTab; label: string }[] = [
   { id: "tabular", label: "Tabular" },
   { id: "addons", label: "Add-ons" },
 ];
+
+type WorkflowSortKey =
+  | "name"
+  | "type"
+  | "practice"
+  | "jurisdiction"
+  | "language";
+
+const WORKFLOW_SORT_OPTIONS: TableFilterOption<TableSortDirection>[] = [
+  { value: "asc", label: "Ascending" },
+  { value: "desc", label: "Descending" },
+];
+
+function workflowSortValue(workflow: Workflow, key: WorkflowSortKey) {
+  if (key === "name") return workflow.metadata.title;
+  if (key === "type") return workflow.metadata.type;
+  if (key === "practice") return workflow.metadata.practice ?? "";
+  if (key === "jurisdiction") {
+    return workflow.metadata.jurisdictions?.join(", ") ?? "";
+  }
+  return workflow.metadata.language ?? "";
+}
 
 export function WorkflowList() {
   const router = useRouter();
@@ -422,7 +447,23 @@ function WorkflowTable({
   selectedIds: string[];
   onSelectedIdsChange: (ids: string[]) => void;
 }) {
-  const selectableIds = workflows
+  const [sort, setSort] = useState<{
+    key: WorkflowSortKey;
+    direction: TableSortDirection;
+  } | null>(null);
+  const sortedWorkflows = useMemo(() => {
+    if (!sort) return workflows;
+    const multiplier = sort.direction === "asc" ? 1 : -1;
+    return [...workflows].sort(
+      (a, b) =>
+        workflowSortValue(a, sort.key).localeCompare(
+          workflowSortValue(b, sort.key),
+          undefined,
+          { sensitivity: "base" },
+        ) * multiplier,
+    );
+  }, [sort, workflows]);
+  const selectableIds = sortedWorkflows
     .filter((workflow) => workflow.is_owner !== false)
     .map((workflow) => workflow.id);
   const allSelected =
@@ -443,6 +484,28 @@ function WorkflowTable({
     );
   }
 
+  function handleSortChange(
+    key: WorkflowSortKey,
+    direction: TableSortDirection | null,
+  ) {
+    setSort(direction ? { key, direction } : null);
+    onSelectedIdsChange([]);
+  }
+
+  function sortButton(key: WorkflowSortKey, label: string, align?: "right") {
+    return (
+      <TableFilters
+        label={label}
+        value={sort?.key === key ? sort.direction : null}
+        allLabel="Default Order"
+        widthClassName="w-40"
+        align={align}
+        options={WORKFLOW_SORT_OPTIONS}
+        onChange={(direction) => handleSortChange(key, direction)}
+      />
+    );
+  }
+
   return (
     <TableScrollArea
       header={
@@ -459,12 +522,25 @@ function WorkflowTable({
               className={TABLE_CHECKBOX_CLASS}
               title="Select all deletable workflows"
             />
-            Name
+            <span className="mr-1">Name</span>
+            {!loading && sortButton("name", "Sort by workflow name", "right")}
           </TableStickyCell>
-          <TableHeaderCell className="ml-auto w-28">Type</TableHeaderCell>
-          <TableHeaderCell className="w-52">Practice</TableHeaderCell>
-          <TableHeaderCell className="w-40">Jurisdiction</TableHeaderCell>
-          <TableHeaderCell className="w-28">Language</TableHeaderCell>
+          <TableHeaderCell className="ml-auto flex w-28 items-center gap-1">
+            <span>Type</span>
+            {!loading && sortButton("type", "Sort by workflow type")}
+          </TableHeaderCell>
+          <TableHeaderCell className="flex w-52 items-center gap-1">
+            <span>Practice</span>
+            {!loading && sortButton("practice", "Sort by practice")}
+          </TableHeaderCell>
+          <TableHeaderCell className="flex w-40 items-center gap-1">
+            <span>Jurisdiction</span>
+            {!loading && sortButton("jurisdiction", "Sort by jurisdiction")}
+          </TableHeaderCell>
+          <TableHeaderCell className="flex w-28 items-center gap-1">
+            <span>Language</span>
+            {!loading && sortButton("language", "Sort by language")}
+          </TableHeaderCell>
           <TableHeaderCell className="w-8" />
         </TableHeaderRow>
       }
@@ -514,7 +590,7 @@ function WorkflowTable({
         </TableEmptyState>
       ) : (
         <TableBody>
-          {workflows.map((workflow) => {
+          {sortedWorkflows.map((workflow) => {
             const Icon =
               workflow.metadata.type === "tabular"
                 ? TabularReviewSkeuoIcon

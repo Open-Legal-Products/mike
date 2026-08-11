@@ -109,7 +109,7 @@ libraryRouter.get("/:kind", requireAuth, async (req, res) => {
       : documentsQuery.eq("library_kind", kind);
   const [{ data: docs, error: docsError }, { data: folders, error: foldersError }] =
     await Promise.all([
-      documentsQuery.order("created_at", { ascending: true }),
+      documentsQuery.order("updated_at", { ascending: false }),
       db
         .from("library_folders")
         .select("*")

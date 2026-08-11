@@ -19,9 +19,11 @@ const EMPTY_LOADED: Record<DirectoryTab, boolean> = {
 };
 
 function sortDocuments(docs: Document[]) {
-    return [...docs].sort((a, b) =>
-        (b.created_at ?? "").localeCompare(a.created_at ?? ""),
-    );
+    return [...docs].sort((a, b) => {
+        const aDate = a.updated_at ?? a.created_at ?? "";
+        const bDate = b.updated_at ?? b.created_at ?? "";
+        return bDate.localeCompare(aDate);
+    });
 }
 
 async function loadFiles() {

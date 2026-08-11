@@ -205,6 +205,7 @@ export function ProjectDocumentsView({ projectId }: Props) {
                 }
                 onCreateFolderActionChange={handleCreateFolderActionChange}
                 onSelectionActionsChange={handleSelectionActionsChange}
+                enableHeaderFilters
                 renderAddDocumentsModal={(open, onClose, onSelect) =>
                     project ? (
                         <AddDocumentsModal
