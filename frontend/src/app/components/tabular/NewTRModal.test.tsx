@@ -1,5 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+    uploadProjectDocument,
+    uploadStandaloneDocument,
+} from "@/app/lib/mikeApi";
+import type { Document } from "../shared/types";
 import { NewTRModal } from "./NewTRModal";
 
 vi.mock("@/app/lib/mikeApi", () => ({
@@ -19,6 +24,10 @@ vi.mock("../shared/FileDirectory", () => ({
 }));
 
 describe("NewTRModal", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
     it("shows folder grouping on the first screen and excludes Templates", () => {
         const onAdd = vi.fn();
         render(
@@ -61,5 +70,50 @@ describe("NewTRModal", () => {
             undefined,
             "folder",
         );
+    });
+
+    it("stores uploads from a project review in that project", async () => {
+        const uploadedDocument = {
+            id: "uploaded-document",
+            project_id: "project-1",
+            filename: "New agreement.pdf",
+            file_type: "pdf",
+        };
+        vi.mocked(uploadProjectDocument).mockResolvedValue(
+            uploadedDocument as Document,
+        );
+
+        render(
+            <NewTRModal
+                open
+                onClose={vi.fn()}
+                onAdd={vi.fn()}
+                projectId="project-1"
+                projectDocs={[]}
+                projectFolders={[]}
+                projectName="Acquisition"
+            />,
+        );
+
+        fireEvent.change(screen.getByLabelText("Review name"), {
+            target: { value: "Project review" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+        const file = new File(["agreement"], "New agreement.pdf", {
+            type: "application/pdf",
+        });
+        const input = document.querySelector<HTMLInputElement>(
+            'input[type="file"]',
+        );
+        fireEvent.change(input!, { target: { files: [file] } });
+
+        await waitFor(() =>
+            expect(uploadProjectDocument).toHaveBeenCalledWith(
+                "project-1",
+                file,
+            ),
+        );
+        expect(uploadStandaloneDocument).not.toHaveBeenCalled();
     });
 });

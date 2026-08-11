@@ -145,6 +145,33 @@ describe("FileDirectory", () => {
         ).not.toBeInTheDocument();
     });
 
+    it("keeps already-attached documents checked and disabled", () => {
+        const onChange = vi.fn();
+        const document = {
+            id: "document-1",
+            filename: "Existing agreement.pdf",
+            file_type: "pdf",
+            project_id: "project-1",
+        } as Document;
+
+        render(
+            <FileDirectory
+                documents={[document]}
+                selectedDocuments={[]}
+                onChange={onChange}
+                showTabs={false}
+                disabledDocumentIds={new Set([document.id])}
+            />,
+        );
+
+        const row = screen
+            .getByText("Existing agreement.pdf")
+            .closest("button");
+        expect(row).toBeDisabled();
+        fireEvent.click(row!);
+        expect(onChange).not.toHaveBeenCalled();
+    });
+
     it.each([
         ["files", "Matter files", "Library agreement.pdf"],
         ["templates", "NDAs", "NDA template.docx"],

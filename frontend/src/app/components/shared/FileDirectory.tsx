@@ -73,6 +73,9 @@ interface FileDirectoryProps {
     tabs?: readonly DirectoryTab[];
     excludeProjectId?: string;
     folders?: DirectoryFolder[];
+    /** Documents already attached to the target resource. They remain visible
+     * and checked, but cannot be toggled again. */
+    disabledDocumentIds?: ReadonlySet<string>;
 }
 
 export function FileDirectory({
@@ -86,6 +89,7 @@ export function FileDirectory({
     tabs = ALL_DIRECTORY_TAB_VALUES,
     excludeProjectId,
     folders = EMPTY_FOLDERS,
+    disabledDocumentIds,
 }: FileDirectoryProps) {
     const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
         new Set(),
@@ -164,6 +168,11 @@ export function FileDirectory({
         () => new Set(selectedDocuments.map((document) => document.id)),
         [selectedDocuments],
     );
+    const checkedIds = useMemo(() => {
+        const next = new Set(selectedIds);
+        disabledDocumentIds?.forEach((id) => next.add(id));
+        return next;
+    }, [disabledDocumentIds, selectedIds]);
 
     const q = search.trim().toLowerCase();
     const visibleStandaloneDocs = q
@@ -222,6 +231,7 @@ export function FileDirectory({
             (activeTab === "templates" && !hasVisibleTemplates));
 
     function toggle(doc: Document) {
+        if (disabledDocumentIds?.has(doc.id)) return;
         const next = new Map(
             selectedDocuments.map((document) => [document.id, document]),
         );
@@ -246,16 +256,21 @@ export function FileDirectory({
     }
 
     function toggleDocuments(docs: Document[]) {
-        if (docs.length === 0) return;
+        const selectableDocs = docs.filter(
+            (doc) => !disabledDocumentIds?.has(doc.id),
+        );
+        if (selectableDocs.length === 0) return;
 
-        const allSelected = docs.every((doc) => selectedIds.has(doc.id));
+        const allSelected = selectableDocs.every((doc) =>
+            selectedIds.has(doc.id),
+        );
         const next = new Map(
             selectedDocuments.map((document) => [document.id, document]),
         );
         if (allSelected) {
-            docs.forEach((doc) => next.delete(doc.id));
+            selectableDocs.forEach((doc) => next.delete(doc.id));
         } else {
-            docs.forEach((doc) => next.set(doc.id, doc));
+            selectableDocs.forEach((doc) => next.set(doc.id, doc));
         }
         onChange([...next.values()]);
     }
@@ -311,14 +326,16 @@ export function FileDirectory({
     }
 
     function renderDocumentRow(doc: Document, depth = 0) {
-        const selected = selectedIds.has(doc.id);
+        const selected = checkedIds.has(doc.id);
+        const disabled = disabledDocumentIds?.has(doc.id) ?? false;
         return (
             <button
                 type="button"
                 key={doc.id}
                 onClick={() => toggle(doc)}
+                disabled={disabled}
                 style={{ paddingLeft: indentedRowPadding(depth) }}
-                className={`w-full rounded-md ${DIRECTORY_GRID_CLASS} py-2 pr-2 text-xs transition-all text-left  ${
+                className={`w-full rounded-md ${DIRECTORY_GRID_CLASS} py-2 pr-2 text-xs transition-all text-left disabled:cursor-not-allowed disabled:opacity-50 ${
                     selected
                         ? APP_SURFACE_ACTIVE_CLASS
                         : APP_SURFACE_HOVER_CLASS
@@ -360,9 +377,9 @@ export function FileDirectory({
             const docsInFolder = collectFolderDocuments(folders, docs, folder.id);
             const allSelected =
                 docsInFolder.length > 0 &&
-                docsInFolder.every((doc) => selectedIds.has(doc.id));
+                docsInFolder.every((doc) => checkedIds.has(doc.id));
             const someSelected =
-                docsInFolder.some((doc) => selectedIds.has(doc.id)) &&
+                docsInFolder.some((doc) => checkedIds.has(doc.id)) &&
                 !allSelected;
             const isExpanded = !!q || expandedLibraryFolders.has(folder.id);
             return (
@@ -615,11 +632,11 @@ export function FileDirectory({
                             const allProjectDocsSelected =
                                 projectDocIds.length > 0 &&
                                 projectDocIds.every((id) =>
-                                    selectedIds.has(id),
+                                    checkedIds.has(id),
                                 );
                             const someProjectDocsSelected =
                                 projectDocIds.some((id) =>
-                                    selectedIds.has(id),
+                                    checkedIds.has(id),
                                 ) && !allProjectDocsSelected;
                             return (
                                 <div key={project.id}>

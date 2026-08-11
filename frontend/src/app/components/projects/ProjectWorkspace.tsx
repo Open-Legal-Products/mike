@@ -240,11 +240,8 @@ export function ProjectWorkspaceProvider({
     }, [profile?.displayName, projectId, router, saveChat, user?.id]);
 
     const openNewReview = useCallback(() => {
-        const readyDocs =
-            project?.documents?.filter((d) => d.status === "ready") ?? [];
-        if (readyDocs.length === 0) return;
         setNewTRModalOpen(true);
-    }, [project?.documents]);
+    }, []);
 
     async function handleCreateReview(
         title: string,
@@ -382,7 +379,6 @@ export function ProjectWorkspaceProvider({
                     activeSection={activeSection}
                     creatingChat={creatingChat}
                     creatingReview={creatingReview}
-                    docsCount={project?.documents?.length ?? 0}
                     isOwner={project?.is_owner !== false}
                     onBackToProjects={() => router.push("/projects")}
                     onOpenDetails={() => setProjectDetailsOpen(true)}
@@ -400,9 +396,12 @@ export function ProjectWorkspaceProvider({
                     open={newTRModalOpen}
                     onClose={() => setNewTRModalOpen(false)}
                     onAdd={handleCreateReview}
-                    projectDocs={project?.documents?.filter(
-                        (d) => d.status === "ready",
-                    )}
+                    projectId={projectId}
+                    projectDocs={
+                        project?.documents?.filter(
+                            (d) => d.status === "ready",
+                        ) ?? []
+                    }
                     projectFolders={folders}
                     projectName={project?.name}
                     projectCmNumber={project?.cm_number}

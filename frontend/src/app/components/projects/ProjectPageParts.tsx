@@ -355,7 +355,6 @@ export function ProjectPageHeader({
     activeSection,
     creatingChat,
     creatingReview,
-    docsCount,
     isOwner,
     onBackToProjects,
     onOpenDetails,
@@ -371,7 +370,6 @@ export function ProjectPageHeader({
     activeSection: ProjectWorkspaceSection;
     creatingChat: boolean;
     creatingReview: boolean;
-    docsCount: number;
     isOwner: boolean;
     onBackToProjects: () => void;
     onOpenDetails: () => void;
@@ -405,7 +403,7 @@ export function ProjectPageHeader({
                 }
               : {
                     onClick: onNewReview,
-                    disabled: docsCount === 0 || creatingReview,
+                    disabled: creatingReview,
                     icon: creatingReview ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
@@ -413,8 +411,6 @@ export function ProjectPageHeader({
                     ),
                     label: <span className="hidden sm:inline">Review</span>,
                     title: "Create review",
-                    tooltip:
-                        docsCount === 0 ? "Upload a document first" : null,
                 };
 
     return (
