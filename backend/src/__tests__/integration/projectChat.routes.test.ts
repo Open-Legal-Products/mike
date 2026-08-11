@@ -167,6 +167,7 @@ describe("POST /projects/:projectId/chat", () => {
                     },
                 ],
                 model: " custom-model ",
+                reasoning_effort: "low",
                 displayed_doc: {
                     filename: " displayed.pdf ",
                     document_id: " displayed-document ",
@@ -205,6 +206,7 @@ describe("POST /projects/:projectId/chat", () => {
         expect(systemPromptExtra).toContain("attached.pdf");
         expect(runLLMStream.mock.calls[0][0]).toMatchObject({
             model: "custom-model",
+            reasoningEffort: "low",
         });
     });
 
@@ -224,6 +226,10 @@ describe("POST /projects/:projectId/chat", () => {
         [
             { ...VALID_BODY, model: 42 },
             "model must be a non-empty string",
+        ],
+        [
+            { ...VALID_BODY, reasoning_effort: "max" },
+            'reasoning_effort must be "low", "medium", or "high"',
         ],
         [
             {

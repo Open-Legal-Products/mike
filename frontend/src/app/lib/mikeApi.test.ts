@@ -597,6 +597,7 @@ describe("streamChat", () => {
             messages: [{ role: "user", content: "hi" }],
             chat_id: "c1",
             model: "gemini-3-flash-preview",
+            reasoning_effort: "medium",
             signal: controller.signal,
         });
 
@@ -614,6 +615,7 @@ describe("streamChat", () => {
             messages: [{ role: "user", content: "hi" }],
             chat_id: "c1",
             model: "gemini-3-flash-preview",
+            reasoning_effort: "medium",
         });
     });
 
@@ -642,6 +644,7 @@ describe("streamProjectChat", () => {
             projectId: "p1",
             messages: [{ role: "user", content: "hi" }],
             displayed_doc: { filename: "a.pdf", document_id: "d1" },
+            reasoning_effort: "high",
             signal: controller.signal,
         });
 
@@ -651,6 +654,7 @@ describe("streamProjectChat", () => {
         expect(JSON.parse(init.body as string)).toEqual({
             messages: [{ role: "user", content: "hi" }],
             displayed_doc: { filename: "a.pdf", document_id: "d1" },
+            reasoning_effort: "high",
         });
     });
 });
@@ -664,7 +668,11 @@ describe("streamTabularChat", () => {
             [{ role: "user", content: "summarize" }],
             null,
             undefined,
-            { reviewTitle: "Leases", projectName: null },
+            {
+                reviewTitle: "Leases",
+                projectName: null,
+                reasoningEffort: "low",
+            },
         );
 
         const { url, init } = lastFetchCall();
@@ -672,6 +680,7 @@ describe("streamTabularChat", () => {
         expect(JSON.parse(init.body as string)).toEqual({
             messages: [{ role: "user", content: "summarize" }],
             review_title: "Leases",
+            reasoning_effort: "low",
         });
     });
 });

@@ -16,6 +16,7 @@ import type {
     OpenSourceWorkflowContributorMode,
     OpenSourceWorkflowResponse,
     Project,
+    ReasoningEffort,
     Workflow,
     WorkflowContributor,
     TabularReview,
@@ -974,6 +975,7 @@ export async function streamChat(payload: {
     chat_id?: string;
     project_id?: string;
     model?: string;
+    reasoning_effort?: ReasoningEffort;
     ask_inputs_response?: {
         responses: (
             | {
@@ -1019,6 +1021,7 @@ export async function streamProjectChat(payload: {
     messages: StreamChatMessage[];
     chat_id?: string;
     model?: string;
+    reasoning_effort?: ReasoningEffort;
     displayed_doc?: { filename: string; document_id: string };
     attached_documents?: { filename: string; document_id: string }[];
     ask_inputs_response?: {
@@ -1211,7 +1214,11 @@ export async function streamTabularChat(
     messages: { role: string; content: string }[],
     chat_id?: string | null,
     signal?: AbortSignal,
-    context?: { reviewTitle?: string | null; projectName?: string | null },
+    context?: {
+        reviewTitle?: string | null;
+        projectName?: string | null;
+        reasoningEffort?: ReasoningEffort;
+    },
 ): Promise<Response> {
     const authHeaders = await getAuthHeader();
     return fetch(`${API_BASE}/tabular-review/${reviewId}/chat`, {
@@ -1222,6 +1229,7 @@ export async function streamTabularChat(
             chat_id: chat_id ?? undefined,
             review_title: context?.reviewTitle ?? undefined,
             project_name: context?.projectName ?? undefined,
+            reasoning_effort: context?.reasoningEffort,
         }),
         signal: signal ?? undefined,
     });

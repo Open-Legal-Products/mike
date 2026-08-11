@@ -109,6 +109,21 @@ describe("POST /chat — streaming endpoint", () => {
         expect(res.headers["content-type"]).toContain("text/event-stream");
         expect(res.text).toContain('"type":"chat_id"');
         expect(runLLMStream).toHaveBeenCalledTimes(1);
+        expect(runLLMStream.mock.calls[0][0]).toMatchObject({
+            reasoningEffort: "medium",
+        });
+    });
+
+    it("passes an explicitly selected reasoning effort to the LLM stream", async () => {
+        const res = await request(app)
+            .post("/chat")
+            .set("Authorization", "Bearer test")
+            .send({ ...VALID_BODY, reasoning_effort: "low" });
+
+        expect(res.status).toBe(200);
+        expect(runLLMStream.mock.calls[0][0]).toMatchObject({
+            reasoningEffort: "low",
+        });
     });
 
     it("surfaces a stream failure as an in-stream error event, not an HTTP error", async () => {
@@ -166,6 +181,10 @@ describe("POST /chat — streaming endpoint", () => {
         [
             { ...VALID_BODY, ask_inputs_response: { responses: [] } },
             "ask_inputs_response.responses must be a non-empty array",
+        ],
+        [
+            { ...VALID_BODY, reasoning_effort: "xhigh" },
+            'reasoning_effort must be "low", "medium", or "high"',
         ],
     ])("shares strict request validation with project chat", async (body, detail) => {
         const res = await request(app)

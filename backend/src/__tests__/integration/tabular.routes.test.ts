@@ -874,6 +874,21 @@ describe("tabular.routes", () => {
 
     // ── POST /tabular-review/:reviewId/chat (streaming GUARDS only) ───────
     describe("POST /tabular-review/:reviewId/chat", () => {
+        it("returns 400 for an unsupported reasoning effort", async () => {
+            const res = await request(app)
+                .post("/tabular-review/r1/chat")
+                .set(...AUTH)
+                .send({
+                    messages: [{ role: "user", content: "hello" }],
+                    reasoning_effort: "max",
+                });
+
+            expect(res.status).toBe(400);
+            expect(res.body.detail).toBe(
+                'reasoning_effort must be "low", "medium", or "high"',
+            );
+        });
+
         it("returns 400 when no user message is present", async () => {
             const res = await request(app)
                 .post("/tabular-review/r1/chat")

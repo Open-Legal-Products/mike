@@ -26,7 +26,7 @@ import {
     type TRChat,
     type TRCitationAnnotation,
 } from "@/app/lib/mikeApi";
-import type { AssistantEvent } from "../shared/types";
+import type { AssistantEvent, ReasoningEffort } from "../shared/types";
 import { ModelToggle } from "../assistant/ModelToggle";
 import { ApiKeyMissingPopup } from "../popups/ApiKeyMissingPopup";
 import { PreResponseWrapper } from "../assistant/PreResponseWrapper";
@@ -52,6 +52,7 @@ import {
     LiquidDropdownSurface,
 } from "@/app/components/ui/liquid-dropdown";
 import { cn } from "@/app/lib/utils";
+import { useReasoningEffort } from "@/app/hooks/useSelectedModel";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -439,6 +440,8 @@ function TRChatInput({
     onCancel,
     model,
     onModelChange,
+    reasoningEffort,
+    onReasoningEffortChange,
     apiKeys,
     onHeightChange,
 }: {
@@ -447,6 +450,8 @@ function TRChatInput({
     onCancel: () => void;
     model: string;
     onModelChange: (id: string) => void;
+    reasoningEffort: ReasoningEffort;
+    onReasoningEffortChange: (effort: ReasoningEffort) => void;
     apiKeys?: ApiKeyState;
     onHeightChange: (height: number) => void;
 }) {
@@ -531,6 +536,8 @@ function TRChatInput({
                     <ModelToggle
                         value={model}
                         onChange={onModelChange}
+                        reasoningEffort={reasoningEffort}
+                        onReasoningEffortChange={onReasoningEffortChange}
                         apiKeys={apiKeys}
                     />
                     <button
@@ -762,6 +769,7 @@ export function TRChatPanel({
     const { profile, updateModelPreference } = useUserProfile();
     const apiKeys = profile?.apiKeys;
     const currentModel = profile?.tabularModel ?? "gemini-3-flash-preview";
+    const [reasoningEffort, setReasoningEffort] = useReasoningEffort();
     const [apiKeyModalProvider, setApiKeyModalProvider] =
         useState<ModelProvider | null>(null);
     const [chats, setChats] = useState<TRChat[]>([]);
@@ -1179,7 +1187,7 @@ export function TRChatPanel({
                 allMessages,
                 currentChatId,
                 controller.signal,
-                { reviewTitle, projectName },
+                { reviewTitle, projectName, reasoningEffort },
             );
             if (!response.body) throw new Error("No response body");
 
@@ -1913,6 +1921,8 @@ export function TRChatPanel({
                 onModelChange={(id) =>
                     updateModelPreference("tabularModel", id)
                 }
+                reasoningEffort={reasoningEffort}
+                onReasoningEffortChange={setReasoningEffort}
                 apiKeys={apiKeys}
                 onHeightChange={setInputHeight}
             />

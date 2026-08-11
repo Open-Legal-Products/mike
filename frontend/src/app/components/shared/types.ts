@@ -314,12 +314,15 @@ export interface Message {
   files?: { filename: string; document_id?: string }[];
   workflow?: { id: string; title: string };
   model?: string;
+  reasoningEffort?: ReasoningEffort;
   citations?: Citation[];
   citationStatus?: "started" | "partial" | "final";
   events?: AssistantEvent[];
   /** Set when streaming failed; rendered as a red error block. */
   error?: string;
 }
+
+export type ReasoningEffort = "low" | "medium" | "high";
 
 export interface CitationQuote {
   page?: number;

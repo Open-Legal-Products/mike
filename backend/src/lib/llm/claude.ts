@@ -8,6 +8,7 @@ import type {
 } from "./types";
 import { toClaudeTools } from "./tools";
 import { createRawLlmStreamRecorder, logRawLlmStream } from "./rawStreamLog";
+import { DEFAULT_REASONING_EFFORT } from "./models";
 
 type ContentBlock =
   | { type: "text"; text: string }
@@ -20,6 +21,15 @@ type NativeMessage = {
 };
 
 const MAX_TOKENS = 16384;
+const CACHE_CONTROL = { type: "ephemeral" } as const;
+
+function cachedSystemPrompt(
+  value?: string,
+): Anthropic.TextBlockParam[] | undefined {
+  return value
+    ? [{ type: "text", text: value, cache_control: CACHE_CONTROL }]
+    : undefined;
+}
 
 function apiKey(override?: string | null): string {
   const key = override?.trim() || process.env.ANTHROPIC_API_KEY?.trim() || "";
@@ -112,10 +122,20 @@ export async function streamClaude(
     runTools,
     apiKeys,
     enableThinking,
+    reasoningEffort,
   } = params;
   const maxIter = params.maxIterations ?? 10;
   const anthropic = client(apiKeys?.claude);
   const claudeTools = toClaudeTools(tools);
+  const cachedClaudeTools = claudeTools.map((tool, index) =>
+    index === claudeTools.length - 1
+      ? { ...tool, cache_control: CACHE_CONTROL }
+      : tool,
+  );
+  const effectiveReasoningEffort =
+    model === "claude-opus-5"
+      ? (reasoningEffort ?? DEFAULT_REASONING_EFFORT)
+      : "high";
 
   const messages: NativeMessage[] = toNativeMessages(params.messages);
   let fullText = "";
@@ -131,18 +151,23 @@ export async function streamClaude(
         model,
         system: systemPrompt,
         messages: messages as Anthropic.MessageParam[],
-        tools: claudeTools.length
-          ? (claudeTools as unknown as Tool[])
+        tools: cachedClaudeTools.length
+          ? (cachedClaudeTools as unknown as Tool[])
           : undefined,
+        // Automatic caching advances with the conversation. The explicit
+        // marker on the last tool preserves the large stable tool prefix even
+        // when Mike's per-request prompt-injection nonce changes the system.
+        cache_control: CACHE_CONTROL,
         max_tokens: MAX_TOKENS,
-        // Claude 4.x models require `thinking.type: "adaptive"` and
-        // drive effort via `output_config.effort` rather than a fixed
-        // token budget. We only opt in when the caller requested it.
+        // Adaptive-thinking models drive effort via `output_config.effort`
+        // rather than a fixed token budget. We only opt in when requested.
         ...(enableThinking
           ? ({
-              thinking: { type: "adaptive" },
-              output_config: { effort: "high" },
-            } as unknown as Record<string, unknown>)
+              thinking: { type: "adaptive", display: "summarized" },
+              output_config: {
+                effort: effectiveReasoningEffort,
+              },
+            } as const)
           : {}),
         // Extended thinking requires temperature to be default (omitted).
       });
@@ -208,6 +233,16 @@ export async function streamClaude(
       } finally {
         params.abortSignal?.removeEventListener("abort", abortStream);
       }
+      console.info("[claude-usage]", {
+        model,
+        iteration: iter,
+        reasoningEffort: effectiveReasoningEffort,
+        inputTokens: final.usage.input_tokens,
+        cacheCreationInputTokens:
+          final.usage.cache_creation_input_tokens ?? 0,
+        cacheReadInputTokens: final.usage.cache_read_input_tokens ?? 0,
+        outputTokens: final.usage.output_tokens,
+      });
       if (sawThinking) callbacks.onReasoningBlockEnd?.();
       throwIfAborted(params.abortSignal);
       const stopReason = final.stop_reason;
@@ -278,7 +313,10 @@ export async function completeClaudeText(params: {
     resp = await anthropic.messages.create({
       model: params.model,
       max_tokens: params.maxTokens ?? 512,
-      system: params.systemPrompt,
+      // One-shot tabular jobs reuse a stable system prompt with changing
+      // document inputs, so cache that prefix without paying to cache every
+      // unique user payload.
+      system: cachedSystemPrompt(params.systemPrompt),
       messages: [{ role: "user", content: params.user }],
     });
   } catch (error) {

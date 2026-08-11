@@ -13,6 +13,7 @@ vi.mock("@/app/lib/mikeApi", () => ({
 
 vi.mock("@/app/hooks/useSelectedModel", () => ({
     useSelectedModel: () => ["claude-sonnet-4-6", vi.fn()],
+    useReasoningEffort: () => ["medium", vi.fn()],
 }));
 
 vi.mock("@/app/contexts/UserProfileContext", () => ({

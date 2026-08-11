@@ -3,6 +3,7 @@
 // provider translates internally.
 
 export type Provider = "claude" | "gemini" | "openai" | "ollama";
+export type ReasoningEffort = "low" | "medium" | "high";
 
 export type OpenAIToolSchema = {
     type: "function";
@@ -60,6 +61,7 @@ export type StreamChatParams = {
      * one-shot completions should leave this off to save tokens and latency.
      */
     enableThinking?: boolean;
+    reasoningEffort?: ReasoningEffort;
     abortSignal?: AbortSignal;
 };
 

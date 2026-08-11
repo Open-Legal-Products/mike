@@ -58,12 +58,22 @@ describe("providerForModel", () => {
 
 describe("resolveModel", () => {
     it("returns a known model id unchanged", () => {
+        expect(resolveModel("claude-opus-5", DEFAULT_MAIN_MODEL)).toBe(
+            "claude-opus-5",
+        );
         expect(resolveModel("claude-sonnet-4-6", DEFAULT_MAIN_MODEL)).toBe(
             "claude-sonnet-4-6",
         );
         expect(resolveModel("gpt-5.4-lite", DEFAULT_TITLE_MODEL)).toBe(
             "gpt-5.4-lite",
         );
+    });
+
+    it("migrates the retired Opus 4.7 selection to Opus 5", () => {
+        expect(resolveModel("claude-opus-4-7", DEFAULT_MAIN_MODEL)).toBe(
+            "claude-opus-5",
+        );
+        expect(CLAUDE_MAIN_MODELS).not.toContain("claude-opus-4-7");
     });
 
     it("falls back for unknown model ids", () => {

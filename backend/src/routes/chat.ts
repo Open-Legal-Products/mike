@@ -19,6 +19,7 @@ import {
     parseOptionalAskInputsResponse,
     parseOptionalChatId,
     parseOptionalModel,
+    parseReasoningEffort,
     parseOptionalProjectId,
     parseOptionalDocumentContext,
     buildWordDocumentContextPrompt,
@@ -383,6 +384,12 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     if (!parsedModel.ok) {
         return void res.status(400).json({ detail: parsedModel.detail });
     }
+    const parsedReasoningEffort = parseReasoningEffort(body.reasoning_effort);
+    if (!parsedReasoningEffort.ok) {
+        return void res
+            .status(400)
+            .json({ detail: parsedReasoningEffort.detail });
+    }
     // Optional plain-text document context supplied by the Word add-in (the
     // active document body, read via Word.run() — no upload, no stored
     // document record). Injected into the LLM system prompt below.
@@ -407,6 +414,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
     const chat_id = parsedChatId.value;
     const project_id = parsedProjectId.value.projectId;
     const model = parsedModel.value;
+    const reasoningEffort = parsedReasoningEffort.value;
     const askInputsResponse = parsedAskInputsResponse.value;
 
     devLog("[chat/stream] incoming request", {
@@ -567,6 +575,7 @@ chatRouter.post("/", requireAuth, async (req, res) => {
             includeResearchTools: legalResearchUs,
             model,
             apiKeys,
+            reasoningEffort,
             signal: streamAbort.signal,
             projectId: resolvedProjectId,
             nonce,

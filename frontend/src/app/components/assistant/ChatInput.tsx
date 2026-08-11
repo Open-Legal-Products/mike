@@ -34,7 +34,10 @@ import {
 } from "./workflowSlashCommands";
 import { ApiKeyMissingPopup } from "../popups/ApiKeyMissingPopup";
 import { ModelToggle } from "./ModelToggle";
-import { useSelectedModel } from "@/app/hooks/useSelectedModel";
+import {
+    useReasoningEffort,
+    useSelectedModel,
+} from "@/app/hooks/useSelectedModel";
 import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import {
     getModelProvider,
@@ -96,6 +99,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
         title: string;
     } | null>(null);
     const [model, setModel] = useSelectedModel();
+    const [reasoningEffort, setReasoningEffort] = useReasoningEffort();
     const { profile } = useUserProfile();
     const apiKeys = profile?.apiKeys;
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -328,6 +332,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
             files: files.length > 0 ? files : undefined,
             workflow: workflow ?? undefined,
             model,
+            reasoningEffort,
         });
     };
 
@@ -558,6 +563,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                             <ModelToggle
                                 value={model}
                                 onChange={setModel}
+                                reasoningEffort={reasoningEffort}
+                                onReasoningEffortChange={setReasoningEffort}
                                 apiKeys={apiKeys}
                             />
                             <button

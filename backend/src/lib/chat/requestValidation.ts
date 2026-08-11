@@ -1,5 +1,10 @@
 import { parseAskInputsResponsePayload } from "./contextBuilders";
 import type { AskInputsResponseRequest, ChatMessage } from "./types";
+import {
+  DEFAULT_REASONING_EFFORT,
+  isReasoningEffort,
+  type ReasoningEffort,
+} from "../llm";
 
 type ValidationResult<T> =
   | { ok: true; value: T }
@@ -58,6 +63,21 @@ export function parseOptionalModel(
 ): ValidationResult<string | undefined> {
   if (value === undefined) return { ok: true, value: undefined };
   return parseNonEmptyString(value, "model must be a non-empty string");
+}
+
+export function parseReasoningEffort(
+  value: unknown,
+): ValidationResult<ReasoningEffort> {
+  if (value === undefined) {
+    return { ok: true, value: DEFAULT_REASONING_EFFORT };
+  }
+  if (!isReasoningEffort(value)) {
+    return {
+      ok: false,
+      detail: 'reasoning_effort must be "low", "medium", or "high"',
+    };
+  }
+  return { ok: true, value };
 }
 
 function parseMessageFiles(

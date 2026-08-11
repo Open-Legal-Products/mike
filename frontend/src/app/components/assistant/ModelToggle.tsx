@@ -5,16 +5,19 @@ import { ChevronDown, Check, AlertCircle } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuLabel,
+    DropdownMenuRadioGroup,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
 import {
     LiquidDropdownContent,
     LiquidDropdownItem,
+    LiquidDropdownRadioItem,
 } from "@/app/components/ui/liquid-dropdown";
 import { isModelAvailable } from "@/app/lib/modelAvailability";
 import type { ApiKeyState } from "@/app/lib/mikeApi";
 import { useOllamaModels } from "@/app/hooks/useOllamaModels";
+import type { ReasoningEffort } from "../shared/types";
 
 export interface ModelOption {
     id: string;
@@ -24,8 +27,8 @@ export interface ModelOption {
 
 export const MODELS: ModelOption[] = [
     { id: "claude-fable-5", label: "Claude Fable 5", group: "Anthropic" },
+    { id: "claude-opus-5", label: "Claude Opus 5", group: "Anthropic" },
     { id: "claude-opus-4-8", label: "Claude Opus 4.8", group: "Anthropic" },
-    { id: "claude-opus-4-7", label: "Claude Opus 4.7", group: "Anthropic" },
     { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", group: "Anthropic" },
     { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash", group: "Google" },
     { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro", group: "Google" },
@@ -49,6 +52,13 @@ export const SETTINGS_MODELS: ModelOption[] = [
 export const DEFAULT_MODEL_ID = "gemini-3-flash-preview";
 
 export const ALLOWED_MODEL_IDS = new Set(MODELS.map((m) => m.id));
+export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium";
+
+const REASONING_OPTIONS: { id: ReasoningEffort; label: string }[] = [
+    { id: "low", label: "Low" },
+    { id: "medium", label: "Medium" },
+    { id: "high", label: "High" },
+];
 
 const GROUP_ORDER: ModelOption["group"][] = ["Anthropic", "Google", "OpenAI", "Local"];
 const itemClassName =
@@ -57,15 +67,29 @@ const itemClassName =
 interface Props {
     value: string;
     onChange: (id: string) => void;
+    reasoningEffort?: ReasoningEffort;
+    onReasoningEffortChange?: (effort: ReasoningEffort) => void;
     apiKeys?: ApiKeyState;
 }
 
-export function ModelToggle({ value, onChange, apiKeys }: Props) {
+export function ModelToggle({
+    value,
+    onChange,
+    reasoningEffort,
+    onReasoningEffortChange,
+    apiKeys,
+}: Props) {
     const [isOpen, setIsOpen] = useState(false);
     const ollamaModels = useOllamaModels();
     const models = [...MODELS, ...ollamaModels];
     const selected = models.find((m) => m.id === value);
-    const selectedLabel = selected?.label ?? "Model";
+    const showReasoning =
+        value === "claude-opus-5" &&
+        reasoningEffort !== undefined &&
+        onReasoningEffortChange !== undefined;
+    const selectedLabel = showReasoning
+        ? `${selected?.label.replace("Claude ", "") ?? "Opus 5"} · ${reasoningEffort[0].toUpperCase()}${reasoningEffort.slice(1)}`
+        : (selected?.label ?? "Model");
     const selectedAvailable = apiKeys
         ? isModelAvailable(value, apiKeys)
         : true;
@@ -137,6 +161,40 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                         </div>
                     );
                 })}
+                {showReasoning && (
+                    <>
+                        <DropdownMenuSeparator className="-mx-1 my-1 bg-white/70" />
+                        <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-gray-400">
+                            Reasoning
+                        </DropdownMenuLabel>
+                        <DropdownMenuRadioGroup
+                            value={reasoningEffort}
+                            onValueChange={(next) => {
+                                const option = REASONING_OPTIONS.find(
+                                    ({ id }) => id === next,
+                                );
+                                if (option) {
+                                    onReasoningEffortChange(option.id);
+                                }
+                            }}
+                        >
+                            {REASONING_OPTIONS.map((option) => (
+                                <LiquidDropdownRadioItem
+                                    key={option.id}
+                                    value={option.id}
+                                    className={itemClassName}
+                                >
+                                    <span className="flex-1">
+                                        {option.label}
+                                    </span>
+                                    {option.id === reasoningEffort && (
+                                        <Check className="ml-1 h-3.5 w-3.5 text-gray-600" />
+                                    )}
+                                </LiquidDropdownRadioItem>
+                            ))}
+                        </DropdownMenuRadioGroup>
+                    </>
+                )}
             </LiquidDropdownContent>
         </DropdownMenu>
     );

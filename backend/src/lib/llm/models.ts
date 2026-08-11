@@ -1,4 +1,4 @@
-import type { Provider } from "./types";
+import type { Provider, ReasoningEffort } from "./types";
 
 // ---------------------------------------------------------------------------
 // Canonical model IDs
@@ -6,8 +6,8 @@ import type { Provider } from "./types";
 // Main-chat tier (top-end) — user picks one of these per message.
 export const CLAUDE_MAIN_MODELS = [
     "claude-fable-5",
+    "claude-opus-5",
     "claude-opus-4-8",
-    "claude-opus-4-7",
     "claude-sonnet-4-6",
 ] as const;
 export const GEMINI_MAIN_MODELS = [
@@ -33,6 +33,8 @@ export const OPENAI_LOW_MODELS = ["gpt-5.4-lite"] as const;
 export const DEFAULT_MAIN_MODEL = "gemini-3-flash-preview";
 export const DEFAULT_TITLE_MODEL = "gemini-3.1-flash-lite-preview";
 export const DEFAULT_TABULAR_MODEL = "gemini-3-flash-preview";
+export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium";
+export const REASONING_EFFORTS = ["low", "medium", "high"] as const;
 
 const ALL_MODELS = new Set<string>([
     ...CLAUDE_MAIN_MODELS,
@@ -59,6 +61,14 @@ export function providerForModel(model: string): Provider {
 }
 
 export function resolveModel(id: string | null | undefined, fallback: string): string {
+    if (id === "claude-opus-4-7") return "claude-opus-5";
     if (id && (ALL_MODELS.has(id) || id.startsWith("ollama/"))) return id;
     return fallback;
+}
+
+export function isReasoningEffort(value: unknown): value is ReasoningEffort {
+    return (
+        typeof value === "string" &&
+        (REASONING_EFFORTS as readonly string[]).includes(value)
+    );
 }

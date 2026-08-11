@@ -7,6 +7,7 @@ import {
     parseOptionalDisplayedDoc,
     parseOptionalModel,
     parseOptionalProjectId,
+    parseReasoningEffort,
 } from "../requestValidation";
 
 describe("chat request validation", () => {
@@ -98,6 +99,26 @@ describe("chat request validation", () => {
             value: { provided: false, projectId: null },
         });
     });
+
+    it("defaults reasoning to medium and accepts the supported cost controls", () => {
+        expect(parseReasoningEffort(undefined)).toEqual({
+            ok: true,
+            value: "medium",
+        });
+        for (const value of ["low", "medium", "high"]) {
+            expect(parseReasoningEffort(value)).toEqual({ ok: true, value });
+        }
+    });
+
+    it.each([null, "xhigh", "max", " medium ", 1])(
+        "rejects unsupported reasoning effort %j",
+        (value) => {
+            expect(parseReasoningEffort(value)).toEqual({
+                ok: false,
+                detail: 'reasoning_effort must be "low", "medium", or "high"',
+            });
+        },
+    );
 
     it.each([
         [parseOptionalChatId, " ", "chat_id must be a non-empty string"],

@@ -16,6 +16,7 @@ import {
     buildCancelledAssistantMessage,
     isAbortError,
     runLLMStream,
+    parseReasoningEffort,
     stripTransientAssistantEvents,
     TABULAR_TOOLS,
     type ChatMessage,
@@ -1533,12 +1534,20 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
         chat_id: existingChatId,
         review_title: clientReviewTitle,
         project_name: clientProjectName,
+        reasoning_effort: rawReasoningEffort,
     } = req.body as {
         messages: ChatMessage[];
         chat_id?: string;
         review_title?: string;
         project_name?: string;
+        reasoning_effort?: unknown;
     };
+    const parsedReasoningEffort = parseReasoningEffort(rawReasoningEffort);
+    if (!parsedReasoningEffort.ok) {
+        return void res
+            .status(400)
+            .json({ detail: parsedReasoningEffort.detail });
+    }
 
     const lastUser = [...(messages ?? [])]
         .reverse()
@@ -1679,6 +1688,7 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
                 extractTabularAnnotations(text, tabularStore),
             model: tabular_model,
             apiKeys: api_keys,
+            reasoningEffort: parsedReasoningEffort.value,
             signal: streamAbort.signal,
         });
 

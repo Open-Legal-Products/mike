@@ -160,6 +160,7 @@ export async function runLLMStream(params: {
   buildCitations?: (fullText: string) => unknown[];
   model?: string;
   apiKeys?: import("../llm").UserApiKeys;
+  reasoningEffort?: import("../llm").ReasoningEffort;
   signal?: AbortSignal;
   /**
    * If set, generate_docx will attach created docs to this project so
@@ -190,6 +191,7 @@ export async function runLLMStream(params: {
     buildCitations,
     model,
     apiKeys,
+    reasoningEffort,
     signal,
     projectId,
     nonce,
@@ -349,6 +351,7 @@ export async function runLLMStream(params: {
       maxIterations: 10,
       apiKeys,
       enableThinking: true,
+      reasoningEffort,
       abortSignal: signal,
       callbacks: {
         onContentDelta: (delta) => {

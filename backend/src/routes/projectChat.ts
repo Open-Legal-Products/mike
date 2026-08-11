@@ -23,6 +23,7 @@ import {
     parseOptionalChatId,
     parseOptionalDisplayedDoc,
     parseOptionalModel,
+    parseReasoningEffort,
     type ChatMessage,
 } from "../lib/chat";
 import {
@@ -62,6 +63,12 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
     if (!parsedModel.ok) {
         return void res.status(400).json({ detail: parsedModel.detail });
     }
+    const parsedReasoningEffort = parseReasoningEffort(body.reasoning_effort);
+    if (!parsedReasoningEffort.ok) {
+        return void res
+            .status(400)
+            .json({ detail: parsedReasoningEffort.detail });
+    }
     const parsedDisplayedDoc = parseOptionalDisplayedDoc(body.displayed_doc);
     if (!parsedDisplayedDoc.ok) {
         return void res.status(400).json({ detail: parsedDisplayedDoc.detail });
@@ -86,6 +93,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
     const messages = parsedMessages.value;
     const chat_id = parsedChatId.value;
     const model = parsedModel.value;
+    const reasoningEffort = parsedReasoningEffort.value;
     const displayed_doc = parsedDisplayedDoc.value;
     const attached_documents = parsedAttachedDocuments.value;
     const askInputsResponse = parsedAskInputsResponse.value;
@@ -261,6 +269,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             includeResearchTools: legalResearchUs,
             model,
             apiKeys,
+            reasoningEffort,
             signal: streamAbort.signal,
             projectId,
             nonce,
