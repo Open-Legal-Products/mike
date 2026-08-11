@@ -44,18 +44,22 @@ export interface DocumentReadActivity {
 export type WordThinkingEvent = {
   type: "thinking";
   isStreaming?: boolean;
+  /** Stable render identity assigned at creation; see wordChatEvents.ts. */
+  key?: string;
 };
 
 export type WordReasoningEvent = {
   type: "reasoning";
   text: string;
   isStreaming?: boolean;
+  key?: string;
 };
 
 export type WordContentEvent = {
   type: "content";
   text: string;
   isStreaming?: boolean;
+  key?: string;
 };
 
 export type WordDocumentReadEvent = {
@@ -63,9 +67,10 @@ export type WordDocumentReadEvent = {
   filename: string;
   documentId?: string;
   status: DocumentReadActivity["status"];
+  key?: string;
 };
 
-export type WordErrorEvent = { type: "error"; message: string };
+export type WordErrorEvent = { type: "error"; message: string; key?: string };
 
 /**
  * A backend-persisted assistant activity the Word surface does not render yet.

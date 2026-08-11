@@ -68,12 +68,14 @@ test.describe("Word assistant message events", () => {
         filename: "Agreement.docx",
         documentId: "document-1",
         status: "reading",
+        key: expect.any(String),
       },
       {
         type: "doc_read",
         filename: "Agreement.docx",
         documentId: "document-2",
         status: "read",
+        key: expect.any(String),
       },
     ]);
   });
@@ -91,14 +93,23 @@ test.describe("Word assistant message events", () => {
     events = appendAssistantContent(events, "The agreement has three risks.");
 
     expect(events).toEqual([
-      { type: "content", text: "I’ll inspect the document." },
+      {
+        type: "content",
+        text: "I’ll inspect the document.",
+        key: expect.any(String),
+      },
       {
         type: "doc_read",
         filename: "Agreement.docx",
         documentId: "document-1",
         status: "read",
+        key: expect.any(String),
       },
-      { type: "content", text: "The agreement has three risks." },
+      {
+        type: "content",
+        text: "The agreement has three risks.",
+        key: expect.any(String),
+      },
     ]);
   });
 
@@ -114,14 +125,23 @@ test.describe("Word assistant message events", () => {
         type: "reasoning",
         text: "Inspect the agreement.",
         isStreaming: true,
+        key: expect.any(String),
       },
     ]);
 
     events = finishAssistantReasoning(events);
     events = appendAssistantContent(events, "The agreement is valid.");
     expect(events).toEqual([
-      { type: "reasoning", text: "Inspect the agreement." },
-      { type: "content", text: "The agreement is valid." },
+      {
+        type: "reasoning",
+        text: "Inspect the agreement.",
+        key: expect.any(String),
+      },
+      {
+        type: "content",
+        text: "The agreement is valid.",
+        key: expect.any(String),
+      },
     ]);
   });
 
@@ -199,8 +219,9 @@ test.describe("Word assistant message events", () => {
         filename: "Complete.docx",
         documentId: "complete",
         status: "read",
+        key: expect.any(String),
       },
-      { type: "content", text: "Done" },
+      { type: "content", text: "Done", key: expect.any(String) },
     ]);
   });
 });

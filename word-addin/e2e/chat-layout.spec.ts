@@ -449,6 +449,188 @@ test("keeps the submitted turn at 80px while Working becomes Completed", async (
   ).toBeLessThanOrEqual(4);
 });
 
+test("keeps the pinned turn steady when a tall activity strip completes", async ({
+  addin,
+  page,
+}) => {
+  addin.seedToken(TOKEN);
+  await page.setViewportSize({ width: 420, height: 720 });
+
+  const firstResponse = Array.from(
+    { length: 30 },
+    (_, index) =>
+      `Existing response paragraph ${index + 1} makes the transcript tall enough to exercise a live anchored follow-up.`,
+  ).join("\n\n");
+  await addin.mockChatStream([firstResponse]);
+  await addin.gotoTaskpane({
+    documentText: "A contract body for the tall-activity completion test.",
+  });
+  await addin.expectAuthedShell();
+
+  await page.getByPlaceholder("Ask Mike…").fill("Initial layout question");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(
+    page.getByText("Existing response paragraph 30", { exact: false }),
+  ).toBeVisible();
+
+  // Controlled stream that opens with a document read plus a multi-step
+  // reasoning block, then finishes into prose on demand. The moment the strip
+  // flips from "Working" to "Completed in N steps" its open activity collapses
+  // — WebKit's scroll anchoring (which ignores `overflow-anchor: none`)
+  // responds to that descendant resize by adjusting scrollTop, which is
+  // exactly the jump this test pins down. Chromium honours overflow-anchor,
+  // so the assertion only bites under the webkit project.
+  await page.evaluate(() => {
+    type ControlledStreamWindow = Window & {
+      __WORD_TALL_STREAM_READY__?: boolean;
+      __WORD_TALL_STREAM_EMIT__?: (event: object) => void;
+      __WORD_TALL_STREAM_DONE__?: () => void;
+    };
+    const controlledWindow = window as ControlledStreamWindow;
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const request = input instanceof Request ? input : null;
+      const url = new URL(request?.url ?? String(input), window.location.href);
+      const method = (init?.method ?? request?.method ?? "GET").toUpperCase();
+      if (url.pathname !== "/word-chat" || method !== "POST") {
+        return nativeFetch(input, init);
+      }
+
+      const encoder = new TextEncoder();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const emit = (event: object): void => {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+            );
+          };
+          emit({
+            type: "doc_read_start",
+            filename: "Agreement.docx",
+          });
+          for (let line = 1; line <= 50; line += 1) {
+            emit({
+              type: "reasoning_delta",
+              text: `Considering clause ${line} of the agreement in careful detail before drafting.\n\n`,
+            });
+          }
+          controlledWindow.__WORD_TALL_STREAM_EMIT__ = emit;
+          controlledWindow.__WORD_TALL_STREAM_DONE__ = () => {
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          };
+          controlledWindow.__WORD_TALL_STREAM_READY__ = true;
+        },
+      });
+
+      return Promise.resolve(
+        new Response(body, {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream",
+            "cache-control": "no-cache",
+          },
+        }),
+      );
+    };
+  });
+
+  const prompt = "Inspect the tall-activity completion";
+  await page.getByPlaceholder("Ask Mike…").fill(prompt);
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          !!(window as Window & { __WORD_TALL_STREAM_READY__?: boolean })
+            .__WORD_TALL_STREAM_READY__,
+      ),
+    )
+    .toBe(true);
+
+  const anchoredMessage = page
+    .getByText(prompt, { exact: true })
+    .locator("xpath=ancestor::*[@data-message-id][1]");
+  const assistantTurn = anchoredMessage.locator(
+    "xpath=following-sibling::div[1]",
+  );
+  await expect(
+    assistantTurn.getByRole("button", { name: "Working" }),
+  ).toBeVisible();
+  await expect(
+    assistantTurn.getByText("Considering clause 50", { exact: false }),
+  ).toBeVisible();
+
+  const readPosition = async () => {
+    return anchoredMessage.evaluate((message) => {
+      let container = message.parentElement;
+      while (container) {
+        const overflowY = getComputedStyle(container).overflowY;
+        if (overflowY === "auto" || overflowY === "scroll") {
+          return {
+            userTop: message.getBoundingClientRect().top,
+            containerTop: container.getBoundingClientRect().top,
+            scrollTop: container.scrollTop,
+          };
+        }
+        container = container.parentElement;
+      }
+      throw new Error("Scrollable chat transcript was not found.");
+    });
+  };
+
+  // Let the pin scroll fully settle before sampling the streaming layout.
+  await page.waitForTimeout(900);
+  const workingPosition = await readPosition();
+
+  await page.evaluate(() => {
+    const controlledWindow = window as Window & {
+      __WORD_TALL_STREAM_EMIT__?: (event: object) => void;
+      __WORD_TALL_STREAM_DONE__?: () => void;
+    };
+    controlledWindow.__WORD_TALL_STREAM_EMIT__?.({
+      type: "reasoning_block_end",
+    });
+    controlledWindow.__WORD_TALL_STREAM_EMIT__?.({
+      type: "doc_read",
+      filename: "Agreement.docx",
+    });
+    controlledWindow.__WORD_TALL_STREAM_EMIT__?.({
+      type: "content_delta",
+      text: "The agreement review is complete.",
+    });
+    controlledWindow.__WORD_TALL_STREAM_DONE__?.();
+  });
+
+  await expect(
+    assistantTurn.getByRole("button", { name: /Completed in \d+ steps?/ }),
+  ).toBeVisible();
+  await expect(
+    assistantTurn.getByText("The agreement review is complete."),
+  ).toBeVisible();
+  await page.waitForTimeout(550);
+
+  const completedPosition = await readPosition();
+  console.log("WEBKIT_TALL_COMPLETION_DIAGNOSTIC", {
+    workingPosition,
+    completedPosition,
+  });
+  // The pinned turn must sit on the container's 80px pin line while the tall
+  // strip streams, and must not move when completion collapses the strip.
+  expect(
+    Math.abs(workingPosition.userTop - (workingPosition.containerTop + 80)),
+  ).toBeLessThanOrEqual(4);
+  expect(
+    Math.abs(completedPosition.userTop - (completedPosition.containerTop + 80)),
+  ).toBeLessThanOrEqual(4);
+  expect(
+    Math.abs(completedPosition.userTop - workingPosition.userTop),
+  ).toBeLessThanOrEqual(4);
+  expect(
+    Math.abs(completedPosition.scrollTop - workingPosition.scrollTop),
+  ).toBeLessThanOrEqual(4);
+});
+
 test("jumps straight to the current bottom and does not follow later stream growth", async ({
   addin,
   page,
@@ -590,13 +772,18 @@ test("jumps straight to the current bottom and does not follow later stream grow
   }, laterGrowth);
 
   await expect(scrollButton).toBeVisible();
+  // WKWebView can briefly drag a bottom-resting scroller along with streamed
+  // growth before the engine-scroll corrector snaps it back, so assert the
+  // settled position rather than an instantaneous sample.
+  await expect
+    .poll(() => container.evaluate((element) => Math.round(element.scrollTop)))
+    .toBe(Math.round(atBottom.scrollTop));
   const afterGrowth = await container.evaluate((element) => ({
     scrollTop: element.scrollTop,
     bottomDistance:
       element.scrollHeight - element.scrollTop - element.clientHeight,
   }));
   console.log("WEBKIT_ARROW_DIAGNOSTIC", { atBottom, afterGrowth });
-  expect(Math.abs(afterGrowth.scrollTop - atBottom.scrollTop)).toBeLessThan(2);
   expect(afterGrowth.bottomDistance).toBeGreaterThan(10);
 
   await page.evaluate(() => {

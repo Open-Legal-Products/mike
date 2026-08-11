@@ -14,6 +14,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+// Stable render identity for live-streamed events. React keys derived from
+// array indices remount the activity strips when completeAssistantEvents
+// filters an earlier event out — and in WKWebView, unmounting the DOM node
+// its scroll anchoring latched onto can reset the transcript's scrollTop.
+// Stamping identity at creation keeps every surviving event's subtree alive
+// across completion. The key is inert if it reaches storage.
+let liveEventKeyCounter = 0;
+
+function nextEventKey(): string {
+  liveEventKeyCounter += 1;
+  return `live-${liveEventKeyCounter}`;
+}
+
 export function isWordThinkingEvent(
   event: WordAssistantEvent,
 ): event is WordThinkingEvent {
@@ -249,7 +262,7 @@ export function appendAssistantContent(
       { ...last, type: "content", text: last.text + text },
     ];
   }
-  return [...current, { type: "content", text }];
+  return [...current, { type: "content", text, key: nextEventKey() }];
 }
 
 function finalizeTrailingReasoning(
@@ -277,7 +290,7 @@ export function appendAssistantReasoning(
   }
   return [
     ...finalizeTrailingReasoning(current),
-    { type: "reasoning", text, isStreaming: true },
+    { type: "reasoning", text, isStreaming: true, key: nextEventKey() },
   ];
 }
 
@@ -292,7 +305,7 @@ export function finishAssistantReasoning(
   }
   return [
     ...finalizeTrailingReasoning(current),
-    { type: "thinking", isStreaming: true },
+    { type: "thinking", isStreaming: true, key: nextEventKey() },
   ];
 }
 
@@ -338,7 +351,7 @@ export function upsertDocumentReadEvent(
     status: read.status,
   };
 
-  if (index < 0) return [...current, nextEvent];
+  if (index < 0) return [...current, { ...nextEvent, key: nextEventKey() }];
   const previous = current[index];
   if (
     previous &&
@@ -349,7 +362,12 @@ export function upsertDocumentReadEvent(
     return current;
   }
   return current.map((event, eventIndex) =>
-    eventIndex === index ? nextEvent : event,
+    eventIndex === index
+      ? {
+          ...nextEvent,
+          ...(typeof previous?.key === "string" ? { key: previous.key } : {}),
+        }
+      : event,
   );
 }
 
@@ -362,7 +380,7 @@ export function setAssistantError(
       (event) => !isWordErrorEvent(event) && !isWordThinkingEvent(event),
     ),
   );
-  return [...current, { type: "error", message }];
+  return [...current, { type: "error", message, key: nextEventKey() }];
 }
 
 export function completeAssistantEvents(

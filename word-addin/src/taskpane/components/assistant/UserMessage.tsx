@@ -6,8 +6,9 @@ const COLLAPSED_CONTENT_HEIGHT = 144;
 /**
  * Right-aligned user bubble, duplicated from the web app's UserMessage
  * including the same file/workflow chips used by the frontend assistant.
+ * Memoized: user turns never change while an answer streams below them.
  */
-export function UserMessage({
+function UserMessageImpl({
   content,
   files,
   workflow,
@@ -114,3 +115,5 @@ export function UserMessage({
     </div>
   );
 }
+
+export const UserMessage = React.memo(UserMessageImpl);
