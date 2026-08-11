@@ -209,7 +209,7 @@ function EditResolveButtons({
     return (
         <div className="flex items-center gap-2">
             <PillButton
-                tone="black"
+                tone="blue"
                 size="sm"
                 onClick={() => handle("accept")}
                 disabled={inFlight || resolved}
@@ -217,7 +217,7 @@ function EditResolveButtons({
                 {status === "accepted" ? "Accepted" : "Accept"}
             </PillButton>
             <PillButton
-                tone="white"
+                tone="black"
                 size="sm"
                 onClick={() => handle("reject")}
                 disabled={inFlight || resolved}
