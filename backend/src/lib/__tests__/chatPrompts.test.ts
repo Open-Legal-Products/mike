@@ -9,6 +9,12 @@ describe("buildSystemPrompt", () => {
                 "You are Mike, an AI legal assistant for lawyers and legal professionals.",
             );
             expect(prompt).toContain("Do not fabricate document content.");
+            expect(prompt).toContain(
+                "In user-facing prose, use natural language only",
+            );
+            expect(prompt).toContain(
+                "Never mention internal tool names or tool calls",
+            );
             expect(prompt).toContain("DOCX GENERATION:");
             expect(prompt).toContain("DOCUMENT EDITING:");
         }
@@ -40,7 +46,9 @@ describe("buildSystemPrompt", () => {
         for (const prompt of [buildSystemPrompt(true), buildSystemPrompt(false)]) {
             expect(prompt).toContain("WORKFLOWS:");
             expect(prompt).toContain("LIBRARY TEMPLATES:");
-            expect(prompt).toContain("Workflow reference files are immutable");
+            expect(prompt).toContain(
+                "Workflow reference files used as templates are immutable",
+            );
             expect(prompt).toContain("Library Templates are immutable");
             expect(prompt).toContain(
                 "call replicate_document with a descriptive new_filename",
@@ -48,6 +56,9 @@ describe("buildSystemPrompt", () => {
             expect(prompt).toContain(
                 "open the relevant files with read_document before continuing",
             );
+            expect(
+                prompt.match(/never generate a new document in its place/g),
+            ).toHaveLength(2);
         }
     });
 
