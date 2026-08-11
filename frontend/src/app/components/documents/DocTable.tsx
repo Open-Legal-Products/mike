@@ -185,7 +185,7 @@ function ProjectTableLoadingHeader({
     stickyCellBg: string;
 }) {
     return (
-        <TableHeaderRow className={`${stickyCellBg} pr-8 md:pr-8`}>
+        <TableHeaderRow className={`${stickyCellBg} pr-3`}>
             <TableStickyCell
                 header
                 widthClassName={DOC_NAME_COL_W}
@@ -220,7 +220,7 @@ function ProjectTableLoading({ stickyCellBg }: { stickyCellBg: string }) {
             {[1, 2, 3, 4, 5].map((i) => (
                 <div
                     key={i}
-                    className="flex h-10 min-w-max items-center pr-8"
+                    className="flex h-10 min-w-max items-center pr-3"
                 >
                     <div
                         className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${stickyCellBg} py-2 pl-4 pr-2`}
@@ -1301,7 +1301,7 @@ export function DocTable({
         return (
             <div
                 ref={newFolderInputRef}
-                className="group flex h-10 min-w-max items-center pr-8"
+                className="group flex h-10 min-w-max items-center pr-3"
                 key={`new-folder-${parentId ?? "root"}`}
             >
                 <div
@@ -1357,7 +1357,7 @@ export function DocTable({
         return (
             <div
                 key={key}
-                className="group flex h-10 min-w-max items-center pr-8"
+                className="group flex h-10 min-w-max items-center pr-3"
             >
                 <div
                     className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${stickyCellBg} py-2 pl-4 pr-2`}
@@ -1491,7 +1491,7 @@ export function DocTable({
                                         showFolderActions: false,
                                     });
                                 }}
-                                className={`group flex h-10 min-w-max items-center pr-8 cursor-pointer transition-colors ${isVersionDragOver ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : isSelected ? APP_SURFACE_ACTIVE_CLASS : APP_SURFACE_HOVER_CLASS}`}
+                                className={`group flex h-10 min-w-max items-center pr-3 cursor-pointer transition-colors ${isVersionDragOver ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : isSelected ? APP_SURFACE_ACTIVE_CLASS : APP_SURFACE_HOVER_CLASS}`}
                             >
                                 {(() => {
                                     const rowBg = isVersionDragOver
@@ -1819,7 +1819,7 @@ export function DocTable({
                                         showFolderActions: true,
                                     });
                                 }}
-                                className={`group flex h-10 min-w-max items-center pr-8 ${APP_SURFACE_HOVER_CLASS} cursor-pointer transition-colors ${isRenaming ? "" : "select-none"} ${dragOverFolderId === folder.id ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : ""}`}
+                                className={`group flex h-10 min-w-max items-center pr-3 ${APP_SURFACE_HOVER_CLASS} cursor-pointer transition-colors ${isRenaming ? "" : "select-none"} ${dragOverFolderId === folder.id ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : ""}`}
                             >
                                 <div
                                     className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} py-2 pl-4 pr-2 ${dragOverFolderId === folder.id ? "bg-blue-50" : stickyCellBg} transition-colors ${dragOverFolderId === folder.id ? "" : APP_SURFACE_GROUP_HOVER_CLASS}`}
@@ -2374,7 +2374,7 @@ export function DocTable({
                         />
                     ) : (
                         <TableHeaderRow
-                            className={`${stickyCellBg} pr-8 md:pr-8`}
+                            className={`${stickyCellBg} pr-3`}
                         >
                             <TableStickyCell
                                 header
@@ -2661,7 +2661,7 @@ export function DocTable({
                                                                         },
                                                                     );
                                                                 }}
-                                                                className={`group flex h-10 min-w-max items-center pr-8 cursor-pointer transition-colors ${isVersionDragOver ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : isSelected ? APP_SURFACE_ACTIVE_CLASS : APP_SURFACE_HOVER_CLASS}`}
+                                                                className={`group flex h-10 min-w-max items-center pr-3 cursor-pointer transition-colors ${isVersionDragOver ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : isSelected ? APP_SURFACE_ACTIVE_CLASS : APP_SURFACE_HOVER_CLASS}`}
                                                             >
                                                                 <div
                                                                     className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${isVersionDragOver ? "bg-blue-50" : isSelected ? APP_SURFACE_ACTIVE_CLASS : stickyCellBg} py-2 pl-4 pr-2 transition-colors ${isVersionDragOver || isSelected ? "" : APP_SURFACE_GROUP_HOVER_CLASS}`}
