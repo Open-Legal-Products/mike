@@ -32,7 +32,7 @@ export function UserMessage({
         frame = null;
         const overflows = element.scrollHeight > COLLAPSED_CONTENT_HEIGHT + 1;
         setCanExpand((current) =>
-          current === overflows ? current : overflows
+          current === overflows ? current : overflows,
         );
       });
     };
@@ -51,11 +51,12 @@ export function UserMessage({
       <div className="max-w-[80%] bg-gray-100 rounded-xl px-4 py-3">
         <div
           className="relative overflow-hidden"
-          style={
-            canExpand && !expanded
-              ? { maxHeight: COLLAPSED_CONTENT_HEIGHT }
-              : undefined
-          }
+          // Clamped from the very first frame (maxHeight is inert for short
+          // content): the height painted on send is final, and ChatView's
+          // pre-paint spacer measurement sees the same clamped box. Only the
+          // gradient/expand affordances wait for the post-paint overflow
+          // measurement — they don't change the box height.
+          style={expanded ? undefined : { maxHeight: COLLAPSED_CONTENT_HEIGHT }}
           data-testid="user-message-content"
         >
           <p
