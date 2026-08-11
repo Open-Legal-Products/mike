@@ -55,26 +55,24 @@ const WORKFLOW_TABS: { id: WorkflowListTab; label: string }[] = [
   { id: "addons", label: "Add-ons" },
 ];
 
-type WorkflowSortKey =
-  | "name"
-  | "type"
-  | "practice"
-  | "jurisdiction"
-  | "language";
-
 const WORKFLOW_SORT_OPTIONS: TableFilterOption<TableSortDirection>[] = [
   { value: "asc", label: "Ascending" },
   { value: "desc", label: "Descending" },
 ];
 
-function workflowSortValue(workflow: Workflow, key: WorkflowSortKey) {
-  if (key === "name") return workflow.metadata.title;
-  if (key === "type") return workflow.metadata.type;
-  if (key === "practice") return workflow.metadata.practice ?? "";
-  if (key === "jurisdiction") {
-    return workflow.metadata.jurisdictions?.join(", ") ?? "";
-  }
-  return workflow.metadata.language ?? "";
+function workflowFilterOptions(
+  values: (string | null | undefined)[],
+  labelForValue: (value: string) => string = (value) => value,
+): TableFilterOption<string>[] {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => value?.trim())
+        .filter((value): value is string => !!value),
+    ),
+  )
+    .sort((a, b) => a.localeCompare(b))
+    .map((value) => ({ value, label: labelForValue(value) }));
 }
 
 export function WorkflowList() {
@@ -353,6 +351,7 @@ export function WorkflowList() {
         />
       ) : (
         <WorkflowTable
+          key={activeTab}
           workflows={visibleWorkflows}
           loading={loading}
           error={loadError}
@@ -447,23 +446,71 @@ function WorkflowTable({
   selectedIds: string[];
   onSelectedIdsChange: (ids: string[]) => void;
 }) {
-  const [sort, setSort] = useState<{
-    key: WorkflowSortKey;
-    direction: TableSortDirection;
-  } | null>(null);
-  const sortedWorkflows = useMemo(() => {
-    if (!sort) return workflows;
-    const multiplier = sort.direction === "asc" ? 1 : -1;
-    return [...workflows].sort(
-      (a, b) =>
-        workflowSortValue(a, sort.key).localeCompare(
-          workflowSortValue(b, sort.key),
-          undefined,
-          { sensitivity: "base" },
-        ) * multiplier,
+  const [nameSortDirection, setNameSortDirection] =
+    useState<TableSortDirection | null>(null);
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [practiceFilter, setPracticeFilter] = useState<string | null>(null);
+  const [jurisdictionFilter, setJurisdictionFilter] = useState<string | null>(
+    null,
+  );
+  const [languageFilter, setLanguageFilter] = useState<string | null>(null);
+  const typeOptions = useMemo(
+    () =>
+      workflowFilterOptions(
+        workflows.map((workflow) => workflow.metadata.type),
+        (value) => (value === "tabular" ? "Tabular" : "Assistant"),
+      ),
+    [workflows],
+  );
+  const practiceOptions = useMemo(
+    () =>
+      workflowFilterOptions(
+        workflows.map((workflow) => workflow.metadata.practice),
+      ),
+    [workflows],
+  );
+  const jurisdictionOptions = useMemo(
+    () =>
+      workflowFilterOptions(
+        workflows.flatMap(
+          (workflow) => workflow.metadata.jurisdictions ?? [],
+        ),
+      ),
+    [workflows],
+  );
+  const languageOptions = useMemo(
+    () =>
+      workflowFilterOptions(
+        workflows.map((workflow) => workflow.metadata.language),
+      ),
+    [workflows],
+  );
+  const displayedWorkflows = useMemo(() => {
+    const rows = workflows.filter(
+      (workflow) =>
+        (!typeFilter || workflow.metadata.type === typeFilter) &&
+        (!practiceFilter || workflow.metadata.practice === practiceFilter) &&
+        (!jurisdictionFilter ||
+          workflow.metadata.jurisdictions?.includes(jurisdictionFilter)) &&
+        (!languageFilter || workflow.metadata.language === languageFilter),
     );
-  }, [sort, workflows]);
-  const selectableIds = sortedWorkflows
+    if (!nameSortDirection) return rows;
+    const multiplier = nameSortDirection === "asc" ? 1 : -1;
+    return [...rows].sort(
+      (a, b) =>
+        a.metadata.title.localeCompare(b.metadata.title, undefined, {
+          sensitivity: "base",
+        }) * multiplier,
+    );
+  }, [
+    jurisdictionFilter,
+    languageFilter,
+    nameSortDirection,
+    practiceFilter,
+    typeFilter,
+    workflows,
+  ]);
+  const selectableIds = displayedWorkflows
     .filter((workflow) => workflow.is_owner !== false)
     .map((workflow) => workflow.id);
   const allSelected =
@@ -484,26 +531,17 @@ function WorkflowTable({
     );
   }
 
-  function handleSortChange(
-    key: WorkflowSortKey,
-    direction: TableSortDirection | null,
-  ) {
-    setSort(direction ? { key, direction } : null);
+  function handleNameSortChange(direction: TableSortDirection | null) {
+    setNameSortDirection(direction);
     onSelectedIdsChange([]);
   }
 
-  function sortButton(key: WorkflowSortKey, label: string, align?: "right") {
-    return (
-      <TableFilters
-        label={label}
-        value={sort?.key === key ? sort.direction : null}
-        allLabel="Default Order"
-        widthClassName="w-40"
-        align={align}
-        options={WORKFLOW_SORT_OPTIONS}
-        onChange={(direction) => handleSortChange(key, direction)}
-      />
-    );
+  function handleFilterChange(
+    setter: (value: string | null) => void,
+    value: string | null,
+  ) {
+    setter(value);
+    onSelectedIdsChange([]);
   }
 
   return (
@@ -523,23 +561,75 @@ function WorkflowTable({
               title="Select all deletable workflows"
             />
             <span className="mr-1">Name</span>
-            {!loading && sortButton("name", "Sort by workflow name", "right")}
+            {!loading && (
+              <TableFilters
+                label="Sort by workflow name"
+                value={nameSortDirection}
+                allLabel="Default Order"
+                widthClassName="w-40"
+                align="right"
+                options={WORKFLOW_SORT_OPTIONS}
+                onChange={handleNameSortChange}
+              />
+            )}
           </TableStickyCell>
           <TableHeaderCell className="ml-auto flex w-28 items-center gap-1">
             <span>Type</span>
-            {!loading && sortButton("type", "Sort by workflow type")}
+            {!loading && (
+              <TableFilters
+                label="Filter by workflow type"
+                value={typeFilter}
+                allLabel="All Types"
+                widthClassName="w-40"
+                options={typeOptions}
+                onChange={(value) => handleFilterChange(setTypeFilter, value)}
+              />
+            )}
           </TableHeaderCell>
           <TableHeaderCell className="flex w-52 items-center gap-1">
             <span>Practice</span>
-            {!loading && sortButton("practice", "Sort by practice")}
+            {!loading && (
+              <TableFilters
+                label="Filter by practice"
+                value={practiceFilter}
+                allLabel="All Practices"
+                widthClassName="w-52"
+                options={practiceOptions}
+                onChange={(value) =>
+                  handleFilterChange(setPracticeFilter, value)
+                }
+              />
+            )}
           </TableHeaderCell>
           <TableHeaderCell className="flex w-40 items-center gap-1">
             <span>Jurisdiction</span>
-            {!loading && sortButton("jurisdiction", "Sort by jurisdiction")}
+            {!loading && (
+              <TableFilters
+                label="Filter by jurisdiction"
+                value={jurisdictionFilter}
+                allLabel="All Jurisdictions"
+                widthClassName="w-48"
+                options={jurisdictionOptions}
+                onChange={(value) =>
+                  handleFilterChange(setJurisdictionFilter, value)
+                }
+              />
+            )}
           </TableHeaderCell>
           <TableHeaderCell className="flex w-28 items-center gap-1">
             <span>Language</span>
-            {!loading && sortButton("language", "Sort by language")}
+            {!loading && (
+              <TableFilters
+                label="Filter by language"
+                value={languageFilter}
+                allLabel="All Languages"
+                widthClassName="w-44"
+                options={languageOptions}
+                onChange={(value) =>
+                  handleFilterChange(setLanguageFilter, value)
+                }
+              />
+            )}
           </TableHeaderCell>
           <TableHeaderCell className="w-8" />
         </TableHeaderRow>
@@ -588,9 +678,19 @@ function WorkflowTable({
             <Plus className="h-3.5 w-3.5" /> Create
           </PillButton>
         </TableEmptyState>
+      ) : displayedWorkflows.length === 0 ? (
+        <TableEmptyState>
+          <WorkflowSkeuoIcon className="mb-4 h-8 w-8" />
+          <p className="font-serif text-2xl font-medium text-gray-900">
+            No matching workflows
+          </p>
+          <p className="mt-1 text-left text-xs text-gray-400">
+            Adjust the table filters to see more workflows.
+          </p>
+        </TableEmptyState>
       ) : (
         <TableBody>
-          {sortedWorkflows.map((workflow) => {
+          {displayedWorkflows.map((workflow) => {
             const Icon =
               workflow.metadata.type === "tabular"
                 ? TabularReviewSkeuoIcon
