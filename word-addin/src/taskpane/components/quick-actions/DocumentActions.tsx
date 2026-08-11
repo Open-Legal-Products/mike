@@ -1,11 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { ToggleSwitch } from "../../../shared/ui/toggle-switch";
-import {
-  QUICK_ACTIONS,
-  type QuickAction,
-  useQuickActionPreferences,
-} from "../../lib/quickActions";
+import { listQuickActions, updateQuickAction } from "../../api/mikeApi";
+import type { QuickAction } from "../../types";
 import { Modal } from "../primitives/Modal";
 import {
   ModalFieldLabel,
@@ -17,14 +14,67 @@ import { PageTitle } from "../primitives/PageTitle";
 export function DocumentActions(): React.ReactElement {
   const [search, setSearch] = useState("");
   const [selectedAction, setSelectedAction] = useState<QuickAction | null>(null);
-  const { activeActions, setActionActive } = useQuickActionPreferences();
+  const [actions, setActions] = useState<QuickAction[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void listQuickActions()
+      .then((rows) => {
+        if (!cancelled) setActions(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setActions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const filteredActions = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return QUICK_ACTIONS;
-    return QUICK_ACTIONS.filter((action) =>
-      action.label.toLowerCase().includes(query)
+    if (!query) return actions;
+    return actions.filter((action) =>
+      action.workflow.title.toLowerCase().includes(query)
     );
-  }, [search]);
+  }, [actions, search]);
+
+  async function setActionActive(action: QuickAction, enabled: boolean) {
+    const optimistic = { ...action, enabled };
+    setActions((current) =>
+      current.map((item) => (item.id === action.id ? optimistic : item)),
+    );
+    setSelectedAction(optimistic);
+    try {
+      const updated = await updateQuickAction(action.id, { enabled });
+      const merged = {
+        ...updated,
+        prompt: action.prompt,
+        document_upload: action.document_upload,
+      };
+      setActions((current) =>
+        current.map((item) => (item.id === merged.id ? merged : item)),
+      );
+      setSelectedAction(merged);
+    } catch {
+      setActions((current) =>
+        current.map((item) => (item.id === action.id ? action : item)),
+      );
+      setSelectedAction(action);
+    }
+  }
+
+  async function saveActionDetails(action: QuickAction) {
+    try {
+      const updated = await updateQuickAction(action.id, {
+        prompt: action.prompt,
+        document_upload: action.document_upload,
+      });
+      setActions((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setSelectedAction(null);
+    } catch {
+      // Keep the modal open so the user can retry.
+    }
+  }
 
   return (
     <div
@@ -60,16 +110,16 @@ export function DocumentActions(): React.ReactElement {
                 className="flex w-full min-w-0 items-center gap-3 rounded-md px-3 py-2.5 text-left text-xs text-gray-700 transition-all hover:bg-gray-100"
               >
                 <span className="min-w-0 flex-1 truncate font-medium">
-                  {action.label}
+                  {action.workflow.title}
                 </span>
                 <span
                   className={`shrink-0 text-[11px] ${
-                    activeActions[action.id]
+                    action.enabled
                       ? "text-green-500"
                       : "text-gray-400"
                   }`}
                 >
-                  {activeActions[action.id] ? "Active" : "Inactive"}
+                  {action.enabled ? "Active" : "Inactive"}
                 </span>
               </button>
             ))}
@@ -81,10 +131,10 @@ export function DocumentActions(): React.ReactElement {
         open={!!selectedAction}
         onClose={() => setSelectedAction(null)}
         parentLabel="Quick Actions"
-        title={selectedAction?.label ?? "Quick action details"}
+        title={selectedAction?.workflow.title ?? "Quick action details"}
         primaryAction={{
           label: "Done",
-          onClick: () => setSelectedAction(null),
+          onClick: () => selectedAction && void saveActionDetails(selectedAction),
         }}
       >
         {selectedAction && (
@@ -106,8 +156,33 @@ export function DocumentActions(): React.ReactElement {
               <ModalTextArea
                 id="quick-action-prompt"
                 value={selectedAction.prompt}
-                readOnly
+                onChange={(event) =>
+                  setSelectedAction({
+                    ...selectedAction,
+                    prompt: event.target.value,
+                  })
+                }
                 className="min-h-40"
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-medium text-gray-700">
+                  Request document upload
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-gray-400">
+                  Ask for source documents before launching this workflow.
+                </p>
+              </div>
+              <ToggleSwitch
+                checked={selectedAction.document_upload}
+                onCheckedChange={(documentUpload) =>
+                  setSelectedAction({
+                    ...selectedAction,
+                    document_upload: documentUpload,
+                  })
+                }
+                aria-label="Request document upload"
               />
             </div>
             <div className="flex items-center justify-between gap-4">
@@ -118,9 +193,9 @@ export function DocumentActions(): React.ReactElement {
                 </p>
               </div>
               <ToggleSwitch
-                checked={activeActions[selectedAction.id]}
+                checked={selectedAction.enabled}
                 onCheckedChange={(active) =>
-                  setActionActive(selectedAction.id, active)
+                  void setActionActive(selectedAction, active)
                 }
                 aria-label="Active"
               />

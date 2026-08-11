@@ -56,6 +56,10 @@ import {
 
 export interface ChatInputHandle {
     addDoc: (doc: Document) => void;
+    startWorkflow: (
+        workflow: { id: string; title: string },
+        prompt?: string,
+    ) => void;
     startWorkflowDocumentSelection: (
         workflow: { id: string; title: string },
         prompt?: string,
@@ -140,6 +144,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                 if (prev.some((d) => d.id === doc.id)) return prev;
                 return [...prev, doc];
             });
+        },
+        startWorkflow: (workflow, prompt) => {
+            setSelectedWorkflow(workflow);
+            if (prompt) setValue((current) => current || prompt);
+            requestAnimationFrame(() => textareaRef.current?.focus());
         },
         startWorkflowDocumentSelection: (workflow, prompt, options) => {
             setSelectedWorkflow(workflow);

@@ -210,6 +210,77 @@ export const test = base.extend<{ addin: Addin }>({
       });
     });
 
+    let quickActions = [
+      {
+        id: "qa-proofread",
+        workflow_id: "wf-proofread",
+        prompt: "Review the current document for drafting quality, internal consistency, grammar, punctuation, formatting, numbering, defined terms, and cross-reference errors. List each issue with its location, severity, and a specific recommended fix.",
+        document_upload: true,
+        enabled: true,
+        sort_order: 0,
+        workflow: { id: "wf-proofread", title: "Proofread" },
+      },
+      {
+        id: "qa-compare",
+        workflow_id: "wf-compare",
+        prompt: "Compare the current document with the documents I attach. Present the material similarities, differences, risks, and follow-up points in a structured table, citing the relevant location in each document where available.",
+        document_upload: true,
+        enabled: true,
+        sort_order: 1,
+        workflow: { id: "wf-compare", title: "Compare Documents" },
+      },
+      {
+        id: "qa-extract",
+        workflow_id: "wf-extract",
+        prompt: "Extract the key legal, commercial, and operational terms from the current document. Present them in a concise table with the term, value, location, and notes, and flag material omissions or ambiguities without inventing missing information.",
+        document_upload: true,
+        enabled: true,
+        sort_order: 2,
+        workflow: { id: "wf-extract", title: "Extract Key Terms" },
+      },
+      {
+        id: "qa-draft",
+        workflow_id: "wf-draft",
+        prompt: "Create a completed draft from the template I attach, using the current document and any additional materials as source context. Preserve the template's formatting and structure, replace placeholders consistently, and ask for any essential missing information.",
+        document_upload: true,
+        enabled: true,
+        sort_order: 3,
+        workflow: { id: "wf-draft", title: "Draft From Template" },
+      },
+    ];
+    await page.route("**/quick-actions**", async (route, request) => {
+      if (request.method() === "GET") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(quickActions),
+        });
+      }
+      if (request.method() === "PATCH") {
+        const id = request.url().split("/").pop();
+        const changes = request.postDataJSON() as Record<string, unknown>;
+        quickActions = quickActions.map((action) =>
+          action.id === id ? { ...action, ...changes } : action,
+        );
+        const updated = quickActions.find((action) => action.id === id);
+        return route.fulfill({
+          status: updated ? 200 : 404,
+          contentType: "application/json",
+          body: JSON.stringify(updated ?? { detail: "Not found" }),
+        });
+      }
+      return route.fallback();
+    });
+
+    await page.route("**/workflow-addons**", (route, request) => {
+      if (request.method() !== "GET") return route.fallback();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "[]",
+      });
+    });
+
     // Chat history preloads on every authenticated Assistant mount. Keep that
     // eager GET hermetic so unrelated specs never leak to a developer's live
     // backend (where a 401 can clear the seeded test session). History specs

@@ -33,7 +33,20 @@ export type DocStore = Map<
   }
 >;
 
-export type WorkflowStore = Map<string, { title: string; skill_md: string }>;
+export type WorkflowStore = Map<
+  string,
+  {
+    title: string;
+    skill_md: string;
+    listed?: boolean;
+    reference_files?: {
+      reference_id: string;
+      filename: string;
+      file_type: string;
+      storage_path: string;
+    }[];
+  }
+>;
 
 export type DocIndex = Record<
   string,

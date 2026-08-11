@@ -16,7 +16,10 @@ import type {
     OpenSourceWorkflowContributorMode,
     OpenSourceWorkflowResponse,
     Project,
+    QuickAction,
     Workflow,
+    WorkflowAddon,
+    WorkflowReferenceDocument,
     WorkflowContributor,
     TabularReview,
     TabularReviewDetailOut,
@@ -1469,4 +1472,104 @@ export async function deleteWorkflowShare(
     await apiRequest(`/workflows/${workflowId}/shares/${shareId}`, {
         method: "DELETE",
     });
+}
+
+export async function listQuickActions(): Promise<QuickAction[]> {
+    return apiRequest<QuickAction[]>("/quick-actions");
+}
+
+export async function updateQuickAction(
+    quickActionId: string,
+    payload: Partial<
+        Pick<
+            QuickAction,
+            "prompt" | "document_upload" | "enabled" | "sort_order"
+        >
+    >,
+): Promise<QuickAction> {
+    return apiRequest<QuickAction>(`/quick-actions/${quickActionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function deleteQuickAction(quickActionId: string): Promise<void> {
+    await apiRequest(`/quick-actions/${quickActionId}`, { method: "DELETE" });
+}
+
+export async function listWorkflowAddons(): Promise<WorkflowAddon[]> {
+    return apiRequest<WorkflowAddon[]>("/workflow-addons");
+}
+
+export async function getWorkflowAddon(
+    addonId: string,
+): Promise<WorkflowAddon> {
+    return apiRequest<WorkflowAddon>(`/workflow-addons/${addonId}`);
+}
+
+export async function importWorkflowAddon(
+    addonId: string,
+): Promise<Workflow> {
+    return apiRequest<Workflow>(`/workflow-addons/${addonId}/import`, {
+        method: "POST",
+    });
+}
+
+export async function listWorkflowReferenceFiles(
+    workflowId: string,
+): Promise<WorkflowReferenceDocument[]> {
+    return apiRequest<WorkflowReferenceDocument[]>(`/workflows/${workflowId}/reference-files`);
+}
+
+export async function uploadWorkflowReferenceFile(
+    workflowId: string,
+    file: File,
+): Promise<WorkflowReferenceDocument> {
+    const authHeaders = await getAuthHeader();
+    const form = new FormData();
+    form.append("file", file);
+    const response = await fetch(
+        `${API_BASE}/workflows/${workflowId}/reference-files`,
+        { method: "POST", headers: { ...authHeaders }, body: form },
+    );
+    if (!response.ok) throw await toApiError(response, "/workflows/reference-files");
+    return response.json() as Promise<WorkflowReferenceDocument>;
+}
+
+export async function replaceWorkflowReferenceFile(
+    workflowId: string,
+    referenceId: string,
+    file: File,
+): Promise<WorkflowReferenceDocument> {
+    const authHeaders = await getAuthHeader();
+    const form = new FormData();
+    form.append("file", file);
+    const path = `/workflows/${workflowId}/reference-files/${referenceId}`;
+    const response = await fetch(`${API_BASE}${path}`, {
+        method: "PUT",
+        headers: { ...authHeaders },
+        body: form,
+    });
+    if (!response.ok) throw await toApiError(response, path);
+    return response.json() as Promise<WorkflowReferenceDocument>;
+}
+
+export async function getWorkflowReferenceUrl(
+    workflowId: string,
+    referenceId: string,
+): Promise<{ url: string; filename: string }> {
+    return apiRequest<{ url: string; filename: string }>(
+        `/workflows/${workflowId}/reference-files/${referenceId}/url`,
+    );
+}
+
+export async function deleteWorkflowReferenceFile(
+    workflowId: string,
+    referenceId: string,
+): Promise<void> {
+    await apiRequest(
+        `/workflows/${workflowId}/reference-files/${referenceId}`,
+        { method: "DELETE" },
+    );
 }

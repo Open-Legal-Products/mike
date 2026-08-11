@@ -645,11 +645,63 @@ export interface Workflow {
   skill_md: string | null;
   columns_config: ColumnConfig[] | null;
   is_system: boolean;
+  is_default?: boolean;
   created_at: string;
   shared_by_name?: string | null;
   allow_edit?: boolean;
   is_owner?: boolean;
   open_source_submission?: WorkflowOpenSourceSubmission | null;
+}
+
+export interface QuickAction {
+  id: string;
+  user_id: string;
+  workflow_id: string;
+  prompt: string;
+  document_upload: boolean;
+  enabled: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+  workflow: { id: string; title: string };
+}
+
+export interface WorkflowReferenceDocument {
+  id: string;
+  workflow_id: string;
+  filename: string;
+  file_type: string;
+  size_bytes: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkflowAddon {
+  id: string;
+  addon_key: string;
+  pack_key: string | null;
+  pack_title: string | null;
+  pack_description: string | null;
+  pack_version: string | null;
+  version: string | null;
+  title: string;
+  description: string | null;
+  type: "assistant" | "tabular";
+  prompt_md?: string | null;
+  columns_config?: ColumnConfig[] | null;
+  contributors: WorkflowContributor[];
+  language: string;
+  practice: string | null;
+  jurisdictions: string[] | null;
+  active: boolean;
+  updated_at: string;
+  reference_files?: {
+    id: string;
+    filename: string;
+    file_type: string;
+    size_bytes: number | null;
+    created_at: string;
+  }[];
 }
 
 // API helpers

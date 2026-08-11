@@ -11,6 +11,8 @@ import { documentsRouter } from "./routes/documents";
 import { libraryRouter } from "./routes/library";
 import { tabularRouter } from "./routes/tabular";
 import { workflowsRouter } from "./routes/workflows";
+import { quickActionsRouter } from "./routes/quickActions";
+import { workflowAddonsRouter } from "./routes/workflowAddons";
 import { userRouter } from "./routes/user";
 import { modelsRouter } from "./routes/models";
 import { downloadsRouter } from "./routes/downloads";
@@ -149,6 +151,11 @@ app.post("/chat/:chatId/generate-title", chatCreateLimiter);
 app.post("/single-documents", uploadLimiter);
 app.post("/library/:kind/documents", uploadLimiter);
 app.post("/single-documents/:documentId/versions", uploadLimiter);
+app.post("/workflows/:workflowId/reference-files", uploadLimiter);
+app.put(
+  "/workflows/:workflowId/reference-files/:referenceId",
+  uploadLimiter,
+);
 app.put(
   "/single-documents/:documentId/versions/:versionId/file",
   uploadLimiter,
@@ -174,6 +181,8 @@ app.use("/single-documents", documentsRouter);
 app.use("/library", libraryRouter);
 app.use("/tabular-review", tabularRouter);
 app.use("/workflows", workflowsRouter);
+app.use("/quick-actions", quickActionsRouter);
+app.use("/workflow-addons", workflowAddonsRouter);
 app.use("/user", userRouter);
 app.use("/users", userRouter);
 app.use("/download", downloadsRouter);

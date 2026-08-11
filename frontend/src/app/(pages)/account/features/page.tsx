@@ -3,14 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { useUserProfile } from "@/app/contexts/UserProfileContext";
-import { useQuickActionsPreference } from "@/app/components/assistant/quickActionsPreferences";
+import { listQuickActions, updateQuickAction } from "@/app/lib/mikeApi";
+import type { QuickAction } from "@/app/components/shared/types";
 import { AccountSection } from "../AccountSection";
 import { AccountToggle } from "../AccountToggle";
 
 export default function FeaturesPage() {
     const { profile, updateLegalResearchUs } = useUserProfile();
-    const { visibleActions, showAllQuickActions, hideAllQuickActions } =
-        useQuickActionsPreference();
+    const [quickActions, setQuickActions] = useState<QuickAction[]>([]);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
@@ -20,6 +20,7 @@ export default function FeaturesPage() {
     const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
+        void listQuickActions().then(setQuickActions).catch(() => {});
         return () => {
             if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
         };
@@ -30,7 +31,24 @@ export default function FeaturesPage() {
     const hasChanges =
         draftLegalResearchUs !== null &&
         draftLegalResearchUs !== persistedLegalResearchUs;
-    const quickActionsEnabled = Object.values(visibleActions).some(Boolean);
+    const quickActionsEnabled = quickActions.some((action) => action.enabled);
+
+    const updateAllQuickActions = async (enabled: boolean) => {
+        const previous = quickActions;
+        setQuickActions((current) =>
+            current.map((action) => ({ ...action, enabled })),
+        );
+        try {
+            const updated = await Promise.all(
+                previous.map((action) =>
+                    updateQuickAction(action.id, { enabled }),
+                ),
+            );
+            setQuickActions(updated);
+        } catch {
+            setQuickActions(previous);
+        }
+    };
 
     const handleUpdateLegalResearch = async () => {
         if (saving) return;
@@ -72,11 +90,7 @@ export default function FeaturesPage() {
                             checked={quickActionsEnabled}
                             size="md"
                             onChange={(checked) => {
-                                if (checked) {
-                                    showAllQuickActions();
-                                } else {
-                                    hideAllQuickActions();
-                                }
+                                void updateAllQuickActions(checked);
                             }}
                         />
                     </div>

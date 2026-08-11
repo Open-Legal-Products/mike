@@ -2,24 +2,14 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { MoreHorizontal } from "lucide-react";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import { MikeIcon } from "@/app/components/chat/mike-icon";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
-import { SelectAssistantProjectModal } from "./SelectAssistantProjectModal";
 import { QuickActionsModal } from "./QuickActionsModal";
-import { NewProjectModal } from "../projects/NewProjectModal";
-import { NewTRModal } from "../tabular/NewTRModal";
-import { createTabularReview } from "@/app/lib/mikeApi";
-import { useDirectoryData, type DirectoryTab } from "../shared/useDirectoryData";
-import {
-    QUICK_ACTIONS,
-    type QuickActionId,
-    useQuickActionsPreference,
-} from "./quickActionsPreferences";
-import type { Message, Workflow } from "../shared/types";
+import { listQuickActions, updateQuickAction } from "@/app/lib/mikeApi";
+import type { Message, QuickAction } from "../shared/types";
 
 interface InitialViewProps {
     onSubmit: (message: Message) => void;
@@ -27,61 +17,77 @@ interface InitialViewProps {
 
 const ICON_SIZE = 30;
 const GAP = 12; // gap-4 = 1rem = 16px
-const DOCUMENT_WORKFLOW_ACTIONS: Partial<
-    Record<
-        QuickActionId,
-        {
-            workflowId: string;
-            title: string;
-            prompt: string;
-            initialDocumentTab?: DirectoryTab;
-        }
-    >
-> = {
-    proofread: {
-        workflowId: "builtin-proofread",
-        title: "Proofread",
-        prompt: "proofread",
-    },
-    compareDocuments: {
-        workflowId: "builtin-compare-documents",
-        title: "Compare Documents",
-        prompt: "compare documents",
-    },
-    extractKeyTerms: {
-        workflowId: "builtin-extract-key-terms",
-        title: "Extract Key Terms",
-        prompt: "extract key terms",
-    },
-    draftFromTemplate: {
-        workflowId: "builtin-draft-from-template",
-        title: "Draft from Template",
-        prompt: "draft from template",
-        initialDocumentTab: "templates",
-    },
-};
-
 export function InitialView({ onSubmit }: InitialViewProps) {
     const { user } = useAuth();
     const { profile } = useUserProfile();
-    const router = useRouter();
     const [loaded, setLoaded] = useState(false);
-    const [projectModalOpen, setProjectModalOpen] = useState(false);
-    const [newProjectOpen, setNewProjectOpen] = useState(false);
-    const [newTROpen, setNewTROpen] = useState(false);
     const [quickActionsModalOpen, setQuickActionsModalOpen] = useState(false);
-    const { visibleActions, setVisibleActions } = useQuickActionsPreference();
+    const [quickActions, setQuickActions] = useState<QuickAction[]>([]);
     const [iconOffset, setIconOffset] = useState(0);
     const [textOffset, setTextOffset] = useState(0);
     const textRef = useRef<HTMLHeadingElement>(null);
     const chatInputRef = useRef<ChatInputHandle>(null);
-    const { projects } = useDirectoryData(newTROpen, "projects");
 
     const username =
         profile?.displayName?.trim() || user?.email?.split("@")[0] || "there";
-    const visibleQuickActions = QUICK_ACTIONS.filter(
-        (action) => visibleActions[action.id],
-    );
+    const visibleQuickActions = quickActions.filter((action) => action.enabled);
+
+    useEffect(() => {
+        let cancelled = false;
+        listQuickActions()
+            .then(async (actions) => {
+                const legacyKey = "mike.quickActions.visible";
+                const migratedKey = "mike.quickActions.databaseMigrated";
+                let resolved = actions;
+                if (!window.localStorage.getItem(migratedKey)) {
+                    try {
+                        const legacy = JSON.parse(
+                            window.localStorage.getItem(legacyKey) ?? "null",
+                        ) as Record<string, unknown> | null;
+                        const keyByTitle: Record<string, string> = {
+                            proofread: "proofread",
+                            "compare documents": "compareDocuments",
+                            "extract key terms": "extractKeyTerms",
+                            "draft from template": "draftFromTemplate",
+                        };
+                        if (legacy) {
+                            const migrations = await Promise.allSettled(
+                                actions.map((action) => {
+                                    const legacyActionKey =
+                                        keyByTitle[
+                                            action.workflow.title.toLowerCase()
+                                        ];
+                                    const enabled = legacyActionKey
+                                        ? legacy[legacyActionKey]
+                                        : undefined;
+                                    return typeof enabled === "boolean" &&
+                                        enabled !== action.enabled
+                                        ? updateQuickAction(action.id, {
+                                              enabled,
+                                          })
+                                        : action;
+                                }),
+                            );
+                            resolved = migrations.map((result, index) =>
+                                result.status === "fulfilled"
+                                    ? result.value
+                                    : actions[index],
+                            );
+                        }
+                        window.localStorage.setItem(migratedKey, "1");
+                    } catch {
+                        // Invalid legacy state is ignored; database defaults win.
+                    }
+                }
+                if (!cancelled) setQuickActions(resolved);
+            })
+            .catch(() => {
+                if (!cancelled) setQuickActions([]);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     useLayoutEffect(() => {
         if (!profile || !textRef.current) return;
@@ -96,52 +102,73 @@ export function InitialView({ onSubmit }: InitialViewProps) {
         return () => clearTimeout(t);
     }, [iconOffset]);
 
-    function handleDocumentWorkflowClick(id: QuickActionId) {
-        const config = DOCUMENT_WORKFLOW_ACTIONS[id];
-        if (!config) return;
-
-        chatInputRef.current?.startWorkflowDocumentSelection(
-            {
-                id: config.workflowId,
-                title: config.title,
-            },
-            config.prompt,
-            { initialDocumentTab: config.initialDocumentTab },
-        );
-    }
-
-    async function handleNewReview(
-        title: string,
-        projectId?: string,
-        documentIds?: string[],
-        columnsConfig?: Workflow["columns_config"],
-        documentGrouping?: "document" | "folder",
-    ) {
-        const review = await createTabularReview({
-            title,
-            document_ids: documentIds ?? [],
-            columns_config: columnsConfig ?? [],
-            document_grouping: documentGrouping,
-            ...(projectId && { project_id: projectId }),
-        });
-        setNewTROpen(false);
-        router.push(
-            projectId
-                ? `/projects/${projectId}/tabular-reviews/${review.id}`
-                : `/tabular-reviews/${review.id}`,
-        );
-    }
-
-    function handleQuickAction(id: QuickActionId) {
-        if (id === "projectChat") {
-            setProjectModalOpen(true);
-        } else if (DOCUMENT_WORKFLOW_ACTIONS[id]) {
-            handleDocumentWorkflowClick(id);
-        } else if (id === "newProject") {
-            setNewProjectOpen(true);
-        } else if (id === "newTabularReview") {
-            setNewTROpen(true);
+    function handleQuickAction(action: QuickAction) {
+        const workflow = action.workflow;
+        if (action.document_upload) {
+            chatInputRef.current?.startWorkflowDocumentSelection(
+                workflow,
+                action.prompt,
+            );
+        } else {
+            chatInputRef.current?.startWorkflow(workflow, action.prompt);
         }
+    }
+
+    async function toggleQuickAction(action: QuickAction) {
+        const enabled = !action.enabled;
+        setQuickActions((current) =>
+            current.map((item) =>
+                item.id === action.id ? { ...item, enabled } : item,
+            ),
+        );
+        try {
+            const updated = await updateQuickAction(action.id, { enabled });
+            setQuickActions((current) =>
+                current.map((item) =>
+                    item.id === updated.id ? updated : item,
+                ),
+            );
+        } catch {
+            setQuickActions((current) =>
+                current.map((item) =>
+                    item.id === action.id ? action : item,
+                ),
+            );
+        }
+    }
+
+    function editQuickAction(
+        action: QuickAction,
+        changes: Partial<Pick<QuickAction, "prompt" | "document_upload">>,
+    ) {
+        const next = { ...action, ...changes };
+        setQuickActions((current) =>
+            current.map((item) => (item.id === action.id ? next : item)),
+        );
+        void updateQuickAction(action.id, changes)
+            .then((updated) => {
+                setQuickActions((current) =>
+                    current.map((item) =>
+                        item.id === updated.id
+                            ? { ...updated, ...item, ...changes }
+                            : item,
+                    ),
+                );
+            })
+            .catch(() => {
+                const rollback: Partial<QuickAction> = {};
+                if ("prompt" in changes) rollback.prompt = action.prompt;
+                if ("document_upload" in changes) {
+                    rollback.document_upload = action.document_upload;
+                }
+                setQuickActions((current) =>
+                    current.map((item) =>
+                        item.id === action.id
+                            ? { ...item, ...rollback }
+                            : item,
+                    ),
+                );
+            });
     }
 
     return (
@@ -226,10 +253,10 @@ export function InitialView({ onSubmit }: InitialViewProps) {
                                 <button
                                     key={action.id}
                                     type="button"
-                                    onClick={() => handleQuickAction(action.id)}
+                                    onClick={() => handleQuickAction(action)}
                                     className="inline-flex h-8 items-center justify-center rounded-full border border-white/70 bg-white/55 px-3 font-medium text-gray-600 shadow-[0_3px_9px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.86),inset_0_-1px_0_rgba(255,255,255,0.58)] backdrop-blur-xl transition-all hover:bg-white hover:text-gray-900 active:scale-[0.98] disabled:cursor-default disabled:opacity-45 disabled:active:scale-100"
                                 >
-                                    {action.label}
+                                    {action.workflow.title}
                                 </button>
                             ))}
                         </div>
@@ -240,27 +267,9 @@ export function InitialView({ onSubmit }: InitialViewProps) {
             <QuickActionsModal
                 open={quickActionsModalOpen}
                 onClose={() => setQuickActionsModalOpen(false)}
-                visibleActions={visibleActions}
-                onVisibleActionsChange={setVisibleActions}
-            />
-
-            <SelectAssistantProjectModal
-                open={projectModalOpen}
-                onClose={() => setProjectModalOpen(false)}
-            />
-            <NewProjectModal
-                open={newProjectOpen}
-                onClose={() => setNewProjectOpen(false)}
-                onCreated={(project) => {
-                    setNewProjectOpen(false);
-                    router.push(`/projects/${project.id}`);
-                }}
-            />
-            <NewTRModal
-                open={newTROpen}
-                onClose={() => setNewTROpen(false)}
-                onAdd={handleNewReview}
-                projects={projects}
+                actions={quickActions}
+                onToggle={(action) => void toggleQuickAction(action)}
+                onUpdate={editQuickAction}
             />
         </div>
     );

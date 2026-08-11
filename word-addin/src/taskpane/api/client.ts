@@ -3,6 +3,8 @@ import type {
     LibraryFolder,
     Project,
     Workflow,
+    WorkflowAddon,
+    WorkflowReferenceDocument,
 } from "../types";
 import { describeNetworkFailure } from "../lib/networkError";
 
@@ -317,6 +319,99 @@ export async function readSSE(
 }
 
 type WorkflowType = Workflow["metadata"]["type"];
+
+export async function listQuickActions(): Promise<
+    import("../types").QuickAction[]
+> {
+    return apiRequest<import("../types").QuickAction[]>("/quick-actions");
+}
+
+export async function updateQuickAction(
+    quickActionId: string,
+    payload: {
+        prompt?: string;
+        document_upload?: boolean;
+        enabled?: boolean;
+        sort_order?: number;
+    },
+): Promise<import("../types").QuickAction> {
+    return apiRequest<import("../types").QuickAction>(
+        `/quick-actions/${quickActionId}`,
+        {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        },
+    );
+}
+
+export async function listWorkflowAddons(): Promise<WorkflowAddon[]> {
+    return apiRequest<WorkflowAddon[]>("/workflow-addons");
+}
+
+export async function importWorkflowAddon(addonId: string): Promise<Workflow> {
+    return apiRequest<Workflow>(`/workflow-addons/${addonId}/import`, {
+        method: "POST",
+    });
+}
+
+export async function listWorkflowReferenceFiles(
+    workflowId: string,
+): Promise<WorkflowReferenceDocument[]> {
+    return apiRequest<WorkflowReferenceDocument[]>(`/workflows/${workflowId}/reference-files`);
+}
+
+export async function uploadWorkflowReferenceFile(
+    workflowId: string,
+    file: File,
+): Promise<WorkflowReferenceDocument> {
+    const path = `/workflows/${workflowId}/reference-files`;
+    const form = new FormData();
+    form.append("file", file);
+    const response = await sendRequest(apiUrl(path), {
+        method: "POST",
+        headers: await getAuthHeaders(),
+        body: form,
+    });
+    if (!response.ok) throw await toApiError(response, path);
+    return response.json() as Promise<WorkflowReferenceDocument>;
+}
+
+export async function replaceWorkflowReferenceFile(
+    workflowId: string,
+    referenceId: string,
+    file: File,
+): Promise<WorkflowReferenceDocument> {
+    const path = `/workflows/${workflowId}/reference-files/${referenceId}`;
+    const form = new FormData();
+    form.append("file", file);
+    form.append("filename", file.name);
+    const response = await sendRequest(apiUrl(path), {
+        method: "PUT",
+        headers: await getAuthHeaders(),
+        body: form,
+    });
+    if (!response.ok) throw await toApiError(response, path);
+    return response.json() as Promise<WorkflowReferenceDocument>;
+}
+
+export async function getWorkflowReferenceUrl(
+    workflowId: string,
+    referenceId: string,
+): Promise<{ url: string; filename: string }> {
+    return apiRequest<{ url: string; filename: string }>(
+        `/workflows/${workflowId}/reference-files/${referenceId}/url`,
+    );
+}
+
+export async function deleteWorkflowReferenceFile(
+    workflowId: string,
+    referenceId: string,
+): Promise<void> {
+    await apiRequest(`/workflows/${workflowId}/reference-files/${referenceId}`, {
+        method: "DELETE",
+    });
+}
 
 export async function listWorkflows(
     type: WorkflowType,

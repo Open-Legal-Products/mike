@@ -1,898 +1,850 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import {
-    Plus,
-    User,
-    ChevronDown,
-} from "lucide-react";
-import {
-    listWorkflows,
-    deleteWorkflow,
-    listHiddenWorkflows,
-    hideWorkflow,
-    unhideWorkflow,
+  deleteWorkflow,
+  getWorkflowAddon,
+  importWorkflowAddon,
+  listWorkflowAddons,
+  listWorkflows,
 } from "@/app/lib/mikeApi";
-import type { Workflow } from "../shared/types";
+import type { Workflow, WorkflowAddon } from "../shared/types";
 import { UseWorkflowModal } from "./UseWorkflowModal";
 import { NewWorkflowModal } from "./NewWorkflowModal";
 import { TableToolbar } from "../shared/TableToolbar";
 import { RowActionMenuItems, RowActions } from "../shared/RowActions";
-import { MikeIcon } from "@/app/components/chat/mike-icon";
 import { PageHeader } from "@/app/components/shared/PageHeader";
+import { SubfolderSvgIcon } from "@/app/components/shared/FolderSvgIcon";
 import { PillButton } from "@/app/components/ui/pill-button";
 import { TabPillButton } from "@/app/components/ui/tab-pill-button";
+import { LiquidDropdownSurface } from "@/app/components/ui/liquid-dropdown";
 import {
-    LiquidDropdownButton,
-    LiquidDropdownSurface,
-} from "@/app/components/ui/liquid-dropdown";
-import {
-    ChatSkeuoIcon,
-    TabularReviewSkeuoIcon,
-    WorkflowSkeuoIcon,
+  ChatSkeuoIcon,
+  TabularReviewSkeuoIcon,
+  WorkflowSkeuoIcon,
 } from "@/app/components/shared/AppSidebarSkeuoIcons";
 import { workflowDetailPath } from "./workflowRoutes";
+import { ConfirmPopup } from "../popups/ConfirmPopup";
+import { WorkflowAddonPreviewModal } from "./WorkflowAddonPreviewModal";
 import {
-    TABLE_CHECKBOX_CLASS,
-    SkeletonDot,
-    SkeletonLine,
-    TableBody,
-    TableCell,
-    TableEmptyState,
-    TableHeaderCell,
-    TableHeaderRow,
-    TableFilters,
-    type TableFilterOption,
-    TablePrimaryCell,
-    TableRow,
-    TableScrollArea,
-    type TableSortDirection,
-    TableStickyCell,
+  SkeletonDot,
+  SkeletonLine,
+  TABLE_CHECKBOX_CLASS,
+  TableBody,
+  TableCell,
+  TableEmptyState,
+  TableHeaderCell,
+  TableHeaderRow,
+  TablePrimaryCell,
+  TableRow,
+  TableScrollArea,
+  TableStickyCell,
 } from "../shared/TablePrimitive";
 
-type WorkflowSourceFilter = "system" | "user" | "shared";
-type WorkflowListTab = "all" | "assistant" | "tabular" | "system";
-type WorkflowSortKey = "name" | "type";
+type WorkflowListTab = "all" | "assistant" | "tabular" | "addons";
 
 const WORKFLOW_TABS: { id: WorkflowListTab; label: string }[] = [
-    { id: "all", label: "All" },
-    { id: "assistant", label: "Assistant" },
-    { id: "tabular", label: "Tabular" },
-    { id: "system", label: "System" },
+  { id: "all", label: "All" },
+  { id: "assistant", label: "Assistant" },
+  { id: "tabular", label: "Tabular" },
+  { id: "addons", label: "Add-ons" },
 ];
-const SORT_OPTIONS: TableFilterOption<TableSortDirection>[] = [
-    { value: "asc", label: "Ascending" },
-    { value: "desc", label: "Descending" },
-];
-
-const isDev = process.env.NODE_ENV !== "production";
-const devLog = (...args: Parameters<typeof console.log>) => {
-    if (isDev) console.log(...args);
-};
 
 export function WorkflowList() {
-    const router = useRouter();
-    const searchParams = useSearchParams();
-    const [workflows, setWorkflows] = useState<Workflow[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [selected, setSelected] = useState<Workflow | null>(null);
-    const [newModalOpen, setNewModalOpen] = useState(false);
-    const [editingWorkflow, setEditingWorkflow] = useState<Workflow | null>(
-        null,
-    );
-    const [hiddenSystemIds, setHiddenSystemIds] = useState<string[]>([]);
-    const [selectedIds, setSelectedIds] = useState<string[]>([]);
-    const [actionsOpen, setActionsOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState<WorkflowListTab>("all");
-    const [practiceFilter, setPracticeFilter] = useState<string | null>(null);
-    const [jurisdictionFilter, setJurisdictionFilter] = useState<string | null>(
-        null,
-    );
-    const [languageFilter, setLanguageFilter] = useState<string | null>(null);
-    const [sourceFilter, setSourceFilter] =
-        useState<WorkflowSourceFilter | null>(null);
-    const [sort, setSort] = useState<{
-        key: WorkflowSortKey;
-        direction: TableSortDirection;
-    } | null>(null);
-    const [search, setSearch] = useState("");
-    const actionsRef = useRef<HTMLDivElement>(null);
-    const previewEmptyStates = searchParams.get("emptyStates") === "1";
-    const effectiveLoading = loading && !previewEmptyStates;
-    const visibleWorkflows = previewEmptyStates ? [] : workflows;
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [workflows, setWorkflows] = useState<Workflow[]>([]);
+  const [addons, setAddons] = useState<WorkflowAddon[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Workflow | null>(null);
+  const [newModalOpen, setNewModalOpen] = useState(false);
+  const [editingWorkflow, setEditingWorkflow] = useState<Workflow | null>(null);
+  const [activeTab, setActiveTab] = useState<WorkflowListTab>("all");
+  const [search, setSearch] = useState("");
+  const [selectedAddon, setSelectedAddon] = useState<WorkflowAddon | null>(
+    null,
+  );
+  const [selectedWorkflowIds, setSelectedWorkflowIds] = useState<string[]>([]);
+  const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
+  const [workflowActionsOpen, setWorkflowActionsOpen] = useState(false);
+  const [pendingDeleteWorkflows, setPendingDeleteWorkflows] = useState<
+    Workflow[]
+  >([]);
+  const [deleteStatus, setDeleteStatus] = useState<
+    "idle" | "loading" | "complete"
+  >("idle");
+  const [importingAddonId, setImportingAddonId] = useState<string | null>(null);
+  const [bulkImportingAddons, setBulkImportingAddons] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const workflowActionsRef = useRef<HTMLDivElement>(null);
+  const previewEmptyStates = searchParams.get("emptyStates") === "1";
 
-    useEffect(() => {
-        Promise.all([
-            listWorkflows("assistant"),
-            listWorkflows("tabular"),
-            listHiddenWorkflows(),
-        ])
-            .then(([assistant, tabular, hidden]) => {
-                devLog("[workflows/ui:list] loaded", {
-                    assistantCount: assistant.length,
-                    tabularCount: tabular.length,
-                    hiddenCount: hidden.length,
-                    assistantSample: assistant.slice(0, 5).map((workflow) => ({
-                        id: workflow.id,
-                        title: workflow.metadata.title,
-                        type: workflow.metadata.type,
-                        user_id: workflow.user_id,
-                        is_system: workflow.is_system,
-                        is_owner: workflow.is_owner,
-                    })),
-                    tabularSample: tabular.slice(0, 5).map((workflow) => ({
-                        id: workflow.id,
-                        title: workflow.metadata.title,
-                        type: workflow.metadata.type,
-                        user_id: workflow.user_id,
-                        is_system: workflow.is_system,
-                        is_owner: workflow.is_owner,
-                    })),
-                });
-                setWorkflows([...assistant, ...tabular]);
-                setHiddenSystemIds(hidden);
-            })
-            .catch((error) => {
-                devLog("[workflows/ui:list] failed; showing no workflows", error);
-                setWorkflows([]);
-            })
-            .finally(() => setLoading(false));
-    }, []);
-
-    useEffect(() => {
-        function handleClick(e: MouseEvent) {
-            if (
-                actionsRef.current &&
-                !actionsRef.current.contains(e.target as Node)
-            ) {
-                setActionsOpen(false);
-            }
-        }
-        if (actionsOpen) document.addEventListener("mousedown", handleClick);
-        return () => document.removeEventListener("mousedown", handleClick);
-    }, [actionsOpen]);
-
-    const systemWorkflows = visibleWorkflows.filter((wf) => wf.is_system);
-    const userWorkflows = visibleWorkflows.filter(
-        (wf) => !wf.is_system && wf.is_owner !== false,
-    );
-    const sharedWorkflows = visibleWorkflows.filter(
-        (wf) => !wf.is_system && wf.is_owner === false,
-    );
-    const hiddenSystem = systemWorkflows.filter((wf) =>
-        hiddenSystemIds.includes(wf.id),
-    );
-    const visibleSystem = systemWorkflows.filter(
-        (wf) => !hiddenSystemIds.includes(wf.id),
-    );
-    const systemRows = [...visibleSystem, ...hiddenSystem];
-    const activeRows = [...userWorkflows, ...sharedWorkflows, ...visibleSystem];
-    const allRows = [...userWorkflows, ...sharedWorkflows, ...systemRows];
-    const tabRows =
-        activeTab === "all"
-            ? activeRows
-            : activeTab === "system"
-              ? systemRows
-              : activeRows.filter((workflow) => workflow.metadata.type === activeTab);
-    const sourceRows =
-        sourceFilter === null
-            ? tabRows
-            : tabRows.filter(
-                  (workflow) => getWorkflowSource(workflow) === sourceFilter,
-              );
-    const practices = Array.from(
-        new Set(
-            sourceRows.map((wf) => wf.metadata.practice).filter((p): p is string => !!p),
-        ),
-    ).sort();
-    const jurisdictions = Array.from(
-        new Set(
-            allRows
-                .flatMap((wf) => wf.metadata.jurisdictions ?? [])
-                .filter((jurisdiction): jurisdiction is string => !!jurisdiction),
-        ),
-    ).sort();
-    const languages = Array.from(
-        new Set(
-            allRows
-                .map((wf) => wf.metadata.language)
-                .filter((language): language is string => !!language),
-        ),
-    ).sort();
-    const q = search.toLowerCase();
-    const filtered = sourceRows
-        .filter((wf) => !practiceFilter || wf.metadata.practice === practiceFilter)
-        .filter(
-            (wf) =>
-                !jurisdictionFilter ||
-                wf.metadata.jurisdictions?.includes(jurisdictionFilter),
-        )
-        .filter((wf) => !languageFilter || wf.metadata.language === languageFilter)
-        .filter((wf) => !q || wf.metadata.title.toLowerCase().includes(q))
-        .sort((a, b) => compareWorkflows(a, b, sort));
-
-    const allSelected =
-        filtered.length > 0 &&
-        filtered.every((wf) => selectedIds.includes(wf.id));
-    const someSelected =
-        !allSelected && filtered.some((wf) => selectedIds.includes(wf.id));
-
-    function toggleAll() {
-        if (allSelected) setSelectedIds([]);
-        else setSelectedIds(filtered.map((wf) => wf.id));
-    }
-
-    function toggleOne(id: string) {
-        setSelectedIds((prev) =>
-            prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+  useEffect(() => {
+    Promise.all([
+      listWorkflows("assistant"),
+      listWorkflows("tabular"),
+      listWorkflowAddons(),
+    ])
+      .then(([assistant, tabular, addonRows]) => {
+        setWorkflows([...assistant, ...tabular]);
+        setAddons(addonRows);
+      })
+      .catch((error) => {
+        setLoadError(
+          error instanceof Error ? error.message : "Unable to load workflows.",
         );
-    }
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
-    function clearSelection() {
-        setSelectedIds([]);
-        setActionsOpen(false);
+  useEffect(() => {
+    function closeActions(event: MouseEvent) {
+      if (
+        workflowActionsRef.current &&
+        !workflowActionsRef.current.contains(event.target as Node)
+      ) {
+        setWorkflowActionsOpen(false);
+      }
     }
-
-    function handleTabChange(tab: WorkflowListTab) {
-        setActiveTab(tab);
-        clearSelection();
+    if (workflowActionsOpen) {
+      document.addEventListener("mousedown", closeActions);
     }
+    return () => document.removeEventListener("mousedown", closeActions);
+  }, [workflowActionsOpen]);
 
-    function handlePracticeFilterChange(value: string | null) {
-        setPracticeFilter(value);
-        clearSelection();
-    }
+  const query = search.trim().toLowerCase();
+  const visibleWorkflows = useMemo(() => {
+    if (previewEmptyStates) return [];
+    return workflows
+      .filter(
+        (workflow) =>
+          activeTab === "all" ||
+          activeTab === "addons" ||
+          workflow.metadata.type === activeTab,
+      )
+      .filter(
+        (workflow) =>
+          !query ||
+          workflow.metadata.title.toLowerCase().includes(query) ||
+          workflow.metadata.practice?.toLowerCase().includes(query),
+      );
+  }, [activeTab, previewEmptyStates, query, workflows]);
 
-    function handleJurisdictionFilterChange(value: string | null) {
-        setJurisdictionFilter(value);
-        clearSelection();
-    }
-
-    function handleLanguageFilterChange(value: string | null) {
-        setLanguageFilter(value);
-        clearSelection();
-    }
-
-    function handleSourceFilterChange(value: WorkflowSourceFilter | null) {
-        setSourceFilter(value);
-        clearSelection();
-    }
-
-    function handleSortChange(
-        key: WorkflowSortKey,
-        direction: TableSortDirection | null,
-    ) {
-        setSort(direction ? { key, direction } : null);
-        clearSelection();
-    }
-
-    async function handleHideWorkflow(id: string) {
-        setHiddenSystemIds((prev) => [...prev, id]);
-        await hideWorkflow(id).catch(() => {
-            setHiddenSystemIds((prev) => prev.filter((x) => x !== id));
-        });
-    }
-
-    async function handleUnhideWorkflow(id: string) {
-        setHiddenSystemIds((prev) => prev.filter((x) => x !== id));
-        await unhideWorkflow(id).catch(() => {
-            setHiddenSystemIds((prev) => [...prev, id]);
-        });
-    }
-
-    async function handleBulkRemove() {
-        const ids = [...selectedIds];
-        setActionsOpen(false);
-        setSelectedIds([]);
-        const systemIds = ids.filter(
-            (id) => workflows.find((workflow) => workflow.id === id)?.is_system,
-        );
-        const customIds = ids.filter((id) => !systemIds.includes(id));
-        if (systemIds.length > 0) {
-            setHiddenSystemIds((prev) => [
-                ...prev,
-                ...systemIds.filter((id) => !prev.includes(id)),
-            ]);
-            await Promise.all(
-                systemIds.map((id) => hideWorkflow(id).catch(() => {})),
-            );
-        }
-        if (customIds.length > 0) {
-            await Promise.all(
-                customIds.map((id) => deleteWorkflow(id).catch(() => {})),
-            );
-            setWorkflows((prev) =>
-                prev.filter((w) => !customIds.includes(w.id)),
-            );
-        }
-    }
-
-    async function handleBulkUnhide() {
-        const ids = [...selectedIds];
-        setActionsOpen(false);
-        setSelectedIds([]);
-        setHiddenSystemIds((prev) => prev.filter((id) => !ids.includes(id)));
-        await Promise.all(ids.map((id) => unhideWorkflow(id).catch(() => {})));
-    }
-
-    const getTypeMeta = (type: Workflow["metadata"]["type"]) =>
-        type === "tabular"
-            ? { label: "Tabular", Icon: TabularReviewSkeuoIcon }
-            : {
-                  label: "Assistant",
-                  Icon: ChatSkeuoIcon,
-              };
-    const nameSortDirection =
-        sort?.key === "name" ? sort.direction : null;
-    const typeSortDirection =
-        sort?.key === "type" ? sort.direction : null;
-    const nameFilterButton = (
-        <TableFilters
-            label="Sort by name"
-            value={nameSortDirection}
-            allLabel="Default Order"
-            widthClassName="w-40"
-            align="right"
-            options={SORT_OPTIONS}
-            onChange={(direction) => handleSortChange("name", direction)}
-        />
+  const visibleAddons = useMemo(() => {
+    if (previewEmptyStates) return [];
+    return addons.filter(
+      (addon) =>
+        !query ||
+        addon.title.toLowerCase().includes(query) ||
+        addon.description?.toLowerCase().includes(query) ||
+        addon.pack_title?.toLowerCase().includes(query) ||
+        addon.practice?.toLowerCase().includes(query),
     );
-    const typeFilterButton = (
-        <TableFilters
-            label="Sort by type"
-            value={typeSortDirection}
-            allLabel="Default Order"
-            widthClassName="w-40"
-            options={SORT_OPTIONS}
-            onChange={(direction) => handleSortChange("type", direction)}
-        />
-    );
+  }, [addons, previewEmptyStates, query]);
 
-    const practiceFilterButton = (
-        <TableFilters
-            label="Filter by practice"
-            value={practiceFilter}
-            allLabel="All Practices"
-            options={practices.map((practice) => ({
-                value: practice,
-                label: practice,
-            }))}
-            onChange={handlePracticeFilterChange}
-        />
-    );
+  async function openAddon(addon: WorkflowAddon) {
+    setSelectedAddon(addon);
+    try {
+      setSelectedAddon(await getWorkflowAddon(addon.id));
+    } catch {
+      // The list payload still provides a useful preview.
+    }
+  }
 
-    const jurisdictionFilterButton = (
-        <TableFilters
-            label="Filter by jurisdiction"
-            value={jurisdictionFilter}
-            allLabel="All Jurisdictions"
-            widthClassName="w-48"
-            options={jurisdictions.map((jurisdiction) => ({
-                value: jurisdiction,
-                label: jurisdiction,
-            }))}
-            onChange={handleJurisdictionFilterChange}
-        />
-    );
+  async function importAddon(addon: WorkflowAddon) {
+    setImportingAddonId(addon.id);
+    try {
+      const workflow = await importWorkflowAddon(addon.id);
+      setWorkflows((current) => [workflow, ...current]);
+      setSelectedAddonIds((current) => current.filter((id) => id !== addon.id));
+      setSelectedAddon(null);
+      router.push(workflowDetailPath(workflow));
+    } finally {
+      setImportingAddonId(null);
+    }
+  }
 
-    const languageFilterButton = (
-        <TableFilters
-            label="Filter by language"
-            value={languageFilter}
-            allLabel="All Languages"
-            widthClassName="w-44"
-            options={languages.map((language) => ({
-                value: language,
-                label: language,
-            }))}
-            onChange={handleLanguageFilterChange}
-        />
+  async function importSelectedAddons() {
+    const selectedAddons = addons.filter((addon) =>
+      selectedAddonIds.includes(addon.id),
     );
+    if (selectedAddons.length === 0) return;
+    setBulkImportingAddons(true);
+    try {
+      const results = await Promise.allSettled(
+        selectedAddons.map((addon) => importWorkflowAddon(addon.id)),
+      );
+      const imported = results.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : [],
+      );
+      if (imported.length > 0) {
+        setWorkflows((current) => [...imported, ...current]);
+      }
+      setSelectedAddonIds([]);
+      if (imported.length !== selectedAddons.length) {
+        setLoadError("Some selected add-ons could not be imported.");
+      }
+    } finally {
+      setBulkImportingAddons(false);
+    }
+  }
 
-    const sourceOptions: TableFilterOption<WorkflowSourceFilter>[] = [
-        { value: "system", label: "System" },
-        { value: "user", label: "User" },
-        { value: "shared", label: "Shared with me" },
-    ];
-    const sourceFilterButton = (
-        <TableFilters
-            label="Filter by source"
-            value={sourceFilter}
-            allLabel="All Sources"
-            widthClassName="w-44"
-            options={sourceOptions}
-            onChange={handleSourceFilterChange}
-        />
+  function requestWorkflowDeletion(workflowsToDelete: Workflow[]) {
+    setPendingDeleteWorkflows(workflowsToDelete);
+    setWorkflowActionsOpen(false);
+    setDeleteStatus("idle");
+  }
+
+  async function confirmWorkflowDeletion() {
+    const ids = pendingDeleteWorkflows.map((workflow) => workflow.id);
+    if (ids.length === 0) return;
+    setDeleteStatus("loading");
+    const results = await Promise.allSettled(
+      ids.map((id) => deleteWorkflow(id)),
     );
-
-    const selectedHiddenSystemIds = selectedIds.filter((id) =>
-        hiddenSystemIds.includes(id),
+    const deletedIds = ids.filter(
+      (_, index) => results[index]?.status === "fulfilled",
     );
-    const selectedSystemIds = selectedIds.filter(
-        (id) => workflows.find((workflow) => workflow.id === id)?.is_system,
+    setSelectedWorkflowIds((current) =>
+      current.filter((id) => !deletedIds.includes(id)),
     );
-    const selectedOnlySystem =
-        selectedIds.length > 0 && selectedIds.length === selectedSystemIds.length;
-    const selectedOnlyHiddenSystem =
-        selectedIds.length > 0 &&
-        selectedIds.length === selectedHiddenSystemIds.length;
+    setWorkflows((current) =>
+      current.filter((workflow) => !deletedIds.includes(workflow.id)),
+    );
+    if (deletedIds.length !== ids.length) {
+      setLoadError("Some selected workflows could not be deleted.");
+    }
+    setDeleteStatus("complete");
+    window.setTimeout(() => {
+      setPendingDeleteWorkflows([]);
+      setDeleteStatus("idle");
+    }, 500);
+  }
 
-    const toolbarActions =
-        selectedIds.length > 0 ? (
-            <div ref={actionsRef} className="relative">
-                <TabPillButton
-                    onClick={() => setActionsOpen((v) => !v)}
-                >
-                    Actions
-                    <ChevronDown className="h-3.5 w-3.5" />
-                </TabPillButton>
-                {actionsOpen && (
-                    <LiquidDropdownSurface className="absolute top-full right-0 mt-1 z-[100] w-36 overflow-hidden">
-                        {selectedOnlyHiddenSystem ? (
-                            <LiquidDropdownButton
-                                onClick={handleBulkUnhide}
-                                className="w-full px-3 py-1.5 text-left text-gray-700"
-                            >
-                                Activate
-                            </LiquidDropdownButton>
-                        ) : (
-                            <button
-                                onClick={handleBulkRemove}
-                                className="w-full px-3 py-1.5 text-left text-xs text-red-600 transition-colors hover:bg-red-500/10"
-                            >
-                                {selectedOnlySystem ? "Deactivate" : "Delete"}
-                            </button>
-                        )}
-                    </LiquidDropdownSurface>
-                )}
-            </div>
-        ) : undefined;
-
-    return (
-        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-            {/* Page header */}
-            <PageHeader
-                shrink
-                loading={loading}
-                actions={[
-                    {
-                        type: "search",
-                        value: search,
-                        onChange: setSearch,
-                        placeholder: "Search workflows…",
-                    },
-                    {
-                        type: "new",
-                        onClick: () => setNewModalOpen(true),
-                        title: "New workflow",
-                    },
-                ]}
+  const workflowToolbarActions =
+    activeTab !== "addons" && selectedWorkflowIds.length > 0 ? (
+      <div ref={workflowActionsRef} className="relative">
+        <TabPillButton onClick={() => setWorkflowActionsOpen((open) => !open)}>
+          Actions
+          <ChevronDown className="h-3.5 w-3.5" />
+        </TabPillButton>
+        {workflowActionsOpen && (
+          <LiquidDropdownSurface className="absolute top-full right-0 z-[100] mt-1 w-36 overflow-hidden">
+            <button
+              type="button"
+              onClick={() =>
+                requestWorkflowDeletion(
+                  workflows.filter((workflow) =>
+                    selectedWorkflowIds.includes(workflow.id),
+                  ),
+                )
+              }
+              className="w-full px-3 py-1.5 text-left text-xs text-red-600 transition-colors hover:bg-red-500/10"
             >
-                <h1 className="text-2xl font-medium font-serif text-gray-900">
-                    Workflows
-                </h1>
-            </PageHeader>
+              Delete
+            </button>
+          </LiquidDropdownSurface>
+        )}
+      </div>
+    ) : undefined;
+  const addonToolbarActions =
+    activeTab === "addons" && selectedAddonIds.length > 0 ? (
+      <button
+        type="button"
+        disabled={bulkImportingAddons}
+        onClick={() => void importSelectedAddons()}
+        className="inline-flex items-center gap-1 px-1.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:text-gray-950 disabled:opacity-50"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        {bulkImportingAddons
+          ? "Importing…"
+          : `Import${selectedAddonIds.length > 1 ? ` (${selectedAddonIds.length})` : ""}`}
+      </button>
+    ) : undefined;
+  const pendingDefaultDeleteCount = pendingDeleteWorkflows.filter(
+    (workflow) => workflow.is_default,
+  ).length;
+  const deleteWarningMessage =
+    pendingDefaultDeleteCount > 0
+      ? pendingDeleteWorkflows.length === 1
+        ? "Deleting this default workflow also permanently deletes its corresponding Quick Action. The default workflow will not be created again automatically."
+        : `The selected workflows will be permanently deleted. ${pendingDefaultDeleteCount} ${pendingDefaultDeleteCount === 1 ? "is a default workflow, so its corresponding Quick Action will" : "are default workflows, so their corresponding Quick Actions will"} also be deleted. Deleted defaults will not be created again automatically.`
+      : pendingDeleteWorkflows.length === 1
+        ? "This workflow will be permanently deleted."
+        : "The selected workflows will be permanently deleted.";
 
-            <TableToolbar
-                items={WORKFLOW_TABS}
-                active={activeTab}
-                onChange={handleTabChange}
-                actions={toolbarActions}
+  return (
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+      <PageHeader
+        shrink
+        loading={loading}
+        actions={[
+          {
+            type: "search",
+            value: search,
+            onChange: setSearch,
+            placeholder:
+              activeTab === "addons" ? "Search add-ons…" : "Search workflows…",
+          },
+          {
+            type: "new",
+            onClick: () => setNewModalOpen(true),
+            title: "New workflow",
+          },
+        ]}
+      >
+        <h1 className="font-serif text-2xl font-medium text-gray-900">
+          Workflows
+        </h1>
+      </PageHeader>
+
+      <TableToolbar
+        items={WORKFLOW_TABS}
+        active={activeTab}
+        onChange={(tab) => {
+          setActiveTab(tab);
+          setSelectedWorkflowIds([]);
+          setSelectedAddonIds([]);
+          setWorkflowActionsOpen(false);
+        }}
+        actions={
+          activeTab === "addons" ? addonToolbarActions : workflowToolbarActions
+        }
+      />
+
+      {activeTab === "addons" ? (
+        <AddonTable
+          addons={visibleAddons}
+          loading={loading}
+          error={loadError}
+          selectedIds={selectedAddonIds}
+          onSelectedIdsChange={setSelectedAddonIds}
+          importingAddonId={importingAddonId}
+          bulkImporting={bulkImportingAddons}
+          onOpen={openAddon}
+          onImport={importAddon}
+        />
+      ) : (
+        <WorkflowTable
+          workflows={visibleWorkflows}
+          loading={loading}
+          error={loadError}
+          onOpen={setSelected}
+          onEdit={setEditingWorkflow}
+          onDelete={(workflow) => requestWorkflowDeletion([workflow])}
+          onCreate={() => setNewModalOpen(true)}
+          selectedIds={selectedWorkflowIds}
+          onSelectedIdsChange={setSelectedWorkflowIds}
+        />
+      )}
+
+      <UseWorkflowModal
+        workflows={workflows}
+        workflow={selected}
+        onClose={() => setSelected(null)}
+      />
+
+      <NewWorkflowModal
+        open={newModalOpen}
+        onClose={() => setNewModalOpen(false)}
+        onCreated={(workflow) => {
+          setWorkflows((current) => [workflow, ...current]);
+          setNewModalOpen(false);
+          router.push(workflowDetailPath(workflow));
+        }}
+      />
+
+      <NewWorkflowModal
+        open={!!editingWorkflow}
+        onClose={() => setEditingWorkflow(null)}
+        onCreated={() => undefined}
+        editWorkflow={editingWorkflow ?? undefined}
+        onUpdated={(updated) => {
+          setWorkflows((current) =>
+            current.map((workflow) =>
+              workflow.id === updated.id
+                ? { ...workflow, ...updated }
+                : workflow,
+            ),
+          );
+          setEditingWorkflow(null);
+        }}
+      />
+
+      <WorkflowAddonPreviewModal
+        addon={selectedAddon}
+        importing={selectedAddon?.id === importingAddonId}
+        onClose={() => setSelectedAddon(null)}
+        onImport={importAddon}
+      />
+
+      <ConfirmPopup
+        open={pendingDeleteWorkflows.length > 0}
+        title={
+          pendingDeleteWorkflows.length === 1
+            ? "Delete workflow?"
+            : "Delete workflows?"
+        }
+        message={deleteWarningMessage}
+        confirmLabel="Delete"
+        confirmStatus={deleteStatus}
+        onConfirm={() => void confirmWorkflowDeletion()}
+        onCancel={() => {
+          if (deleteStatus === "loading") return;
+          setPendingDeleteWorkflows([]);
+          setDeleteStatus("idle");
+        }}
+      />
+    </div>
+  );
+}
+
+function WorkflowTable({
+  workflows,
+  loading,
+  error,
+  onOpen,
+  onEdit,
+  onDelete,
+  onCreate,
+  selectedIds,
+  onSelectedIdsChange,
+}: {
+  workflows: Workflow[];
+  loading: boolean;
+  error: string;
+  onOpen: (workflow: Workflow) => void;
+  onEdit: (workflow: Workflow) => void;
+  onDelete: (workflow: Workflow) => void;
+  onCreate: () => void;
+  selectedIds: string[];
+  onSelectedIdsChange: (ids: string[]) => void;
+}) {
+  const selectableIds = workflows
+    .filter((workflow) => workflow.is_owner !== false)
+    .map((workflow) => workflow.id);
+  const allSelected =
+    selectableIds.length > 0 &&
+    selectableIds.every((id) => selectedIds.includes(id));
+  const someSelected =
+    !allSelected && selectableIds.some((id) => selectedIds.includes(id));
+
+  function toggleAll() {
+    onSelectedIdsChange(allSelected ? [] : selectableIds);
+  }
+
+  function toggleOne(id: string) {
+    onSelectedIdsChange(
+      selectedIds.includes(id)
+        ? selectedIds.filter((selectedId) => selectedId !== id)
+        : [...selectedIds, id],
+    );
+  }
+
+  return (
+    <TableScrollArea
+      header={
+        <TableHeaderRow>
+          <TableStickyCell header>
+            <input
+              type="checkbox"
+              checked={allSelected}
+              ref={(element) => {
+                if (element) element.indeterminate = someSelected;
+              }}
+              disabled={selectableIds.length === 0}
+              onChange={toggleAll}
+              className={TABLE_CHECKBOX_CLASS}
+              title="Select all deletable workflows"
             />
-
-            {/* Table */}
-            <TableScrollArea
-                header={
-                    <TableHeaderRow>
-                        <TableStickyCell header>
-                            {effectiveLoading ? (
-                                <SkeletonDot className="mr-4" />
-                            ) : (
-                                <input
-                                    type="checkbox"
-                                    checked={allSelected}
-                                    ref={(el) => {
-                                        if (el) el.indeterminate = someSelected;
-                                    }}
-                                    onChange={toggleAll}
-                                    className={TABLE_CHECKBOX_CLASS}
-                                />
-                            )}
-                            <span className="mr-1">Name</span>
-                            {!loading && nameFilterButton}
-                        </TableStickyCell>
-                        <TableHeaderCell className="ml-auto w-28">
-                            <div className="flex items-center gap-1">
-                                <span>Type</span>
-                                {!loading && typeFilterButton}
-                            </div>
-                        </TableHeaderCell>
-                        <TableHeaderCell className="w-40">
-                            <div className="flex items-center gap-1">
-                                <span>Practice</span>
-                                {!loading && practiceFilterButton}
-                            </div>
-                        </TableHeaderCell>
-                        <TableHeaderCell className="w-40">
-                            <div className="flex items-center gap-1">
-                                <span>Jurisdiction</span>
-                                {!loading && jurisdictionFilterButton}
-                            </div>
-                        </TableHeaderCell>
-                        <TableHeaderCell className="w-28">
-                            <div className="flex items-center gap-1">
-                                <span>Language</span>
-                                {!loading && languageFilterButton}
-                            </div>
-                        </TableHeaderCell>
-                        <TableHeaderCell className="w-44">
-                            <div className="flex items-center gap-1">
-                                <span>Source</span>
-                                {!loading && sourceFilterButton}
-                            </div>
-                        </TableHeaderCell>
-                        <TableHeaderCell className="w-8" />
-                    </TableHeaderRow>
+            Name
+          </TableStickyCell>
+          <TableHeaderCell className="ml-auto w-28">Type</TableHeaderCell>
+          <TableHeaderCell className="w-52">Practice</TableHeaderCell>
+          <TableHeaderCell className="w-40">Jurisdiction</TableHeaderCell>
+          <TableHeaderCell className="w-28">Language</TableHeaderCell>
+          <TableHeaderCell className="w-8" />
+        </TableHeaderRow>
+      }
+    >
+      {loading ? (
+        <TableBody>
+          {[1, 2, 3].map((index) => (
+            <TableRow key={index} interactive={false}>
+              <TableStickyCell hover={false}>
+                <SkeletonLine className="h-3.5 w-48" />
+              </TableStickyCell>
+              <TableCell className="ml-auto w-28">
+                <SkeletonLine className="w-16" />
+              </TableCell>
+              <TableCell className="w-52">
+                <SkeletonLine className="w-24" />
+              </TableCell>
+              <TableCell className="w-40">
+                <SkeletonLine className="w-24" />
+              </TableCell>
+              <TableCell className="w-28">
+                <SkeletonLine className="w-16" />
+              </TableCell>
+              <TableCell className="w-8">
+                <SkeletonDot />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      ) : workflows.length === 0 ? (
+        <TableEmptyState>
+          <WorkflowSkeuoIcon className="mb-4 h-8 w-8" />
+          <p className="font-serif text-2xl font-medium text-gray-900">
+            Workflows
+          </p>
+          <p className="mt-1 text-left text-xs text-gray-400">
+            {error || "Create a reusable workflow or import one from Add-ons."}
+          </p>
+          <PillButton
+            tone="black"
+            size="sm"
+            onClick={onCreate}
+            className="mt-4 px-3"
+          >
+            <Plus className="h-3.5 w-3.5" /> Create
+          </PillButton>
+        </TableEmptyState>
+      ) : (
+        <TableBody>
+          {workflows.map((workflow) => {
+            const Icon =
+              workflow.metadata.type === "tabular"
+                ? TabularReviewSkeuoIcon
+                : ChatSkeuoIcon;
+            const canManage = workflow.is_owner !== false;
+            const canDelete = canManage;
+            const isSelected = selectedIds.includes(workflow.id);
+            return (
+              <TableRow
+                key={workflow.id}
+                selected={isSelected}
+                onClick={() => onOpen(workflow)}
+                rightClickDropdown={
+                  canManage
+                    ? (close, menuProps) => (
+                        <RowActionMenuItems
+                          onClose={close}
+                          surfaceProps={menuProps}
+                          onEditDetails={() => onEdit(workflow)}
+                          onDelete={() => onDelete(workflow)}
+                        />
+                      )
+                    : undefined
                 }
-            >
-
-                    {effectiveLoading ? (
-                        <TableBody>
-                            {[1, 2, 3].map((i) => (
-                                <TableRow
-                                    key={i}
-                                    interactive={false}
-                                >
-                                    <TableStickyCell
-                                        hover={false}
-                                    >
-                                        <div className="flex items-center">
-                                            <SkeletonDot className="mr-4" />
-                                            <SkeletonLine className="h-3.5 w-48" />
-                                        </div>
-                                    </TableStickyCell>
-                                    <TableCell className="ml-auto w-28">
-                                        <SkeletonLine className="w-16" />
-                                    </TableCell>
-                                    <TableCell className="w-40">
-                                        <div className="flex items-center gap-1.5">
-                                            <SkeletonDot className="rounded-full" />
-                                            <SkeletonLine className="w-24" />
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="w-40">
-                                        <SkeletonLine className="w-24" />
-                                    </TableCell>
-                                    <TableCell className="w-28">
-                                        <SkeletonLine className="w-16" />
-                                    </TableCell>
-                                    <TableCell className="w-44">
-                                        <SkeletonLine className="w-14" />
-                                    </TableCell>
-                                    <TableCell className="w-8" />
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    ) : filtered.length === 0 ? (
-                        <TableEmptyState>
-                            {sourceFilter === "user" ? (
-                                <>
-                                    <WorkflowSkeuoIcon className="mb-4 h-8 w-8" />
-                                    <p className="text-2xl font-medium font-serif text-gray-900">
-                                        User Workflows
-                                    </p>
-                                    <p className="mt-1 text-xs text-gray-400 text-left">
-                                        Build reusable prompts and tabular
-                                        review templates tailored to your
-                                        practice.
-                                    </p>
-                                    <PillButton
-                                        tone="black"
-                                        size="sm"
-                                        onClick={() => setNewModalOpen(true)}
-                                        className="mt-4 px-3"
-                                    >
-                                        <Plus className="h-3.5 w-3.5" />
-                                        Create
-                                    </PillButton>
-                                </>
-                            ) : sourceFilter === "shared" ? (
-                                <>
-                                    <WorkflowSkeuoIcon className="mb-4 h-8 w-8" />
-                                    <p className="text-2xl font-medium font-serif text-gray-900">
-                                        Shared Workflows
-                                    </p>
-                                    <p className="mt-1 text-xs text-gray-400 text-left">
-                                        Workflows shared with you by other users
-                                        will appear here.
-                                    </p>
-                                </>
-                            ) : (
-                                <>
-                                    <WorkflowSkeuoIcon className="mb-4 h-8 w-8" />
-                                    <p className="text-2xl font-medium font-serif text-gray-900">
-                                        Workflows
-                                    </p>
-                                    <p className="mt-1 text-xs text-gray-400 text-left">
-                                        Automate document analysis with reusable
-                                        prompts and tabular review templates.
-                                    </p>
-                                </>
-                            )}
-                        </TableEmptyState>
-                    ) : (
-                        <TableBody>
-                            {filtered.map((wf) => {
-                            const isHiddenSystem = hiddenSystemIds.includes(wf.id);
-                            return (
-                            <TableRow
-                                key={wf.id}
-                                selected={selectedIds.includes(wf.id)}
-                                className={isHiddenSystem ? "opacity-45" : undefined}
-                                rightClickDropdown={
-                                    wf.is_system
-                                        ? isHiddenSystem
-                                            ? (close, menuProps) => (
-                                                  <RowActionMenuItems
-                                                      onClose={close}
-                                                      surfaceProps={menuProps}
-                                                      onUnhide={() =>
-                                                          handleUnhideWorkflow(
-                                                              wf.id,
-                                                          )
-                                                      }
-                                                  />
-                                              )
-                                            : (close, menuProps) => (
-                                                  <RowActionMenuItems
-                                                      onClose={close}
-                                                      surfaceProps={menuProps}
-                                                      onHide={() =>
-                                                          handleHideWorkflow(
-                                                              wf.id,
-                                                          )
-                                                      }
-                                                  />
-                                              )
-                                        : wf.is_owner === false
-                                          ? undefined
-                                          : (close, menuProps) => (
-                                                <RowActionMenuItems
-                                                    onClose={close}
-                                                    surfaceProps={menuProps}
-                                                    onEditDetails={() =>
-                                                        setEditingWorkflow(wf)
-                                                    }
-                                                    onDelete={async () => {
-                                                        await deleteWorkflow(
-                                                            wf.id,
-                                                        );
-                                                        setWorkflows((prev) =>
-                                                            prev.filter(
-                                                                (w) =>
-                                                                    w.id !==
-                                                                    wf.id,
-                                                            ),
-                                                        );
-                                                    }}
-                                                />
-                                            )
-                                }
-                                onClick={() => setSelected(wf)}
-                            >
-                                <TablePrimaryCell
-                                    selected={selectedIds.includes(wf.id)}
-                                    onSelectionChange={() => toggleOne(wf.id)}
-                                    label={wf.metadata.title}
-                                />
-                                <TableCell className="ml-auto w-28">
-                                    {(() => {
-                                        const { label, Icon } = getTypeMeta(
-                                            wf.metadata.type,
-                                        );
-                                        return (
-                                            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700">
-                                                <Icon className="h-4 w-4 shrink-0" />
-                                                {label}
-                                            </span>
-                                        );
-                                    })()}
-                                </TableCell>
-                                <TableCell className="w-40">
-                                    {wf.metadata.practice ? (
-                                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600">
-                                            <span
-                                                className={`${GLASS_DOT} ${practiceDotColor(
-                                                    wf.metadata.practice,
-                                                )}`}
-                                            />
-                                            {wf.metadata.practice}
-                                        </span>
-                                    ) : (
-                                        <span className="text-xs text-gray-300">
-                                            —
-                                        </span>
-                                    )}
-                                </TableCell>
-                                <TableCell className="w-40">
-                                    {wf.metadata.jurisdictions &&
-                                    wf.metadata.jurisdictions.length > 0 ? (
-                                        <span className="truncate max-w-full text-xs font-medium text-gray-600">
-                                            {wf.metadata.jurisdictions.join(", ")}
-                                        </span>
-                                    ) : (
-                                        <span className="text-xs text-gray-300">
-                                            —
-                                        </span>
-                                    )}
-                                </TableCell>
-                                <TableCell className="w-28">
-                                    {wf.metadata.language ? (
-                                        <span className="text-xs font-medium text-gray-600">
-                                            {wf.metadata.language}
-                                        </span>
-                                    ) : (
-                                        <span className="text-xs text-gray-300">
-                                            —
-                                        </span>
-                                    )}
-                                </TableCell>
-                                <TableCell className="w-44">
-                                    {wf.is_system ? (
-                                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600">
-                                            <MikeIcon size={14} />
-                                            System
-                                        </span>
-                                    ) : wf.is_owner !== false ? (
-                                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600">
-                                            <User className="h-3.5 w-3.5 text-blue-600" />
-                                            User
-                                        </span>
-                                    ) : (
-                                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 truncate max-w-full">
-                                            <User className="h-3.5 w-3.5 shrink-0 text-blue-600" />
-                                            <span className="truncate">
-                                                {getSharedByLabel(wf)}
-                                            </span>
-                                        </span>
-                                    )}
-                                </TableCell>
-                                <div
-                                    className="w-8 shrink-0 flex justify-end"
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    {wf.is_system ? (
-                                        isHiddenSystem ? (
-                                            <RowActions
-                                                onUnhide={() =>
-                                                    handleUnhideWorkflow(wf.id)
-                                                }
-                                            />
-                                        ) : (
-                                            <RowActions
-                                                onHide={() =>
-                                                    handleHideWorkflow(wf.id)
-                                                }
-                                            />
-                                        )
-                                    ) : wf.is_owner === false ? null : (
-                                        <RowActions
-                                            onEditDetails={() =>
-                                                setEditingWorkflow(wf)
-                                            }
-                                            onDelete={async () => {
-                                                await deleteWorkflow(wf.id);
-                                                setWorkflows((prev) =>
-                                                    prev.filter(
-                                                        (w) => w.id !== wf.id,
-                                                    ),
-                                                );
-                                            }}
-                                        />
-                                    )}
-                                </div>
-                            </TableRow>
-                            );
-                        })}
-                        </TableBody>
-                    )}
-            </TableScrollArea>
-
-            <UseWorkflowModal
-                workflows={allRows}
-                workflow={selected}
-                onClose={() => setSelected(null)}
-            />
-
-            <NewWorkflowModal
-                open={newModalOpen}
-                onClose={() => setNewModalOpen(false)}
-                onCreated={(wf) => {
-                    setWorkflows((prev) => [wf, ...prev]);
-                    setNewModalOpen(false);
-                    router.push(workflowDetailPath(wf));
-                }}
-            />
-
-            <NewWorkflowModal
-                open={!!editingWorkflow}
-                onClose={() => setEditingWorkflow(null)}
-                onCreated={() => undefined}
-                editWorkflow={editingWorkflow ?? undefined}
-                onUpdated={(updated) => {
-                    setWorkflows((prev) =>
-                        prev.map((workflow) =>
-                            workflow.id === updated.id
-                                ? { ...workflow, ...updated }
-                                : workflow,
-                        ),
-                    );
-                    setEditingWorkflow(null);
-                }}
-            />
-        </div>
-    );
+              >
+                <TablePrimaryCell
+                  label={workflow.metadata.title}
+                  selected={isSelected}
+                  onSelectionChange={() => toggleOne(workflow.id)}
+                  selectionIndicator={
+                    canDelete ? undefined : (
+                      <input
+                        type="checkbox"
+                        disabled
+                        className={TABLE_CHECKBOX_CLASS}
+                        title="Shared workflows cannot be deleted"
+                      />
+                    )
+                  }
+                />
+                <TableCell className="ml-auto w-28">
+                  <span className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {workflow.metadata.type === "tabular"
+                      ? "Tabular"
+                      : "Assistant"}
+                  </span>
+                </TableCell>
+                <TableCell className="w-52 text-sm text-gray-600">
+                  {workflow.metadata.practice || "—"}
+                </TableCell>
+                <TableCell className="w-40 truncate text-sm text-gray-600">
+                  {workflow.metadata.jurisdictions?.join(", ") || "—"}
+                </TableCell>
+                <TableCell className="w-28 text-sm text-gray-600">
+                  {workflow.metadata.language || "—"}
+                </TableCell>
+                <div
+                  className="flex w-8 shrink-0 justify-end"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  {canManage && (
+                    <RowActions
+                      onEditDetails={() => onEdit(workflow)}
+                      onDelete={() => onDelete(workflow)}
+                    />
+                  )}
+                </div>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      )}
+    </TableScrollArea>
+  );
 }
 
-function getSharedByLabel(workflow: Workflow) {
-    return workflow.shared_by_name?.trim() || "Shared";
-}
-
-function getWorkflowSource(workflow: Workflow): WorkflowSourceFilter {
-    if (workflow.is_system) return "system";
-    return workflow.is_owner === false ? "shared" : "user";
-}
-
-function compareWorkflows(
-    a: Workflow,
-    b: Workflow,
-    sort: { key: WorkflowSortKey; direction: TableSortDirection } | null,
-) {
-    if (!sort) return 0;
-
-    const direction = sort.direction === "asc" ? 1 : -1;
-    const aValue =
-        sort.key === "name"
-            ? a.metadata.title
-            : a.metadata.type === "tabular"
-              ? "Tabular"
-              : "Assistant";
-    const bValue =
-        sort.key === "name"
-            ? b.metadata.title
-            : b.metadata.type === "tabular"
-              ? "Tabular"
-              : "Assistant";
-
-    return aValue.localeCompare(bValue) * direction;
-}
-
-// Liquid-glass treatment shared by every practice dot: a top inset highlight
-// and bottom inset shadow give it depth, plus a slight drop shadow so the bead
-// lifts off the row. The color class is appended per practice.
-const GLASS_DOT =
-    "h-2 w-2 shrink-0 rounded-full shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.65),inset_0_-1px_1px_rgba(15,23,42,0.28),0_1px_1.5px_rgba(15,23,42,0.2)]";
-
-// Full literal class names so Tailwind's scanner keeps them (no dynamic strings).
-const PRACTICE_DOT_COLORS = [
-    "bg-blue-500",
-    "bg-violet-500",
-    "bg-emerald-500",
-    "bg-amber-500",
-    "bg-rose-500",
-    "bg-cyan-500",
-    "bg-fuchsia-500",
-    "bg-lime-500",
-    "bg-orange-500",
-    "bg-teal-500",
-];
-
-/** Deterministic dot color per practice name, so each practice reads consistently. */
-function practiceDotColor(practice: string): string {
-    let hash = 0;
-    for (let i = 0; i < practice.length; i++) {
-        hash = (hash * 31 + practice.charCodeAt(i)) >>> 0;
+function AddonTable({
+  addons,
+  loading,
+  error,
+  selectedIds,
+  onSelectedIdsChange,
+  importingAddonId,
+  bulkImporting,
+  onOpen,
+  onImport,
+}: {
+  addons: WorkflowAddon[];
+  loading: boolean;
+  error: string;
+  selectedIds: string[];
+  onSelectedIdsChange: (ids: string[]) => void;
+  importingAddonId: string | null;
+  bulkImporting: boolean;
+  onOpen: (addon: WorkflowAddon) => void;
+  onImport: (addon: WorkflowAddon) => Promise<void>;
+}) {
+  const [expandedPackKeys, setExpandedPackKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const packs = useMemo(() => {
+    const grouped = new Map<
+      string,
+      {
+        key: string;
+        title: string;
+        description: string | null;
+        addons: WorkflowAddon[];
+      }
+    >();
+    for (const addon of addons) {
+      if (!addon.pack_key) continue;
+      const existing = grouped.get(addon.pack_key);
+      if (existing) {
+        existing.addons.push(addon);
+      } else {
+        grouped.set(addon.pack_key, {
+          key: addon.pack_key,
+          title: addon.pack_title || addon.pack_key,
+          description: addon.pack_description,
+          addons: [addon],
+        });
+      }
     }
-    return PRACTICE_DOT_COLORS[hash % PRACTICE_DOT_COLORS.length];
+    return [...grouped.values()].sort((a, b) => a.title.localeCompare(b.title));
+  }, [addons]);
+  const standaloneAddons = addons.filter((addon) => !addon.pack_key);
+  const isEmpty = packs.length === 0 && standaloneAddons.length === 0;
+  const addonIds = addons.map((addon) => addon.id);
+  const allSelected =
+    addonIds.length > 0 && addonIds.every((id) => selectedIds.includes(id));
+  const someSelected =
+    !allSelected && addonIds.some((id) => selectedIds.includes(id));
+
+  function toggleAll() {
+    onSelectedIdsChange(allSelected ? [] : addonIds);
+  }
+
+  function toggleOne(addonId: string) {
+    onSelectedIdsChange(
+      selectedIds.includes(addonId)
+        ? selectedIds.filter((id) => id !== addonId)
+        : [...selectedIds, addonId],
+    );
+  }
+
+  function togglePackSelection(packAddons: WorkflowAddon[]) {
+    const packIds = packAddons.map((addon) => addon.id);
+    const packSelected = packIds.every((id) => selectedIds.includes(id));
+    onSelectedIdsChange(
+      packSelected
+        ? selectedIds.filter((id) => !packIds.includes(id))
+        : [...new Set([...selectedIds, ...packIds])],
+    );
+  }
+
+  function togglePack(packKey: string) {
+    setExpandedPackKeys((current) => {
+      const next = new Set(current);
+      if (next.has(packKey)) next.delete(packKey);
+      else next.add(packKey);
+      return next;
+    });
+  }
+
+  function renderAddonRow(addon: WorkflowAddon, nested = false) {
+    const Icon =
+      addon.type === "tabular" ? TabularReviewSkeuoIcon : ChatSkeuoIcon;
+    return (
+      <TableRow
+        key={addon.id}
+        selected={selectedIds.includes(addon.id)}
+        onClick={() => onOpen(addon)}
+      >
+        <TablePrimaryCell
+          className={nested ? "pl-12" : undefined}
+          label={addon.title}
+          selected={selectedIds.includes(addon.id)}
+          onSelectionChange={() => toggleOne(addon.id)}
+        />
+        <TableCell className="ml-auto w-28">
+          <span className="inline-flex items-center gap-1.5 text-sm text-gray-700">
+            <Icon className="h-4 w-4" />
+            {addon.type === "tabular" ? "Tabular" : "Assistant"}
+          </span>
+        </TableCell>
+        <TableCell className="w-52 text-sm text-gray-600">
+          {addon.practice || "—"}
+        </TableCell>
+        <TableCell className="w-40 truncate text-sm text-gray-600">
+          {addon.jurisdictions?.join(", ") || "—"}
+        </TableCell>
+        <TableCell className="w-28 text-sm text-gray-600">
+          {addon.language || "—"}
+        </TableCell>
+        <TableCell className="w-20">
+          <button
+            type="button"
+            disabled={bulkImporting || importingAddonId === addon.id}
+            onClick={(event) => {
+              event.stopPropagation();
+              void onImport(addon);
+            }}
+            className="inline-flex items-center gap-1 px-1 py-1 text-xs font-medium text-gray-600 transition-colors hover:text-gray-950 disabled:opacity-50"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {importingAddonId === addon.id ? "Importing…" : "Import"}
+          </button>
+        </TableCell>
+      </TableRow>
+    );
+  }
+
+  return (
+    <TableScrollArea
+      header={
+        <TableHeaderRow>
+          <TableStickyCell header>
+            <input
+              type="checkbox"
+              checked={allSelected}
+              ref={(element) => {
+                if (element) element.indeterminate = someSelected;
+              }}
+              disabled={addonIds.length === 0 || bulkImporting}
+              onChange={toggleAll}
+              className={TABLE_CHECKBOX_CLASS}
+              title="Select all add-ons"
+            />
+            Name
+          </TableStickyCell>
+          <TableHeaderCell className="ml-auto w-28">Type</TableHeaderCell>
+          <TableHeaderCell className="w-52">Practice</TableHeaderCell>
+          <TableHeaderCell className="w-40">Jurisdiction</TableHeaderCell>
+          <TableHeaderCell className="w-28">Language</TableHeaderCell>
+          <TableHeaderCell className="w-20" />
+        </TableHeaderRow>
+      }
+    >
+      {loading ? (
+        <TableBody>
+          <TableRow interactive={false}>
+            <TableStickyCell hover={false}>
+              <SkeletonLine className="w-48" />
+            </TableStickyCell>
+          </TableRow>
+        </TableBody>
+      ) : isEmpty ? (
+        <TableEmptyState>
+          <WorkflowSkeuoIcon className="mb-4 h-8 w-8" />
+          <p className="font-serif text-2xl font-medium text-gray-900">
+            Add-ons
+          </p>
+          <p className="mt-1 text-xs text-gray-400">
+            {error || "No add-ons found."}
+          </p>
+        </TableEmptyState>
+      ) : (
+        <TableBody>
+          {packs.map((pack) => {
+            const expanded = expandedPackKeys.has(pack.key);
+            const packSelected = pack.addons.every((addon) =>
+              selectedIds.includes(addon.id),
+            );
+            const packPartiallySelected =
+              !packSelected &&
+              pack.addons.some((addon) => selectedIds.includes(addon.id));
+            return [
+              <TableRow
+                key={`${pack.key}:folder`}
+                selected={packSelected}
+                aria-expanded={expanded}
+                onClick={() => togglePack(pack.key)}
+              >
+                <TablePrimaryCell
+                  selected={packSelected}
+                  onSelectionChange={() => togglePackSelection(pack.addons)}
+                  selectionIndicator={
+                    <input
+                      type="checkbox"
+                      checked={packSelected}
+                      ref={(element) => {
+                        if (element) {
+                          element.indeterminate = packPartiallySelected;
+                        }
+                      }}
+                      disabled={bulkImporting}
+                      onChange={() => togglePackSelection(pack.addons)}
+                      onClick={(event) => event.stopPropagation()}
+                      className={TABLE_CHECKBOX_CLASS}
+                      title={`Select ${pack.title}`}
+                    />
+                  }
+                  label={
+                    <span className="flex min-w-0 items-center">
+                      {expanded ? (
+                        <ChevronDown className="mr-1 h-3.5 w-3.5 shrink-0 text-gray-400" />
+                      ) : (
+                        <ChevronRight className="mr-1 h-3.5 w-3.5 shrink-0 text-gray-400" />
+                      )}
+                      <SubfolderSvgIcon
+                        open={expanded}
+                        className="mr-2 h-5 w-5 shrink-0"
+                      />
+                      <span className="truncate text-sm text-gray-800">
+                        {pack.title}
+                      </span>
+                    </span>
+                  }
+                />
+                <TableCell className="ml-auto w-28 text-sm text-gray-600">
+                  Pack
+                </TableCell>
+                <TableCell className="w-52 text-sm text-gray-600">
+                  {pack.addons.length} workflow
+                  {pack.addons.length === 1 ? "" : "s"}
+                </TableCell>
+                <TableCell className="w-40 text-sm text-gray-600">—</TableCell>
+                <TableCell className="w-28 text-sm text-gray-600">—</TableCell>
+                <TableCell className="w-20" />
+              </TableRow>,
+              ...(expanded
+                ? pack.addons.map((addon) => renderAddonRow(addon, true))
+                : []),
+            ];
+          })}
+          {standaloneAddons.map((addon) => renderAddonRow(addon))}
+        </TableBody>
+      )}
+    </TableScrollArea>
+  );
 }

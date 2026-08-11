@@ -281,6 +281,9 @@ export function ChatView({
                         onSelect={(action) => {
                             onSelectedWorkflowChange(action.workflow);
                             chatInputRef.current?.setDraft(action.prompt);
+                            if (action.document_upload) {
+                                chatInputRef.current?.requestDocuments();
+                            }
                         }}
                     />
                 </div>

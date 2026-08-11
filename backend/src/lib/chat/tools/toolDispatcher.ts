@@ -792,10 +792,12 @@ export async function runToolCalls(
       });
     } else if (tc.function.name === "list_workflows") {
       const list = workflowStore
-        ? Array.from(workflowStore.entries()).map(([id, w]) => ({
-            id,
-            title: w.title,
-          }))
+        ? Array.from(workflowStore.entries())
+            .filter(([, workflow]) => workflow.listed !== false)
+            .map(([id, w]) => ({
+              id,
+              title: w.title,
+            }))
         : [];
       toolResults.push({
         role: "tool",
@@ -811,16 +813,36 @@ export async function runToolCalls(
         );
         workflowsApplied.push({ workflow_id: wfId, title: wf.title });
       }
+      const referenceHandles: { doc_id: string; filename: string }[] = [];
+      if (wf) {
+        for (const [index, reference] of (wf.reference_files ?? []).entries()) {
+          const docId = `workflow-ref-${wfId.slice(0, 8)}-${index + 1}`;
+          docStore.set(docId, {
+            storage_path: reference.storage_path,
+            file_type: reference.file_type,
+            filename: reference.filename,
+          });
+          referenceHandles.push({ doc_id: docId, filename: reference.filename });
+        }
+      }
       // Workflow bodies are instructions the user installed to be FOLLOWED,
       // so they get the semi-trusted <workflow-instructions> fence (follow,
       // but never override system policy) rather than <untrusted-content>
       // (data only) — wrapping instructions in a data-only fence would either
       // break workflow execution or teach the model to ignore the fence.
       const wfContent = wf ? wf.skill_md : `Workflow '${wfId}' not found.`;
+      const instructions = nonce && wf ? spotlightWorkflow(wfContent, nonce) : wfContent;
+      const referenceNotice = referenceHandles.length > 0
+        ? `\n\nAvailable workflow reference files (open them with read_document):\n${referenceHandles
+            .map((reference) =>
+              `- ${reference.doc_id}: ${spotlightFilename(reference.filename, nonce)}`,
+            )
+            .join("\n")}`
+        : "";
       toolResults.push({
         role: "tool",
         tool_call_id: tc.id,
-        content: nonce && wf ? spotlightWorkflow(wfContent, nonce) : wfContent,
+        content: `${instructions}${referenceNotice}`,
       });
     } else if (tc.function.name === "read_table_cells" && tabularStore) {
       const colIndices = args.col_indices as number[] | undefined;

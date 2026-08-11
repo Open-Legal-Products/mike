@@ -28,6 +28,7 @@ import type {
 
 export interface ChatInputHandle {
   setDraft: (prompt: string) => void;
+  requestDocuments: () => void;
 }
 
 interface ChatInputProps {
@@ -79,6 +80,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       ref,
       () => ({
         setDraft: (prompt: string): void => setInput(prompt),
+        requestDocuments: (): void => setDocumentsModalOpen(true),
       }),
       [],
     );

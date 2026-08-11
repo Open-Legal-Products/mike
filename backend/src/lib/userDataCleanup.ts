@@ -107,8 +107,13 @@ async function deleteDocumentVersionFiles(db: Db, documentIds: string[]) {
 
 async function deleteUserStoragePrefix(userId: string) {
     try {
-        const paths = await listFiles(`documents/${userId}/`);
-        await Promise.all(paths.map((path) => deleteFile(path).catch(() => {})));
+        const paths = new Set([
+            ...(await listFiles(`documents/${userId}/`)),
+            ...(await listFiles(`workflow-references/${userId}/`)),
+        ]);
+        await Promise.all(
+            [...paths].map((path) => deleteFile(path).catch(() => {})),
+        );
     } catch {
         // Version-linked objects are deleted above. Prefix cleanup is best-effort
         // for orphaned files left behind by interrupted uploads.
@@ -335,12 +340,26 @@ export async function deleteUserAccountData(
                   .delete()
                   .eq("shared_with_email", userEmail.trim().toLowerCase())
             : Promise.resolve({ error: null }),
-        db.from("workflows").delete().eq("user_id", userId),
         db.from("projects").delete().eq("user_id", userId),
+        db.from("quick_actions").delete().eq("user_id", userId),
+        db
+            .from("workflow_reference_documents")
+            .delete()
+            .eq("user_id", userId),
+        db
+            .from("default_workflow_installations")
+            .delete()
+            .eq("user_id", userId),
     ];
 
     const results = await Promise.all(deletions);
     for (const result of results) {
         await throwIfError(result.error, "Failed to delete account data");
     }
+
+    const { error: workflowsError } = await db
+        .from("workflows")
+        .delete()
+        .eq("user_id", userId);
+    await throwIfError(workflowsError, "Failed to delete workflows");
 }

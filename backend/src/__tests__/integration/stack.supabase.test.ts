@@ -26,6 +26,8 @@ const PUBLIC_TABLES = [
     "chat_messages", "chats", "courtlistener_citation_index",
     "courtlistener_opinion_cluster_index", "document_edits",
     "document_versions", "documents", "hidden_workflows", "library_folders",
+    "default_workflow_installations", "quick_actions", "workflow_addons",
+    "workflow_reference_documents", "workflow_addon_reference_files",
     "project_subfolders", "projects", "tabular_cells",
     "tabular_review_chat_messages", "tabular_review_chats", "tabular_reviews",
     "user_api_keys", "user_mcp_connector_tools", "user_mcp_connectors",
@@ -131,6 +133,58 @@ maybeDescribe("Supabase stack — auth contract + RLS deny-all firewall", () => 
         const cross = await asUser(tokenB)
             .from("projects").select("id").eq("id", projectId);
         expect(cross.data ?? []).toHaveLength(0);
+    });
+
+    it("deleting a default workflow removes its Quick Action but preserves its installation marker", async () => {
+        const defaultKey = `delete-verification-${Date.now()}`;
+        const workflowResult = await admin
+            .from("workflows")
+            .insert({
+                user_id: userA,
+                title: "Deletable default verification",
+                type: "assistant",
+            })
+            .select("id")
+            .single();
+        expect(workflowResult.error).toBeNull();
+        const workflowId = workflowResult.data!.id;
+
+        const installationResult = await admin
+            .from("default_workflow_installations")
+            .insert({ user_id: userA, default_key: defaultKey, workflow_id: workflowId });
+        expect(installationResult.error).toBeNull();
+        const actionResult = await admin
+            .from("quick_actions")
+            .insert({ user_id: userA, workflow_id: workflowId, prompt: "Verify cascade" });
+        expect(actionResult.error).toBeNull();
+
+        const deletionResult = await admin
+            .from("workflows")
+            .delete()
+            .eq("id", workflowId);
+        expect(deletionResult.error).toBeNull();
+
+        const installation = await admin
+            .from("default_workflow_installations")
+            .select("workflow_id")
+            .eq("user_id", userA)
+            .eq("default_key", defaultKey)
+            .single();
+        expect(installation.error).toBeNull();
+        expect(installation.data?.workflow_id).toBeNull();
+
+        const actions = await admin
+            .from("quick_actions")
+            .select("id")
+            .eq("workflow_id", workflowId);
+        expect(actions.error).toBeNull();
+        expect(actions.data).toEqual([]);
+
+        await admin
+            .from("default_workflow_installations")
+            .delete()
+            .eq("user_id", userA)
+            .eq("default_key", defaultKey);
     });
 
     it("leak sweep: no public table returns rows to the authenticated user path", async () => {

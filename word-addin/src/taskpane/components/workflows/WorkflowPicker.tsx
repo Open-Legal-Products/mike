@@ -1,9 +1,16 @@
-import React, { lazy, Suspense, useEffect, useRef, useState } from "react";
-import type { Workflow } from "../../types";
+import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import type { Workflow, WorkflowAddon } from "../../types";
 import { Spinner } from "../../../shared/ui/spinner";
-import { listWorkflows, updateWorkflow } from "../../api/mikeApi";
+import {
+  importWorkflowAddon,
+  listWorkflowAddons,
+  listWorkflows,
+  updateWorkflow,
+} from "../../api/mikeApi";
 import { WorkflowList } from "./WorkflowList";
 import { PageTitle } from "../primitives/PageTitle";
+import { WorkflowReferenceFiles } from "./WorkflowReferenceFiles";
+import { SubfolderSvgIcon } from "../documents/DirectoryIcons";
 
 const WorkflowPromptEditor = lazy(() =>
   import("./WorkflowPromptEditor").then((module) => ({
@@ -30,6 +37,12 @@ export function WorkflowPicker({
   onSelectedWorkflowChange,
 }: WorkflowPickerProps): React.ReactElement {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
+  const [addons, setAddons] = useState<WorkflowAddon[]>([]);
+  const [tab, setTab] = useState<"workflows" | "addons">("workflows");
+  const [expandedAddonPackKeys, setExpandedAddonPackKeys] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [importingAddonId, setImportingAddonId] = useState<string | null>(null);
   const [fetchLoading, setFetchLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -59,6 +72,22 @@ export function WorkflowPicker({
       })
       .finally(() => {
         if (!cancelled) setFetchLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listWorkflowAddons()
+      .then((rows) => {
+        if (!cancelled) {
+          setAddons(rows.filter((addon) => addon.type === "assistant"));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAddons([]);
       });
     return () => {
       cancelled = true;
@@ -129,6 +158,86 @@ export function WorkflowPicker({
     }, 800);
   };
 
+  const importAddon = async (addon: WorkflowAddon): Promise<void> => {
+    setImportingAddonId(addon.id);
+    setFetchError(null);
+    try {
+      const imported = await importWorkflowAddon(addon.id);
+      setWorkflows((current) => [imported, ...current]);
+      setTab("workflows");
+      onSelectedWorkflowChange(imported);
+    } catch (reason) {
+      setFetchError(
+        reason instanceof Error ? reason.message : "Failed to import add-on",
+      );
+    } finally {
+      setImportingAddonId(null);
+    }
+  };
+
+  const addonPacks = useMemo(() => {
+    const grouped = new Map<
+      string,
+      {
+        key: string;
+        title: string;
+        description: string | null;
+        addons: WorkflowAddon[];
+      }
+    >();
+    for (const addon of addons) {
+      if (!addon.pack_key) continue;
+      const existing = grouped.get(addon.pack_key);
+      if (existing) {
+        existing.addons.push(addon);
+      } else {
+        grouped.set(addon.pack_key, {
+          key: addon.pack_key,
+          title: addon.pack_title || addon.pack_key,
+          description: addon.pack_description,
+          addons: [addon],
+        });
+      }
+    }
+    return [...grouped.values()].sort((a, b) =>
+      a.title.localeCompare(b.title)
+    );
+  }, [addons]);
+  const standaloneAddons = addons.filter((addon) => !addon.pack_key);
+
+  const toggleAddonPack = (packKey: string): void => {
+    setExpandedAddonPackKeys((current) => {
+      const next = new Set(current);
+      if (next.has(packKey)) next.delete(packKey);
+      else next.add(packKey);
+      return next;
+    });
+  };
+
+  const renderAddon = (addon: WorkflowAddon, nested = false): React.ReactElement => (
+    <div
+      key={addon.id}
+      className={`rounded-lg bg-white/55 px-3 py-2.5 ${nested ? "ml-6" : ""}`}
+    >
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-medium text-gray-800">{addon.title}</p>
+          {addon.description && (
+            <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-gray-400">{addon.description}</p>
+          )}
+        </div>
+        <button
+          type="button"
+          disabled={importingAddonId === addon.id}
+          onClick={() => void importAddon(addon)}
+          className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600 disabled:opacity-50"
+        >
+          {importingAddonId === addon.id ? "Importing…" : "Import"}
+        </button>
+      </div>
+    </div>
+  );
+
   if (!selectedWorkflow) {
     return (
       <div
@@ -141,15 +250,65 @@ export function WorkflowPicker({
         >
           Workflows
         </PageTitle>
-        <WorkflowList
-          workflows={workflows}
-          search={search}
-          onSearchChange={setSearch}
-          onSelect={onSelectedWorkflowChange}
-          loading={fetchLoading}
-          error={fetchError}
-          emptyMessage="No workflows found."
-        />
+        <div className="mb-2 flex shrink-0 gap-1 rounded-lg bg-white/45 p-1 text-xs">
+          <button
+            type="button"
+            onClick={() => setTab("workflows")}
+            className={`flex-1 rounded-md px-2 py-1.5 ${tab === "workflows" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}
+          >
+            My workflows
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("addons")}
+            className={`flex-1 rounded-md px-2 py-1.5 ${tab === "addons" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}
+          >
+            Add-ons
+          </button>
+        </div>
+        {tab === "workflows" ? (
+          <WorkflowList
+            workflows={workflows}
+            search={search}
+            onSearchChange={setSearch}
+            onSelect={onSelectedWorkflowChange}
+            loading={fetchLoading}
+            error={fetchError}
+            emptyMessage="No workflows found."
+          />
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {fetchError && <p className="px-2 py-2 text-xs text-red-500">{fetchError}</p>}
+            <div className="space-y-1">
+              {addonPacks.map((pack) => {
+                const expanded = expandedAddonPackKeys.has(pack.key);
+                return (
+                  <React.Fragment key={pack.key}>
+                    <button
+                      type="button"
+                      aria-expanded={expanded}
+                      onClick={() => toggleAddonPack(pack.key)}
+                      className="flex w-full items-start gap-2 rounded-lg bg-white/55 px-3 py-2.5 text-left"
+                    >
+                      <SubfolderSvgIcon
+                        open={expanded}
+                        className="mt-0.5 h-5 w-5 shrink-0"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-medium text-gray-800">{pack.title}</span>
+                        <span className="mt-1 block text-[11px] leading-relaxed text-gray-400">
+                          {pack.addons.length} workflow{pack.addons.length === 1 ? "" : "s"}
+                        </span>
+                      </span>
+                    </button>
+                    {expanded && pack.addons.map((addon) => renderAddon(addon, true))}
+                  </React.Fragment>
+                );
+              })}
+              {standaloneAddons.map((addon) => renderAddon(addon))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -178,10 +337,10 @@ export function WorkflowPicker({
         </span>
       </div>
 
-      <div className="mt-3 min-h-0 flex-1">
+      <div className="mt-3 flex min-h-0 flex-1 flex-col">
         <section
           data-testid="workflow-skill-content"
-          className="h-full min-h-0"
+          className="min-h-0 flex-1"
         >
           <div
             data-testid="workflow-skill-body"
@@ -202,6 +361,10 @@ export function WorkflowPicker({
             </Suspense>
           </div>
         </section>
+        <WorkflowReferenceFiles
+          workflowId={selectedWorkflow.id}
+          readOnly={readOnly}
+        />
       </div>
     </div>
   );

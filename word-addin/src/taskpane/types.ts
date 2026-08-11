@@ -25,6 +25,16 @@ export interface Document {
   created_at: string | null;
 }
 
+export interface WorkflowReferenceDocument {
+  id: string;
+  workflow_id: string;
+  filename: string;
+  file_type: string;
+  size_bytes: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Chat {
   id: string;
   project_id: string | null;
@@ -119,4 +129,36 @@ export interface Workflow {
   skill_md: string | null;
   is_system: boolean;
   allow_edit?: boolean;
+}
+
+export interface QuickAction {
+  id: string;
+  workflow_id: string;
+  prompt: string;
+  document_upload: boolean;
+  enabled: boolean;
+  sort_order: number;
+  workflow: { id: string; title: string };
+}
+
+export interface WorkflowAddon {
+  id: string;
+  addon_key: string;
+  pack_key: string | null;
+  pack_title: string | null;
+  pack_description: string | null;
+  pack_version: string | null;
+  version: string | null;
+  title: string;
+  description: string | null;
+  type: "assistant" | "tabular";
+  language: string | null;
+  practice: string | null;
+  jurisdictions: string[] | null;
+  reference_files?: {
+    id: string;
+    filename: string;
+    file_type: string;
+    size_bytes: number | null;
+  }[];
 }

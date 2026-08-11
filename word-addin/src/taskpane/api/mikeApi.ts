@@ -51,14 +51,23 @@ configureMikeApiClient({
 
 export {
   createWorkflow,
+  deleteWorkflowReferenceFile,
   getApiKeyStatus,
   getLibrary,
   getUserProfile,
+  getWorkflowReferenceUrl,
+  importWorkflowAddon,
   listProjects,
+  listQuickActions,
+  listWorkflowAddons,
+  listWorkflowReferenceFiles,
   listWorkflows,
   readSSE,
+  replaceWorkflowReferenceFile,
   streamWordChat,
   updateWorkflow,
+  updateQuickAction,
+  uploadWorkflowReferenceFile,
   uploadStandaloneDocument,
 } from "./client";
 export type { ApiKeyStatus } from "./client";
