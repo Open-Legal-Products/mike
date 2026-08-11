@@ -17,6 +17,7 @@ import {
   Table2,
 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
+import { LIQUID_TABLE_SURFACE_CLASS } from "@/app/components/ui/liquid-surface";
 
 interface Props {
   value: string;
@@ -344,7 +345,9 @@ export function WorkflowPromptEditor({
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-white/70 bg-white/55 shadow-sm">
+    <div
+      className={`flex h-full flex-col overflow-hidden ${LIQUID_TABLE_SURFACE_CLASS}`}
+    >
       {!readOnly && editor && (
         <div className="flex shrink-0 items-center gap-0.5 border-b border-white/70 bg-app-surface px-2 py-1.5 backdrop-blur-xl">
           <AppToolbarButton

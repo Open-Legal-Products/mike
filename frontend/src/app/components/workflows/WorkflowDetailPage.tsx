@@ -12,6 +12,7 @@ import {
   Play,
   Plus,
   Trash2,
+  Upload,
   Users,
 } from "lucide-react";
 import {
@@ -67,7 +68,10 @@ import { TRExpandedCellSurface } from "@/app/components/tabular/TRExpandedCellSu
 import { useAuth } from "@/app/contexts/AuthContext";
 import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import { downloadWorkflowZip } from "./workflowZipExport";
-import { WorkflowReferenceFiles } from "./WorkflowReferenceFiles";
+import {
+  WorkflowReferenceFiles,
+  type WorkflowReferenceFilesHandle,
+} from "./WorkflowReferenceFiles";
 // dynamic import keeps Tiptap (browser-only) out of the SSR bundle
 const WorkflowPromptEditor = dynamic(
   () =>
@@ -114,6 +118,8 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
   const [promptMd, setPromptMd] = useState("");
   const [columns, setColumns] = useState<ColumnConfig[]>([]);
   const [assistantTab, setAssistantTab] = useState<AssistantTab>("prompt");
+  const [referenceFilesUploading, setReferenceFilesUploading] = useState(false);
+  const referenceFilesRef = useRef<WorkflowReferenceFilesHandle>(null);
   const searchParams = useSearchParams();
   const previewEmptyStates = searchParams.get("emptyStates") === "1";
   const visibleColumns = previewEmptyStates ? [] : columns;
@@ -559,6 +565,19 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
               ]}
               active={assistantTab}
               onChange={setAssistantTab}
+              actions={
+                assistantTab === "assets" && !readOnly ? (
+                  <TabPillButton
+                    disabled={referenceFilesUploading}
+                    onClick={() =>
+                      referenceFilesRef.current?.openUploadPicker()
+                    }
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    {referenceFilesUploading ? "Uploading…" : "Upload files"}
+                  </TabPillButton>
+                ) : undefined
+              }
             />
             {assistantTab === "prompt" ? (
               <div className="mx-4 mb-2 min-h-0 min-w-0 flex-1 md:mx-6 md:mb-3">
@@ -569,7 +588,12 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                 />
               </div>
             ) : (
-              <WorkflowReferenceFiles workflowId={id} readOnly={readOnly} />
+              <WorkflowReferenceFiles
+                ref={referenceFilesRef}
+                workflowId={id}
+                readOnly={readOnly}
+                onUploadingChange={setReferenceFilesUploading}
+              />
             )}
           </>
         ) : (

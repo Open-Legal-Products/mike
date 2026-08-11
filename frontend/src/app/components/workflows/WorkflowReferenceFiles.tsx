@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Download, FileText, Trash2, Upload } from "lucide-react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import type { WorkflowReferenceDocument } from "../shared/types";
 import {
   deleteWorkflowReferenceFile,
@@ -10,15 +15,54 @@ import {
   replaceWorkflowReferenceFile,
   uploadWorkflowReferenceFile,
 } from "@/app/lib/mikeApi";
-import { PillButton } from "../ui/pill-button";
+import { SUPPORTED_DOCUMENT_ACCEPT } from "@/app/lib/documentUploadValidation";
+import { FileTypeIcon } from "../shared/FileTypeIcon";
+import { RowActions } from "../shared/RowActions";
+import {
+  SkeletonLine,
+  TableBody,
+  TableCell,
+  TableEmptyState,
+  TableHeaderCell,
+  TableHeaderRow,
+  TableRow,
+  TableScrollArea,
+  TableStickyCell,
+} from "../shared/TablePrimitive";
 
-export function WorkflowReferenceFiles({
-  workflowId,
-  readOnly,
-}: {
-  workflowId: string;
-  readOnly: boolean;
-}) {
+const REFERENCE_NAME_COL_W =
+  "w-[292px] sm:w-[332px] md:w-[392px] lg:w-[452px] shrink-0";
+
+function formatBytes(bytes: number | null) {
+  if (bytes == null) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+export interface WorkflowReferenceFilesHandle {
+  openUploadPicker: () => void;
+}
+
+export const WorkflowReferenceFiles = forwardRef<
+  WorkflowReferenceFilesHandle,
+  {
+    workflowId: string;
+    readOnly: boolean;
+    onUploadingChange?: (uploading: boolean) => void;
+  }
+>(function WorkflowReferenceFiles(
+  { workflowId, readOnly, onUploadingChange },
+  ref,
+) {
   const [files, setFiles] = useState<WorkflowReferenceDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -26,6 +70,15 @@ export function WorkflowReferenceFiles({
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const replaceTargetRef = useRef<WorkflowReferenceDocument | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    openUploadPicker: () => uploadInputRef.current?.click(),
+  }));
+
+  useEffect(() => {
+    onUploadingChange?.(busyId === "upload");
+    return () => onUploadingChange?.(false);
+  }, [busyId, onUploadingChange]);
 
   async function reload() {
     try {
@@ -48,12 +101,15 @@ export function WorkflowReferenceFiles({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId]);
 
-  async function upload(file: File) {
+  async function upload(filesToUpload: File[]) {
+    if (filesToUpload.length === 0) return;
     setBusyId("upload");
+    setError("");
     try {
-      const created = await uploadWorkflowReferenceFile(workflowId, file);
-      setFiles((current) => [...current, created]);
-      setError("");
+      for (const file of filesToUpload) {
+        const created = await uploadWorkflowReferenceFile(workflowId, file);
+        setFiles((current) => [...current, created]);
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Upload failed.");
     } finally {
@@ -106,39 +162,23 @@ export function WorkflowReferenceFiles({
   }
 
   return (
-    <section className="mx-4 mb-3 flex min-h-0 flex-1 flex-col rounded-2xl border border-white/70 bg-white/55 px-4 py-3 shadow-sm md:mx-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-medium text-gray-800">Reference files</h2>
-          <p className="text-xs text-gray-400">
-            Available whenever this workflow runs.
-          </p>
-        </div>
-        {!readOnly && (
-          <PillButton
-            tone="white"
-            size="sm"
-            disabled={busyId === "upload"}
-            onClick={() => uploadInputRef.current?.click()}
-          >
-            <Upload className="h-3.5 w-3.5" />
-            {busyId === "upload" ? "Uploading…" : "Add file"}
-          </PillButton>
-        )}
-      </div>
+    <>
       <input
         ref={uploadInputRef}
         type="file"
+        multiple
+        accept={SUPPORTED_DOCUMENT_ACCEPT}
         className="hidden"
         onChange={(event) => {
-          const file = event.target.files?.[0];
+          const selectedFiles = Array.from(event.target.files ?? []);
           event.target.value = "";
-          if (file) void upload(file);
+          void upload(selectedFiles);
         }}
       />
       <input
         ref={replaceInputRef}
         type="file"
+        accept={SUPPORTED_DOCUMENT_ACCEPT}
         className="hidden"
         onChange={(event) => {
           const file = event.target.files?.[0];
@@ -146,59 +186,101 @@ export function WorkflowReferenceFiles({
           if (file) void replace(file);
         }}
       />
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
-      <div className="mt-2 min-h-0 flex-1 overflow-y-auto">
+      {error && (
+        <p className="mx-4 mb-2 -mt-1 text-xs text-red-600 md:mx-6">{error}</p>
+      )}
+      <TableScrollArea
+        header={
+          <TableHeaderRow>
+            <TableStickyCell header widthClassName={REFERENCE_NAME_COL_W}>
+              Name
+            </TableStickyCell>
+            <TableHeaderCell className="ml-auto w-20">Type</TableHeaderCell>
+            <TableHeaderCell className="w-24">Size</TableHeaderCell>
+            <TableHeaderCell className="w-32">Updated</TableHeaderCell>
+            <TableHeaderCell className="w-8" />
+          </TableHeaderRow>
+        }
+      >
         {loading ? (
-          <p className="py-2 text-xs text-gray-400">Loading references…</p>
-        ) : files.length === 0 ? (
-          <p className="py-2 text-xs text-gray-400">No reference files.</p>
-        ) : (
-          <ul className="space-y-1">
-            {files.map((file) => (
-              <li
-                key={file.id}
-                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-gray-700 hover:bg-white/70"
-              >
-                <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                <span className="min-w-0 flex-1 truncate">{file.filename}</span>
-                <button
-                  type="button"
-                  title="Download"
-                  onClick={() => void download(file)}
-                  disabled={busyId === file.id}
-                  className="p-1 text-gray-400 hover:text-gray-700"
+          <TableBody>
+            {[1, 2, 3].map((index) => (
+              <TableRow key={index} interactive={false}>
+                <TableStickyCell
+                  hover={false}
+                  widthClassName={REFERENCE_NAME_COL_W}
                 >
-                  <Download className="h-3.5 w-3.5" />
-                </button>
-                {!readOnly && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        replaceTargetRef.current = file;
-                        replaceInputRef.current?.click();
-                      }}
-                      disabled={busyId === file.id}
-                      className="px-1 text-gray-400 hover:text-gray-700"
-                    >
-                      Replace
-                    </button>
-                    <button
-                      type="button"
-                      title="Delete"
-                      onClick={() => void remove(file)}
-                      disabled={busyId === file.id}
-                      className="p-1 text-gray-400 hover:text-red-600"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </>
-                )}
-              </li>
+                  <SkeletonLine className="mr-2 h-4 w-4" />
+                  <SkeletonLine className="w-48" />
+                </TableStickyCell>
+                <TableCell className="ml-auto w-20">
+                  <SkeletonLine className="w-10" />
+                </TableCell>
+                <TableCell className="w-24">
+                  <SkeletonLine className="w-14" />
+                </TableCell>
+                <TableCell className="w-32">
+                  <SkeletonLine className="w-20" />
+                </TableCell>
+                <TableCell className="w-8" />
+              </TableRow>
             ))}
-          </ul>
+          </TableBody>
+        ) : files.length === 0 ? (
+          <TableEmptyState>
+            <p className="font-serif text-2xl font-medium text-gray-900">
+              Reference files
+            </p>
+            <p className="mt-1 text-xs text-gray-400">
+              Upload files that this workflow can reference when it runs.
+            </p>
+          </TableEmptyState>
+        ) : (
+          <TableBody>
+            {files.map((file) => (
+              <TableRow key={file.id} interactive={false}>
+                <TableStickyCell widthClassName={REFERENCE_NAME_COL_W}>
+                  <FileTypeIcon
+                    fileType={file.file_type || file.filename}
+                    className="mr-2 h-4 w-4"
+                  />
+                  <span className="min-w-0 flex-1 truncate text-sm text-gray-800">
+                    {file.filename}
+                  </span>
+                </TableStickyCell>
+                <TableCell className="ml-auto w-20 text-xs uppercase text-gray-500">
+                  {file.file_type || "—"}
+                </TableCell>
+                <TableCell className="w-24 text-sm text-gray-500">
+                  {formatBytes(file.size_bytes)}
+                </TableCell>
+                <TableCell className="w-32 text-sm text-gray-500">
+                  {formatDate(file.updated_at)}
+                </TableCell>
+                <div
+                  className="flex w-8 shrink-0 justify-end"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <RowActions
+                    onDownload={() => void download(file)}
+                    onUploadNewVersion={
+                      readOnly
+                        ? undefined
+                        : () => {
+                            replaceTargetRef.current = file;
+                            replaceInputRef.current?.click();
+                          }
+                    }
+                    uploadNewVersionLabel="Replace file"
+                    onDelete={readOnly ? undefined : () => void remove(file)}
+                    deleteDisabled={busyId === file.id}
+                  />
+                </div>
+              </TableRow>
+            ))}
+          </TableBody>
         )}
-      </div>
-    </section>
+      </TableScrollArea>
+    </>
   );
-}
+});

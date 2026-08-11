@@ -51,9 +51,9 @@ interface Props {
     onUpdateCmNumber?: () => void;
     newSubfolderLabel?: string;
     renameLabel?: string;
+    uploadNewVersionLabel?: string;
     deleteLabel?: string;
 }
-
 type RowActionMenuItemsProps = Props & {
     onClose: () => void;
     surfaceProps?: RowActionMenuSurfaceProps;
@@ -82,6 +82,7 @@ export const RowActionMenuItems = forwardRef<
     onUpdateCmNumber,
     newSubfolderLabel = "New subfolder",
     renameLabel = "Rename",
+    uploadNewVersionLabel = "Upload new version",
     deleteLabel = "Delete",
     onClose,
     surfaceProps,
@@ -155,7 +156,7 @@ export const RowActionMenuItems = forwardRef<
                     className={ROW_ACTION_LEFT_ITEM_CLASS}
                 >
                     <Upload className="h-3.5 w-3.5 shrink-0" />
-                    Upload new version
+                    {uploadNewVersionLabel}
                 </LiquidDropdownButton>
             )}
             {onRemoveFromFolder && (
