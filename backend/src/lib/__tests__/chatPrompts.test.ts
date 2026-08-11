@@ -10,10 +10,10 @@ describe("buildSystemPrompt", () => {
             );
             expect(prompt).toContain("Do not fabricate document content.");
             expect(prompt).toContain(
-                "In user-facing prose, use natural language only",
+                "In user-facing responses, use natural language only",
             );
             expect(prompt).toContain(
-                "Never mention internal tool names or tool calls",
+                "Never mention tool names or tool calls",
             );
             expect(prompt).toContain("DOCX GENERATION:");
             expect(prompt).toContain("DOCUMENT EDITING:");
