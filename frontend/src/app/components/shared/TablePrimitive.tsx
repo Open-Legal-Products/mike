@@ -43,7 +43,7 @@ export const TABLE_STICKY_CELL_BG = "bg-app-surface";
 export const TABLE_PRIMARY_CELL_WIDTH_CLASS =
     "w-[248px] sm:w-[292px] md:w-[332px] shrink-0";
 export const TABLE_CHECKBOX_CLASS =
-    "mr-4 h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-pointer accent-black";
+    "mr-3 h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-pointer accent-black";
 
 type DivProps = HTMLAttributes<HTMLDivElement>;
 
@@ -342,7 +342,7 @@ export function TableStickyCell({
     return (
         <div
             className={cn(
-                "sticky left-0 z-[60] flex pl-4 pr-2 text-left",
+                "sticky left-0 z-[60] flex pl-3 pr-2 text-left",
                 widthClassName,
                 bgClassName,
                 header

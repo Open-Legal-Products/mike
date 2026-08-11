@@ -138,10 +138,10 @@ export function DocVersionHistory({
                         className="flex h-10 items-center pr-8 bg-gray-100"
                     >
                         <div
-                            className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} bg-gray-100 py-2 pl-4 pr-2`}
+                            className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} bg-gray-100 py-2 pl-3 pr-2`}
                             style={treeNameCellStyle(depth)}
                         >
-                            <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-3">
                                 <div className="h-2.5 w-2.5 shrink-0 rounded bg-gray-200 animate-pulse" />
                                 <div className="h-4 w-4 shrink-0 rounded bg-gray-200 animate-pulse" />
                                 <div className="h-3 w-32 rounded bg-gray-200 animate-pulse" />
@@ -173,7 +173,7 @@ export function DocVersionHistory({
         return (
             <div className="flex items-center h-9 border-b border-gray-50 text-xs text-gray-400 bg-gray-50/80">
                 <div
-                    className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} bg-gray-50/80 py-2 pl-4 pr-2`}
+                    className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} bg-gray-50/80 py-2 pl-3 pr-2`}
                     style={treeNameCellStyle(depth)}
                 >
                     <div>No version history.</div>
@@ -227,12 +227,12 @@ export function DocVersionHistory({
                         }`}
                     >
                         <div
-                            className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${rowBg} py-2 pl-4 pr-2 transition-colors ${
+                            className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} ${rowBg} py-2 pl-3 pr-2 transition-colors ${
                                 isDeleted ? "group-hover:bg-gray-50" : "group-hover:bg-gray-200"
                             }`}
                             style={treeNameCellStyle(depth)}
                         >
-                            <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-3">
                                 <span className="flex h-2.5 w-2.5 shrink-0 items-center justify-center">
                                     <CornerDownRight
                                         className={`h-3.5 w-3.5 ${

@@ -189,9 +189,9 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                         style={{ minWidth: skeletonContentWidth }}
                     >
                         <div
-                            className={`sticky left-0 z-[80] ${DOC_COL_W} ${TR_STICKY_CELL_BG} flex items-center border-b border-r border-gray-200 py-2 pl-4 pr-2 text-xs font-medium text-gray-500`}
+                            className={`sticky left-0 z-[80] ${DOC_COL_W} ${TR_STICKY_CELL_BG} flex items-center border-b border-r border-gray-200 py-2 pl-3 pr-2 text-xs font-medium text-gray-500`}
                         >
-                            <SkeletonDot className="mr-4" />
+                            <SkeletonDot className="mr-3" />
                             <span>{firstColumnLabel}</span>
                         </div>
                         {Array.from({ length: SKELETON_COLS }).map((_, i) => (
@@ -212,8 +212,8 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                             className="flex h-8"
                             style={{ minWidth: skeletonContentWidth }}
                         >
-                            <div className={`sticky left-0 z-[60] ${DOC_COL_W} ${TR_STICKY_CELL_BG} flex items-center border-b border-r border-gray-200 py-2 pl-4 pr-2`}>
-                                <SkeletonDot className="mr-4" />
+                            <div className={`sticky left-0 z-[60] ${DOC_COL_W} ${TR_STICKY_CELL_BG} flex items-center border-b border-r border-gray-200 py-2 pl-3 pr-2`}>
+                                <SkeletonDot className="mr-3" />
                                 <SkeletonLine className="h-4 w-32" />
                             </div>
                             {Array.from({ length: SKELETON_COLS }).map((_, col) => (
@@ -241,7 +241,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                 header={
                     <div className={`shrink-0 flex h-10 items-center border-b border-gray-200 ${TR_HEADER_BG}`}>
                         <div
-                            className={`${DOC_COL_W} ${TR_STICKY_CELL_BG} flex items-center border-r border-gray-200 py-2 pl-4 pr-2 text-xs font-medium text-gray-500 select-none`}
+                            className={`${DOC_COL_W} ${TR_STICKY_CELL_BG} flex items-center border-r border-gray-200 py-2 pl-3 pr-2 text-xs font-medium text-gray-500 select-none`}
                         >
                             {firstColumnLabel}
                         </div>
@@ -297,7 +297,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                     style={{ minWidth: totalContentWidth }}
                 >
                     <div
-                        className={`sticky left-0 z-[80] ${DOC_COL_W} ${TR_STICKY_CELL_BG} border-b border-r border-gray-200 flex items-center py-2 pl-4 pr-2 text-left text-xs font-medium text-gray-500 select-none`}
+                        className={`sticky left-0 z-[80] ${DOC_COL_W} ${TR_STICKY_CELL_BG} border-b border-r border-gray-200 flex items-center py-2 pl-3 pr-2 text-left text-xs font-medium text-gray-500 select-none`}
                     >
                         <input
                             type="checkbox"
@@ -351,12 +351,12 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                         style={{ minWidth: totalContentWidth }}
                     >
                         <div
-                            className={`sticky left-0 z-[60] ${DOC_COL_W} ${TR_STICKY_CELL_BG} border-b border-r border-gray-200 py-2 pl-4 pr-2 text-xs text-gray-400 flex items-center`}
+                            className={`sticky left-0 z-[60] ${DOC_COL_W} ${TR_STICKY_CELL_BG} border-b border-r border-gray-200 py-2 pl-3 pr-2 text-xs text-gray-400 flex items-center`}
                         >
                             <input
                                 type="checkbox"
                                 disabled
-                                className="mr-4 h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-default accent-black disabled:opacity-100"
+                                className="mr-3 h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-default accent-black disabled:opacity-100"
                             />
                             <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin shrink-0" />
                             <span className="line-clamp-1" title={filename}>
@@ -399,7 +399,7 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                                 selected={isSelected}
                                 closeSignal={scrollCloseSignal}
                                 onToggleSelection={() => toggleRow(row.id)}
-                                className={`sticky left-0 z-[60] ${DOC_COL_W} border-b border-r border-gray-200 py-2 pl-4 pr-2 text-xs text-gray-800 flex items-center transition-colors ${stickyRowBg} ${isSelected ? "" : APP_SURFACE_GROUP_HOVER_CLASS}`}
+                                className={`sticky left-0 z-[60] ${DOC_COL_W} border-b border-r border-gray-200 py-2 pl-3 pr-2 text-xs text-gray-800 flex items-center transition-colors ${stickyRowBg} ${isSelected ? "" : APP_SURFACE_GROUP_HOVER_CLASS}`}
                             />
                             {columns.map((col) => {
                                 const cell = getCell(row, col.index);

@@ -678,7 +678,7 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                       />
                     ) : (
                       <span
-                        className="mr-4 h-2.5 w-2.5 shrink-0"
+                        className="mr-3 h-2.5 w-2.5 shrink-0"
                         aria-hidden="true"
                       />
                     )}
