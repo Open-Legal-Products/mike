@@ -150,7 +150,7 @@ function BulkEditActions({
     return (
         <div className="flex items-center gap-2">
             <PillButton
-                tone="black"
+                tone="blue"
                 size="sm"
                 onClick={() => handleAll("accept")}
                 disabled={!!busy}
@@ -178,7 +178,7 @@ function BulkEditActions({
             )}
             {onViewClick && first && (
                 <PillButton
-                    tone="blue"
+                    tone="white"
                     size="sm"
                     onClick={() =>
                         onViewClick(first.annotation, first.filename)
