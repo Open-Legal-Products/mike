@@ -36,7 +36,7 @@ test("uses the frontend assistant spacer while a new answer grows", async ({
       const messageBox = await firstUserMessage.boundingBox();
       return messageBox ? Math.round(messageBox.y) : null;
     })
-    .toBe(24);
+    .toBe(80);
 
   const assistantProse = page.getByText(firstParagraphs[0]!, { exact: true });
   await expect.soft(assistantProse).toHaveCSS("font-size", "16px");
@@ -252,6 +252,7 @@ test("uses the frontend assistant spacer while a new answer grows", async ({
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
 
   const complete = await readLayout();
+  console.log("WEBKIT_LAYOUT_DIAGNOSTIC", { early, complete });
   expect(complete.assistantHeight).toBeGreaterThan(early.assistantHeight + 120);
   expect(complete.assistantMinHeight).toBe(early.assistantMinHeight);
   expect(Math.abs(complete.userTop - early.userTop)).toBeLessThanOrEqual(4);
@@ -274,7 +275,335 @@ test("uses the frontend assistant spacer while a new answer grows", async ({
         minHeightDelta: Math.round(
           Math.abs(resized.assistantMinHeight - resizedExpectedMinHeight),
         ),
+        userTop: Math.round(resized.userTop - resized.top),
       };
     })
-    .toEqual({ minHeightDelta: 0 });
+    .toEqual({ minHeightDelta: 0, userTop: 80 });
+});
+
+test("keeps the submitted turn at 80px while Working becomes Completed", async ({
+  addin,
+  page,
+}) => {
+  addin.seedToken(TOKEN);
+  await page.setViewportSize({ width: 420, height: 720 });
+
+  const firstResponse = Array.from(
+    { length: 30 },
+    (_, index) =>
+      `Existing response paragraph ${index + 1} makes the transcript tall enough to exercise a live anchored follow-up.`,
+  ).join("\n\n");
+  await addin.mockChatStream([firstResponse]);
+  await addin.gotoTaskpane({
+    documentText: "A contract body for the completion-race test.",
+  });
+  await addin.expectAuthedShell();
+
+  await page.getByPlaceholder("Ask Mike…").fill("Initial layout question");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(
+    page.getByText("Existing response paragraph 30", { exact: false }),
+  ).toBeVisible();
+
+  await page.evaluate(() => {
+    type ControlledStreamWindow = Window & {
+      __WORD_LAYOUT_STREAM_READY__?: boolean;
+      __WORD_LAYOUT_STREAM_EMIT__?: (event: object) => void;
+      __WORD_LAYOUT_STREAM_DONE__?: () => void;
+    };
+    const controlledWindow = window as ControlledStreamWindow;
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const request = input instanceof Request ? input : null;
+      const url = new URL(request?.url ?? String(input), window.location.href);
+      const method = (init?.method ?? request?.method ?? "GET").toUpperCase();
+      if (url.pathname !== "/word-chat" || method !== "POST") {
+        return nativeFetch(input, init);
+      }
+
+      const encoder = new TextEncoder();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controlledWindow.__WORD_LAYOUT_STREAM_EMIT__ = (event) => {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+            );
+          };
+          controlledWindow.__WORD_LAYOUT_STREAM_DONE__ = () => {
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          };
+          controlledWindow.__WORD_LAYOUT_STREAM_READY__ = true;
+        },
+      });
+
+      return Promise.resolve(
+        new Response(body, {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream",
+            "cache-control": "no-cache",
+          },
+        }),
+      );
+    };
+  });
+
+  const prompt = "Inspect the completion race";
+  await page.getByPlaceholder("Ask Mike…").fill(prompt);
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          !!(window as Window & { __WORD_LAYOUT_STREAM_READY__?: boolean })
+            .__WORD_LAYOUT_STREAM_READY__,
+      ),
+    )
+    .toBe(true);
+
+  await page.evaluate(() => {
+    const controlledWindow = window as Window & {
+      __WORD_LAYOUT_STREAM_EMIT__?: (event: object) => void;
+    };
+    controlledWindow.__WORD_LAYOUT_STREAM_EMIT__?.({
+      type: "reasoning_delta",
+      text: "I should inspect the active agreement.",
+    });
+  });
+
+  const anchoredMessage = page
+    .getByText(prompt, { exact: true })
+    .locator("xpath=ancestor::*[@data-message-id][1]");
+  const assistantTurn = anchoredMessage.locator(
+    "xpath=following-sibling::div[1]",
+  );
+  await expect(
+    assistantTurn.getByRole("button", { name: "Working" }),
+  ).toBeVisible();
+
+  const readPosition = async () => {
+    return anchoredMessage.evaluate((message) => {
+      let container = message.parentElement;
+      while (container) {
+        const overflowY = getComputedStyle(container).overflowY;
+        if (overflowY === "auto" || overflowY === "scroll") {
+          return {
+            userTop: message.getBoundingClientRect().top,
+            containerTop: container.getBoundingClientRect().top,
+            scrollTop: container.scrollTop,
+          };
+        }
+        container = container.parentElement;
+      }
+      throw new Error("Scrollable chat transcript was not found.");
+    });
+  };
+
+  await expect
+    .poll(
+      async () => {
+        const position = await readPosition();
+        return Math.round(position.userTop - position.containerTop);
+      },
+      { intervals: [10] },
+    )
+    .toBe(80);
+  const workingPosition = await readPosition();
+  await page.evaluate(() => {
+    const controlledWindow = window as Window & {
+      __WORD_LAYOUT_STREAM_EMIT__?: (event: object) => void;
+      __WORD_LAYOUT_STREAM_DONE__?: () => void;
+    };
+    controlledWindow.__WORD_LAYOUT_STREAM_EMIT__?.({
+      type: "reasoning_block_end",
+    });
+    controlledWindow.__WORD_LAYOUT_STREAM_EMIT__?.({
+      type: "content_delta",
+      text: "The agreement review is complete.",
+    });
+    controlledWindow.__WORD_LAYOUT_STREAM_DONE__?.();
+  });
+
+  await expect(
+    assistantTurn.getByRole("button", { name: "Completed in 1 step" }),
+  ).toBeVisible();
+  await expect(
+    assistantTurn.getByText("The agreement review is complete."),
+  ).toBeVisible();
+  await page.waitForTimeout(550);
+
+  const completedPosition = await readPosition();
+  console.log("WEBKIT_COMPLETION_DIAGNOSTIC", {
+    workingPosition,
+    completedPosition,
+  });
+  expect(
+    Math.abs(completedPosition.userTop - (completedPosition.containerTop + 80)),
+  ).toBeLessThanOrEqual(4);
+  expect(
+    Math.abs(completedPosition.userTop - workingPosition.userTop),
+  ).toBeLessThanOrEqual(4);
+  expect(
+    Math.abs(completedPosition.scrollTop - workingPosition.scrollTop),
+  ).toBeLessThanOrEqual(4);
+});
+
+test("jumps straight to the current bottom and does not follow later stream growth", async ({
+  addin,
+  page,
+}) => {
+  addin.seedToken(TOKEN);
+  await page.setViewportSize({ width: 420, height: 640 });
+
+  const firstResponse = Array.from(
+    { length: 28 },
+    (_, index) =>
+      `Prior response paragraph ${index + 1} creates a scrollable transcript for the live bottom-arrow test.`,
+  ).join("\n\n");
+  await addin.mockChatStream([firstResponse]);
+  await addin.gotoTaskpane({
+    documentText: "A contract body for the bottom-arrow stream test.",
+  });
+  await addin.expectAuthedShell();
+
+  await page.getByPlaceholder("Ask Mike…").fill("Initial arrow question");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(
+    page.getByText("Prior response paragraph 28", { exact: false }),
+  ).toBeVisible();
+
+  await page.evaluate(() => {
+    type ControlledStreamWindow = Window & {
+      __WORD_ARROW_STREAM_READY__?: boolean;
+      __WORD_ARROW_STREAM_EMIT__?: (event: object) => void;
+      __WORD_ARROW_STREAM_DONE__?: () => void;
+    };
+    const controlledWindow = window as ControlledStreamWindow;
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const request = input instanceof Request ? input : null;
+      const url = new URL(request?.url ?? String(input), window.location.href);
+      const method = (init?.method ?? request?.method ?? "GET").toUpperCase();
+      if (url.pathname !== "/word-chat" || method !== "POST") {
+        return nativeFetch(input, init);
+      }
+
+      const encoder = new TextEncoder();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controlledWindow.__WORD_ARROW_STREAM_EMIT__ = (event) => {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+            );
+          };
+          controlledWindow.__WORD_ARROW_STREAM_DONE__ = () => {
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          };
+          controlledWindow.__WORD_ARROW_STREAM_READY__ = true;
+        },
+      });
+      return Promise.resolve(
+        new Response(body, {
+          status: 200,
+          headers: {
+            "content-type": "text/event-stream",
+            "cache-control": "no-cache",
+          },
+        }),
+      );
+    };
+  });
+
+  const prompt = "Stream enough content for the arrow";
+  await page.getByPlaceholder("Ask Mike…").fill(prompt);
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          !!(window as Window & { __WORD_ARROW_STREAM_READY__?: boolean })
+            .__WORD_ARROW_STREAM_READY__,
+      ),
+    )
+    .toBe(true);
+
+  const anchoredMessage = page
+    .getByText(prompt, { exact: true })
+    .locator("xpath=ancestor::*[@data-message-id][1]");
+  await expect
+    .poll(async () => {
+      const [messageBox, containerBox] = await Promise.all([
+        anchoredMessage.boundingBox(),
+        page.getByTestId("messages-container").boundingBox(),
+      ]);
+      return messageBox && containerBox
+        ? Math.round(messageBox.y - containerBox.y)
+        : null;
+    })
+    .toBe(80);
+  await expect(
+    page.getByRole("button", { name: "Scroll to bottom" }),
+  ).toHaveCount(0);
+
+  const firstGrowth = Array.from(
+    { length: 24 },
+    (_, index) =>
+      `Live overflow paragraph ${index + 1} extends the assistant response below the viewport.`,
+  ).join("\n\n");
+  await page.evaluate((text) => {
+    const controlledWindow = window as Window & {
+      __WORD_ARROW_STREAM_EMIT__?: (event: object) => void;
+    };
+    controlledWindow.__WORD_ARROW_STREAM_EMIT__?.({
+      type: "content_delta",
+      text,
+    });
+  }, firstGrowth);
+
+  const scrollButton = page.getByRole("button", { name: "Scroll to bottom" });
+  await expect(scrollButton).toBeVisible();
+  await scrollButton.dispatchEvent("click");
+  const container = page.getByTestId("messages-container");
+  const atBottom = await container.evaluate((element) => ({
+    scrollTop: element.scrollTop,
+    bottomDistance:
+      element.scrollHeight - element.scrollTop - element.clientHeight,
+  }));
+  expect(Math.abs(atBottom.bottomDistance)).toBeLessThan(2);
+
+  const laterGrowth = Array.from(
+    { length: 10 },
+    (_, index) =>
+      `Later streamed paragraph ${index + 1} must not drag the viewport after the explicit jump.`,
+  ).join("\n\n");
+  await page.evaluate((text) => {
+    const controlledWindow = window as Window & {
+      __WORD_ARROW_STREAM_EMIT__?: (event: object) => void;
+      __WORD_ARROW_STREAM_DONE__?: () => void;
+    };
+    controlledWindow.__WORD_ARROW_STREAM_EMIT__?.({
+      type: "content_delta",
+      text,
+    });
+  }, laterGrowth);
+
+  await expect(scrollButton).toBeVisible();
+  const afterGrowth = await container.evaluate((element) => ({
+    scrollTop: element.scrollTop,
+    bottomDistance:
+      element.scrollHeight - element.scrollTop - element.clientHeight,
+  }));
+  console.log("WEBKIT_ARROW_DIAGNOSTIC", { atBottom, afterGrowth });
+  expect(Math.abs(afterGrowth.scrollTop - atBottom.scrollTop)).toBeLessThan(2);
+  expect(afterGrowth.bottomDistance).toBeGreaterThan(10);
+
+  await page.evaluate(() => {
+    const controlledWindow = window as Window & {
+      __WORD_ARROW_STREAM_DONE__?: () => void;
+    };
+    controlledWindow.__WORD_ARROW_STREAM_DONE__?.();
+  });
+  await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
 });

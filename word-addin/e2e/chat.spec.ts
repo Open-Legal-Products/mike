@@ -326,21 +326,18 @@ test("shows a scroll-to-bottom control while the transcript is scrolled up", asy
 
   const scrollButton = page.getByRole("button", { name: "Scroll to bottom" });
   await expect(scrollButton).toBeVisible();
-  await scrollButton.click();
+  await scrollButton.dispatchEvent("click");
 
-  await expect
-    .poll(() =>
-      page
-        .getByTestId("messages-container")
-        .evaluate((container) =>
-          Math.abs(
-            container.scrollHeight -
-              container.scrollTop -
-              container.clientHeight,
-          ),
-        ),
-    )
-    .toBeLessThan(2);
+  const immediateBottomDistance = await page
+    .getByTestId("messages-container")
+    .evaluate((container) =>
+      Math.abs(
+        container.scrollHeight -
+          container.scrollTop -
+          container.clientHeight,
+      ),
+    );
+  expect(immediateBottomDistance).toBeLessThan(2);
   await expect(scrollButton).toHaveCount(0);
 
   await page.getByPlaceholder("Ask Mike…").fill("Review the final section");
