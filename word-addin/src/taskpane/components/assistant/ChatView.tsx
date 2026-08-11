@@ -12,6 +12,7 @@ import type { ChatInputHandle } from "./ChatInput";
 import { InitialView } from "./InitialView";
 import { UserMessage } from "./UserMessage";
 import type {
+    EditDecision,
     WordAssistantChatController,
     WordTrackedEditsController,
     WorkflowAttachment,
@@ -63,17 +64,27 @@ function measureSpacerPx(
 
 const PIN_SCROLL_DURATION_MS = 200;
 
+// How long after a user input its scroll events remain user-owned. Wheel and
+// keyboard repeat within this window; macOS momentum wheel events keep
+// re-arming it. Touch momentum outlives the last touch event, so touch
+// releases arm a longer window.
+const USER_SCROLL_GRACE_MS = 250;
+const TOUCH_SCROLL_GRACE_MS = 2000;
+
 /**
  * rAF-driven pin scroll. Native `scrollTo({behavior: "smooth"})` is not
  * animated in every Office webview (WKWebView can execute it as an instant
  * jump), so the pin scroll drives its own easing. Matching native semantics,
  * the target is clamped to the scroll range ONCE at start and never extended:
  * content that streams in later must not move a settled transcript. Returns a
- * cancel function; ChatView owns all user-input cancellation.
+ * cancel function; ChatView owns all user-input cancellation. `onFrame`
+ * reports every position the animation writes, so the caller can track the
+ * last application-owned scroll position frame by frame.
  */
 function animateScrollTo(
     container: HTMLElement,
     targetTop: number,
+    onFrame?: (top: number) => void,
     duration = PIN_SCROLL_DURATION_MS,
 ): () => void {
     const startTop = container.scrollTop;
@@ -86,6 +97,7 @@ function animateScrollTo(
         window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reducedMotion || duration <= 0) {
         container.scrollTop = clampedTarget;
+        onFrame?.(clampedTarget);
         return () => {};
     }
     const startTime = performance.now();
@@ -99,8 +111,10 @@ function animateScrollTo(
     const step = (now: number): void => {
         if (done) return;
         const progress = Math.min(1, (now - startTime) / duration);
-        container.scrollTop =
+        const nextTop =
             startTop + (clampedTarget - startTop) * easeOutCubic(progress);
+        container.scrollTop = nextTop;
+        onFrame?.(nextTop);
         if (progress < 1) {
             frame = requestAnimationFrame(step);
         } else {
@@ -150,6 +164,13 @@ export function ChatView({
     // transcript disables CSS scroll anchoring. Keep the last application- or
     // user-owned position so a resize can restore it explicitly.
     const desiredScrollTopRef = useRef(0);
+    // Scroll ownership for engine-scroll correction: while a pointer/touch is
+    // held, or briefly after any user input, scroll events are the user's and
+    // desiredScrollTopRef follows them. Outside those windows a scroll event
+    // the application did not write is engine-initiated (WKWebView anchoring
+    // or bottom-follow) and gets snapped back to the owned position.
+    const userInputOwnedUntilRef = useRef(0);
+    const pointerHeldRef = useRef(false);
     const showScrollButtonRef = useRef(false);
     // False until the first positioning pass after mount / session switch.
     const hasPositionedRef = useRef(false);
@@ -187,6 +208,26 @@ export function ChatView({
             : null;
     const hasMessages = messages.length > 0;
 
+    // Stable handlers so memoized message rows do not re-render per chunk.
+    const handleViewEdit = useCallback(
+        (key: string) => {
+            void viewEdit(key);
+        },
+        [viewEdit],
+    );
+    const handleResolveEdit = useCallback(
+        (key: string, decision: EditDecision) => {
+            void resolveOneEdit(key, decision);
+        },
+        [resolveOneEdit],
+    );
+    const handleResolveAll = useCallback(
+        (keys: string[], decision: EditDecision) => {
+            void resolveMessageEdits(keys, decision);
+        },
+        [resolveMessageEdits],
+    );
+
     const updateScrollButton = useCallback(() => {
         const container = messagesContainerRef.current;
         if (!container) return;
@@ -205,10 +246,17 @@ export function ChatView({
     useEffect(() => {
         const container = messagesContainerRef.current;
         if (!container) return;
+        const ownScrollForUser = (graceMs: number): void => {
+            userInputOwnedUntilRef.current = Math.max(
+                userInputOwnedUntilRef.current,
+                performance.now() + graceMs,
+            );
+        };
         const cancelForUser = (): void => {
             anchorActiveRef.current = false;
             cancelPinScrollRef.current?.();
             cancelPinScrollRef.current = null;
+            ownScrollForUser(USER_SCROLL_GRACE_MS);
             // Wheel/touch/keyboard scrolling is applied after the input event.
             // Capture the resulting position on the next frame, before any
             // later streamed resize is allowed to preserve it.
@@ -218,6 +266,16 @@ export function ChatView({
                 }
             });
         };
+        const holdPointer = (): void => {
+            pointerHeldRef.current = true;
+            cancelForUser();
+        };
+        const releasePointer = (graceMs: number) => (): void => {
+            pointerHeldRef.current = false;
+            ownScrollForUser(graceMs);
+        };
+        const releaseTouch = releasePointer(TOUCH_SCROLL_GRACE_MS);
+        const releaseMouse = releasePointer(USER_SCROLL_GRACE_MS);
         const cancelForKeyboard = (event: KeyboardEvent): void => {
             if (
                 event.key === "ArrowUp" ||
@@ -231,22 +289,69 @@ export function ChatView({
                 cancelForUser();
             }
         };
-        container.addEventListener("scroll", updateScrollButton);
+        // WKWebView sometimes rewrites a scroller's position on its own —
+        // its scroll-anchoring heuristics run even though the transcript sets
+        // `overflow-anchor: none` (WebKit does not support the property):
+        // unmounting the node it anchored to can reset scrollTop to 0, and a
+        // bottom-resting scroller is dragged along as streamed content grows.
+        // Every position the application writes is mirrored into
+        // desiredScrollTopRef first, and user input marks its ownership
+        // window before its scroll events land — so any other scroll event is
+        // engine-initiated and gets snapped back to the owned position.
+        const correctEngineScroll = (): void => {
+            if (anchorActiveRef.current) {
+                const desired = desiredScrollTopRef.current;
+                if (Math.abs(container.scrollTop - desired) > 1) {
+                    container.scrollTop = desired;
+                }
+            } else if (
+                pointerHeldRef.current ||
+                performance.now() <= userInputOwnedUntilRef.current
+            ) {
+                desiredScrollTopRef.current = container.scrollTop;
+            } else {
+                const preserved = Math.max(
+                    0,
+                    Math.min(
+                        desiredScrollTopRef.current,
+                        container.scrollHeight - container.clientHeight,
+                    ),
+                );
+                if (Math.abs(container.scrollTop - preserved) > 1) {
+                    desiredScrollTopRef.current = preserved;
+                    container.scrollTop = preserved;
+                }
+            }
+            updateScrollButton();
+        };
+        container.addEventListener("scroll", correctEngineScroll);
         container.addEventListener("wheel", cancelForUser, { passive: true });
-        container.addEventListener("touchstart", cancelForUser, {
+        container.addEventListener("touchstart", holdPointer, {
             passive: true,
         });
-        container.addEventListener("pointerdown", cancelForUser, {
+        window.addEventListener("touchend", releaseTouch, { passive: true });
+        window.addEventListener("touchcancel", releaseTouch, {
+            passive: true,
+        });
+        container.addEventListener("pointerdown", holdPointer, {
+            passive: true,
+        });
+        window.addEventListener("pointerup", releaseMouse, { passive: true });
+        window.addEventListener("pointercancel", releaseMouse, {
             passive: true,
         });
         window.addEventListener("keydown", cancelForKeyboard, true);
         // eslint-disable-next-line react-hooks/set-state-in-effect -- initial scroll-button state must be measured from the live DOM
         updateScrollButton();
         return () => {
-            container.removeEventListener("scroll", updateScrollButton);
+            container.removeEventListener("scroll", correctEngineScroll);
             container.removeEventListener("wheel", cancelForUser);
-            container.removeEventListener("touchstart", cancelForUser);
-            container.removeEventListener("pointerdown", cancelForUser);
+            container.removeEventListener("touchstart", holdPointer);
+            window.removeEventListener("touchend", releaseTouch);
+            window.removeEventListener("touchcancel", releaseTouch);
+            container.removeEventListener("pointerdown", holdPointer);
+            window.removeEventListener("pointerup", releaseMouse);
+            window.removeEventListener("pointercancel", releaseMouse);
             window.removeEventListener("keydown", cancelForKeyboard, true);
         };
     }, [hasMessages, updateScrollButton]);
@@ -272,6 +377,8 @@ export function ChatView({
         cancelPinScrollRef.current = null;
         anchorActiveRef.current = false;
         desiredScrollTopRef.current = 0;
+        userInputOwnedUntilRef.current = 0;
+        pointerHeldRef.current = false;
         spacerHandledIdRef.current = null;
         scrollHandledIdRef.current = null;
         hasPositionedRef.current = false;
@@ -404,6 +511,9 @@ export function ChatView({
         cancelPinScrollRef.current = animateScrollTo(
             container,
             targetTop,
+            (top) => {
+                desiredScrollTopRef.current = top;
+            },
         );
     }, []);
 
@@ -604,13 +714,9 @@ export function ChatView({
                                         : undefined
                                 }
                                 editStateByKey={editStateByKey}
-                                onViewEdit={(key) => void viewEdit(key)}
-                                onResolveEdit={(key, decision) =>
-                                    void resolveOneEdit(key, decision)
-                                }
-                                onResolveAll={(keys, decision) =>
-                                    void resolveMessageEdits(keys, decision)
-                                }
+                                onViewEdit={handleViewEdit}
+                                onResolveEdit={handleResolveEdit}
+                                onResolveAll={handleResolveAll}
                             />
                         );
                     })}

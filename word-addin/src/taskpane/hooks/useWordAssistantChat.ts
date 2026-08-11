@@ -59,6 +59,13 @@ export function useWordAssistantChat({
   const [messages, setMessages] = useState<WordChatMessage[]>([]);
   const [isResponseLoading, setIsResponseLoading] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
+  // Render-synced mirrors so handleChat can read the latest transcript
+  // without depending on it — a per-chunk `messages` dependency changes the
+  // callback's identity on every streamed delta and re-renders the composer.
+  const messagesRef = useRef<WordChatMessage[]>(messages);
+  messagesRef.current = messages;
+  const isResponseLoadingRef = useRef(isResponseLoading);
+  isResponseLoadingRef.current = isResponseLoading;
   const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
   const sessionGenerationRef = useRef(0);
@@ -106,7 +113,7 @@ export function useWordAssistantChat({
       options: WordChatSubmitOptions = {},
     ): Promise<void> => {
       const text = submission.content.trim();
-      if (!text || isResponseLoading || sendingRef.current) return;
+      if (!text || isResponseLoadingRef.current || sendingRef.current) return;
 
       const generation = sessionGenerationRef.current;
       const sendToken = sendSequenceRef.current + 1;
@@ -150,7 +157,7 @@ export function useWordAssistantChat({
           files: submission.files,
           workflow: submission.workflow,
         };
-        const history = [...messages, userMessage];
+        const history = [...messagesRef.current, userMessage];
         const requestChatId =
           chatId ??
           (wordChatStorage === "local" ? crypto.randomUUID() : undefined);
@@ -195,7 +202,13 @@ export function useWordAssistantChat({
 
         let streamedContent = "";
         let completedDocReads: DocumentReadActivity[] = [];
-        const publishAssistantEvents = (): void => {
+        // Fast streams deliver many SSE events per frame; committing React
+        // state per event re-renders the transcript far more often than the
+        // screen can paint. Publishes coalesce onto one rAF, and the flush
+        // reads the live locals so it always commits the latest snapshot.
+        let publishFrame: number | null = null;
+        const flushAssistantEvents = (): void => {
+          publishFrame = null;
           const messageId = assistantMessageId;
           const eventSnapshot = assistantEvents;
           setMessages((current) =>
@@ -205,6 +218,17 @@ export function useWordAssistantChat({
                 : message,
             ),
           );
+        };
+        const publishAssistantEvents = (): void => {
+          if (publishFrame !== null) return;
+          publishFrame = requestAnimationFrame(flushAssistantEvents);
+        };
+        const publishAssistantEventsNow = (): void => {
+          if (publishFrame !== null) {
+            cancelAnimationFrame(publishFrame);
+            publishFrame = null;
+          }
+          flushAssistantEvents();
         };
         try {
           if (wordChatStorage === "local" && requestChatId) {
@@ -305,6 +329,7 @@ export function useWordAssistantChat({
               );
             },
           );
+          publishAssistantEventsNow();
           // readSSE deliberately resolves normally when cancelling its reader.
           // Route that clean cancellation through the same abort cleanup below
           // as transports that reject with AbortError.
@@ -337,6 +362,9 @@ export function useWordAssistantChat({
             notifyWordChatHistoryChanged();
           }
         } catch (error) {
+          // Commit whatever streamed before the failure so the terminal UI
+          // state below always builds on the latest transcript.
+          publishAssistantEventsNow();
           const sessionIsCurrent =
             mountedRef.current &&
             generation === sessionGenerationRef.current &&
@@ -445,8 +473,6 @@ export function useWordAssistantChat({
     [
       chatId,
       editController,
-      isResponseLoading,
-      messages,
       onChatIdChange,
       readDocumentText,
       wordChatOwnerId,

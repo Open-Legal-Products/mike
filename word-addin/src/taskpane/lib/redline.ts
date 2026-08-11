@@ -51,7 +51,8 @@ type FieldName = "original" | "replacement" | "reason";
 
 // Tolerates list numbering ("1. ORIGINAL:") and Markdown bold ("**ORIGINAL:**")
 // in case the model decorates the mandated format.
-const FIELD_LINE = /^\s*(?:\d+[.)]\s*)?\*{0,2}(ORIGINAL|REPLACEMENT|REASON)\*{0,2}\s*:\s*(.*)$/;
+const FIELD_LINE =
+  /^\s*(?:\d+[.)]\s*)?\*{0,2}(ORIGINAL|REPLACEMENT|REASON)\*{0,2}\s*:\s*(.*)$/;
 
 const FIELD_NAMES = ["ORIGINAL", "REPLACEMENT", "REASON"] as const;
 
@@ -93,7 +94,7 @@ interface MutableStreamingBlock {
  */
 function projectLegacyRedlineStream(
   text: string,
-  streamComplete = false
+  streamComplete = false,
 ): RedlineStreamProjection {
   const visibleLines: string[] = [];
   const blocks: MutableStreamingBlock[] = [];
@@ -162,9 +163,7 @@ function projectLegacyRedlineStream(
   blocks.forEach((block, blockIndex) => {
     const original = block.original?.trim() ?? "";
     const replacement =
-      block.replacement === undefined
-        ? undefined
-        : block.replacement.trim();
+      block.replacement === undefined ? undefined : block.replacement.trim();
     const reason = block.reason?.trim();
     const sealed =
       block.boundaryReached && !!original && replacement !== undefined;
@@ -230,7 +229,7 @@ function withoutPartialClosingTag(value: string, tag: string): string {
 
 function parseProvisionalTaggedEdit(
   source: string,
-  blockIndex: number
+  blockIndex: number,
 ): StreamingRedlineEdit {
   const lower = source.toLowerCase();
   const originalValueStart = ORIGINAL_OPEN.length;
@@ -241,7 +240,7 @@ function parseProvisionalTaggedEdit(
       blockIndex,
       original: withoutPartialClosingTag(
         source.slice(originalValueStart),
-        originalClose
+        originalClose,
       ).trim(),
       sealed: false,
     };
@@ -265,7 +264,7 @@ function parseProvisionalTaggedEdit(
       original,
       replacement: withoutPartialClosingTag(
         source.slice(replacementValueStart),
-        replacementClose
+        replacementClose,
       ).trim(),
       sealed: false,
     };
@@ -289,7 +288,7 @@ function parseProvisionalTaggedEdit(
     replacement,
     reason: withoutPartialClosingTag(
       source.slice(reasonValueStart),
-      "</reason>"
+      "</reason>",
     ).trim(),
     sealed: false,
   };
@@ -340,16 +339,14 @@ function projectTaggedRedlineStream(text: string): RedlineStreamProjection {
     visibleParts.push(tail.slice(0, nextOriginal));
     const provisional = parseProvisionalTaggedEdit(
       tail.slice(nextOriginal),
-      blockIndex
+      blockIndex,
     );
     if (!provisional.original || !seenSafeOriginals.has(provisional.original)) {
       edits.push(provisional);
     }
   } else {
     const partialStart = partialTagStartAtEnd(tail, ORIGINAL_OPEN);
-    visibleParts.push(
-      partialStart >= 0 ? tail.slice(0, partialStart) : tail
-    );
+    visibleParts.push(partialStart >= 0 ? tail.slice(0, partialStart) : tail);
   }
 
   return {
@@ -360,15 +357,34 @@ function projectTaggedRedlineStream(text: string): RedlineStreamProjection {
   };
 }
 
+// Single-entry projection memo. During a streamed answer the projection runs
+// against the identical accumulated string several times per chunk (the edit
+// controller once per delta, the message renderer once per re-render), and
+// every call re-parses from index zero — O(n²) over a stream without this.
+let lastProjectionText: string | null = null;
+let lastProjectionComplete = false;
+let lastProjection: RedlineStreamProjection | null = null;
+
 /**
  * Project the current tagged edit stream into prose and edit cards. Legacy
  * label blocks remain supported so previously saved Word chats still load.
  */
 export function projectRedlineStream(
   text: string,
-  streamComplete = false
+  streamComplete = false,
 ): RedlineStreamProjection {
-  return hasTaggedProtocol(text)
+  if (
+    lastProjection &&
+    lastProjectionText === text &&
+    lastProjectionComplete === streamComplete
+  ) {
+    return lastProjection;
+  }
+  const projection = hasTaggedProtocol(text)
     ? projectTaggedRedlineStream(text)
     : projectLegacyRedlineStream(text, streamComplete);
+  lastProjectionText = text;
+  lastProjectionComplete = streamComplete;
+  lastProjection = projection;
+  return projection;
 }

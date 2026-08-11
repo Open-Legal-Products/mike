@@ -51,9 +51,7 @@ type EventGroup =
   | {
       kind: "pre";
       events: (
-        | WordThinkingEvent
-        | WordReasoningEvent
-        | WordDocumentReadEvent
+        WordThinkingEvent | WordReasoningEvent | WordDocumentReadEvent
       )[];
       indices: number[];
     }
@@ -90,7 +88,7 @@ function groupAssistantEvents(events: WordAssistantEvent[]): EventGroup[] {
   return groups;
 }
 
-export function AssistantMessage({
+function AssistantMessageImpl({
   message,
   isStreaming,
   minHeight,
@@ -99,14 +97,19 @@ export function AssistantMessage({
   onResolveEdit,
   onResolveAll,
 }: AssistantMessageProps): React.ReactElement {
-  const content = assistantContent(message);
+  const content = React.useMemo(() => assistantContent(message), [message]);
   const error = assistantError(message);
   const responseStatus: StatusState = error
     ? "error"
     : isStreaming
       ? "active"
       : null;
-  const projection = projectRedlineStream(content, !isStreaming);
+  // Re-projecting the full answer is linear in its length; memoize so edit
+  // runtime updates (editStateByKey) do not re-parse an unchanged transcript.
+  const projection = React.useMemo(
+    () => projectRedlineStream(content, !isStreaming),
+    [content, isStreaming],
+  );
   const edits: StreamingRedlineEdit[] = projection.edits;
   const editRows = edits.map((edit, editIndex) => {
     const key = getEditKey(message.id, edit.blockIndex);
@@ -157,26 +160,34 @@ export function AssistantMessage({
   const summaryReady =
     edits.length === 0 || (!isStreaming && !hasUnfinishedEdit);
 
-  const groups = groupAssistantEvents(message.events);
-  const lastContentEventIndex = message.events.reduce(
-    (last, event, index) => (isWordContentEvent(event) ? index : last),
-    -1,
-  );
-  const contentProjectionByIndex = new Map(
-    message.events.flatMap((event, index) =>
-      isWordContentEvent(event)
-        ? [
-            [
-              index,
-              projectRedlineStream(
-                event.text,
-                !isStreaming || index !== lastContentEventIndex,
-              ),
-            ] as const,
-          ]
-        : [],
-    ),
-  );
+  const { groups, lastContentEventIndex, contentProjectionByIndex } =
+    React.useMemo(() => {
+      const eventGroups = groupAssistantEvents(message.events);
+      const lastContentIndex = message.events.reduce(
+        (last, event, index) => (isWordContentEvent(event) ? index : last),
+        -1,
+      );
+      const projectionByIndex = new Map(
+        message.events.flatMap((event, index) =>
+          isWordContentEvent(event)
+            ? [
+                [
+                  index,
+                  projectRedlineStream(
+                    event.text,
+                    !isStreaming || index !== lastContentIndex,
+                  ),
+                ] as const,
+              ]
+            : [],
+        ),
+      );
+      return {
+        groups: eventGroups,
+        lastContentEventIndex: lastContentIndex,
+        contentProjectionByIndex: projectionByIndex,
+      };
+    }, [message.events, isStreaming]);
   const editSourceEventIndex = message.events.findIndex(
     (event, index) =>
       isWordContentEvent(event) &&
@@ -237,7 +248,7 @@ export function AssistantMessage({
               groupIndex >= editInsertionGroupIndex &&
               !summaryReady;
             return (
-              <React.Fragment key={`content-${group.index}`}>
+              <React.Fragment key={`content-${group.event.key ?? group.index}`}>
                 {insertStandaloneEdit}
                 {prose && !holdForEdit && (
                   <div className="font-serif text-base leading-7 text-gray-900">
@@ -259,7 +270,9 @@ export function AssistantMessage({
             ) ||
             (includesEdit && hasUnfinishedEdit);
           return (
-            <React.Fragment key={`pre-${group.indices[0] ?? groupIndex}`}>
+            <React.Fragment
+              key={`pre-${group.events[0]?.key ?? group.indices[0] ?? groupIndex}`}
+            >
               {insertStandaloneEdit}
               <PreResponseWrapper
                 stepCount={group.events.length + (includesEdit ? 1 : 0)}
@@ -272,7 +285,7 @@ export function AssistantMessage({
                   if (isWordReasoningEvent(event)) {
                     return (
                       <ReasoningBlock
-                        key={group.indices[eventIndex]}
+                        key={event.key ?? group.indices[eventIndex]}
                         text={event.text}
                         isStreaming={!!event.isStreaming}
                         showConnector={showConnector}
@@ -282,7 +295,7 @@ export function AssistantMessage({
                   if (isWordThinkingEvent(event)) {
                     return (
                       <EventBlock
-                        key={group.indices[eventIndex]}
+                        key={event.key ?? group.indices[eventIndex]}
                         showConnector={showConnector}
                         isStreaming
                         dotColor="gray"
@@ -294,7 +307,7 @@ export function AssistantMessage({
                   if (isWordDocumentReadEvent(event)) {
                     return (
                       <DocReadBlock
-                        key={group.indices[eventIndex]}
+                        key={event.key ?? group.indices[eventIndex]}
                         filename={event.filename}
                         isStreaming={event.status === "reading"}
                         showConnector={showConnector}
@@ -387,3 +400,8 @@ export function AssistantMessage({
     </div>
   );
 }
+
+// Streaming commits replace only the live assistant row's message object;
+// memoizing here keeps every settled row (and its full Markdown re-parse)
+// out of the per-chunk render entirely.
+export const AssistantMessage = React.memo(AssistantMessageImpl);
