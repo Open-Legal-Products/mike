@@ -217,7 +217,7 @@ function EditResolveButtons({
                 {status === "accepted" ? "Accepted" : "Accept"}
             </PillButton>
             <PillButton
-                tone="black"
+                tone="white"
                 size="sm"
                 onClick={() => handle("reject")}
                 disabled={inFlight || resolved}
