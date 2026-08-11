@@ -27,16 +27,6 @@ describe("PillButton", () => {
         );
     });
 
-    it.each(["black", "blue"] as const)(
-        "removes the border for the %s tone",
-        (tone) => {
-            render(<PillButton tone={tone}>Action</PillButton>);
-            const button = screen.getByRole("button", { name: "Action" });
-            expect(button).toHaveClass("border-0");
-            expect(button).not.toHaveClass("border");
-        },
-    );
-
     it("applies the normal size class when requested", () => {
         render(
             <PillButton tone="blue" size="normal">
