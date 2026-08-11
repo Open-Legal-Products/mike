@@ -30,8 +30,11 @@ import {
   storageKey,
   uploadFile,
 } from "../../storage";
-import { convertedPdfKey } from "../../convert";
-import { contentTypeForDocumentType } from "../../documentTypes";
+import { convertedPdfKey, docxToPdf } from "../../convert";
+import {
+  contentTypeForDocumentType,
+  shouldConvertToPdf,
+} from "../../documentTypes";
 import { buildDownloadUrl } from "../../downloadTokens";
 import {
   contentSha256,
@@ -92,6 +95,18 @@ export type CourtlistenerTurnState = {
 
 function nonEmpty(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function sourceMaterialNotice(
+  sourceKind: "document" | "library_template" | "workflow_asset" | undefined,
+) {
+  if (sourceKind === "library_template") {
+    return "Source type: Library Template (immutable). Before drafting or editing from this file, call replicate_document with a new_filename and use the returned copy.";
+  }
+  if (sourceKind === "workflow_asset") {
+    return "Source type: Workflow asset (immutable). Before drafting or editing from this file, call replicate_document with a new_filename and use the returned copy.";
+  }
+  return null;
 }
 
 function cleanAskInputString(value: unknown, fallback = ""): string {
@@ -643,10 +658,13 @@ export async function runToolCalls(
       });
       if (readIdentity && turnReadState?.has(readIdentity.key)) {
         const promptFilename = spotlightFilename(readIdentity.filename, nonce);
+        const sourceNotice = sourceMaterialNotice(
+          docStore.get(docId)?.source_kind,
+        );
         toolResults.push({
           role: "tool",
           tool_call_id: tc.id,
-          content: `Document filename: ${promptFilename}\n\n${duplicateReadDocumentResult(readIdentity)}`,
+          content: `Document filename: ${promptFilename}${sourceNotice ? `\n${sourceNotice}` : ""}\n\n${duplicateReadDocumentResult(readIdentity)}`,
         });
         continue;
       }
@@ -667,11 +685,14 @@ export async function runToolCalls(
       // is entirely user-controlled and may contain injected instructions.
       const fencedContent = nonce ? spotlight(content, nonce) : content;
       const promptFilename = spotlightFilename(filename ?? "", nonce);
+      const sourceNotice = sourceMaterialNotice(
+        docStore.get(docId)?.source_kind,
+      );
       toolResults.push({
         role: "tool",
         tool_call_id: tc.id,
         content: filename
-          ? `${citationReminder(docId, filename, promptFilename)}\n\n${fencedContent}`
+          ? `${citationReminder(docId, filename, promptFilename)}${sourceNotice ? `\n${sourceNotice}` : ""}\n\n${fencedContent}`
           : fencedContent,
       });
     } else if (tc.function.name === "find_in_document") {
@@ -756,8 +777,11 @@ export async function runToolCalls(
         if (readIdentity && turnReadState?.has(readIdentity.key)) {
           const filename = docStore.get(docId)?.filename ?? docId;
           const promptFilename = spotlightFilename(filename, nonce);
+          const sourceNotice = sourceMaterialNotice(
+            docStore.get(docId)?.source_kind,
+          );
           parts.push(
-            `--- ${docId} ---\nDocument filename: ${promptFilename}\n\n${duplicateReadDocumentResult(
+            `--- ${docId} ---\nDocument filename: ${promptFilename}${sourceNotice ? `\n${sourceNotice}` : ""}\n\n${duplicateReadDocumentResult(
               readIdentity,
             )}`,
           );
@@ -777,8 +801,11 @@ export async function runToolCalls(
         // Document body is user-controlled; spotlight it.
         const fencedContent = nonce ? spotlight(content, nonce) : content;
         const promptFilename = spotlightFilename(filename, nonce);
+        const sourceNotice = sourceMaterialNotice(
+          docStore.get(docId)?.source_kind,
+        );
         parts.push(
-          `--- ${docId} ---\n${citationReminder(docId, filename, promptFilename)}\n\n${fencedContent}`,
+          `--- ${docId} ---\n${citationReminder(docId, filename, promptFilename)}${sourceNotice ? `\n${sourceNotice}` : ""}\n\n${fencedContent}`,
         );
         if (docStore.get(docId)) {
           const documentId = docIndex?.[docId]?.document_id;
@@ -821,6 +848,8 @@ export async function runToolCalls(
             storage_path: reference.storage_path,
             file_type: reference.file_type,
             filename: reference.filename,
+            source_kind: "workflow_asset",
+            source_id: reference.reference_id,
           });
           referenceHandles.push({ doc_id: docId, filename: reference.filename });
         }
@@ -833,7 +862,7 @@ export async function runToolCalls(
       const wfContent = wf ? wf.skill_md : `Workflow '${wfId}' not found.`;
       const instructions = nonce && wf ? spotlightWorkflow(wfContent, nonce) : wfContent;
       const referenceNotice = referenceHandles.length > 0
-        ? `\n\nAvailable workflow reference files (open them with read_document):\n${referenceHandles
+        ? `\n\nAvailable immutable workflow reference files (open relevant files with read_document; before drafting or editing from one, call replicate_document with a new_filename and use the copy):\n${referenceHandles
             .map((reference) =>
               `- ${reference.doc_id}: ${spotlightFilename(reference.filename, nonce)}`,
             )
@@ -1474,7 +1503,19 @@ export async function runToolCalls(
         );
       };
 
-      if (!docInfo || !indexed) {
+      if (
+        docInfo?.source_kind === "library_template" ||
+        docInfo?.source_kind === "workflow_asset"
+      ) {
+        const err =
+          "Templates and workflow assets cannot be edited directly. Call replicate_document with a new_filename, then edit the returned copy.";
+        emitEditError(docInfo.filename, indexed?.document_id ?? "", err);
+        toolResults.push({
+          role: "tool",
+          tool_call_id: tc.id,
+          content: JSON.stringify({ error: err }),
+        });
+      } else if (!docInfo || !indexed) {
         const err = `Document '${docId}' not found in this chat's attachments.`;
         emitEditError(docId, indexed?.document_id ?? "", err);
         toolResults.push({
@@ -1644,25 +1685,54 @@ export async function runToolCalls(
         });
       };
 
-      if (!sourceInfo || !sourceIndexed) {
-        fail(`Document '${rawDocId}' not found in this project.`);
-      } else if (!projectId) {
-        fail("replicate_document is only available in project chats.");
+      const isImmutableSource =
+        sourceInfo?.source_kind === "library_template" ||
+        sourceInfo?.source_kind === "workflow_asset";
+
+      if (!sourceInfo) {
+        fail(`Document '${rawDocId}' is not available in this chat.`);
+      } else if (!sourceIndexed && sourceInfo.source_kind !== "workflow_asset") {
+        fail(`Document '${rawDocId}' is not available in this chat.`);
+      } else if (isImmutableSource && !requestedFilename) {
+        fail(
+          "A new_filename is required when copying a Library Template or workflow asset.",
+        );
       } else {
         try {
           // Pull the active version once — every copy gets the
           // same starting bytes (with any accepted tracked
           // changes rolled in), no point re-fetching per copy.
-          const active = await loadActiveVersion(sourceIndexed.document_id, db);
+          const active = sourceIndexed
+            ? await loadActiveVersion(sourceIndexed.document_id, db)
+            : null;
           const sourcePath = active?.storage_path ?? sourceInfo.storage_path;
           const sourcePdfPath = active?.pdf_storage_path ?? null;
           const raw = await downloadFile(sourcePath);
-          const pdfBytes = sourcePdfPath
+          let pdfBytes = sourcePdfPath
             ? await downloadFile(sourcePdfPath)
             : null;
           if (!raw) {
             fail("Could not read the source document's bytes from storage.");
           } else {
+            if (!pdfBytes && sourceInfo.file_type.toLowerCase() === "pdf") {
+              pdfBytes = raw;
+            } else if (
+              !pdfBytes &&
+              shouldConvertToPdf(sourceInfo.file_type)
+            ) {
+              try {
+                const converted = await docxToPdf(Buffer.from(raw));
+                pdfBytes = converted.buffer.slice(
+                  converted.byteOffset,
+                  converted.byteOffset + converted.byteLength,
+                ) as ArrayBuffer;
+              } catch (conversionError) {
+                devLog(
+                  `[replicate_document] Office→PDF conversion failed for ${sourceFilename}:`,
+                  conversionError,
+                );
+              }
+            }
             // Build N filenames. With count=1 keep the
             // pre-existing "(copy)" suffix; with count>1 use
             // numbered "(1)", "(2)" suffixes.
@@ -1686,9 +1756,11 @@ export async function runToolCalls(
 
             // Bulk insert N documents in one round-trip.
             const docRows = filenames.map((fn) => ({
-              project_id: projectId,
+              project_id: projectId ?? null,
               user_id: userId,
               status: "ready",
+              library_kind: "file",
+              library_folder_id: null,
             }));
             const { data: insertedDocs, error: docErr } = await db
               .from("documents")
@@ -1820,6 +1892,7 @@ export async function runToolCalls(
                     storage_path: newKey,
                     file_type: sourceInfo.file_type,
                     filename: d.filename,
+                    source_kind: "document",
                   });
                   copies.push({
                     new_filename: d.filename,
@@ -1854,6 +1927,9 @@ export async function runToolCalls(
                   content: JSON.stringify({
                     ok: true,
                     count: copies.length,
+                    saved_to: projectId
+                      ? "project_documents"
+                      : "library_files",
                     copies: toolPayloadCopies,
                   }),
                 });

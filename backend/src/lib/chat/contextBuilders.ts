@@ -510,6 +510,19 @@ export async function buildDocContext(
           typeof ev.document_id === "string"
         ) {
           documentIds.add(ev.document_id);
+        } else if (ev?.type === "doc_replicated" && Array.isArray(ev.copies)) {
+          for (const copy of ev.copies) {
+            if (
+              copy &&
+              typeof copy === "object" &&
+              typeof (copy as { document_id?: unknown }).document_id ===
+                "string"
+            ) {
+              documentIds.add(
+                (copy as { document_id: string }).document_id,
+              );
+            }
+          }
         }
       }
     }
@@ -519,7 +532,7 @@ export async function buildDocContext(
   if (ids.length > 0) {
     const { data: docs } = await db
       .from("documents")
-      .select("id, current_version_id, status")
+      .select("id, current_version_id, status, library_kind")
       .in("id", ids)
       .eq("user_id", userId)
       .eq("status", "ready");
@@ -531,6 +544,7 @@ export async function buildDocContext(
       current_version_id?: string | null;
       active_version_number?: number | null;
       storage_path?: string | null;
+      library_kind?: string | null;
     }[];
     await attachActiveVersionPaths(db, docList);
     for (let i = 0; i < docList.length; i++) {
@@ -548,6 +562,8 @@ export async function buildDocContext(
         storage_path: doc.storage_path,
         file_type: doc.file_type ?? "",
         filename,
+        source_kind:
+          doc.library_kind === "template" ? "library_template" : "document",
       });
     }
   }

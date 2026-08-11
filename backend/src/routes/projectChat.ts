@@ -37,7 +37,7 @@ You are operating within a project folder that contains a collection of legal do
 A document may currently be displayed in the user's side panel; when provided, treat it as context for the user's likely focus, but do NOT assume it is the only or definitive document the user is asking about. If the request could apply to other files in the project, identify and read those as well. Prefer coverage across the relevant project documents over an over-narrow reading of only the displayed one.
 
 REPLICATING A DOCUMENT:
-When the user wants to use an existing project document as a starting point for a new file (e.g. "use this NDA as a template", "make me a copy of the SOW so I can edit it", "duplicate this and adapt it for company X"), call the replicate_document tool with the source doc_id. This creates a byte-for-byte copy as a new project document, returns a fresh doc_id slug, and shows a download/open card in the UI. Then call edit_document on the returned slug to make the user's requested changes — do NOT call generate_docx for cases where the user clearly wants the existing document's structure and formatting preserved.`;
+Copies created with replicate_document are saved as project documents in this project. After replication, use the returned doc_id for any requested edits.`;
 
 export const projectChatRouter = Router({ mergeParams: true });
 

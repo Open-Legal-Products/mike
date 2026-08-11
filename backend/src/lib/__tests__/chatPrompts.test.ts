@@ -36,6 +36,20 @@ describe("buildSystemPrompt", () => {
         }
     });
 
+    it("protects workflow assets and Library Templates with copy-before-edit rules", () => {
+        for (const prompt of [buildSystemPrompt(true), buildSystemPrompt(false)]) {
+            expect(prompt).toContain(
+                "Library Templates and workflow reference files are immutable source material",
+            );
+            expect(prompt).toContain(
+                "first call replicate_document with a descriptive new_filename",
+            );
+            expect(prompt).toContain(
+                "open the relevant files with read_document before continuing",
+            );
+        }
+    });
+
     it("splices the CourtListener instructions between the two base sections when research is on", () => {
         const prompt = buildSystemPrompt(true);
         expect(prompt).toContain(COURTLISTENER_SYSTEM_PROMPT);

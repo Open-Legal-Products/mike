@@ -28,36 +28,6 @@ export const PROJECT_EXTRA_TOOLS = [
       },
     },
   },
-  {
-    type: "function",
-    function: {
-      name: "replicate_document",
-      description:
-        "Make byte-for-byte copies of an existing project document as new project documents. Use when the user wants standalone copies to edit (e.g. 'use this NDA as a template', 'give me three drafts I can adapt') without modifying the original. Pass `count` to create multiple copies in a single call rather than calling the tool repeatedly. Returns the new doc_id slugs so you can immediately call edit_document / read_document on them.",
-      parameters: {
-        type: "object",
-        properties: {
-          doc_id: {
-            type: "string",
-            description: "ID of the source document to copy (e.g. 'doc-0').",
-          },
-          count: {
-            type: "integer",
-            description:
-              "How many copies to create. Defaults to 1. Maximum 20.",
-            minimum: 1,
-            maximum: 20,
-          },
-          new_filename: {
-            type: "string",
-            description:
-              "Optional base filename. With count > 1, copies are suffixed (e.g. 'Foo (1).docx', 'Foo (2).docx'). Extension is forced to match the source.",
-          },
-        },
-        required: ["doc_id"],
-      },
-    },
-  },
 ];
 
 export const TABULAR_TOOLS = [
@@ -119,6 +89,37 @@ export const WORKFLOW_TOOLS = [
 ];
 
 export const TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "replicate_document",
+      description:
+        "Copy an available document, Library Template, or workflow asset without changing the source. In a project chat, copies are saved to Project Documents; otherwise they are saved to Library Files. Always use this before editing or drafting from a Library Template or workflow asset. For an ordinary document, use it only when the user specifically asks for a copy/duplicate or a new document based on that file. Returns new doc_id slugs for read_document and edit_document.",
+      parameters: {
+        type: "object",
+        properties: {
+          doc_id: {
+            type: "string",
+            description:
+              "Chat-local ID of the source document, Library Template, or workflow asset.",
+          },
+          count: {
+            type: "integer",
+            description:
+              "How many copies to create. Defaults to 1. Maximum 20.",
+            minimum: 1,
+            maximum: 20,
+          },
+          new_filename: {
+            type: "string",
+            description:
+              "New base filename. Required for Library Templates and workflow assets. With count > 1, copies are numbered. The extension is forced to match the source.",
+          },
+        },
+        required: ["doc_id"],
+      },
+    },
+  },
   {
     type: "function",
     function: {
