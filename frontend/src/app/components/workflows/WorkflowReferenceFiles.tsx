@@ -15,7 +15,11 @@ import {
   replaceWorkflowReferenceFile,
   uploadWorkflowReferenceFile,
 } from "@/app/lib/mikeApi";
-import { SUPPORTED_DOCUMENT_ACCEPT } from "@/app/lib/documentUploadValidation";
+import {
+  SUPPORTED_DOCUMENT_ACCEPT,
+  formatUnsupportedDocumentWarning,
+  partitionSupportedDocumentFiles,
+} from "@/app/lib/documentUploadValidation";
 import { FileTypeIcon } from "../shared/FileTypeIcon";
 import { RowActions } from "../shared/RowActions";
 import {
@@ -50,6 +54,7 @@ function formatDate(value: string) {
 
 export interface WorkflowReferenceFilesHandle {
   openUploadPicker: () => void;
+  uploadFiles: (files: File[]) => void;
 }
 
 export const WorkflowReferenceFiles = forwardRef<
@@ -73,6 +78,7 @@ export const WorkflowReferenceFiles = forwardRef<
 
   useImperativeHandle(ref, () => ({
     openUploadPicker: () => uploadInputRef.current?.click(),
+    uploadFiles: (filesToUpload) => void upload(filesToUpload),
   }));
 
   useEffect(() => {
@@ -102,11 +108,16 @@ export const WorkflowReferenceFiles = forwardRef<
   }, [workflowId]);
 
   async function upload(filesToUpload: File[]) {
-    if (filesToUpload.length === 0) return;
+    const { supported, unsupported } =
+      partitionSupportedDocumentFiles(filesToUpload);
+    if (supported.length === 0) {
+      setError(formatUnsupportedDocumentWarning(unsupported) ?? "");
+      return;
+    }
     setBusyId("upload");
-    setError("");
+    setError(formatUnsupportedDocumentWarning(unsupported) ?? "");
     try {
-      for (const file of filesToUpload) {
+      for (const file of supported) {
         const created = await uploadWorkflowReferenceFile(workflowId, file);
         setFiles((current) => [...current, created]);
       }

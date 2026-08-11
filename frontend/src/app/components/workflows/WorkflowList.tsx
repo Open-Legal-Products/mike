@@ -556,7 +556,7 @@ function WorkflowTable({
                   }
                 />
                 <TableCell className="ml-auto w-28">
-                  <span className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                  <span className="inline-flex items-center gap-1.5 text-sm text-gray-600">
                     <Icon className="h-4 w-4 shrink-0" />
                     {workflow.metadata.type === "tabular"
                       ? "Tabular"
@@ -697,7 +697,7 @@ function AddonTable({
           onSelectionChange={() => toggleOne(addon.id)}
         />
         <TableCell className="ml-auto w-28">
-          <span className="inline-flex items-center gap-1.5 text-sm text-gray-700">
+          <span className="inline-flex items-center gap-1.5 text-sm text-gray-600">
             <Icon className="h-4 w-4" />
             {addon.type === "tabular" ? "Tabular" : "Assistant"}
           </span>

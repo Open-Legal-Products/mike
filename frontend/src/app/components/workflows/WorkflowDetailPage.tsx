@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
@@ -65,6 +71,7 @@ import {
 import { TableToolbar } from "@/app/components/shared/TableToolbar";
 import { RowActions } from "@/app/components/shared/RowActions";
 import { TRExpandedCellSurface } from "@/app/components/tabular/TRExpandedCellSurface";
+import { UploadOverlay } from "@/app/components/assistant/UploadOverlay";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import { downloadWorkflowZip } from "./workflowZipExport";
@@ -119,7 +126,9 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
   const [columns, setColumns] = useState<ColumnConfig[]>([]);
   const [assistantTab, setAssistantTab] = useState<AssistantTab>("prompt");
   const [referenceFilesUploading, setReferenceFilesUploading] = useState(false);
+  const [draggingReferenceFiles, setDraggingReferenceFiles] = useState(false);
   const referenceFilesRef = useRef<WorkflowReferenceFilesHandle>(null);
+  const pendingReferenceFilesRef = useRef<File[] | null>(null);
   const searchParams = useSearchParams();
   const previewEmptyStates = searchParams.get("emptyStates") === "1";
   const visibleColumns = previewEmptyStates ? [] : columns;
@@ -164,6 +173,50 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
     if (colActionsOpen) document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [colActionsOpen]);
+
+  useEffect(() => {
+    if (assistantTab !== "assets" || !pendingReferenceFilesRef.current) return;
+    const pendingFiles = pendingReferenceFilesRef.current;
+    pendingReferenceFilesRef.current = null;
+    referenceFilesRef.current?.uploadFiles(pendingFiles);
+  }, [assistantTab]);
+
+  function hasFilePayload(dataTransfer: DataTransfer) {
+    return Array.from(dataTransfer.types).includes("Files");
+  }
+
+  function handleReferenceDragOver(event: DragEvent<HTMLDivElement>) {
+    if (!hasFilePayload(event.dataTransfer)) return;
+    event.preventDefault();
+    if (workflow?.metadata.type !== "assistant" || readOnly) return;
+    event.dataTransfer.dropEffect = "copy";
+    setDraggingReferenceFiles(true);
+  }
+
+  function handleReferenceDragLeave(event: DragEvent<HTMLDivElement>) {
+    if (
+      !event.currentTarget.contains(event.relatedTarget as Node | null)
+    ) {
+      setDraggingReferenceFiles(false);
+    }
+  }
+
+  function handleReferenceDrop(event: DragEvent<HTMLDivElement>) {
+    if (!hasFilePayload(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDraggingReferenceFiles(false);
+    if (workflow?.metadata.type !== "assistant" || readOnly) return;
+
+    const files = Array.from(event.dataTransfer.files);
+    if (files.length === 0) return;
+    if (assistantTab === "assets" && referenceFilesRef.current) {
+      referenceFilesRef.current.uploadFiles(files);
+      return;
+    }
+    pendingReferenceFilesRef.current = files;
+    setAssistantTab("assets");
+  }
 
   // ---------------------------------------------------------------------------
   // Load workflow
@@ -415,7 +468,16 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div
+      className="flex flex-col h-full"
+      onDragOver={handleReferenceDragOver}
+      onDragLeave={handleReferenceDragLeave}
+      onDrop={handleReferenceDrop}
+    >
+      <UploadOverlay
+        open={draggingReferenceFiles}
+        label="Drop files here to add as workflow assets"
+      />
       {/* Page header */}
       <PageHeader
         shrink
