@@ -31,6 +31,10 @@ export function usePaginatedChats(
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [revision, setRevision] = useState(0);
+  // Monotonic fetch trigger: loadMore() bumps this so the fetch effect re-runs
+  // even when the numeric offset is unchanged (which happens when a whole page
+  // was deduped away because offset pagination shifted under us).
+  const [requestId, setRequestId] = useState(0);
   const requestPendingRef = useRef(false);
   const loadedScopeRef = useRef("");
 
@@ -51,12 +55,14 @@ export function usePaginatedChats(
     ]);
     if (loadedScopeRef.current !== scope) {
       loadedScopeRef.current = scope;
+      // Clear stale rows BEFORE any early return so a scope switch never
+      // leaves the previous document's chats on screen while offset resets.
+      setChats([]);
+      setHasMore(false);
       if (offset !== 0) {
         setOffset(0);
         return;
       }
-      setChats([]);
-      setHasMore(false);
     }
     let cancelled = false;
     const controller = new AbortController();
@@ -118,12 +124,17 @@ export function usePaginatedChats(
       if (timeoutId !== null) window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [active, documentId, offset, ownerId, pageSize, revision, storageMode]);
+  }, [active, documentId, offset, ownerId, pageSize, requestId, revision, storageMode]);
 
   const loadMore = useCallback((): void => {
     if (!active || !hasMore || requestPendingRef.current) return;
     requestPendingRef.current = true;
     setLoadingMore(true);
+    // requestId guarantees a fetch even when chats.length equals the current
+    // offset (every row of the last page was a dedupe hit), where an
+    // offset-only effect key would never re-run and the spinner plus
+    // requestPendingRef would deadlock all further pagination.
+    setRequestId((current) => current + 1);
     setOffset(chats.length);
   }, [active, chats.length, hasMore]);
 
