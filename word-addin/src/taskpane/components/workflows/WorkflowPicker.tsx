@@ -39,6 +39,37 @@ export function WorkflowPicker({
   >("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statusResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  // The latest not-yet-persisted edit, so navigating away can flush it
+  // instead of silently discarding what the user typed.
+  const pendingSaveRef = useRef<{
+    workflowId: string;
+    skillMd: string;
+  } | null>(null);
+  // The workflow the detail view is currently showing. In-flight saves
+  // compare against this before touching state, so a response that lands
+  // after a deselect or switch cannot navigate the user back.
+  const selectedIdRef = useRef<string | null>(null);
+
+  const flushPendingSave = (): void => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const pending = pendingSaveRef.current;
+    pendingSaveRef.current = null;
+    if (!pending) return;
+    // Fire-and-forget: the detail view is going away, so there is no
+    // surface left to report progress or errors on — but the edit itself
+    // must still reach the server.
+    void updateWorkflow(pending.workflowId, {
+      skill_md: pending.skillMd,
+    }).catch(() => {
+      // Swallowed: the editor for this workflow is no longer visible.
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -79,7 +110,7 @@ export function WorkflowPicker({
   }, [selectedWorkflow]);
 
   useEffect(() => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    selectedIdRef.current = selectedWorkflow?.id ?? null;
     setPromptMd(
       selectedWorkflow
         ? withoutLeadingTitle(selectedWorkflow.skill_md ?? "")
@@ -88,7 +119,19 @@ export function WorkflowPicker({
     setSaveStatus("idle");
     setSaveError(null);
     return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      // Runs on deselect, on switching workflows, and on unmount. A debounce
+      // timer still pending here holds an edit the user typed; flushing it
+      // (instead of just clearing the timer) keeps navigation from being a
+      // silent data-loss path.
+      flushPendingSave();
+      if (statusResetTimerRef.current) {
+        clearTimeout(statusResetTimerRef.current);
+        statusResetTimerRef.current = null;
+      }
+      // Cleared synchronously before any newer selection re-sets it, so an
+      // in-flight save that resolves after this point sees a mismatch and
+      // stays silent.
+      selectedIdRef.current = null;
     };
   }, [selectedWorkflow?.id]);
 
@@ -102,10 +145,24 @@ export function WorkflowPicker({
     setSaveStatus("saving");
     setSaveError(null);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    if (statusResetTimerRef.current) {
+      // A stale "Saved → idle" reset must not stamp "idle" over the newer
+      // "Saving…" status this edit just set.
+      clearTimeout(statusResetTimerRef.current);
+      statusResetTimerRef.current = null;
+    }
     const workflowAtChange = selectedWorkflow;
+    pendingSaveRef.current = { workflowId: workflowAtChange.id, skillMd: next };
     saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      pendingSaveRef.current = null;
       void updateWorkflow(workflowAtChange.id, { skill_md: next })
         .then((updated) => {
+          // Bail if the user deselected or switched workflows while the
+          // request was in flight: onSelectedWorkflowChange feeds straight
+          // into setWorkflowPageSelection in App, so resolving late would
+          // re-open the detail view for a workflow the user already left.
+          if (selectedIdRef.current !== workflowAtChange.id) return;
           onSelectedWorkflowChange({
             ...workflowAtChange,
             ...updated,
@@ -116,9 +173,13 @@ export function WorkflowPicker({
             skill_md: updated.skill_md ?? next,
           });
           setSaveStatus("saved");
-          window.setTimeout(() => setSaveStatus("idle"), 2000);
+          statusResetTimerRef.current = setTimeout(() => {
+            statusResetTimerRef.current = null;
+            setSaveStatus("idle");
+          }, 2000);
         })
         .catch((reason: unknown) => {
+          if (selectedIdRef.current !== workflowAtChange.id) return;
           setSaveStatus("idle");
           setSaveError(
             reason instanceof Error
