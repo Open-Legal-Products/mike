@@ -1664,8 +1664,9 @@ export function findTextMatches(params: {
   startIndex?: number;
 }): { hits: TextMatch[]; totalMatches: number } {
   const { text, query, maxResults, contextChars, startIndex = 0 } = params;
-  const { norm, origIdx } = normalizeWithMap(text);
-  const needle = normalizeQuery(query);
+  const quoteReplacement = /["“”]/u.test(query) ? '"' : " ";
+  const { norm, origIdx } = normalizeWithMap(text.replace(/["“”]/gu, quoteReplacement));
+  const needle = normalizeQuery(query.replace(/["“”]/gu, quoteReplacement));
   const hits: TextMatch[] = [];
   let totalMatches = 0;
   if (!needle) return { hits, totalMatches };
