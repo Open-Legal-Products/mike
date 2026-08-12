@@ -86,6 +86,16 @@ export function bookmarkNameForEdit(stableEditId: string): string {
   return `_MikeEdit_${stableDigest(stableEditId)}`;
 }
 
+/**
+ * Drop the entire anchor registry from the settings working copy WITHOUT
+ * saving. Used when copy detection mints a fresh document identity: the
+ * registry keys reference the original document's chat history, so it is
+ * stale in the copy. The caller batches this into its own saveAsync.
+ */
+export function clearWordEditAnchorRegistry(settings: Office.Settings): void {
+  settings.remove(WORD_EDIT_ANCHORS_SETTING);
+}
+
 export function getWordEditAnchor(stableEditId: string): WordEditAnchor | null {
   const settings = Office.context.document.settings;
   const anchor = readRegistry(settings).anchors[stableEditId];

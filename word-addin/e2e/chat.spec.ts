@@ -702,6 +702,88 @@ test("uses Web Crypto for document IDs when randomUUID is unavailable", async ({
   );
 });
 
+test("a Save As copy of the document mints a fresh chat identity", async ({
+  addin,
+  page,
+}) => {
+  await addin.mockChatStream(["ok"]);
+  await addin.gotoTaskpane({ documentText: "Copy detection test" });
+  await addin.expectAuthedShell();
+
+  await page.getByPlaceholder("How can I help?").fill("First question");
+  const firstRequest = page.waitForRequest("**/word-chat");
+  await page.getByRole("button", { name: "Send" }).click();
+  const firstId = (await firstRequest).postDataJSON().document_id as string;
+
+  // Simulate "Save As": document settings travel inside the .docx (the mock
+  // persists them in sessionStorage), but the copy opens from a new URL. Seed
+  // a stale anchor registry to prove the copy does not inherit it either.
+  await addin.setWordDocumentSetting("mike.wordEditAnchors.v1", {
+    version: 1,
+    anchors: {},
+  });
+  await addin.gotoTaskpane({
+    documentUrl: "C:/Users/e2e/Demo Contract (Copy).docx",
+  });
+  await addin.expectAuthedShell();
+
+  await page.getByPlaceholder("How can I help?").fill("Second question");
+  const secondRequest = page.waitForRequest("**/word-chat");
+  await page.getByRole("button", { name: "Send" }).click();
+  const secondId = (await secondRequest).postDataJSON().document_id as string;
+
+  expect(secondId).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  );
+  expect(secondId).not.toBe(firstId);
+  const { settings } = await addin.wordDocument();
+  expect(settings["mike.word.documentId.v1"]).toBe(secondId);
+  expect(settings["mike.word.documentUrl.v1"]).toBe(
+    "c:/users/e2e/demo contract (copy).docx",
+  );
+  expect(settings["mike.wordEditAnchors.v1"]).toBeUndefined();
+});
+
+test("keeps the existing identity when either document URL is unknown", async ({
+  addin,
+  page,
+}) => {
+  await addin.mockChatStream(["ok"]);
+  await addin.gotoTaskpane({ documentText: "Conservative identity test" });
+  await addin.expectAuthedShell();
+
+  await page.getByPlaceholder("How can I help?").fill("First question");
+  const firstRequest = page.waitForRequest("**/word-chat");
+  await page.getByRole("button", { name: "Send" }).click();
+  const firstId = (await firstRequest).postDataJSON().document_id as string;
+
+  // Pre-URL-tracking upgrade path: an identity exists but no URL was stored.
+  // Even at a brand-new URL this must NOT count as a copy.
+  await addin.removeWordDocumentSetting("mike.word.documentUrl.v1");
+  await addin.gotoTaskpane({
+    documentUrl: "C:/Users/e2e/Renamed Contract.docx",
+  });
+  await addin.expectAuthedShell();
+
+  await page.getByPlaceholder("How can I help?").fill("Second question");
+  const secondRequest = page.waitForRequest("**/word-chat");
+  await page.getByRole("button", { name: "Send" }).click();
+  expect((await secondRequest).postDataJSON().document_id).toBe(firstId);
+
+  // Unsaved-document path: the current URL is empty, so the stored identity
+  // (and the URL adopted above) must survive untouched.
+  await addin.gotoTaskpane({ documentUrl: "" });
+  await addin.expectAuthedShell();
+
+  await page.getByPlaceholder("How can I help?").fill("Third question");
+  const thirdRequest = page.waitForRequest("**/word-chat");
+  await page.getByRole("button", { name: "Send" }).click();
+  expect((await thirdRequest).postDataJSON().document_id).toBe(firstId);
+  expect((await addin.wordDocument()).settings["mike.word.documentUrl.v1"]).toBe(
+    "c:/users/e2e/renamed contract.docx",
+  );
+});
+
 test("shows Reading and Read only when the model triggers the read tool", async ({
   addin,
   page,

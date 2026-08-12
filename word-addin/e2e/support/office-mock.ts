@@ -14,6 +14,12 @@ export interface OfficeSeed {
   token?: string | null;
   refreshToken?: string | null;
   documentText?: string;
+  /**
+   * URL exposed as Office.context.document.url. Defaults to a stable fake
+   * path; pass a different value to simulate opening a "Save As" copy of the
+   * same document, or "" to simulate a never-saved document.
+   */
+  documentUrl?: string;
   existingTrackedChangeOriginals?: string[];
   unmanagedTrackedChangeOriginals?: string[];
   staleInsertedRangeOriginals?: string[];
@@ -209,7 +215,7 @@ export function installOfficeMock(seed: OfficeSeed): void {
   };
 
   const officeDocument = {
-    url: "C:/Users/e2e/Demo Contract.docx",
+    url: seed.documentUrl ?? "C:/Users/e2e/Demo Contract.docx",
     settings,
   };
 
