@@ -17,9 +17,9 @@ test("collapses long user messages and expands them from the bottom chevron", as
   const prompt = Array.from(
     { length: 18 },
     (_, index) =>
-      `Paragraph ${index + 1} asks Mike to review a different part of the agreement.`
+      `Paragraph ${index + 1} asks Mike to review a different part of the agreement.`,
   ).join("\n");
-  await page.getByPlaceholder("Ask Mike…").fill(prompt);
+  await page.getByPlaceholder("How can I help?").fill(prompt);
   await page.getByRole("button", { name: "Send" }).click();
 
   const content = page.getByTestId("user-message-content");
@@ -32,7 +32,7 @@ test("collapses long user messages and expands them from the bottom chevron", as
   const collapse = page.getByRole("button", { name: "Collapse user message" });
   await expect(collapse).toHaveAttribute("aria-expanded", "true");
   expect(
-    await content.evaluate((element) => element.clientHeight)
+    await content.evaluate((element) => element.clientHeight),
   ).toBeGreaterThan(144);
 
   await collapse.click();

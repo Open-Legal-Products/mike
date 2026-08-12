@@ -1,27 +1,24 @@
 import React, { type ImgHTMLAttributes } from "react";
 import { File } from "lucide-react";
-import excelIcon from "../../../../../frontend/public/icons/file-types/excel.svg";
-import pdfIcon from "../../../../../frontend/public/icons/file-types/pdf.svg";
-import pptIcon from "../../../../../frontend/public/icons/file-types/ppt.svg";
-import wordIcon from "../../../../../frontend/public/icons/file-types/word.svg";
-import folderClosedIcon from "../../../../../frontend/public/icons/app-sidebar/folder-closed.svg";
-import folderOpenIcon from "../../../../../frontend/public/icons/app-sidebar/folder-open.svg";
-import projectClosedIcon from "../../../../../frontend/public/icons/app-sidebar/project-closed.svg";
-import projectOpenIcon from "../../../../../frontend/public/icons/app-sidebar/project-opened.svg";
+import excelIcon from "../../../assets/icons/file-types/excel.svg";
+import pdfIcon from "../../../assets/icons/file-types/pdf.svg";
+import pptIcon from "../../../assets/icons/file-types/ppt.svg";
+import wordIcon from "../../../assets/icons/file-types/word.svg";
+import folderClosedIcon from "../../../assets/icons/app-sidebar/folder-closed.svg";
+import folderOpenIcon from "../../../assets/icons/app-sidebar/folder-open.svg";
+import projectClosedIcon from "../../../assets/icons/app-sidebar/project-closed.svg";
+import projectOpenIcon from "../../../assets/icons/app-sidebar/project-opened.svg";
 
 type DirectoryIconProps = Omit<
   ImgHTMLAttributes<HTMLImageElement>,
   "alt" | "src"
 >;
 
-function iconKind(value: string | null | undefined):
-  | "pdf"
-  | "word"
-  | "excel"
-  | "ppt"
-  | "other" {
+function iconKind(
+  value: string | null | undefined,
+): "pdf" | "word" | "excel" | "ppt" | "other" {
   const raw = (value ?? "").toLowerCase().trim();
-  const extension = raw.includes(".") ? raw.split(".").pop() ?? "" : raw;
+  const extension = raw.includes(".") ? (raw.split(".").pop() ?? "") : raw;
   if (extension === "pdf") return "pdf";
   if (extension === "doc" || extension === "docx") return "word";
   if (["xls", "xlsx", "xlsm"].includes(extension)) return "excel";

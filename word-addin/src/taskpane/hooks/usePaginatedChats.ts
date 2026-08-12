@@ -22,9 +22,9 @@ export function usePaginatedChats(
   active: boolean,
   documentId: string,
   ownerId: string,
-  storageMode: WordChatStorageMode
+  storageMode: WordChatStorageMode,
 ): PaginatedChatsState {
-  const [limit, setLimit] = useState(pageSize);
+  const [offset, setOffset] = useState(0);
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -32,6 +32,7 @@ export function usePaginatedChats(
   const [hasMore, setHasMore] = useState(false);
   const [revision, setRevision] = useState(0);
   const requestPendingRef = useRef(false);
+  const loadedScopeRef = useRef("");
 
   useEffect(() => {
     const refresh = (): void => setRevision((current) => current + 1);
@@ -41,19 +42,40 @@ export function usePaginatedChats(
 
   useEffect(() => {
     if (!active) return;
+    const scope = JSON.stringify([
+      documentId,
+      ownerId,
+      pageSize,
+      revision,
+      storageMode,
+    ]);
+    if (loadedScopeRef.current !== scope) {
+      loadedScopeRef.current = scope;
+      if (offset !== 0) {
+        setOffset(0);
+        return;
+      }
+      setChats([]);
+      setHasMore(false);
+    }
     let cancelled = false;
     const controller = new AbortController();
     let timedOut = false;
     let timeoutId: number | null = null;
     requestPendingRef.current = true;
-    if (limit === pageSize) setLoading(true);
+    if (offset === 0) setLoading(true);
     else setLoadingMore(true);
     setError(null);
 
     const request =
       storageMode === "cloud"
-        ? listCloudWordChats(documentId, limit + 1, controller.signal)
-        : listLocalWordChats(documentId, ownerId, limit + 1);
+        ? listCloudWordChats(
+            documentId,
+            pageSize + 1,
+            offset,
+            controller.signal,
+          )
+        : listLocalWordChats(documentId, ownerId, pageSize + 1, offset);
     const timeout = new Promise<never>((_resolve, reject) => {
       timeoutId = window.setTimeout(() => {
         timedOut = true;
@@ -65,8 +87,13 @@ export function usePaginatedChats(
       .then((items) => {
         if (cancelled) return;
         const next = items ?? [];
-        setChats(next.slice(0, limit));
-        setHasMore(next.length > limit);
+        const page = next.slice(0, pageSize);
+        setChats((current) => {
+          if (offset === 0) return page;
+          const known = new Set(current.map((chat) => chat.id));
+          return [...current, ...page.filter((chat) => !known.has(chat.id))];
+        });
+        setHasMore(next.length > pageSize);
       })
       .catch((reason: unknown) => {
         if (cancelled) return;
@@ -74,8 +101,8 @@ export function usePaginatedChats(
           timedOut
             ? "Chat history took too long to load."
             : reason instanceof Error
-            ? reason.message
-            : "Failed to load chat history."
+              ? reason.message
+              : "Failed to load chat history.",
         );
       })
       .finally(() => {
@@ -91,14 +118,14 @@ export function usePaginatedChats(
       if (timeoutId !== null) window.clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [active, documentId, limit, ownerId, pageSize, revision, storageMode]);
+  }, [active, documentId, offset, ownerId, pageSize, revision, storageMode]);
 
   const loadMore = useCallback((): void => {
     if (!active || !hasMore || requestPendingRef.current) return;
     requestPendingRef.current = true;
     setLoadingMore(true);
-    setLimit((current) => current + pageSize);
-  }, [active, hasMore, pageSize]);
+    setOffset(chats.length);
+  }, [active, chats.length, hasMore]);
 
   const retry = useCallback((): void => {
     setRevision((current) => current + 1);

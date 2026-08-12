@@ -1,8 +1,5 @@
 import { test, expect } from "./support/fixtures";
-import type {
-  Addin,
-  WordBookmarkSnapshot,
-} from "./support/fixtures";
+import type { Addin, WordBookmarkSnapshot } from "./support/fixtures";
 import type { Page } from "@playwright/test";
 
 const TOKEN = "tracked-edit-persistence-token";
@@ -58,15 +55,17 @@ async function mockPersistedChat(addin: Addin): Promise<void> {
 
 async function applyPersistedEdit(
   addin: Addin,
-  page: Page
+  page: Page,
 ): Promise<WordBookmarkSnapshot> {
   await addin.gotoTaskpane({ documentText: ORIGINAL });
   await addin.expectAuthedShell();
-  await page.getByPlaceholder("Ask Mike…").fill("Correct the supplier typo");
+  await page
+    .getByPlaceholder("How can I help?")
+    .fill("Correct the supplier typo");
   await page.getByRole("button", { name: "Send" }).click();
 
   await expect(
-    page.getByRole("button", { name: "View", exact: true })
+    page.getByRole("button", { name: "View", exact: true }),
   ).toBeVisible();
   await expect
     .poll(async () => (await addin.wordDocument()).bookmarks.length)
@@ -78,7 +77,7 @@ async function applyPersistedEdit(
 
 async function reloadAndOpenPersistedChat(
   addin: Addin,
-  page: Page
+  page: Page,
 ): Promise<void> {
   await addin.reloadTaskpane();
   await addin.expectAuthedShell();
@@ -119,10 +118,10 @@ test("rehydrates View from a hidden Word bookmark after the task pane reloads", 
   const view = page.getByRole("button", { name: "View", exact: true });
   await expect(view).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Accept", exact: true })
+    page.getByRole("button", { name: "Accept", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Reject", exact: true })
+    page.getByRole("button", { name: "Reject", exact: true }),
   ).toBeVisible();
 
   const afterRestore = await addin.wordCalls();
@@ -132,15 +131,11 @@ test("rehydrates View from a hidden Word bookmark after the task pane reloads", 
   await view.click();
   await expect
     .poll(async () => (await addin.wordCalls()).revealedChanges)
-    .toEqual([
-      { text: REPLACEMENT, location: "Replace", original: ORIGINAL },
-    ]);
+    .toEqual([{ text: REPLACEMENT, location: "Replace", original: ORIGINAL }]);
   // The exact stored range is selected; View never searches for source text.
   expect((await addin.wordCalls()).searches).toBe(0);
 
-  await page
-    .getByRole("button", { name: "Accept", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Accept", exact: true }).click();
   await expect(page.getByText("Accepted.", { exact: true })).toBeVisible();
   await expect
     .poll(async () => (await addin.wordDocument()).bookmarks.length)
@@ -174,10 +169,10 @@ test("restores from the deterministic bookmark name when the settings registry i
   const view = page.getByRole("button", { name: "View", exact: true });
   await expect(view).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Accept", exact: true })
+    page.getByRole("button", { name: "Accept", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Reject", exact: true })
+    page.getByRole("button", { name: "Reject", exact: true }),
   ).toBeVisible();
   const callsAfterRestore = await addin.wordCalls();
   expect(callsAfterRestore.bookmarkLookups).toEqual([bookmark.name]);
@@ -209,7 +204,7 @@ test("ignores a corrupt registry entry instead of touching an unrelated bookmark
   await reloadAndOpenPersistedChat(addin, page);
 
   await expect(
-    page.getByRole("button", { name: "Accept", exact: true })
+    page.getByRole("button", { name: "Accept", exact: true }),
   ).toBeVisible();
   const calls = await addin.wordCalls();
   expect(calls.bookmarkLookups).toEqual([bookmark.name]);
@@ -232,10 +227,12 @@ test("prunes a stale bookmark after its revisions were resolved directly in Word
   await mockPersistedChat(addin);
   const bookmark = await applyPersistedEdit(addin, page);
 
-  expect(
-    await addin.resolveBookmarkExternally(bookmark.name, "accepted")
-  ).toBe(true);
-  expect((await addin.wordDocument()).bookmarks[0]?.pendingRevisionCount).toBe(0);
+  expect(await addin.resolveBookmarkExternally(bookmark.name, "accepted")).toBe(
+    true,
+  );
+  expect((await addin.wordDocument()).bookmarks[0]?.pendingRevisionCount).toBe(
+    0,
+  );
 
   await reloadAndOpenPersistedChat(addin, page);
   await expect
@@ -243,13 +240,13 @@ test("prunes a stale bookmark after its revisions were resolved directly in Word
     .toBe(0);
 
   await expect(
-    page.getByRole("button", { name: "View", exact: true })
+    page.getByRole("button", { name: "View", exact: true }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Accept", exact: true })
+    page.getByRole("button", { name: "Accept", exact: true }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Reject", exact: true })
+    page.getByRole("button", { name: "Reject", exact: true }),
   ).toHaveCount(0);
   const afterRestore = await addin.wordDocument();
   expect(afterRestore.settings[ANCHOR_SETTINGS_KEY]).toBeUndefined();
@@ -269,20 +266,22 @@ test("keeps a changed bookmark View-only when it contains an unexpected revision
     await addin.injectRevisionIntoBookmark(
       bookmark.name,
       "Added",
-      "Unrelated user revision"
-    )
+      "Unrelated user revision",
+    ),
   ).toBe(true);
-  expect((await addin.wordDocument()).bookmarks[0]?.pendingRevisionCount).toBe(3);
+  expect((await addin.wordDocument()).bookmarks[0]?.pendingRevisionCount).toBe(
+    3,
+  );
 
   await reloadAndOpenPersistedChat(addin, page);
 
   const view = page.getByRole("button", { name: "View", exact: true });
   await expect(view).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Accept", exact: true })
+    page.getByRole("button", { name: "Accept", exact: true }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Reject", exact: true })
+    page.getByRole("button", { name: "Reject", exact: true }),
   ).toHaveCount(0);
   await view.click();
   await expect

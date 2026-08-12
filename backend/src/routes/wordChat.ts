@@ -19,8 +19,12 @@ import {
   parseOptionalChatId,
   parseOptionalDocumentContext,
   parseOptionalModel,
+  createReservedAssistantMessageUpdater,
+  openAssistantSse,
+  reserveAssistantMessage,
   runLLMStream,
   stripTransientAssistantEvents,
+  withoutEmptyAssistantReservations,
 } from "../lib/chat";
 import { getUserModelSettings } from "../lib/userSettings";
 import { safeErrorLog, safeErrorMessage } from "../lib/safeError";
@@ -43,6 +47,10 @@ function parseDocumentId(
     return { ok: false, detail: "document_id must be a UUID" };
   }
   return { ok: true, value };
+}
+
+function isUuid(value: string): boolean {
+  return UUID_PATTERN.test(value);
 }
 
 function parseStorageMode(
@@ -123,10 +131,14 @@ wordChatRouter.get("/", requireAuth, async (req, res) => {
   if (!parsedDocumentId.ok) {
     return void res.status(400).json({ detail: parsedDocumentId.detail });
   }
-  const requestedLimit = Number.parseInt(String(req.query.limit ?? ""), 10);
+  const requestedLimit = Number.parseInt(String(req.query.limit ?? "50"), 10);
   const limit = Number.isFinite(requestedLimit)
     ? Math.min(Math.max(requestedLimit, 1), 100)
-    : null;
+    : 50;
+  const requestedOffset = Number.parseInt(String(req.query.offset ?? "0"), 10);
+  const offset = Number.isFinite(requestedOffset)
+    ? Math.max(requestedOffset, 0)
+    : 0;
   const db = createServerSupabase();
   const documentLookup = await getWordDocumentRowId(
     parsedDocumentId.value,
@@ -134,20 +146,28 @@ wordChatRouter.get("/", requireAuth, async (req, res) => {
     db,
   );
   if (!documentLookup.ok) {
-    return void res.status(500).json({ detail: documentLookup.detail });
+    console.error(
+      "[word-chat] failed to load document chats",
+      safeErrorLog(documentLookup.detail),
+    );
+    return void res.status(500).json({ detail: "Failed to load Word chats" });
   }
   const wordDocumentRowId = documentLookup.value;
   if (!wordDocumentRowId) return void res.json([]);
 
   let query = db
     .from("word_chats")
-    .select("id, user_id, title, created_at")
+    .select("id, user_id, title, created_at, updated_at")
     .eq("word_document_id", wordDocumentRowId)
     .eq("user_id", userId)
     .order("updated_at", { ascending: false });
-  if (limit) query = query.limit(limit);
+  query =
+    offset > 0 ? query.range(offset, offset + limit - 1) : query.limit(limit);
   const { data, error } = await query;
-  if (error) return void res.status(500).json({ detail: error.message });
+  if (error) {
+    console.error("[word-chat] failed to list chats", safeErrorLog(error));
+    return void res.status(500).json({ detail: "Failed to load Word chats" });
+  }
   res.json((data ?? []).map((chat) => ({ ...chat, project_id: null })));
 });
 
@@ -158,6 +178,9 @@ wordChatRouter.get("/:chatId", requireAuth, async (req, res) => {
   if (!parsedDocumentId.ok) {
     return void res.status(400).json({ detail: parsedDocumentId.detail });
   }
+  if (!isUuid(req.params.chatId)) {
+    return void res.status(404).json({ detail: "Chat not found" });
+  }
   const db = createServerSupabase();
   const documentLookup = await getWordDocumentRowId(
     parsedDocumentId.value,
@@ -165,7 +188,11 @@ wordChatRouter.get("/:chatId", requireAuth, async (req, res) => {
     db,
   );
   if (!documentLookup.ok) {
-    return void res.status(500).json({ detail: documentLookup.detail });
+    console.error(
+      "[word-chat] failed to resolve chat document",
+      safeErrorLog(documentLookup.detail),
+    );
+    return void res.status(500).json({ detail: "Failed to load Word chat" });
   }
   const wordDocumentRowId = documentLookup.value;
   if (!wordDocumentRowId) {
@@ -178,7 +205,11 @@ wordChatRouter.get("/:chatId", requireAuth, async (req, res) => {
     db,
   );
   if (!chatLookup.ok) {
-    return void res.status(500).json({ detail: chatLookup.detail });
+    console.error(
+      "[word-chat] failed to load chat",
+      safeErrorLog(chatLookup.detail),
+    );
+    return void res.status(500).json({ detail: "Failed to load Word chat" });
   }
   const chat = chatLookup.value;
   if (!chat) return void res.status(404).json({ detail: "Chat not found" });
@@ -188,8 +219,14 @@ wordChatRouter.get("/:chatId", requireAuth, async (req, res) => {
     .select("*")
     .eq("chat_id", req.params.chatId)
     .order("created_at", { ascending: true });
-  if (error) return void res.status(500).json({ detail: error.message });
-  res.json({ chat, messages: messages ?? [] });
+  if (error) {
+    console.error("[word-chat] failed to load messages", safeErrorLog(error));
+    return void res.status(500).json({ detail: "Failed to load Word chat" });
+  }
+  res.json({
+    chat,
+    messages: withoutEmptyAssistantReservations(messages ?? []),
+  });
 });
 
 // POST /word-chat — Word-specific streaming endpoint.
@@ -208,6 +245,9 @@ wordChatRouter.post("/", requireAuth, async (req, res) => {
   const parsedChatId = parseOptionalChatId(body.chat_id);
   if (!parsedChatId.ok) {
     return void res.status(400).json({ detail: parsedChatId.detail });
+  }
+  if (parsedChatId.value && !isUuid(parsedChatId.value)) {
+    return void res.status(400).json({ detail: "chat_id must be a UUID" });
   }
   const parsedModel = parseOptionalModel(body.model);
   if (!parsedModel.ok) {
@@ -258,7 +298,13 @@ wordChatRouter.post("/", requireAuth, async (req, res) => {
       db,
     );
     if (!existingLookup.ok) {
-      return void res.status(500).json({ detail: existingLookup.detail });
+      console.error(
+        "[word-chat] failed to resume chat",
+        safeErrorLog(existingLookup.detail),
+      );
+      return void res
+        .status(500)
+        .json({ detail: "Failed to resume Word chat" });
     }
     const existing = existingLookup.value;
     if (!existing) {
@@ -344,7 +390,10 @@ wordChatRouter.post("/", requireAuth, async (req, res) => {
     nonce,
     "word_chat_messages",
   );
-  const { api_keys: configuredApiKeys } = await getUserModelSettings(userId, db);
+  const { api_keys: configuredApiKeys } = await getUserModelSettings(
+    userId,
+    db,
+  );
   const apiKeys = { ...configuredApiKeys };
   delete apiKeys.courtlistener;
   const apiMessages = buildMessages(
@@ -359,12 +408,11 @@ wordChatRouter.post("/", requireAuth, async (req, res) => {
   const assistantMessageId = randomUUID();
 
   if (persistChat) {
-    const { error } = await db.from("word_chat_messages").insert({
+    const error = await reserveAssistantMessage({
+      db,
+      table: "word_chat_messages",
       id: assistantMessageId,
-      chat_id: chatId,
-      role: "assistant",
-      content: null,
-      citations: null,
+      chatId,
     });
     if (error) {
       console.error("[word-chat] failed to reserve assistant message", error);
@@ -374,35 +422,36 @@ wordChatRouter.post("/", requireAuth, async (req, res) => {
     }
   }
 
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no");
-  res.flushHeaders();
-
-  const write = (line: string) => res.write(line);
-  const updateAssistantMessage = async (
-    content: unknown,
-    citations: unknown,
-  ): Promise<unknown | null> => {
-    if (!persistChat) return null;
-    let lastError: unknown | null = null;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const result = await db
-        .from("word_chat_messages")
-        .update({ content, citations })
-        .eq("id", assistantMessageId)
-        .eq("chat_id", chatId);
-      lastError = result.error;
-      if (!lastError) return null;
-    }
-    return lastError;
-  };
-  const streamAbort = new AbortController();
-  let streamFinished = false;
-  res.on("close", () => {
-    if (!streamFinished) streamAbort.abort();
+  const stream = openAssistantSse(res);
+  const write = stream.write;
+  const updateAssistantMessage = createReservedAssistantMessageUpdater({
+    db,
+    table: "word_chat_messages",
+    id: assistantMessageId,
+    chatId,
+    enabled: persistChat,
   });
+  const updateChatActivity = async (): Promise<void> => {
+    if (!persistChat) return;
+    const update =
+      !chatTitle && lastUser?.content
+        ? {
+            title: lastUser.content.slice(0, 120),
+            updated_at: new Date().toISOString(),
+          }
+        : { updated_at: new Date().toISOString() };
+    const { error } = await db
+      .from("word_chats")
+      .update(update)
+      .eq("id", chatId)
+      .eq("user_id", userId);
+    if (error) {
+      console.error(
+        "[word-chat] failed to update chat activity",
+        safeErrorLog(error),
+      );
+    }
+  };
 
   try {
     write(
@@ -412,7 +461,7 @@ wordChatRouter.post("/", requireAuth, async (req, res) => {
         assistantMessageId,
       })}\n\n`,
     );
-    const { fullText, events, citations } = await runLLMStream({
+    const { events, citations } = await runLLMStream({
       apiMessages,
       docStore,
       docIndex,
@@ -423,9 +472,10 @@ wordChatRouter.post("/", requireAuth, async (req, res) => {
       // CourtListener is intentionally unavailable in document-scoped Word
       // chats. Legal research remains a web-assistant capability.
       includeResearchTools: false,
+      includeAskInputs: false,
       model,
       apiKeys,
-      signal: streamAbort.signal,
+      signal: stream.signal,
       nonce,
       emitDone: false,
     });
@@ -434,6 +484,7 @@ wordChatRouter.post("/", requireAuth, async (req, res) => {
       persistedEvents.length ? persistedEvents : null,
       citations.length ? citations : null,
     );
+    await updateChatActivity();
     if (saveError) {
       console.error("[word-chat] failed to save assistant response", saveError);
       write(
@@ -445,22 +496,6 @@ wordChatRouter.post("/", requireAuth, async (req, res) => {
       );
       write("data: [DONE]\n\n");
       return;
-    }
-    if (persistChat && !chatTitle && lastUser?.content) {
-      await db
-        .from("word_chats")
-        .update({
-          title: lastUser.content.slice(0, 120),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", chatId)
-        .eq("user_id", userId);
-    } else if (persistChat) {
-      await db
-        .from("word_chats")
-        .update({ updated_at: new Date().toISOString() })
-        .eq("id", chatId)
-        .eq("user_id", userId);
     }
     write("data: [DONE]\n\n");
   } catch (error) {
@@ -480,6 +515,7 @@ wordChatRouter.post("/", requireAuth, async (req, res) => {
           console.error("[word-chat] failed to save aborted stream", saveError);
         }
       }
+      await updateChatActivity();
       return;
     }
     console.error("[word-chat] stream error", safeErrorLog(error));
@@ -509,7 +545,6 @@ wordChatRouter.post("/", requireAuth, async (req, res) => {
       // The client disconnected while the error was being handled.
     }
   } finally {
-    streamFinished = true;
-    res.end();
+    stream.finish();
   }
 });

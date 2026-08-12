@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import quickActionsIcon from "../../../../../frontend/public/icons/app-sidebar/quick-actions.svg";
+import quickActionsIcon from "../../../assets/icons/app-sidebar/quick-actions.svg";
 import { getUserProfile } from "../../api/mikeApi";
 import { MikeIcon } from "../../../shared/chat/mike-icon";
 import {
@@ -86,7 +86,7 @@ export function InitialView({
                   "transform 900ms cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 800ms ease-in-out 300ms",
               }}
             >
-              Hello, {name}
+              Hi, {name}
             </h1>
           </>
         )}

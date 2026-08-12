@@ -126,11 +126,13 @@ async function throwWordChatResponseError(
 export async function listCloudWordChats(
   documentId: string,
   limit: number,
+  offset = 0,
   signal?: AbortSignal,
 ): Promise<Chat[]> {
   const params = new URLSearchParams({
     document_id: documentId,
     limit: String(limit),
+    offset: String(offset),
   });
   const res = await fetchWithRefresh(`${BASE_URL}/word-chat?${params}`, {
     cache: "no-store",

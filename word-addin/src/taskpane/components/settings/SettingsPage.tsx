@@ -1,23 +1,28 @@
 import React from "react";
-import { LogOut } from "lucide-react";
+import { LogOut, Trash2 } from "lucide-react";
 import { ToggleSwitch } from "../../../shared/ui/toggle-switch";
 import { PageTitle } from "../primitives/PageTitle";
 import { PillButton } from "../primitives/PillButton";
 import type { WordChatStorageMode } from "../../lib/wordChatSettings";
+import { Modal } from "../primitives/Modal";
 
 interface SettingsPageProps {
   storageMode: WordChatStorageMode;
   onStorageModeChange: (mode: WordChatStorageMode) => Promise<void>;
+  onClearLocalChats: () => Promise<void>;
   onSignOut: () => void;
 }
 
 export function SettingsPage({
   storageMode,
   onStorageModeChange,
+  onClearLocalChats,
   onSignOut,
 }: SettingsPageProps): React.ReactElement {
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [clearConfirmOpen, setClearConfirmOpen] = React.useState(false);
+  const [clearing, setClearing] = React.useState(false);
 
   const updateMode = async (cloud: boolean): Promise<void> => {
     setSaving(true);
@@ -28,7 +33,7 @@ export function SettingsPage({
       setError(
         reason instanceof Error
           ? reason.message
-          : "Could not save the chat storage setting."
+          : "Could not save the chat storage setting.",
       );
     } finally {
       setSaving(false);
@@ -41,9 +46,12 @@ export function SettingsPage({
       <section className="rounded-xl border border-white/70 bg-white/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_8px_24px_rgba(15,23,42,0.06)]">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h2 className="text-sm font-medium text-gray-900">Save chats in the cloud</h2>
+            <h2 className="text-sm font-medium text-gray-900">
+              Save chats in the cloud
+            </h2>
             <p className="mt-1 text-xs leading-5 text-gray-500">
-              Cloud chats are linked to this Word document and available on your other devices.
+              Cloud chats are linked to this Word document and available on your
+              other devices.
             </p>
           </div>
           <ToggleSwitch
@@ -64,6 +72,28 @@ export function SettingsPage({
       <section className="mt-3 rounded-xl border border-white/70 bg-white/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_8px_24px_rgba(15,23,42,0.06)]">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
+            <h2 className="text-sm font-medium text-gray-900">
+              Device-only chats
+            </h2>
+            <p className="mt-1 text-xs leading-5 text-gray-500">
+              Local chats remain readable in this device profile after sign-out
+              until you delete them.
+            </p>
+          </div>
+          <PillButton
+            tone="white"
+            onClick={() => setClearConfirmOpen(true)}
+            className="shrink-0"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete
+          </PillButton>
+        </div>
+      </section>
+
+      <section className="mt-3 rounded-xl border border-white/70 bg-white/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_8px_24px_rgba(15,23,42,0.06)]">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
             <h2 className="text-sm font-medium text-gray-900">Account</h2>
             <p className="mt-1 text-xs leading-5 text-gray-500">
               Signing out clears this device&rsquo;s session. Cloud chats stay
@@ -76,6 +106,40 @@ export function SettingsPage({
           </PillButton>
         </div>
       </section>
+      <Modal
+        open={clearConfirmOpen}
+        onClose={() => !clearing && setClearConfirmOpen(false)}
+        title="Delete device-only chats?"
+        primaryAction={{
+          label: clearing ? "Deleting…" : "Delete chats",
+          disabled: clearing,
+          onClick: () => {
+            setClearing(true);
+            setError(null);
+            void onClearLocalChats()
+              .then(() => setClearConfirmOpen(false))
+              .catch((reason: unknown) =>
+                setError(
+                  reason instanceof Error
+                    ? reason.message
+                    : "Could not delete device-only chats.",
+                ),
+              )
+              .finally(() => setClearing(false));
+          },
+        }}
+        secondaryAction={{
+          label: "Cancel",
+          disabled: clearing,
+          onClick: () => setClearConfirmOpen(false),
+        }}
+        className="h-auto max-h-[calc(100vh-2rem)]"
+      >
+        <p className="pb-5 text-sm leading-6 text-gray-600">
+          This permanently deletes every device-only Word chat saved for this
+          account on this device. Cloud chats are not affected.
+        </p>
+      </Modal>
     </div>
   );
 }

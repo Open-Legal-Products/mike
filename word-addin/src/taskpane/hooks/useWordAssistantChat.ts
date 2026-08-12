@@ -118,10 +118,6 @@ export function useWordAssistantChat({
       const generation = sessionGenerationRef.current;
       const sendToken = sendSequenceRef.current + 1;
       sendSequenceRef.current = sendToken;
-      console.log("[WordAssistantChat] Starting send", {
-        generation,
-        sendToken,
-      });
       sendingRef.current = true;
       const controller = new AbortController();
       abortRef.current = controller;
@@ -397,6 +393,8 @@ export function useWordAssistantChat({
                   events: completeAssistantEvents(assistantEvents),
                 },
               }).catch(() => {});
+            } else if (wordChatStorage === "cloud") {
+              notifyWordChatHistoryChanged();
             }
             return;
           }

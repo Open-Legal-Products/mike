@@ -1,5 +1,6 @@
 /// <reference types="office-js" />
 
+import { useCallback } from "react";
 import { toWordText } from "../lib/wordText";
 import type { RedlineEdit } from "../lib/redline";
 import { createSecureUuid } from "../lib/secureUuid";
@@ -247,10 +248,13 @@ function trackedChangesMatchEdit(
     const type = String(change.type).toLowerCase();
     return type === "added" || type === "deleted";
   });
+  const normalizeBreaks = (value: string): string =>
+    value.replace(/[\r\n\v]+/g, "\n");
   return (
     onlyExpectedTypes &&
-    addedText === toWordText(edit.replacement) &&
-    deletedText === edit.original
+    normalizeBreaks(addedText) ===
+      normalizeBreaks(toWordText(edit.replacement)) &&
+    normalizeBreaks(deletedText) === normalizeBreaks(edit.original)
   );
 }
 
@@ -417,11 +421,10 @@ async function resolveTrackedEditNow(
         : {}),
     };
   } catch (error) {
-    // Office batches can fail after executing earlier queued commands. Do not
-    // offer a blind retry against potentially stale sibling proxies; hand any
-    // remaining revisions back to Word's Review tab.
+    // Office batches can fail after executing earlier queued commands. Never
+    // retry stale proxies, but rebuild a fresh handle from the durable bookmark
+    // when Word still reports the exact expected revision set.
     pendingTrackedEdits.delete(handle);
-    rememberTerminalState(handle, "released");
     try {
       await Word.run(trackedObjectsFor(entry), async (context) => {
         untrackEntry(entry);
@@ -431,6 +434,7 @@ async function resolveTrackedEditNow(
       // Best-effort cleanup only; retain the original resolution error.
     }
     if (error instanceof NoRemainingRevisionsError) {
+      rememberTerminalState(handle, "released");
       return {
         handle,
         status: "not-found",
@@ -439,12 +443,32 @@ async function resolveTrackedEditNow(
       };
     }
     if (error instanceof ChangedRevisionSetError) {
+      rememberTerminalState(handle, "released");
       return {
         handle,
         status: "error",
         error:
           "The revisions in this passage changed after Mike applied the edit. Review them directly in Word.",
       };
+    }
+    if (entry.stableEditId && entry.bookmarkName) {
+      const restored = await restoreTrackedEditNow(
+        entry.stableEditId,
+        entry.expectedEdit,
+      );
+      rememberTerminalState(handle, "released");
+      if (restored.status === "restored" && restored.handle) {
+        return {
+          handle: restored.handle,
+          status: "error",
+          error: describeWordFailure(
+            error,
+            "Word refreshed this change. Please try the action again.",
+          ),
+        };
+      }
+    } else {
+      rememberTerminalState(handle, "released");
     }
     return {
       handle,
@@ -510,108 +534,110 @@ export function revealTrackedEdit(
  * bookmark. The text/type verification prevents a later user revision inside
  * the bookmarked passage from being accepted or rejected by Mike.
  */
+async function restoreTrackedEditNow(
+  stableEditId: string,
+  edit: RedlineEdit,
+): Promise<TrackedEditRestoreResult> {
+  for (const [handle, entry] of pendingTrackedEdits) {
+    if (entry.stableEditId === stableEditId) {
+      return { stableEditId, status: "restored" as const, handle };
+    }
+  }
+
+  let bookmarkName = bookmarkNameForEdit(stableEditId);
+  let anchorWasRegistered = false;
+  try {
+    const anchor = getWordEditAnchor(stableEditId);
+    if (anchor) {
+      bookmarkName = anchor.bookmarkName;
+      anchorWasRegistered = true;
+    }
+  } catch {
+    // The deterministic bookmark name still permits recovery if settings
+    // were unavailable or failed to save.
+  }
+
+  try {
+    const restored = await Word.run(async (context) => {
+      const range = context.document.getBookmarkRangeOrNullObject(bookmarkName);
+      range.load("isNullObject");
+      await context.sync();
+      if (range.isNullObject) return { status: "not-found" as const };
+
+      const collection = range.getTrackedChanges();
+      collection.load("items");
+      await context.sync();
+      if (collection.items.length === 0) {
+        context.document.deleteBookmark(bookmarkName);
+        await context.sync();
+        return { status: "resolved" as const };
+      }
+
+      for (const change of collection.items) change.load(["type", "text"]);
+      await context.sync();
+      if (!trackedChangesMatchEdit(collection.items, edit)) {
+        return { status: "view-only" as const };
+      }
+
+      collection.track();
+      for (const change of collection.items) change.track();
+      range.track();
+      await context.sync();
+      return {
+        status: "restored" as const,
+        collection,
+        changes: collection.items,
+        range,
+      };
+    });
+
+    if (restored.status === "not-found" || restored.status === "resolved") {
+      try {
+        await removeWordEditAnchor(stableEditId);
+      } catch {
+        // The stale mapping is harmless and will be pruned on a later load.
+      }
+      return { stableEditId, status: restored.status };
+    }
+    if (!anchorWasRegistered) {
+      await persistWordEditAnchor(stableEditId, bookmarkName).catch((error) => {
+        console.error(
+          "[tracked-edit/restore] Failed to repair the document anchor registry.",
+          { stableEditId, bookmarkName, error },
+        );
+      });
+    }
+    if (restored.status === "view-only") {
+      return { stableEditId, status: "view-only" };
+    }
+
+    const handle = createTrackedEditHandle();
+    pendingTrackedEdits.set(handle, {
+      expectedEdit: edit,
+      changes: restored.changes,
+      parentCollections: [restored.collection],
+      ranges: [restored.range],
+      stableEditId,
+      bookmarkName,
+    });
+    return { stableEditId, status: "restored", handle };
+  } catch (error) {
+    return {
+      stableEditId,
+      status: "error",
+      error: describeWordFailure(
+        error,
+        "Word couldn’t restore this tracked change. Review it from Word’s Review tab.",
+      ),
+    };
+  }
+}
+
 export function restoreTrackedEdit(
   stableEditId: string,
   edit: RedlineEdit,
 ): Promise<TrackedEditRestoreResult> {
-  return serializeWordMutation(async () => {
-    for (const [handle, entry] of pendingTrackedEdits) {
-      if (entry.stableEditId === stableEditId) {
-        return { stableEditId, status: "restored" as const, handle };
-      }
-    }
-
-    let bookmarkName = bookmarkNameForEdit(stableEditId);
-    let anchorWasRegistered = false;
-    try {
-      const anchor = getWordEditAnchor(stableEditId);
-      if (anchor) {
-        bookmarkName = anchor.bookmarkName;
-        anchorWasRegistered = true;
-      }
-    } catch {
-      // The deterministic bookmark name still permits recovery if settings
-      // were unavailable or failed to save.
-    }
-
-    try {
-      const restored = await Word.run(async (context) => {
-        const range =
-          context.document.getBookmarkRangeOrNullObject(bookmarkName);
-        range.load("isNullObject");
-        await context.sync();
-        if (range.isNullObject) return { status: "not-found" as const };
-
-        const collection = range.getTrackedChanges();
-        collection.load("items");
-        await context.sync();
-        if (collection.items.length === 0) {
-          context.document.deleteBookmark(bookmarkName);
-          await context.sync();
-          return { status: "resolved" as const };
-        }
-
-        for (const change of collection.items) change.load(["type", "text"]);
-        await context.sync();
-        if (!trackedChangesMatchEdit(collection.items, edit)) {
-          return { status: "view-only" as const };
-        }
-
-        collection.track();
-        for (const change of collection.items) change.track();
-        range.track();
-        await context.sync();
-        return {
-          status: "restored" as const,
-          collection,
-          changes: collection.items,
-          range,
-        };
-      });
-
-      if (restored.status === "not-found" || restored.status === "resolved") {
-        try {
-          await removeWordEditAnchor(stableEditId);
-        } catch {
-          // The stale mapping is harmless and will be pruned on a later load.
-        }
-        return { stableEditId, status: restored.status };
-      }
-      if (!anchorWasRegistered) {
-        await persistWordEditAnchor(stableEditId, bookmarkName).catch(
-          (error) => {
-            console.error(
-              "[tracked-edit/restore] Failed to repair the document anchor registry.",
-              { stableEditId, bookmarkName, error },
-            );
-          },
-        );
-      }
-      if (restored.status === "view-only") {
-        return { stableEditId, status: "view-only" };
-      }
-
-      const handle = createTrackedEditHandle();
-      pendingTrackedEdits.set(handle, {
-        expectedEdit: edit,
-        changes: restored.changes,
-        parentCollections: [restored.collection],
-        ranges: [restored.range],
-        stableEditId,
-        bookmarkName,
-      });
-      return { stableEditId, status: "restored", handle };
-    } catch (error) {
-      return {
-        stableEditId,
-        status: "error",
-        error: describeWordFailure(
-          error,
-          "Word couldn’t restore this tracked change. Review it from Word’s Review tab.",
-        ),
-      };
-    }
-  });
+  return serializeWordMutation(() => restoreTrackedEditNow(stableEditId, edit));
 }
 
 /** Navigate through a persistent bookmark when exact review controls are unsafe. */
@@ -758,15 +784,18 @@ export function releaseTrackedEdits(
  */
 export function useWordDoc() {
   /** Read the plain text of the entire document body. */
-  const readDocumentText = (): Promise<string> =>
-    serializeWordMutation(() =>
-      Word.run(async (context) => {
-        const body = context.document.body;
-        body.load("text");
-        await context.sync();
-        return body.text;
-      }),
-    );
+  const readDocumentText = useCallback(
+    (): Promise<string> =>
+      serializeWordMutation(() =>
+        Word.run(async (context) => {
+          const body = context.document.body;
+          body.load("text");
+          await context.sync();
+          return body.text;
+        }),
+      ),
+    [],
+  );
 
   /**
    * Apply model-proposed edits to existing document text as tracked changes.
@@ -779,303 +808,307 @@ export function useWordDoc() {
    * tab. Edits whose text can no longer be found (the user edited the
    * document, or the model mis-copied) are reported, never guessed at.
    */
-  const applyTrackedEdits = (
-    edits: PersistedRedlineEdit[],
-  ): Promise<RedlineApplyReport> =>
-    serializeWordMutation(() =>
-      Word.run(async (context) => {
-        const doc = context.document;
-        doc.load("changeTrackingMode");
-        await context.sync();
-
-        const originalMode = doc.changeTrackingMode;
-        const report: RedlineApplyReport = {
-          edits: [],
-        };
-        const stagedHandles: {
-          handle: TrackedEditHandle;
-          entry: PendingTrackedEdit;
-        }[] = [];
-        const stagedAnchors: {
-          stableEditId: string;
-          bookmarkName: string;
-          result: TrackedEditApplyResult;
-        }[] = [];
-
-        try {
-          // Sync this separately so every later insert is guaranteed to be
-          // authored under TrackAll, irrespective of the user's prior mode.
-          doc.changeTrackingMode = Word.ChangeTrackingMode.trackAll;
+  const applyTrackedEdits = useCallback(
+    (edits: PersistedRedlineEdit[]): Promise<RedlineApplyReport> =>
+      serializeWordMutation(() =>
+        Word.run(async (context) => {
+          const doc = context.document;
+          doc.load("changeTrackingMode");
           await context.sync();
 
-          for (const [index, edit] of edits.entries()) {
-            const original = edit.original;
-            const result: TrackedEditApplyResult = {
-              index,
-              original,
-              replacement: edit.replacement,
-              status: "error",
-              matches: 0,
-              appliedMatches: 0,
-            };
-            let mutationApplied = false;
-            let trackingQueued = false;
-            let candidateCollections: Word.TrackedChangeCollection[] = [];
-            let candidateChanges: Word.TrackedChange[] = [];
-            let candidateRanges: Word.Range[] = [];
+          const originalMode = doc.changeTrackingMode;
+          const report: RedlineApplyReport = {
+            edits: [],
+          };
+          const stagedHandles: {
+            handle: TrackedEditHandle;
+            entry: PendingTrackedEdit;
+          }[] = [];
+          const stagedAnchors: {
+            stableEditId: string;
+            bookmarkName: string;
+            result: TrackedEditApplyResult;
+          }[] = [];
 
-            if (
-              !original ||
-              original.includes("\n") ||
-              original.includes("\r") ||
-              original.length > MAX_SEARCH_CHARS
-            ) {
-              result.status = "skipped";
-              result.reason = "unsearchable";
-              report.edits.push(result);
-              continue;
-            }
+          try {
+            // Sync this separately so every later insert is guaranteed to be
+            // authored under TrackAll, irrespective of the user's prior mode.
+            doc.changeTrackingMode = Word.ChangeTrackingMode.trackAll;
+            await context.sync();
 
-            try {
-              const matches = doc.body.search(original, { matchCase: true });
-              matches.load("items");
-              await context.sync();
-
-              result.matches = matches.items.length;
-
-              if (matches.items.length === 0) {
-                result.status = "not-found";
-                report.edits.push(result);
-                continue;
-              }
-
-              // A model block describes one concrete source passage. Applying
-              // it to every identical clause would silently broaden the edit,
-              // so require an unambiguous exact location.
-              if (matches.items.length > 1) {
-                result.status = "skipped";
-                result.reason = "ambiguous";
-                result.error = `Found ${matches.items.length} exact matches; no edit was applied.`;
-                report.edits.push(result);
-                continue;
-              }
-
-              // Never mix Mike's lifecycle with revisions that were already
-              // present in the exact target. Skipping the whole logical edit
-              // also avoids partially applying a repeated occurrence.
-              const existingCollections = matches.items.map((match) => {
-                const collection = match.getTrackedChanges();
-                collection.load("items");
-                return collection;
-              });
-              await context.sync();
+            for (const [index, edit] of edits.entries()) {
+              const original = edit.original;
+              const result: TrackedEditApplyResult = {
+                index,
+                original,
+                replacement: edit.replacement,
+                status: "error",
+                matches: 0,
+                appliedMatches: 0,
+              };
+              let mutationApplied = false;
+              let trackingQueued = false;
+              let candidateCollections: Word.TrackedChangeCollection[] = [];
+              let candidateChanges: Word.TrackedChange[] = [];
+              let candidateRanges: Word.Range[] = [];
 
               if (
-                existingCollections.some(
-                  (collection) => collection.items.length > 0,
-                )
+                !original ||
+                original.includes("\n") ||
+                original.includes("\r") ||
+                original.includes("^") ||
+                original.length > MAX_SEARCH_CHARS
               ) {
                 result.status = "skipped";
-                result.reason = "pre-existing-revisions";
+                result.reason = "unsearchable";
                 report.edits.push(result);
                 continue;
               }
 
-              // Because every target range was revision-free immediately
-              // above, the changes obtained from those same ranges after the
-              // queued replacements are exactly the changes this edit made.
-              const wordReplacement = toWordText(edit.replacement);
-              const insertedRanges: Word.Range[] = [];
-              const generatedCollections = matches.items.map((match) => {
-                // The range Word returns for the inserted text is the sturdier
-                // anchor: replacing a search range can leave that original
-                // proxy stale, which Word then reports as a bare exception.
-                const inserted = match.insertText(
-                  wordReplacement,
-                  Word.InsertLocation.replace,
-                );
-                if (inserted) insertedRanges.push(inserted);
-                const collection = match.getTrackedChanges();
-                collection.load("items");
-                return collection;
-              });
-              await context.sync();
-              mutationApplied = true;
-
-              result.appliedMatches = matches.items.length;
-
-              const generatedChanges = generatedCollections.flatMap(
-                (collection) => collection.items,
-              );
-              candidateCollections = generatedCollections;
-              candidateChanges = generatedChanges;
-
-              // Prefer managing the exact revisions this edit generated, but
-              // only when Word hands over a set that reconstructs the edit and
-              // nothing else. Anything less precise is still Mike's edit — the
-              // target was revision-free a moment ago — so it stays reviewable
-              // through the edited passage instead of being handed back.
-              let exactRevisions =
-                generatedChanges.length > 0 &&
-                generatedCollections.every(
-                  (collection) => collection.items.length > 0,
-                );
-
-              if (!exactRevisions) {
-                result.reason = "no-tracked-changes";
-              } else {
-                for (const change of generatedChanges) {
-                  change.load(["type", "text"]);
-                }
+              try {
+                const matches = doc.body.search(original, { matchCase: true });
+                matches.load("items");
                 await context.sync();
 
-                if (!trackedChangesMatchEdit(generatedChanges, edit)) {
-                  exactRevisions = false;
-                  result.reason = "unexpected-revisions";
-                }
-              }
+                result.matches = matches.items.length;
 
-              // Track each retained proxy so it stays valid after this
-              // Word.run completes: the exact children when they were
-              // verified, and always the edited passage itself.
-              trackingQueued = true;
-              if (exactRevisions) {
-                for (const collection of generatedCollections) {
-                  collection.track();
+                if (matches.items.length === 0) {
+                  result.status = "not-found";
+                  report.edits.push(result);
+                  continue;
                 }
-                for (const change of generatedChanges) change.track();
-              }
-              const revisionRanges = exactRevisions
-                ? generatedChanges
-                    .map((change) => ({
-                      range: change.getRange("Whole"),
-                      type: String(change.type).toLowerCase(),
-                    }))
-                    .sort((left, right) => {
-                      if (left.type === right.type) return 0;
-                      return left.type === "added" ? -1 : 1;
-                    })
-                    .map(({ range }) => range)
-                : [];
-              candidateRanges = [
-                ...revisionRanges,
-                ...insertedRanges,
-                ...matches.items,
-              ];
-              for (const range of candidateRanges) range.track();
-              await context.sync();
 
-              let bookmarkName: string | undefined;
-              if (edit.stableEditId && candidateRanges.length > 0) {
-                const persistentRanges =
-                  revisionRanges.length > 0 ? revisionRanges : insertedRanges;
-                const [firstPersistentRange, ...remainingPersistentRanges] =
-                  persistentRanges;
-                if (firstPersistentRange) {
-                  const candidateBookmarkName = bookmarkNameForEdit(
-                    edit.stableEditId,
+                // A model block describes one concrete source passage. Applying
+                // it to every identical clause would silently broaden the edit,
+                // so require an unambiguous exact location.
+                if (matches.items.length > 1) {
+                  result.status = "skipped";
+                  result.reason = "ambiguous";
+                  result.error = `Found ${matches.items.length} exact matches; no edit was applied.`;
+                  report.edits.push(result);
+                  continue;
+                }
+
+                // Never mix Mike's lifecycle with revisions that were already
+                // present in the exact target. Skipping the whole logical edit
+                // also avoids partially applying a repeated occurrence.
+                const existingCollections = matches.items.map((match) => {
+                  const collection = match.getTrackedChanges();
+                  collection.load("items");
+                  return collection;
+                });
+                await context.sync();
+
+                if (
+                  existingCollections.some(
+                    (collection) => collection.items.length > 0,
+                  )
+                ) {
+                  result.status = "skipped";
+                  result.reason = "pre-existing-revisions";
+                  report.edits.push(result);
+                  continue;
+                }
+
+                // Because every target range was revision-free immediately
+                // above, the changes obtained from those same ranges after the
+                // queued replacements are exactly the changes this edit made.
+                const wordReplacement = toWordText(edit.replacement);
+                const insertedRanges: Word.Range[] = [];
+                const generatedCollections = matches.items.map((match) => {
+                  // The range Word returns for the inserted text is the sturdier
+                  // anchor: replacing a search range can leave that original
+                  // proxy stale, which Word then reports as a bare exception.
+                  const inserted = match.insertText(
+                    wordReplacement,
+                    Word.InsertLocation.replace,
                   );
-                  try {
-                    let bookmarkRange = firstPersistentRange;
-                    for (const range of remainingPersistentRanges) {
-                      bookmarkRange = bookmarkRange.expandTo(range);
-                    }
-                    bookmarkRange.insertBookmark(candidateBookmarkName);
-                    await context.sync();
-                    bookmarkName = candidateBookmarkName;
-                    result.persistentAnchor = true;
-                    stagedAnchors.push({
-                      stableEditId: edit.stableEditId,
-                      bookmarkName,
-                      result,
-                    });
-                  } catch (error) {
-                    result.error = describeWordFailure(
-                      error,
-                      "The change is reviewable now, but its View link may not survive reopening the add-in.",
-                    );
+                  if (inserted) insertedRanges.push(inserted);
+                  const collection = match.getTrackedChanges();
+                  collection.load("items");
+                  return collection;
+                });
+                await context.sync();
+                mutationApplied = true;
+
+                result.appliedMatches = matches.items.length;
+
+                const generatedChanges = generatedCollections.flatMap(
+                  (collection) => collection.items,
+                );
+                candidateCollections = generatedCollections;
+                candidateChanges = generatedChanges;
+
+                // Prefer managing the exact revisions this edit generated, but
+                // only when Word hands over a set that reconstructs the edit and
+                // nothing else. Anything less precise is still Mike's edit — the
+                // target was revision-free a moment ago — so it stays reviewable
+                // through the edited passage instead of being handed back.
+                let exactRevisions =
+                  generatedChanges.length > 0 &&
+                  generatedCollections.every(
+                    (collection) => collection.items.length > 0,
+                  );
+
+                if (!exactRevisions) {
+                  result.reason = "no-tracked-changes";
+                } else {
+                  for (const change of generatedChanges) {
+                    change.load(["type", "text"]);
+                  }
+                  await context.sync();
+
+                  if (!trackedChangesMatchEdit(generatedChanges, edit)) {
+                    exactRevisions = false;
+                    result.reason = "unexpected-revisions";
                   }
                 }
-              }
 
-              const handle = createTrackedEditHandle();
-              stagedHandles.push({
-                handle,
-                entry: {
-                  expectedEdit: edit,
-                  changes: exactRevisions ? generatedChanges : [],
-                  parentCollections: exactRevisions ? generatedCollections : [],
-                  ranges: candidateRanges,
-                  ...(bookmarkName && edit.stableEditId
-                    ? {
+                // Track each retained proxy so it stays valid after this
+                // Word.run completes: the exact children when they were
+                // verified, and always the edited passage itself.
+                trackingQueued = true;
+                if (exactRevisions) {
+                  for (const collection of generatedCollections) {
+                    collection.track();
+                  }
+                  for (const change of generatedChanges) change.track();
+                }
+                const revisionRanges = exactRevisions
+                  ? generatedChanges
+                      .map((change) => ({
+                        range: change.getRange("Whole"),
+                        type: String(change.type).toLowerCase(),
+                      }))
+                      .sort((left, right) => {
+                        if (left.type === right.type) return 0;
+                        return left.type === "added" ? -1 : 1;
+                      })
+                      .map(({ range }) => range)
+                  : [];
+                candidateRanges = [
+                  ...revisionRanges,
+                  ...insertedRanges,
+                  ...matches.items,
+                ];
+                for (const range of candidateRanges) range.track();
+                await context.sync();
+
+                let bookmarkName: string | undefined;
+                if (edit.stableEditId && candidateRanges.length > 0) {
+                  const persistentRanges =
+                    revisionRanges.length > 0 ? revisionRanges : insertedRanges;
+                  const [firstPersistentRange, ...remainingPersistentRanges] =
+                    persistentRanges;
+                  if (firstPersistentRange) {
+                    const candidateBookmarkName = bookmarkNameForEdit(
+                      edit.stableEditId,
+                    );
+                    try {
+                      let bookmarkRange = firstPersistentRange;
+                      for (const range of remainingPersistentRanges) {
+                        bookmarkRange = bookmarkRange.expandTo(range);
+                      }
+                      bookmarkRange.insertBookmark(candidateBookmarkName);
+                      await context.sync();
+                      bookmarkName = candidateBookmarkName;
+                      result.persistentAnchor = true;
+                      stagedAnchors.push({
                         stableEditId: edit.stableEditId,
                         bookmarkName,
-                      }
-                    : {}),
-                },
-              });
-              result.status = "applied";
-              result.handle = handle;
-              report.edits.push(result);
-            } catch (error) {
-              if (trackingQueued) {
-                try {
-                  for (const change of candidateChanges) change.untrack();
-                  for (const collection of candidateCollections) {
-                    collection.untrack();
+                        result,
+                      });
+                    } catch (error) {
+                      result.error = describeWordFailure(
+                        error,
+                        "The change is reviewable now, but its View link may not survive reopening the add-in.",
+                      );
+                    }
                   }
-                  for (const range of candidateRanges) range.untrack();
-                  await context.sync();
-                } catch {
-                  // The edit remains a valid Word revision even if proxy
-                  // cleanup is unavailable; the UI hands review back to Word.
                 }
+
+                const handle = createTrackedEditHandle();
+                stagedHandles.push({
+                  handle,
+                  entry: {
+                    expectedEdit: edit,
+                    changes: exactRevisions ? generatedChanges : [],
+                    parentCollections: exactRevisions
+                      ? generatedCollections
+                      : [],
+                    ranges: candidateRanges,
+                    ...(bookmarkName && edit.stableEditId
+                      ? {
+                          stableEditId: edit.stableEditId,
+                          bookmarkName,
+                        }
+                      : {}),
+                  },
+                });
+                result.status = "applied";
+                result.handle = handle;
+                report.edits.push(result);
+              } catch (error) {
+                if (trackingQueued) {
+                  try {
+                    for (const change of candidateChanges) change.untrack();
+                    for (const collection of candidateCollections) {
+                      collection.untrack();
+                    }
+                    for (const range of candidateRanges) range.untrack();
+                    await context.sync();
+                  } catch {
+                    // The edit remains a valid Word revision even if proxy
+                    // cleanup is unavailable; the UI hands review back to Word.
+                  }
+                }
+                result.status = mutationApplied ? "applied-unmanaged" : "error";
+                result.reason = "word-error";
+                result.error = mutationApplied
+                  ? "Applied in Word, but Mike couldn’t retain its review controls. Review it from Word’s Review tab."
+                  : describeWordFailure(
+                      error,
+                      "Word couldn’t apply this change.",
+                    );
+                report.edits.push(result);
               }
-              result.status = mutationApplied ? "applied-unmanaged" : "error";
-              result.reason = "word-error";
-              result.error = mutationApplied
-                ? "Applied in Word, but Mike couldn’t retain its review controls. Review it from Word’s Review tab."
-                : describeWordFailure(
-                    error,
-                    "Word couldn’t apply this change.",
-                  );
-              report.edits.push(result);
+            }
+          } finally {
+            try {
+              doc.changeTrackingMode = originalMode;
+              await context.sync();
+            } catch (error) {
+              report.warning = describeWordFailure(
+                error,
+                "Word couldn’t restore the previous change-tracking mode.",
+              );
             }
           }
-        } finally {
-          try {
-            doc.changeTrackingMode = originalMode;
-            await context.sync();
-          } catch (error) {
-            report.warning = describeWordFailure(
-              error,
-              "Word couldn’t restore the previous change-tracking mode.",
-            );
-          }
-        }
 
-        // Publish handle ownership only after change-tracking restoration has
-        // completed (or its warning has been recorded), so callers can always
-        // release every retained proxy returned by this operation.
-        for (const staged of stagedHandles) {
-          pendingTrackedEdits.set(staged.handle, staged.entry);
-        }
-        for (const anchor of stagedAnchors) {
-          try {
-            await persistWordEditAnchor(
-              anchor.stableEditId,
-              anchor.bookmarkName,
-            );
-          } catch (error) {
-            anchor.result.error = describeWordFailure(
-              error,
-              "The change is reviewable now, but its View link may not survive reopening the document.",
-            );
+          // Publish handle ownership only after change-tracking restoration has
+          // completed (or its warning has been recorded), so callers can always
+          // release every retained proxy returned by this operation.
+          for (const staged of stagedHandles) {
+            pendingTrackedEdits.set(staged.handle, staged.entry);
           }
-        }
-        return report;
-      }),
-    );
+          for (const anchor of stagedAnchors) {
+            try {
+              await persistWordEditAnchor(
+                anchor.stableEditId,
+                anchor.bookmarkName,
+              );
+            } catch (error) {
+              anchor.result.error = describeWordFailure(
+                error,
+                "The change is reviewable now, but its View link may not survive reopening the document.",
+              );
+            }
+          }
+          return report;
+        }),
+      ),
+    [],
+  );
 
   return {
     readDocumentText,

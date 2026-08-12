@@ -26,8 +26,7 @@ const CHAT_MESSAGES_BOTTOM_GAP = 16;
 const PIN_TOP_OFFSET = 80;
 
 interface ChatViewProps
-    extends
-        WordAssistantChatController,
+    extends WordAssistantChatController,
         Pick<
             WordTrackedEditsController,
             | "editStateByKey"
@@ -489,24 +488,17 @@ export function ChatView({
     // stream (two rAFs after the append commit). By then the pre-paint spacer
     // is installed, so this callback owns the turn's only pin operation.
     const requestTurnLayout = useCallback(() => {
-        const { id, content } = latestUserMessageDetailsRef.current;
+        const { id } = latestUserMessageDetailsRef.current;
         if (!id || scrollHandledIdRef.current === id) return;
         scrollHandledIdRef.current = id;
         const requestedVersion = scrollVersionRef.current;
-        console.log("[WordChatView] Scrolling to latest user message", {
-            id,
-            content,
-        });
         if (requestedVersion !== scrollVersionRef.current) return;
         const container = messagesContainerRef.current;
         const element = latestUserMessageRef.current;
         if (!container || !element || element.dataset.messageId !== id) return;
         anchorActiveRef.current = true;
         cancelPinScrollRef.current?.();
-        const targetTop = Math.max(
-            0,
-            element.offsetTop - PIN_TOP_OFFSET,
-        );
+        const targetTop = Math.max(0, element.offsetTop - PIN_TOP_OFFSET);
         desiredScrollTopRef.current = targetTop;
         cancelPinScrollRef.current = animateScrollTo(
             container,

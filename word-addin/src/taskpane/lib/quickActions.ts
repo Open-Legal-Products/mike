@@ -2,9 +2,9 @@ import { useCallback, useSyncExternalStore } from "react";
 
 type QuickActionId =
   | "proofread"
-  | "compare-documents"
-  | "extract-key-terms"
-  | "draft-from-template";
+  | "compareDocuments"
+  | "extractKeyTerms"
+  | "draftFromTemplate";
 
 export interface QuickAction {
   id: QuickActionId;
@@ -25,7 +25,7 @@ export const QUICK_ACTIONS: readonly QuickAction[] = [
     workflow: { id: "builtin-proofread", title: "Proofread" },
   },
   {
-    id: "compare-documents",
+    id: "compareDocuments",
     label: "Compare documents",
     prompt:
       "Compare the current document with the documents I attach. Present the material similarities, differences, risks, and follow-up points in a structured table, citing the relevant location in each document where available.",
@@ -35,7 +35,7 @@ export const QUICK_ACTIONS: readonly QuickAction[] = [
     },
   },
   {
-    id: "extract-key-terms",
+    id: "extractKeyTerms",
     label: "Extract key terms",
     prompt:
       "Extract the key legal, commercial, and operational terms from the current document. Present them in a concise table with the term, value, location, and notes, and flag material omissions or ambiguities without inventing missing information.",
@@ -45,7 +45,7 @@ export const QUICK_ACTIONS: readonly QuickAction[] = [
     },
   },
   {
-    id: "draft-from-template",
+    id: "draftFromTemplate",
     label: "Draft from template",
     prompt:
       "Create a completed draft from the template I attach, using the current document and any additional materials as source context. Preserve the template's formatting and structure, replace placeholders consistently, and ask for any essential missing information.",
@@ -60,9 +60,9 @@ type QuickActionPreferences = Record<QuickActionId, boolean>;
 
 const DEFAULT_QUICK_ACTION_PREFERENCES: QuickActionPreferences = {
   proofread: true,
-  "compare-documents": true,
-  "extract-key-terms": true,
-  "draft-from-template": true,
+  compareDocuments: true,
+  extractKeyTerms: true,
+  draftFromTemplate: true,
 };
 
 const STORAGE_KEY = "mike.quickActions.visible";
@@ -74,17 +74,27 @@ function normalizePreference(value: unknown): QuickActionPreferences {
   if (!value || typeof value !== "object") {
     return DEFAULT_QUICK_ACTION_PREFERENCES;
   }
-  const stored = value as Partial<Record<QuickActionId, unknown>>;
+  const stored = value as Partial<Record<QuickActionId, unknown>> &
+    Record<string, unknown>;
+  const legacyIds: Partial<Record<QuickActionId, string>> = {
+    compareDocuments: "compare-documents",
+    extractKeyTerms: "extract-key-terms",
+    draftFromTemplate: "draft-from-template",
+  };
   return QUICK_ACTIONS.reduce<QuickActionPreferences>(
     (next, action) => {
-      const storedValue = stored[action.id];
+      const storedValue =
+        stored[action.id] ??
+        (legacyIds[action.id]
+          ? stored[legacyIds[action.id] as string]
+          : undefined);
       next[action.id] =
         typeof storedValue === "boolean"
           ? storedValue
           : DEFAULT_QUICK_ACTION_PREFERENCES[action.id];
       return next;
     },
-    { ...DEFAULT_QUICK_ACTION_PREFERENCES }
+    { ...DEFAULT_QUICK_ACTION_PREFERENCES },
   );
 }
 
@@ -128,14 +138,14 @@ export function useQuickActionPreferences(): {
       };
     },
     readPreference,
-    () => DEFAULT_QUICK_ACTION_PREFERENCES
+    () => DEFAULT_QUICK_ACTION_PREFERENCES,
   );
 
   const setActionActive = useCallback(
     (id: QuickActionId, active: boolean): void => {
       persistPreference({ ...readPreference(), [id]: active });
     },
-    []
+    [],
   );
 
   return { activeActions, setActionActive };

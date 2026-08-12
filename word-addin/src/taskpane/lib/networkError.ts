@@ -44,8 +44,3 @@ export function describeNetworkFailure(
     `Check that the server at ${origin} is running and reachable from Word.`
   );
 }
-
-/** True when a thrown value is a transport failure rather than an HTTP status. */
-export function isNetworkFailure(error: unknown): boolean {
-  return error instanceof TypeError;
-}

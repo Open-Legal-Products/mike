@@ -91,7 +91,7 @@ export function installOfficeMock(seed: OfficeSeed): void {
   const documentStateKey = "__mike_word_e2e_document_v1";
   const officeStorageKey = "__mike_word_e2e_office_storage_v1";
 
-  const clone = <T,>(value: T): T => {
+  const clone = <T>(value: T): T => {
     if (value === undefined) return value;
     return JSON.parse(JSON.stringify(value)) as T;
   };
@@ -142,7 +142,10 @@ export function installOfficeMock(seed: OfficeSeed): void {
   const savedOfficeValues = sessionStorage.getItem(officeStorageKey);
   if (savedOfficeValues !== null) {
     try {
-      storedOfficeValues = JSON.parse(savedOfficeValues) as Record<string, string>;
+      storedOfficeValues = JSON.parse(savedOfficeValues) as Record<
+        string,
+        string
+      >;
     } catch {
       storedOfficeValues = {};
     }
@@ -152,11 +155,17 @@ export function installOfficeMock(seed: OfficeSeed): void {
     if (seed.refreshToken != null) {
       storedOfficeValues.mike_refresh_token = seed.refreshToken;
     }
-    sessionStorage.setItem(officeStorageKey, JSON.stringify(storedOfficeValues));
+    sessionStorage.setItem(
+      officeStorageKey,
+      JSON.stringify(storedOfficeValues),
+    );
   }
 
   const persistOfficeValues = (): void => {
-    sessionStorage.setItem(officeStorageKey, JSON.stringify(storedOfficeValues));
+    sessionStorage.setItem(
+      officeStorageKey,
+      JSON.stringify(storedOfficeValues),
+    );
   };
   w.OfficeRuntime = {
     storage: {
@@ -238,7 +247,7 @@ export function installOfficeMock(seed: OfficeSeed): void {
         text: bookmark.entry.text,
         revisionCount: revisions.length,
         pendingRevisionCount: revisions.filter(
-          (revision) => revision.resolution === null
+          (revision) => revision.resolution === null,
         ).length,
       };
     }),
@@ -259,7 +268,7 @@ export function installOfficeMock(seed: OfficeSeed): void {
     },
     resolveBookmarkExternally: (
       bookmarkName: string,
-      decision: "accepted" | "rejected"
+      decision: "accepted" | "rejected",
     ) => {
       const bookmark = documentState.bookmarks[bookmarkName];
       if (!bookmark) return false;
@@ -270,7 +279,7 @@ export function installOfficeMock(seed: OfficeSeed): void {
       const groupIds = new Set(
         bookmark.revisionIds
           .map((revisionId) => documentState.revisions[revisionId]?.groupId)
-          .filter(Boolean)
+          .filter(Boolean),
       );
       for (const groupId of groupIds) {
         const group = documentState.groups[groupId as string];
@@ -282,7 +291,7 @@ export function installOfficeMock(seed: OfficeSeed): void {
     injectRevisionIntoBookmark: (
       bookmarkName: string,
       type: "Added" | "Deleted",
-      text: string
+      text: string,
     ) => {
       const bookmark = documentState.bookmarks[bookmarkName];
       if (!bookmark) return false;
@@ -322,7 +331,7 @@ export function installOfficeMock(seed: OfficeSeed): void {
     const recordWrite = (
       text: string,
       location: string,
-      original?: string
+      original?: string,
     ): WordCall => {
       const entry: WordCall = { text, location };
       if (original !== undefined) entry.original = original;
@@ -337,7 +346,7 @@ export function installOfficeMock(seed: OfficeSeed): void {
 
     const resolveStoredRevision = (
       revisionId: string,
-      decision: "accepted" | "rejected"
+      decision: "accepted" | "rejected",
     ): void => {
       const revision = documentState.revisions[revisionId];
       if (!revision || revision.resolution) return;
@@ -399,7 +408,7 @@ export function installOfficeMock(seed: OfficeSeed): void {
             .map((id) => documentState.revisions[id])
             .filter(
               (revision): revision is StoredRevision =>
-                !!revision && revision.resolution === null
+                !!revision && revision.resolution === null,
             )
             .map((revision) => makeStoredTrackedChange(revision.id));
           return makeTrackedChangeCollection([
@@ -413,7 +422,7 @@ export function installOfficeMock(seed: OfficeSeed): void {
               new Set([
                 ...args.revisionIds(),
                 ...((other.__revisionIds?.() as string[] | undefined) ?? []),
-              ])
+              ]),
             );
           return makeRange({
             label: "Expanded",
@@ -463,9 +472,9 @@ export function installOfficeMock(seed: OfficeSeed): void {
             label: "Revision",
             entry: () => ({ ...group.entry }),
             revisionIds: () => [revisionId],
-            cannotSelect: (
-              seed.unselectableOriginals ?? []
-            ).includes(group.entry.original ?? ""),
+            cannotSelect: (seed.unselectableOriginals ?? []).includes(
+              group.entry.original ?? "",
+            ),
           }),
       };
       return change;
@@ -475,7 +484,7 @@ export function installOfficeMock(seed: OfficeSeed): void {
     const makeTransientTrackedChange = (
       entry: WordCall,
       type: "Formatted" | "Added" | "Deleted" = "Formatted",
-      text: string = entry.text
+      text: string = entry.text,
     ): any => {
       transientChangeSequence++;
       const change: any = {
@@ -502,13 +511,20 @@ export function installOfficeMock(seed: OfficeSeed): void {
     const createStoredRevisionGroup = (
       entry: WordCall,
       original: string,
-      replacement: string
+      replacement: string,
     ): string[] => {
       documentState.groupSequence++;
       const groupId = `revision-group-${documentState.groupSequence}`;
       const revisions: StoredRevision[] = [
         { id: "", groupId, type: "Deleted", text: original, resolution: null },
-        { id: "", groupId, type: "Added", text: replacement, resolution: null },
+        {
+          id: "",
+          groupId,
+          type: "Added",
+          // Real Word exposes inserted paragraph marks as carriage returns.
+          text: replacement.replace(/\n/g, "\r"),
+          resolution: null,
+        },
       ];
       for (const revision of revisions) {
         documentState.revisionSequence++;
@@ -578,8 +594,7 @@ export function installOfficeMock(seed: OfficeSeed): void {
                   location: label,
                   original: query,
                 },
-              revisionIds: () =>
-                revisionsVisible ? generatedRevisionIds : [],
+              revisionIds: () => (revisionsVisible ? generatedRevisionIds : []),
               transientChanges: () =>
                 generatedRevisionIds.length > 0 ? [] : existingChanges,
               stale,
@@ -595,7 +610,7 @@ export function installOfficeMock(seed: OfficeSeed): void {
               generatedRevisionIds = createStoredRevisionGroup(
                 entry,
                 query,
-                newText
+                newText,
               );
             } else {
               generatedRevisionIds = [];

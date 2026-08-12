@@ -7,7 +7,7 @@
   },
   "scripts": {
     "predev": "node scripts/clear-sideload.js",
-    "dev": "office-addin-debugging start manifest.xml --dev-server \"bun run dev:server\" --dev-server-port 3200",
+    "dev": "office-addin-debugging start manifest.xml --dev-server \"npm run dev:server\" --dev-server-port 3200",
     "dev:server": "webpack serve --mode development",
     "typecheck": "npm run typecheck:app && npm run typecheck:e2e",
     "typecheck:app": "tsc --noEmit -p tsconfig.json",

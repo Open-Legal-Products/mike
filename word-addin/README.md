@@ -39,6 +39,7 @@ npm run dev                  # the Mike API on :3001
 ```
 
 Flags:
+
 - `--setup-only` — do everything except the final `npm start` (prep deps/env/cert; report backend status without launching).
 - `FORCE=1 bash word-addin/scripts/dev.sh` — launch even if the backend check fails (sign-in won't work until Mike is up).
 
@@ -124,7 +125,7 @@ Restart Word, then: **Insert → Add-ins → My Add-ins → Mike**
 
 **Insert → Add-ins → Upload My Add-in** → select `manifest.xml`
 
-> **Caveat — the pane will silently fail to load in a normal browser.** Word on the web is a *public* origin (`word-edit.officeapps.live.com`) and the dev pane is `https://localhost:3200`; Chrome's Local Network Access checks block a public page from embedding a localhost iframe, with no visible error — the pane simply never appears. This affects dev sideloads only (a deployed add-in on a public HTTPS host is unaffected). To test against real Word on the web locally, use the ready-made launcher, which starts a browser with those checks disabled, sideloads the manifest, opens the pane, and hands you the window:
+> **Caveat — the pane will silently fail to load in a normal browser.** Word on the web is a _public_ origin (`word-edit.officeapps.live.com`) and the dev pane is `https://localhost:3200`; Chrome's Local Network Access checks block a public page from embedding a localhost iframe, with no visible error — the pane simply never appears. This affects dev sideloads only (a deployed add-in on a public HTTPS host is unaffected). To test against real Word on the web locally, use the ready-made launcher, which starts a browser with those checks disabled, sideloads the manifest, opens the pane, and hands you the window:
 >
 > ```bash
 > node e2e-live/word-web-session.mjs --login   # one-time Microsoft sign-in (persistent profile)
@@ -149,6 +150,11 @@ npm run build
 
 The build writes the task-pane assets and a deployable, URL-rewritten manifest to `dist/`. The checked-in `manifest.xml` remains the localhost sideloading manifest.
 
+Add the deployed task-pane origin to the API deployment as
+`WORD_ADDIN_URL=https://word.example.com` (or include it in the comma-separated
+`ALLOWED_ORIGINS` value). Without that allowlist entry, browsers will block the
+add-in's direct production API requests at CORS preflight.
+
 ---
 
 ## Features
@@ -157,7 +163,15 @@ The build writes the task-pane assets and a deployable, URL-rewritten manifest t
 
 Ask any question about the open document. The add-in sends Word conversations to the dedicated `POST /word-chat` route with the active document in `document_context`. That route adds the Word-specific system prompt server-side, while persisted user messages contain only the text the user typed. Responses stream in real time.
 
-Chat storage defaults to **Cloud**. Open **Settings** from the hamburger menu to switch to **This device only**, which bypasses server chat persistence and stores document-scoped conversations in IndexedDB. Switching locations does not copy or delete existing conversations; Chat History displays the currently selected location. Cloud storage requires the `20260809_01_word_addin_chats.sql` backend migration on existing databases (fresh databases receive the same tables from `backend/schema.sql`).
+Chat storage defaults to **Cloud**. Open **Settings** from the hamburger menu to switch to **This device only**, which bypasses server chat persistence and stores document-scoped conversations in IndexedDB. The preference is stored separately for each signed-in account. Local chats are not encrypted by the add-in and remain in the current operating-system profile after sign-out; Settings includes a permanent **Delete** action for that account's device-only chats. Switching locations does not copy or delete existing conversations; Chat History displays the currently selected location. Cloud storage requires the `20260809_01_word_addin_chats.sql` backend migration on existing databases (fresh databases receive the same tables from `backend/schema.sql`).
+
+The add-in links cloud chat history to an identifier saved in the Word
+document's Office settings. That metadata travels with a copied or externally
+shared `.docx`, although the server still scopes every history lookup to the
+signed-in Mike account. A same-account **Save As** copy therefore initially
+shares the source document's chat history. Remove the Mike document setting or
+treat the copy as a new document before external distribution when that stable
+metadata is undesirable.
 
 The composer mirrors the web assistant controls:
 
@@ -200,6 +214,24 @@ npm run test:e2e
 
 It builds the bundle with test env vars, serves it over plain HTTP, injects an Office.js mock (`e2e/support/office-mock.ts`), and drives the exposed task-pane flows (auth, chat, quick actions, workflows, chat history, storage, and tracked-edit persistence).
 
+The Office.js mock enforces the task-pane flows in CI, but cannot prove every
+desktop Word host behavior. Before release, manually verify one multi-paragraph
+tracked replacement and its Accept/Reject actions in supported Word desktop,
+then repeat after closing and reopening the task pane.
+
+### Shared UI sync checklist
+
+The task pane is independently bundled, so a small set of web UI files remains
+vendored temporarily. When the web design system changes, compare and update:
+
+- `src/shared/styles/tokens.css` against `frontend/src/app/globals.css`;
+- `src/taskpane/lib/modelCatalog.ts` against the web `ModelToggle` catalog;
+- `src/shared/chat/ChatInput.tsx` and `src/shared/ui/button.tsx` against their
+  web counterparts, preserving only narrow-pane adaptations.
+
+Workflow selection is currently button-based in the task pane. The web
+assistant's slash-command workflow picker remains an intentional scope cut.
+
 ---
 
 ## Testing without an LLM key
@@ -219,7 +251,7 @@ The stub's answers are static, so exercise it with the document flaws it scripts
 ## Troubleshooting
 
 **Word shows "The content is blocked because it isn't signed by a valid security certificate" — including when it worked before**
-This is *certificate trust drift*, and it will eventually happen to every returning developer: the dev certificate expires after ~30 days, and the tooling then silently regenerates it **with a new signing CA** (the webpack dev server does this on startup). Your OS keychain still trusts only the *old* CA, so Word rejects the pane — while `npx office-addin-dev-certs verify` misleadingly reports "trusted", because it only checks that a CA *by that name* exists, not that it signed the current certificate. `npx office-addin-dev-certs install` then refuses to reinstall for the same reason.
+This is _certificate trust drift_, and it will eventually happen to every returning developer: the dev certificate expires after ~30 days, and the tooling then silently regenerates it **with a new signing CA** (the webpack dev server does this on startup). Your OS keychain still trusts only the _old_ CA, so Word rejects the pane — while `npx office-addin-dev-certs verify` misleadingly reports "trusted", because it only checks that a CA _by that name_ exists, not that it signed the current certificate. `npx office-addin-dev-certs install` then refuses to reinstall for the same reason.
 
 `bash scripts/dev.sh` now detects and repairs this automatically (it verifies the real chain against the OS trust store). To fix it by hand on macOS:
 
@@ -260,6 +292,7 @@ Confirm the `REACT_APP_SUPABASE_URL` / `REACT_APP_SUPABASE_ANON_KEY` in `.env` m
 The add-in requires WordApi 1.6. Confirm the Word host and build support that requirement set; otherwise use a supported Microsoft 365 Word client.
 
 **Document upload fails**
+
 - Confirm the Mike API is running (`npm run dev` in `backend/`) and reachable at `http://localhost:3001`
 - Confirm the API's configured object-storage bucket exists
 - Check the backend logs for the specific error

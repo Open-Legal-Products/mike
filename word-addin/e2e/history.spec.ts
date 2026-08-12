@@ -16,7 +16,7 @@ function makeChats(count: number) {
 async function mockPaginatedHistory(
   page: Page,
   count: number,
-  requests: number[],
+  requests: { limit: number; offset: number }[],
 ): Promise<void> {
   const chats = makeChats(count);
   await page.route("**/word-chat?*", async (route, request) => {
@@ -24,11 +24,12 @@ async function mockPaginatedHistory(
     const params = new URL(request.url()).searchParams;
     if (!params.has("document_id")) return route.fallback();
     const limit = Number(params.get("limit"));
-    requests.push(limit);
+    const offset = Number(params.get("offset") ?? 0);
+    requests.push({ limit, offset });
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(chats.slice(0, limit)),
+      body: JSON.stringify(chats.slice(offset, offset + limit)),
     });
   });
 }
@@ -37,12 +38,12 @@ test("header dropdown loads 10 chats and fetches 10 more at the bottom", async (
   addin,
   page,
 }) => {
-  const requests: number[] = [];
+  const requests: { limit: number; offset: number }[] = [];
   await mockPaginatedHistory(page, 35, requests);
   await addin.gotoTaskpane({ token: TOKEN });
   await addin.expectAuthedShell();
 
-  await expect.poll(() => requests).toEqual([11]);
+  await expect.poll(() => requests).toEqual([{ limit: 11, offset: 0 }]);
   await page.getByRole("button", { name: "Chat history" }).click();
   const dropdown = page.getByRole("menu");
   await expect(dropdown).toHaveCSS("height", "360px");
@@ -54,7 +55,7 @@ test("header dropdown loads 10 chats and fetches 10 more at the bottom", async (
   const list = page.getByTestId("chat-history-list-10");
   await expect(list.getByRole("button")).toHaveCount(10);
   await expect(list.getByRole("button", { name: /Chat 1.*10m/ })).toBeVisible();
-  expect(requests).toEqual([11]);
+  expect(requests).toEqual([{ limit: 11, offset: 0 }]);
 
   await search.fill("Chat 3");
   await expect(list.getByRole("button", { name: /Chat 3/ })).toBeVisible();
@@ -66,7 +67,7 @@ test("header dropdown loads 10 chats and fetches 10 more at the bottom", async (
     element.dispatchEvent(new Event("scroll"));
   });
 
-  await expect.poll(() => requests).toContain(21);
+  await expect.poll(() => requests).toContainEqual({ limit: 11, offset: 10 });
   await expect(list.getByRole("button")).toHaveCount(20);
 });
 
@@ -74,7 +75,7 @@ test("Chat History page searches and loads 20 more chats at the bottom", async (
   addin,
   page,
 }) => {
-  const requests: number[] = [];
+  const requests: { limit: number; offset: number }[] = [];
   await mockPaginatedHistory(page, 45, requests);
   await addin.gotoTaskpane({ token: TOKEN });
   await addin.expectAuthedShell();
@@ -95,14 +96,23 @@ test("Chat History page searches and loads 20 more chats at the bottom", async (
   );
   const list = page.getByTestId("chat-history-list-20");
   await expect(list.getByRole("button")).toHaveCount(20);
-  expect(requests).toEqual([11, 21]);
+  expect(requests).toEqual([
+    { limit: 11, offset: 0 },
+    { limit: 21, offset: 0 },
+  ]);
 
   await list.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
     element.dispatchEvent(new Event("scroll"));
   });
 
-  await expect.poll(() => requests).toEqual([11, 21, 41]);
+  await expect
+    .poll(() => requests)
+    .toEqual([
+      { limit: 11, offset: 0 },
+      { limit: 21, offset: 0 },
+      { limit: 21, offset: 20 },
+    ]);
   await expect(list.getByRole("button")).toHaveCount(40);
 
   await page.getByPlaceholder("Search chat history...").fill("Chat 37");
@@ -151,7 +161,7 @@ test("a dismissed history load cannot replace a newer chat selection", async ({
   addin,
   page,
 }) => {
-  const requests: number[] = [];
+  const requests: { limit: number; offset: number }[] = [];
   await mockPaginatedHistory(page, 2, requests);
 
   let firstDetailRequested = false;
@@ -231,7 +241,7 @@ test("a dismissed history load cannot replace a newer chat selection", async ({
   await expect(page.getByText("Stale stored question")).toHaveCount(0);
 });
 
-test("a persisted cloud stream failure refreshes history once but cancellation does not", async ({
+test("persisted cloud failures and cancellations both refresh history", async ({
   addin,
   page,
 }) => {
@@ -316,7 +326,7 @@ test("a persisted cloud stream failure refreshes history once but cancellation d
   await addin.gotoTaskpane({ token: TOKEN });
   await addin.expectAuthedShell();
 
-  const composer = page.getByPlaceholder("Ask Mike…");
+  const composer = page.getByPlaceholder("How can I help?");
   await composer.fill("Fail after persistence");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByRole("alert")).toHaveText(
@@ -339,15 +349,16 @@ test("a persisted cloud stream failure refreshes history once but cancellation d
   await page.getByRole("button", { name: "Send" }).click();
   await page.getByRole("button", { name: "Stop" }).click();
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
-  await page.waitForTimeout(100);
-  expect(
-    await page.evaluate(
-      () =>
-        (
-          window as typeof window & {
-            __WORD_HISTORY_EVENT_COUNT__?: number;
-          }
-        ).__WORD_HISTORY_EVENT_COUNT__ ?? 0,
-    ),
-  ).toBe(1);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              __WORD_HISTORY_EVENT_COUNT__?: number;
+            }
+          ).__WORD_HISTORY_EVENT_COUNT__ ?? 0,
+      ),
+    )
+    .toBe(2);
 });

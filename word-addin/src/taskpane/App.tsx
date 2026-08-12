@@ -17,6 +17,7 @@ import { NewWorkflowModal } from "./components/workflows/NewWorkflowModal";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { useWordChatStoragePreference } from "./lib/wordChatSettings";
 import { useWordDocumentIdentity } from "./lib/wordDocumentIdentity";
+import { clearLocalWordChats } from "./lib/localWordChats";
 
 function getWordChatOwnerId(token: string): string {
   try {
@@ -40,7 +41,8 @@ function getWordChatOwnerId(token: string): string {
 
 export default function App(): React.ReactElement {
   const { token, loading, logout } = useAuth();
-  const wordChatStorage = useWordChatStoragePreference();
+  const pendingOwnerId = token ? getWordChatOwnerId(token) : null;
+  const wordChatStorage = useWordChatStoragePreference(pendingOwnerId);
   const wordDocument = useWordDocumentIdentity();
   const [selectedSection, setSelectedSection] = useState<AddinSection>("chat");
   const [chatSessionKey, setChatSessionKey] = useState(0);
@@ -85,24 +87,12 @@ export default function App(): React.ReactElement {
   }
 
   const wordDocumentId = wordDocument.documentId;
-  const wordChatOwnerId = getWordChatOwnerId(token);
+  const wordChatOwnerId = pendingOwnerId as string;
 
   const renderSection = (): React.ReactElement => {
     switch (selectedSection) {
       case "chat":
-        return (
-          <ChatPanel
-            sessionKey={chatSessionKey}
-            chatId={chatId}
-            initialMessages={initialMessages}
-            selectedWorkflow={chatWorkflow}
-            onSelectedWorkflowChange={setChatWorkflow}
-            onChatIdChange={setChatId}
-            wordDocumentId={wordDocumentId}
-            wordChatStorage={wordChatStorage.mode}
-            wordChatOwnerId={wordChatOwnerId}
-          />
-        );
+        return <></>;
       case "actions":
         return <DocumentActions />;
       case "workflows":
@@ -131,16 +121,14 @@ export default function App(): React.ReactElement {
               setInitialMessages([]);
               setChatSessionKey((current) => current + 1);
             }}
+            onClearLocalChats={() => clearLocalWordChats(wordChatOwnerId)}
             onSignOut={() => void logout()}
           />
         );
     }
   };
 
-  function openSelectedChat(
-    selectedChatId: string,
-    messages: Message[]
-  ): void {
+  function openSelectedChat(selectedChatId: string, messages: Message[]): void {
     setSelectedSection("chat");
     setWorkflowPageSelection(null);
     setWorkflowDetailsOpen(false);
@@ -205,12 +193,32 @@ export default function App(): React.ReactElement {
         <ApiKeyBanner />
       </div>
 
-      <div
-        className={`flex h-full flex-col overflow-hidden ${
-          selectedSection === "chat" ? "" : "pt-14"
-        }`}
-      >
-        {renderSection()}
+      <div className="flex h-full flex-col overflow-hidden">
+        <div
+          className={
+            selectedSection === "chat"
+              ? "flex min-h-0 flex-1 flex-col"
+              : "hidden"
+          }
+          aria-hidden={selectedSection === "chat" ? undefined : true}
+        >
+          <ChatPanel
+            sessionKey={chatSessionKey}
+            chatId={chatId}
+            initialMessages={initialMessages}
+            selectedWorkflow={chatWorkflow}
+            onSelectedWorkflowChange={setChatWorkflow}
+            onChatIdChange={setChatId}
+            wordDocumentId={wordDocumentId}
+            wordChatStorage={wordChatStorage.mode}
+            wordChatOwnerId={wordChatOwnerId}
+          />
+        </div>
+        {selectedSection !== "chat" && (
+          <div className="flex min-h-0 flex-1 flex-col pt-14">
+            {renderSection()}
+          </div>
+        )}
       </div>
 
       <WorkflowDetailsModal

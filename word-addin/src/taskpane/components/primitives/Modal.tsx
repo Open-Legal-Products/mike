@@ -1,4 +1,4 @@
-import React, { useEffect, type ReactNode } from "react";
+import React, { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "../../../shared/lib/utils";
@@ -40,13 +40,54 @@ export function Modal({
   secondaryAction,
   className,
 }: ModalProps): React.ReactElement | null {
+  const dialogRef = useRef<HTMLElement>(null);
+
   useEffect(() => {
     if (!open) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current;
+    const focusable = (): HTMLElement[] =>
+      dialog
+        ? Array.from(
+            dialog.querySelectorAll<HTMLElement>(
+              'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+            ),
+          ).filter((element) => !element.hasAttribute("hidden"))
+        : [];
+    window.requestAnimationFrame(() => {
+      const target =
+        focusable().find((element) => element.hasAttribute("autofocus")) ??
+        focusable()[0] ??
+        dialog;
+      target?.focus();
+    });
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (items.length === 0) {
+        event.preventDefault();
+        dialog?.focus();
+        return;
+      }
+      const first = items[0]!;
+      const last = items[items.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      previouslyFocused?.focus();
+    };
   }, [onClose, open]);
 
   if (!open) return null;
@@ -59,12 +100,14 @@ export function Modal({
       }}
     >
       <section
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        tabIndex={-1}
         className={cn(
           "flex h-[min(560px,calc(100vh-2rem))] w-full max-w-xl flex-col rounded-3xl border border-white/70 bg-gray-50/95 shadow-[0_14px_40px_rgba(15,23,42,0.101),0_5px_14px_rgba(15,23,42,0.067)] backdrop-blur-3xl",
-          className
+          className,
         )}
       >
         <header className="flex items-center justify-between gap-3 p-4 pl-5">
@@ -115,6 +158,6 @@ export function Modal({
         )}
       </section>
     </div>,
-    document.body
+    document.body,
   );
 }

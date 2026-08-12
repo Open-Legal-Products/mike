@@ -3,6 +3,22 @@ import { expect, test } from "./support/fixtures";
 const TOKEN = "test-jwt-token";
 const SECOND_PROMPT = "Second anchored question";
 
+async function waitForStableSample<T>(read: () => Promise<T>): Promise<void> {
+  let previous = "";
+  let stableSamples = 0;
+  await expect
+    .poll(
+      async () => {
+        const current = JSON.stringify(await read());
+        stableSamples = current === previous ? stableSamples + 1 : 0;
+        previous = current;
+        return stableSamples;
+      },
+      { intervals: [50] },
+    )
+    .toBeGreaterThanOrEqual(2);
+}
+
 test("uses the frontend assistant spacer while a new answer grows", async ({
   addin,
   page,
@@ -21,7 +37,7 @@ test("uses the frontend assistant spacer while a new answer grows", async ({
   });
   await addin.expectAuthedShell();
 
-  await page.getByPlaceholder("Ask Mike…").fill("First long question");
+  await page.getByPlaceholder("How can I help?").fill("First long question");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(
     page.getByText(firstParagraphs.at(-1)!, { exact: true }),
@@ -85,9 +101,8 @@ test("uses the frontend assistant spacer while a new answer grows", async ({
       `${index === 0 ? "Streaming layout checkpoint begins." : `Streamed paragraph ${index + 1}.`} This response grows a paragraph at a time so the test can verify that the newly submitted user turn remains at the frontend-style top offset.`,
   );
 
-  // The shared stream mock intentionally buffers its whole response. Replace
-  // fetch only for the second /word-chat request with a paced in-browser SSE stream
-  // so the assistant turn has observable intermediate and final heights.
+  // Replace fetch only for the second request with an explicitly controlled
+  // in-browser SSE stream. The test advances it one frame at a time below.
   await page.evaluate(
     (chunks) => {
       const nativeFetch = window.fetch.bind(window);
@@ -104,11 +119,14 @@ test("uses the frontend assistant spacer while a new answer grows", async ({
 
         const encoder = new TextEncoder();
         const signal = init?.signal ?? request?.signal;
-        let timer: ReturnType<typeof setTimeout> | undefined;
         const body = new ReadableStream<Uint8Array>({
           start(controller) {
             let index = 0;
-            const push = (): void => {
+            const controlledWindow = window as Window & {
+              __WORD_LAYOUT_STREAM_PUSH__?: () => void;
+              __WORD_LAYOUT_STREAM_DONE__?: () => void;
+            };
+            controlledWindow.__WORD_LAYOUT_STREAM_PUSH__ = (): void => {
               if (signal?.aborted) {
                 controller.close();
                 return;
@@ -123,19 +141,20 @@ test("uses the frontend assistant spacer while a new answer grows", async ({
                   ),
                 );
                 index += 1;
-                timer = setTimeout(push, 120);
-                return;
               }
+            };
+            controlledWindow.__WORD_LAYOUT_STREAM_DONE__ = (): void => {
               controller.enqueue(encoder.encode("data: [DONE]\n\n"));
               controller.close();
             };
-            // Keep the response empty long enough to assert the send-time layout:
-            // the assistant spacer must be rendered and scrolled to the bottom
-            // before any streamed answer content is allowed to grow it.
-            timer = setTimeout(push, 1_000);
           },
           cancel() {
-            if (timer !== undefined) clearTimeout(timer);
+            const controlledWindow = window as Window & {
+              __WORD_LAYOUT_STREAM_PUSH__?: () => void;
+              __WORD_LAYOUT_STREAM_DONE__?: () => void;
+            };
+            controlledWindow.__WORD_LAYOUT_STREAM_PUSH__ = undefined;
+            controlledWindow.__WORD_LAYOUT_STREAM_DONE__ = undefined;
           },
         });
 
@@ -153,14 +172,28 @@ test("uses the frontend assistant spacer while a new answer grows", async ({
     streamedParagraphs.map((paragraph) => `${paragraph}\n\n`),
   );
 
-  await page.getByPlaceholder("Ask Mike…").fill(SECOND_PROMPT);
+  await page.getByPlaceholder("How can I help?").fill(SECOND_PROMPT);
   await page.getByRole("button", { name: "Send" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          typeof (window as Window & { __WORD_LAYOUT_STREAM_PUSH__?: unknown })
+            .__WORD_LAYOUT_STREAM_PUSH__,
+      ),
+    )
+    .toBe("function");
 
   const anchoredMessage = page
     .getByText(SECOND_PROMPT, { exact: true })
     .locator("xpath=ancestor::*[@data-message-id][1]");
   const header = floatingHeader;
   await expect(anchoredMessage).toBeVisible();
+  await page.evaluate(() =>
+    (
+      window as Window & { __WORD_LAYOUT_STREAM_PUSH__?: () => void }
+    ).__WORD_LAYOUT_STREAM_PUSH__?.(),
+  );
 
   const assistantTurn = anchoredMessage.locator(
     "xpath=following-sibling::div[1]",
@@ -170,6 +203,12 @@ test("uses the frontend assistant spacer while a new answer grows", async ({
       exact: false,
     }),
   ).toBeVisible();
+  await expect
+    .poll(async () => {
+      const bounds = await anchoredMessage.boundingBox();
+      return bounds ? Math.round(bounds.y) : null;
+    })
+    .toBe(80);
 
   const readLayout = async () => {
     const [
@@ -246,6 +285,23 @@ test("uses the frontend assistant spacer while a new answer grows", async ({
     Math.abs(early.assistantMinHeight - expectedMinHeight),
   ).toBeLessThanOrEqual(1);
 
+  for (let index = 1; index < streamedParagraphs.length; index += 1) {
+    await page.evaluate(() =>
+      (
+        window as Window & { __WORD_LAYOUT_STREAM_PUSH__?: () => void }
+      ).__WORD_LAYOUT_STREAM_PUSH__?.(),
+    );
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+  }
+  await page.evaluate(() =>
+    (
+      window as Window & { __WORD_LAYOUT_STREAM_DONE__?: () => void }
+    ).__WORD_LAYOUT_STREAM_DONE__?.(),
+  );
+
   await expect(
     assistantTurn.getByText("Streamed paragraph 18.", { exact: false }),
   ).toBeVisible();
@@ -299,7 +355,9 @@ test("keeps the submitted turn at 80px while Working becomes Completed", async (
   });
   await addin.expectAuthedShell();
 
-  await page.getByPlaceholder("Ask Mike…").fill("Initial layout question");
+  await page
+    .getByPlaceholder("How can I help?")
+    .fill("Initial layout question");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(
     page.getByText("Existing response paragraph 30", { exact: false }),
@@ -350,7 +408,7 @@ test("keeps the submitted turn at 80px while Working becomes Completed", async (
   });
 
   const prompt = "Inspect the completion race";
-  await page.getByPlaceholder("Ask Mike…").fill(prompt);
+  await page.getByPlaceholder("How can I help?").fill(prompt);
   await page.getByRole("button", { name: "Send" }).click();
   await expect
     .poll(() =>
@@ -431,7 +489,7 @@ test("keeps the submitted turn at 80px while Working becomes Completed", async (
   await expect(
     assistantTurn.getByText("The agreement review is complete."),
   ).toBeVisible();
-  await page.waitForTimeout(550);
+  await waitForStableSample(readPosition);
 
   const completedPosition = await readPosition();
   console.log("WEBKIT_COMPLETION_DIAGNOSTIC", {
@@ -467,7 +525,9 @@ test("keeps the pinned turn steady when a tall activity strip completes", async 
   });
   await addin.expectAuthedShell();
 
-  await page.getByPlaceholder("Ask Mike…").fill("Initial layout question");
+  await page
+    .getByPlaceholder("How can I help?")
+    .fill("Initial layout question");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(
     page.getByText("Existing response paragraph 30", { exact: false }),
@@ -536,7 +596,7 @@ test("keeps the pinned turn steady when a tall activity strip completes", async 
   });
 
   const prompt = "Inspect the tall-activity completion";
-  await page.getByPlaceholder("Ask Mike…").fill(prompt);
+  await page.getByPlaceholder("How can I help?").fill(prompt);
   await page.getByRole("button", { name: "Send" }).click();
   await expect
     .poll(() =>
@@ -579,8 +639,7 @@ test("keeps the pinned turn steady when a tall activity strip completes", async 
     });
   };
 
-  // Let the pin scroll fully settle before sampling the streaming layout.
-  await page.waitForTimeout(900);
+  await waitForStableSample(readPosition);
   const workingPosition = await readPosition();
 
   await page.evaluate(() => {
@@ -608,7 +667,7 @@ test("keeps the pinned turn steady when a tall activity strip completes", async 
   await expect(
     assistantTurn.getByText("The agreement review is complete."),
   ).toBeVisible();
-  await page.waitForTimeout(550);
+  await waitForStableSample(readPosition);
 
   const completedPosition = await readPosition();
   console.log("WEBKIT_TALL_COMPLETION_DIAGNOSTIC", {
@@ -649,7 +708,7 @@ test("jumps straight to the current bottom and does not follow later stream grow
   });
   await addin.expectAuthedShell();
 
-  await page.getByPlaceholder("Ask Mike…").fill("Initial arrow question");
+  await page.getByPlaceholder("How can I help?").fill("Initial arrow question");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(
     page.getByText("Prior response paragraph 28", { exact: false }),
@@ -699,7 +758,7 @@ test("jumps straight to the current bottom and does not follow later stream grow
   });
 
   const prompt = "Stream enough content for the arrow";
-  await page.getByPlaceholder("Ask Mike…").fill(prompt);
+  await page.getByPlaceholder("How can I help?").fill(prompt);
   await page.getByRole("button", { name: "Send" }).click();
   await expect
     .poll(() =>

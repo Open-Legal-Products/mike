@@ -76,7 +76,7 @@ export function AddDocumentsModal({
     Record<string, Document[]>
   >({});
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
   const [expandedLibraryFolders, setExpandedLibraryFolders] = useState<
     Set<string>
@@ -121,8 +121,8 @@ export function AddDocumentsModal({
               setLibraryFolders(collection.folders ?? []);
               setDocuments(
                 [...(collection.documents ?? [])].sort((a, b) =>
-                  (b.created_at ?? "").localeCompare(a.created_at ?? "")
-                )
+                  (b.created_at ?? "").localeCompare(a.created_at ?? ""),
+                ),
               );
             }
           });
@@ -131,7 +131,9 @@ export function AddDocumentsModal({
       .catch((reason: unknown) => {
         if (cancelled) return;
         setError(
-          reason instanceof Error ? reason.message : "Failed to load documents."
+          reason instanceof Error
+            ? reason.message
+            : "Failed to load documents.",
         );
       })
       .finally(() => {
@@ -145,12 +147,12 @@ export function AddDocumentsModal({
 
   const selectedIds = useMemo(
     () => new Set(selectedDocuments.map((document) => document.id)),
-    [selectedDocuments]
+    [selectedDocuments],
   );
   const query = search.trim().toLowerCase();
   const filteredDocuments = query
     ? documents.filter((document) =>
-        document.filename.toLowerCase().includes(query)
+        document.filename.toLowerCase().includes(query),
       )
     : documents;
   const filteredProjects = query
@@ -158,7 +160,7 @@ export function AddDocumentsModal({
         [project.name, project.cm_number ?? ""]
           .join(" ")
           .toLowerCase()
-          .includes(query)
+          .includes(query),
       )
     : projects;
 
@@ -192,7 +194,7 @@ export function AddDocumentsModal({
       setError(
         reason instanceof Error
           ? reason.message
-          : "Failed to load project documents."
+          : "Failed to load project documents.",
       );
     } finally {
       setLoadingProjectId(null);
@@ -200,7 +202,7 @@ export function AddDocumentsModal({
   };
 
   const handleUpload = async (
-    event: React.ChangeEvent<HTMLInputElement>
+    event: React.ChangeEvent<HTMLInputElement>,
   ): Promise<void> => {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
@@ -210,29 +212,29 @@ export function AddDocumentsModal({
     setWarning(
       unsupported.length === 0
         ? null
-        : "Only PDF, Word, Excel, and PowerPoint files can be uploaded."
+        : "Only PDF, Word, Excel, and PowerPoint files can be uploaded.",
     );
     if (supported.length === 0) return;
 
     setUploadingFilenames(supported.map((file) => file.name));
     setError(null);
     const results = await Promise.allSettled(
-      supported.map((file) => uploadStandaloneDocument(file))
+      supported.map((file) => uploadStandaloneDocument(file)),
     );
     const uploaded = results.flatMap((result) =>
-      result.status === "fulfilled" ? [result.value] : []
+      result.status === "fulfilled" ? [result.value] : [],
     );
     if (uploaded.length > 0) {
       setDocuments((current) => [
         ...uploaded,
         ...current.filter(
-          (document) => !uploaded.some((item) => item.id === document.id)
+          (document) => !uploaded.some((item) => item.id === document.id),
         ),
       ]);
       setSelectedDocuments((current) => [
         ...current,
         ...uploaded.filter(
-          (document) => !current.some((item) => item.id === document.id)
+          (document) => !current.some((item) => item.id === document.id),
         ),
       ]);
       setActiveTab("files");
@@ -241,7 +243,7 @@ export function AddDocumentsModal({
       setError(
         uploaded.length > 0
           ? "Some documents could not be uploaded."
-          : "Documents could not be uploaded. Please try again."
+          : "Documents could not be uploaded. Please try again.",
       );
     }
     setUploadingFilenames([]);
@@ -252,22 +254,20 @@ export function AddDocumentsModal({
 
   const childFolders = (
     folders: LibraryFolder[],
-    parentId: string | null
+    parentId: string | null,
   ): LibraryFolder[] =>
-    folders.filter(
-      (folder) => (folder.parent_folder_id ?? null) === parentId
-    );
+    folders.filter((folder) => (folder.parent_folder_id ?? null) === parentId);
 
   const folderDocuments = (
     items: Document[],
-    folderId: string | null
+    folderId: string | null,
   ): Document[] =>
     items.filter((document) => documentFolderId(document) === folderId);
 
   const collectFolderDocuments = (folderId: string): Document[] => [
     ...folderDocuments(documents, folderId),
     ...childFolders(libraryFolders, folderId).flatMap((folder) =>
-      collectFolderDocuments(folder.id)
+      collectFolderDocuments(folder.id),
     ),
   ];
 
@@ -286,6 +286,7 @@ export function AddDocumentsModal({
       <button
         key={document.id}
         type="button"
+        aria-pressed={selected}
         onClick={() => toggleDocument(document)}
         style={{ paddingLeft: 8 + depth * 16 }}
         className={`w-full min-w-0 rounded-md py-2 pr-2 text-left text-xs transition-all ${DIRECTORY_GRID_CLASS} ${
@@ -322,7 +323,7 @@ export function AddDocumentsModal({
   function renderFolderRows(
     folders: LibraryFolder[],
     parentId: string | null,
-    depth = 0
+    depth = 0,
   ): React.ReactNode {
     return childFolders(folders, parentId).map((folder) => {
       const expanded = expandedLibraryFolders.has(folder.id);
@@ -359,7 +360,7 @@ export function AddDocumentsModal({
             <div>
               {renderFolderRows(folders, folder.id, depth + 1)}
               {folderDocuments(documents, folder.id).map((document) =>
-                renderDocument(document, depth + 1)
+                renderDocument(document, depth + 1),
               )}
               {items.length === 0 && (
                 <p
@@ -534,7 +535,7 @@ export function AddDocumentsModal({
                             .filter(
                               (document) =>
                                 !query ||
-                                document.filename.toLowerCase().includes(query)
+                                document.filename.toLowerCase().includes(query),
                             )
                             .map((document) => renderDocument(document, 1))
                         ) : (
@@ -568,7 +569,7 @@ export function AddDocumentsModal({
                 <>
                   {renderFolderRows(libraryFolders, null)}
                   {folderDocuments(documents, null).map((document) =>
-                    renderDocument(document)
+                    renderDocument(document),
                   )}
                 </>
               )}

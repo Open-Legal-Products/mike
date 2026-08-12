@@ -7,10 +7,7 @@ import {
 } from "../llm";
 import { safeErrorMessage } from "../safeError";
 import { createServerSupabase } from "../supabase";
-import {
-  buildUserMcpTools,
-  type McpToolEvent,
-} from "../mcpConnectors";
+import { buildUserMcpTools, type McpToolEvent } from "../mcpConnectors";
 import {
   COURTLISTENER_TOOLS,
   type CaseCitationEvent,
@@ -44,7 +41,6 @@ import {
   type TurnReadState,
 } from "./tools/documentOps";
 import { verifyDocumentCitations } from "./verifyCitations";
-
 
 export type AssistantEvent =
   | { type: "reasoning"; text: string }
@@ -134,9 +130,7 @@ class AssistantStreamAskInputsPause extends Error {
 export function isAbortError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const record = error as { name?: unknown; message?: unknown };
-  return (
-    record.name === "AbortError" || record.message === "Stream aborted."
-  );
+  return record.name === "AbortError" || record.message === "Stream aborted.";
 }
 
 function throwIfAborted(signal?: AbortSignal) {
@@ -155,6 +149,8 @@ export async function runLLMStream(params: {
   write: (s: string) => void;
   extraTools?: unknown[];
   includeResearchTools?: boolean;
+  /** Expose ask_inputs only to clients that can render and answer it. */
+  includeAskInputs?: boolean;
   workflowStore?: WorkflowStore;
   tabularStore?: TabularCellStore;
   buildCitations?: (fullText: string) => unknown[];
@@ -187,6 +183,7 @@ export async function runLLMStream(params: {
     write,
     extraTools,
     includeResearchTools = true,
+    includeAskInputs = true,
     workflowStore,
     tabularStore,
     buildCitations,
@@ -198,7 +195,10 @@ export async function runLLMStream(params: {
   } = params;
   const researchTools = includeResearchTools ? COURTLISTENER_TOOLS : [];
   const mcpTools = await buildUserMcpTools(userId, db);
-  const baseTools = [...TOOLS, ...researchTools, ...WORKFLOW_TOOLS];
+  const conversationTools = includeAskInputs
+    ? TOOLS
+    : TOOLS.filter((tool) => tool.function.name !== "ask_inputs");
+  const baseTools = [...conversationTools, ...researchTools, ...WORKFLOW_TOOLS];
   const activeTools = extraTools?.length
     ? [...baseTools, ...mcpTools, ...extraTools]
     : [...baseTools, ...mcpTools];
@@ -227,8 +227,8 @@ export async function runLLMStream(params: {
   // changes that document so a post-edit verification read can still happen.
   const turnReadState: TurnReadState = new Map();
   const courtlistenerTurnState: CourtlistenerTurnState = {
-      casesByClusterId: new Map(),
-    };
+    casesByClusterId: new Map(),
+  };
   let fullText = "";
   let iterText = "";
   let iterVisibleText = "";
@@ -243,7 +243,9 @@ export async function runLLMStream(params: {
     citations: unknown[],
   ) => {
     if (buildCitations) return;
-    write(`data: ${JSON.stringify({ type: "citations", status, citations })}\n\n`);
+    write(
+      `data: ${JSON.stringify({ type: "citations", status, citations })}\n\n`,
+    );
   };
 
   const streamHiddenCitationContent = (delta: string) => {
@@ -253,11 +255,7 @@ export async function runLLMStream(params: {
     if (partial.length <= streamedCitationCount) return;
     streamedCitationCount = partial.length;
     const citations = partial.map((c) =>
-      createCitation(
-        c,
-        docIndex,
-        courtlistenerTurnState.casesByClusterId,
-      ),
+      createCitation(c, docIndex, courtlistenerTurnState.casesByClusterId),
     );
     emitCitationStreamSnapshot("partial", citations);
   };
@@ -504,7 +502,10 @@ export async function runLLMStream(params: {
         // has a tool_result for every tool_use it sent.
         const resultByCallId = new Map<string, string>();
         for (const r of toolResults) {
-          const row = r as { tool_call_id: string; content?: unknown };
+          const row = r as {
+            tool_call_id: string;
+            content?: unknown;
+          };
           resultByCallId.set(row.tool_call_id, String(row.content ?? ""));
         }
         return toolCalls.map((c) => ({
@@ -544,11 +545,7 @@ export async function runLLMStream(params: {
     citations = buildCitations(fullText);
   } else {
     const rawCitations = parsedCitations.map((c) =>
-      createCitation(
-        c,
-        docIndex,
-        courtlistenerTurnState.casesByClusterId,
-      ),
+      createCitation(c, docIndex, courtlistenerTurnState.casesByClusterId),
     );
     // Server-side document-quote verification. Fetch each document's extracted
     // source text at most once per turn (memoized by doc_id), reading only the

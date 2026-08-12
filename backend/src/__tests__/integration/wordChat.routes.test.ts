@@ -107,6 +107,7 @@ vi.mock("../../middleware/auth", () => ({
 import { app } from "../../app";
 
 const DOCUMENT_ID = "123e4567-e89b-42d3-a456-426614174000";
+const CHAT_ID = "41eb8f61-d7af-454e-b680-cd28bd65c742";
 const AUTH = ["Authorization", "Bearer test"] as const;
 
 function resetDbState() {
@@ -151,7 +152,7 @@ describe("Word chat history routes", () => {
       .set(...AUTH);
 
     expect(res.status).toBe(500);
-    expect(res.body.detail).toBe("word_documents is unavailable");
+    expect(res.body.detail).toBe("Failed to load Word chats");
     expect(recordedQueries.map(({ table }) => table)).toEqual([
       "word_documents",
     ]);
@@ -168,7 +169,7 @@ describe("Word chat history routes", () => {
       .set(...AUTH);
 
     expect(res.status).toBe(500);
-    expect(res.body.detail).toBe("word_chats is unavailable");
+    expect(res.body.detail).toBe("Failed to load Word chats");
   });
 
   it("returns 500 rather than 404 when a detail document lookup fails", async () => {
@@ -178,11 +179,11 @@ describe("Word chat history routes", () => {
     };
 
     const res = await request(app)
-      .get(`/word-chat/chat-1?document_id=${DOCUMENT_ID}`)
+      .get(`/word-chat/${CHAT_ID}?document_id=${DOCUMENT_ID}`)
       .set(...AUTH);
 
     expect(res.status).toBe(500);
-    expect(res.body.detail).toBe("document lookup failed");
+    expect(res.body.detail).toBe("Failed to load Word chat");
   });
 
   it("returns 500 rather than 404 when the scoped chat lookup fails", async () => {
@@ -192,15 +193,15 @@ describe("Word chat history routes", () => {
     };
 
     const res = await request(app)
-      .get(`/word-chat/chat-1?document_id=${DOCUMENT_ID}`)
+      .get(`/word-chat/${CHAT_ID}?document_id=${DOCUMENT_ID}`)
       .set(...AUTH);
 
     expect(res.status).toBe(500);
-    expect(res.body.detail).toBe("chat lookup failed");
+    expect(res.body.detail).toBe("Failed to load Word chat");
     expect(
       recordedQueries.find(({ table }) => table === "word_chats")?.filters,
     ).toEqual([
-      { column: "id", value: "chat-1" },
+      { column: "id", value: CHAT_ID },
       { column: "word_document_id", value: "word-document-row-1" },
       { column: "user_id", value: "u1" },
     ]);
@@ -211,10 +212,20 @@ describe("Word chat history routes", () => {
 
   it("keeps a genuinely missing scoped chat as 404", async () => {
     const res = await request(app)
-      .get(`/word-chat/chat-1?document_id=${DOCUMENT_ID}`)
+      .get(`/word-chat/${CHAT_ID}?document_id=${DOCUMENT_ID}`)
       .set(...AUTH);
 
     expect(res.status).toBe(404);
     expect(res.body.detail).toBe("Chat not found");
+  });
+
+  it("returns 404 before querying Postgres for a malformed chat id", async () => {
+    const res = await request(app)
+      .get(`/word-chat/not-a-uuid?document_id=${DOCUMENT_ID}`)
+      .set(...AUTH);
+
+    expect(res.status).toBe(404);
+    expect(res.body.detail).toBe("Chat not found");
+    expect(recordedQueries).toEqual([]);
   });
 });

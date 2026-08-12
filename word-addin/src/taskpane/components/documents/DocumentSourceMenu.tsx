@@ -7,8 +7,8 @@ import {
   DropdownItem,
   DropdownTrigger,
 } from "../primitives/Dropdown";
-import desktopIcon from "../../../../../frontend/public/icons/app-sidebar/desktop.svg";
-import earthIcon from "../../../../../frontend/public/icons/app-sidebar/earth.svg";
+import desktopIcon from "../../../assets/icons/app-sidebar/desktop.svg";
+import earthIcon from "../../../assets/icons/app-sidebar/earth.svg";
 
 interface DocumentSourceMenuProps {
   attachedCount: number;

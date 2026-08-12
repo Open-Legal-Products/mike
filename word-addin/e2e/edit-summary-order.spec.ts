@@ -24,7 +24,11 @@ test("keeps the summary hidden until the streamed edit has been applied", async 
           : input instanceof URL
             ? input.toString()
             : input.url;
-      if (!new URL(requestUrl, window.location.href).pathname.endsWith("/word-chat")) {
+      if (
+        !new URL(requestUrl, window.location.href).pathname.endsWith(
+          "/word-chat",
+        )
+      ) {
         return originalFetch(input, init);
       }
 
@@ -38,7 +42,7 @@ test("keeps the summary hidden until the streamed edit has been applied", async 
               type: "chat_id",
               chatId: "edit-summary-order-chat",
               assistantMessageId: "11111111-1111-4111-8111-111111111111",
-            })
+            }),
           );
           controller.enqueue(
             event({
@@ -48,7 +52,7 @@ test("keeps the summary hidden until the streamed edit has been applied", async 
                 "<replacement>The Supplier</replacement>" +
                 "<reason>Correct the supplier typo.</reason>\n\n" +
                 "I corrected the supplier name.",
-            })
+            }),
           );
 
           let finished = false;
@@ -75,7 +79,7 @@ test("keeps the summary hidden until the streamed edit has been applied", async 
     documentText: "The Suplier shall deliver the goods.",
   });
   await addin.expectAuthedShell();
-  await page.getByPlaceholder("Ask Mike…").fill("Fix the supplier typo");
+  await page.getByPlaceholder("How can I help?").fill("Fix the supplier typo");
   await page.getByRole("button", { name: "Send" }).click();
 
   await expect(page.getByText("The Supplier", { exact: true })).toBeVisible();
@@ -85,7 +89,9 @@ test("keeps the summary hidden until the streamed edit has been applied", async 
   await expect(activity).toBeVisible();
   await activity.click();
   await expect(
-    page.getByText(/^(Applying tracked change…|Tracked change ready for review)$/)
+    page.getByText(
+      /^(Applying tracked change…|Tracked change ready for review)$/,
+    ),
   ).toBeVisible();
   await expect(page.getByText(SUMMARY, { exact: true })).toHaveCount(0);
 

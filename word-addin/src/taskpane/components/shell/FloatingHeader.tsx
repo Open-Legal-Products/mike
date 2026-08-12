@@ -6,11 +6,11 @@ import {
   LiquidIconButton,
   LiquidTextButton,
 } from "../primitives/LiquidActionRow";
-import chatIcon from "../../../../../frontend/public/icons/app-sidebar/chat.svg";
-import quickActionsIcon from "../../../../../frontend/public/icons/app-sidebar/quick-actions.svg";
-import workflowIcon from "../../../../../frontend/public/icons/app-sidebar/workflow.svg";
-import chatHistoryIcon from "../../../../../frontend/public/icons/app-sidebar/chat-history.svg";
-import settingsIcon from "../../../../../frontend/public/icons/app-sidebar/settings.svg";
+import chatIcon from "../../../assets/icons/app-sidebar/chat.svg";
+import quickActionsIcon from "../../../assets/icons/app-sidebar/quick-actions.svg";
+import workflowIcon from "../../../assets/icons/app-sidebar/workflow.svg";
+import chatHistoryIcon from "../../../assets/icons/app-sidebar/chat-history.svg";
+import settingsIcon from "../../../assets/icons/app-sidebar/settings.svg";
 import { ChatHistoryDropdown } from "../history/ChatHistoryDropdown";
 import {
   Dropdown,

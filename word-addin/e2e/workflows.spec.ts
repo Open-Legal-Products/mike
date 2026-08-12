@@ -70,7 +70,7 @@ const WORKFLOWS = [
 async function openWorkflows(
   addin: import("./support/fixtures").Addin,
   workflows: unknown,
-  documentText = "This Agreement is between Acme and Beta."
+  documentText = "This Agreement is between Acme and Beta.",
 ): Promise<void> {
   addin.seedToken(TOKEN);
   // listWorkflows("assistant") requests /workflows?type=assistant, so the glob
@@ -90,13 +90,13 @@ test("shows a full-pane workflow list and opens skill details", async ({
 
   await expect(page.getByTestId("workflows-full-screen")).toBeVisible();
   await expect(page.getByTestId("workflows-page-title")).toHaveClass(
-    /font-serif/
+    /font-serif/,
   );
   await expect(page.getByTestId("workflows-page-title")).toHaveClass(
-    /text-2xl/
+    /text-2xl/,
   );
   await expect(page.getByTestId("workflows-page-title")).toHaveClass(
-    /font-medium/
+    /font-medium/,
   );
   await expect(page.getByPlaceholder("Search workflows...")).toBeVisible();
   await expect(page.getByRole("combobox")).toHaveCount(0);
@@ -105,29 +105,29 @@ test("shows a full-pane workflow list and opens skill details", async ({
   });
   await expect(summaryRow).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Identify risks" })
+    page.getByRole("button", { name: "Identify risks" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Run workflow on document" })
+    page.getByRole("button", { name: "Run workflow on document" }),
   ).toHaveCount(0);
 
   await summaryRow.click();
   const header = page.getByTestId("floating-header");
   await expect(
-    header.getByRole("button", { name: "Back to workflows" })
+    header.getByRole("button", { name: "Back to workflows" }),
   ).toBeVisible();
   await expect(
-    header.getByRole("button", { name: "Use", exact: true })
+    header.getByRole("button", { name: "Use", exact: true }),
   ).toBeVisible();
   await expect(header.getByTestId("workflow-back-bubble")).toBeVisible();
   await expect(
-    header.getByRole("button", { name: "Back to workflows" }).locator("svg")
+    header.getByRole("button", { name: "Back to workflows" }).locator("svg"),
   ).toHaveCount(1);
   await expect(
-    header.getByRole("button", { name: "Back to workflows" })
+    header.getByRole("button", { name: "Back to workflows" }),
   ).toContainText("Workflows");
   await expect(
-    header.getByRole("button", { name: "Use", exact: true }).locator("svg")
+    header.getByRole("button", { name: "Use", exact: true }).locator("svg"),
   ).toHaveCount(1);
   const detailsButton = header.getByRole("button", {
     name: "Workflow details",
@@ -141,33 +141,35 @@ test("shows a full-pane workflow list and opens skill details", async ({
   expect(useBounds).not.toBeNull();
   expect(detailsBounds!.x).toBeLessThan(useBounds!.x);
   await expect(page.getByTestId("workflow-skill-content")).toContainText(
-    "Summarize the document."
+    "Summarize the document.",
   );
   await expect(page.getByTestId("workflow-detail-title")).toHaveClass(
-    /font-serif/
+    /font-serif/,
   );
   await expect(page.getByTestId("workflow-detail-title")).toHaveClass(
-    /text-2xl/
+    /text-2xl/,
   );
   await expect(page.getByTestId("workflow-detail-title")).toHaveClass(
-    /font-medium/
+    /font-medium/,
   );
-  await expect(page.getByTestId("workflow-skill-body")).toHaveClass(/font-sans/);
-  await expect(page.getByTestId("workflow-skill-body").locator("h1")).toHaveCount(
-    0
+  await expect(page.getByTestId("workflow-skill-body")).toHaveClass(
+    /font-sans/,
   );
+  await expect(
+    page.getByTestId("workflow-skill-body").locator("h1"),
+  ).toHaveCount(0);
   await expect(page.getByText("Skill", { exact: true })).toHaveCount(0);
   await expect(
-    page.getByTestId("workflow-detail-title").locator("..")
+    page.getByTestId("workflow-detail-title").locator(".."),
   ).not.toContainText("Litigation");
   await expect(
-    page.getByRole("button", { name: "Run workflow on document" })
+    page.getByRole("button", { name: "Run workflow on document" }),
   ).toHaveCount(0);
 
   await header.getByRole("button", { name: "Back to workflows" }).click();
   await expect(page.getByPlaceholder("Search workflows...")).toBeVisible();
   await expect(
-    header.getByRole("button", { name: "Use", exact: true })
+    header.getByRole("button", { name: "Use", exact: true }),
   ).toHaveCount(0);
 });
 
@@ -196,11 +198,7 @@ test("creates an assistant workflow and edits its Markdown with Tiptap", async (
   await addin.mockApiJson("POST", "**/workflows", createdWorkflow, {
     status: 201,
   });
-  await addin.mockApiJson(
-    "PATCH",
-    "**/workflows/wf-created",
-    editedWorkflow
-  );
+  await addin.mockApiJson("PATCH", "**/workflows/wf-created", editedWorkflow);
 
   const header = page.getByTestId("floating-header");
   const newWorkflowButton = header.getByRole("button", {
@@ -222,7 +220,7 @@ test("creates an assistant workflow and edits its Markdown with Tiptap", async (
   const createRequest = page.waitForRequest(
     (request) =>
       request.method() === "POST" &&
-      new URL(request.url()).pathname.endsWith("/workflows")
+      new URL(request.url()).pathname.endsWith("/workflows"),
   );
   await modal.getByRole("button", { name: "Create workflow" }).click();
   const createBody = (await createRequest).postDataJSON();
@@ -237,7 +235,7 @@ test("creates an assistant workflow and edits its Markdown with Tiptap", async (
   });
 
   await expect(page.getByTestId("workflow-detail-title")).toHaveText(
-    "Review defined terms"
+    "Review defined terms",
   );
   await expect(newWorkflowButton).toHaveCount(0);
   const editor = page.locator(".workflow-editor-content");
@@ -247,18 +245,18 @@ test("creates an assistant workflow and edits its Markdown with Tiptap", async (
   const updateRequest = page.waitForRequest(
     (request) =>
       request.method() === "PATCH" &&
-      new URL(request.url()).pathname.endsWith("/workflows/wf-created")
+      new URL(request.url()).pathname.endsWith("/workflows/wf-created"),
   );
   await editor.fill("Review every defined term for consistency.");
   const updateBody = (await updateRequest).postDataJSON();
   expect(updateBody.skill_md).toContain(
-    "Review every defined term for consistency."
+    "Review every defined term for consistency.",
   );
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Show raw Markdown" }).click();
   await expect(page.getByLabel("Raw Markdown")).toHaveValue(
-    "Review every defined term for consistency."
+    "Review every defined term for consistency.",
   );
 });
 
@@ -277,11 +275,7 @@ test("opens and saves editable workflow metadata from the header", async ({
     },
   };
   await openWorkflows(addin, WORKFLOWS);
-  await addin.mockApiJson(
-    "PATCH",
-    "**/workflows/wf-summary",
-    updatedWorkflow
-  );
+  await addin.mockApiJson("PATCH", "**/workflows/wf-summary", updatedWorkflow);
 
   await page
     .getByRole("button", { name: /Summarize document.*Litigation/ })
@@ -319,12 +313,12 @@ test("opens and saves editable workflow metadata from the header", async ({
   });
   await expect(modal).toHaveCount(0);
   await expect(page.getByTestId("workflow-detail-title")).toHaveText(
-    "Updated summary workflow"
+    "Updated summary workflow",
   );
 
   await page.getByRole("button", { name: "Back to workflows" }).click();
   await expect(
-    page.getByRole("button", { name: /Updated summary workflow.*Corporate/ })
+    page.getByRole("button", { name: /Updated summary workflow.*Corporate/ }),
   ).toBeVisible();
 });
 
@@ -344,7 +338,7 @@ test("shows an empty state when no runnable workflows exist", async ({
 
   await expect(page.getByText("No workflows found.")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Run workflow on document" })
+    page.getByRole("button", { name: "Run workflow on document" }),
   ).toHaveCount(0);
 });
 
@@ -371,7 +365,7 @@ test("surfaces an error when the workflow list fails to load", async ({
   // listWorkflows() throws a MikeApiError ("API error: 500"), shown verbatim.
   await expect(page.getByText(/API error: 500/)).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Run workflow on document" })
+    page.getByRole("button", { name: "Run workflow on document" }),
   ).toHaveCount(0);
 });
 
@@ -390,17 +384,17 @@ test("uses a workflow by attaching it to the Assistant chat input", async ({
     .getByRole("button", { name: "Use", exact: true })
     .click();
 
-  await expect(page.getByPlaceholder("Ask Mike…")).toBeVisible();
+  await expect(page.getByPlaceholder("How can I help?")).toBeVisible();
   const chatInput = page.getByTestId("chat-input");
   await expect(chatInput.getByText("Summarize document")).toBeVisible();
   await expect(
     chatInput.getByRole("button", {
       name: "Remove workflow Summarize document",
-    })
+    }),
   ).toBeVisible();
   await expect(page.getByTestId("workflow-skill-content")).toHaveCount(0);
 
-  await page.getByPlaceholder("Ask Mike…").fill("Review this document");
+  await page.getByPlaceholder("How can I help?").fill("Review this document");
   const requestPromise = page.waitForRequest("**/word-chat");
   await page.getByRole("button", { name: "Send" }).click();
   const request = await requestPromise;
@@ -413,7 +407,7 @@ test("uses a workflow by attaching it to the Assistant chat input", async ({
     title: "Summarize document",
   });
   expect(body.document_context).toBe(
-    "This Agreement is between Acme and Beta."
+    "This Agreement is between Acme and Beta.",
   );
   await expect(chatInput.getByText("Summarize document")).toHaveCount(0);
 });
@@ -434,7 +428,7 @@ test("can go back from one workflow and open another", async ({
   await page.getByRole("button", { name: "Identify risks" }).click();
 
   await expect(page.getByTestId("workflow-skill-content")).toContainText(
-    "List the key risks."
+    "List the key risks.",
   );
   await expect(page.getByText("Summarize the document.")).toHaveCount(0);
 });

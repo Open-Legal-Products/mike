@@ -7,7 +7,11 @@ import React, {
 } from "react";
 import { Check, Library, Waypoints, X } from "lucide-react";
 import { ChatInput as ChatInputShell } from "../../../shared/chat/ChatInput";
-import { uploadStandaloneDocument } from "../../api/mikeApi";
+import {
+  getApiKeyStatus,
+  uploadStandaloneDocument,
+  type ApiKeyStatus,
+} from "../../api/mikeApi";
 import { useSelectedModel } from "../../hooks/useSelectedModel";
 import type { Document } from "../../types";
 import {
@@ -25,6 +29,7 @@ import type {
   WordChatSubmission,
   WordChatSubmitOptions,
 } from "../../lib/wordChatTypes";
+import { isModelAvailable, missingModelProvider } from "../../lib/modelCatalog";
 
 export interface ChatInputHandle {
   setDraft: (prompt: string) => void;
@@ -71,6 +76,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     >(null);
     const [workflowModalOpen, setWorkflowModalOpen] = useState(false);
     const [model, setModel] = useSelectedModel();
+    const [keyStatus, setKeyStatus] = useState<ApiKeyStatus | null>(null);
+    const [modelError, setModelError] = useState<string | null>(null);
     const localFileInputRef = useRef<HTMLInputElement>(null);
     const mountedRef = useRef(true);
     const uploadGenerationRef = useRef(0);
@@ -92,6 +99,21 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     }, []);
 
     useEffect(() => {
+      let cancelled = false;
+      void getApiKeyStatus()
+        .then((status) => {
+          if (!cancelled) setKeyStatus(status);
+        })
+        .catch(() => {
+          // The backend still validates provider credentials when this optional
+          // preflight status request is unavailable.
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []);
+
+    useEffect(() => {
       uploadGenerationRef.current += 1;
       setInput("");
       setAttachedDocuments([]);
@@ -99,6 +121,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       setWorkflowModalOpen(false);
       setUploadingLocalFiles(false);
       setDocumentUploadError(null);
+      setModelError(null);
     }, [sessionKey]);
 
     const handleLocalFiles = async (
@@ -153,6 +176,13 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const submit = (): void => {
       const content = input.trim();
       if (!content || isResponseLoading) return;
+      if (!isModelAvailable(model, keyStatus)) {
+        setModelError(
+          `Add a ${missingModelProvider(model)} API key before using this model.`,
+        );
+        return;
+      }
+      setModelError(null);
       const files = attachedDocuments.map((document) => ({
         filename: document.filename,
         document_id: document.id,
@@ -175,7 +205,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       );
     };
 
-    const composerError = requestError ?? documentUploadError;
+    const composerError = requestError ?? documentUploadError ?? modelError;
 
     return (
       <>
@@ -204,6 +234,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                 onClick={() => {
                   onDismissRequestError();
                   setDocumentUploadError(null);
+                  setModelError(null);
                 }}
                 aria-label="Dismiss error"
                 className="shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-900/5 hover:text-gray-700"
@@ -218,8 +249,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             onSubmit={submit}
             isLoading={isResponseLoading}
             onCancel={onCancel}
-            disabled={isResponseLoading}
-            placeholder="Ask Mike…"
+            disabled={false}
+            placeholder="How can I help?"
             attachments={
               selectedWorkflow || attachedDocuments.length > 0 ? (
                 <>
@@ -292,7 +323,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                 </ComposerButton>
               </div>
             }
-            rightSlot={<ModelToggle value={model} onChange={setModel} />}
+            rightSlot={
+              <ModelToggle
+                value={model}
+                onChange={(next) => {
+                  setModelError(null);
+                  setModel(next);
+                }}
+                keyStatus={keyStatus}
+              />
+            }
           />
         </div>
         <AddDocumentsModal

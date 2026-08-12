@@ -16,6 +16,7 @@ const { runLLMStream, dbInserts, dbUpdates, dbControl } = vi.hoisted(() => ({
         terminalUpdateFailures: 0,
         terminalUpdateAttempts: 0,
         terminalUpdateGate: null as Promise<void> | null,
+        wordChatMissing: false,
     },
 }));
 
@@ -85,7 +86,13 @@ function makeQuery(table: string) {
         return q;
     });
     q.single = vi.fn(() => Promise.resolve(result));
-    q.maybeSingle = vi.fn(() => Promise.resolve(result));
+    q.maybeSingle = vi.fn(() =>
+        Promise.resolve(
+            table === "word_chats" && dbControl.wordChatMissing
+                ? { data: null, error: null }
+                : result,
+        ),
+    );
     q.then = (
         resolve: (v: unknown) => unknown,
         reject?: (e: unknown) => unknown,
@@ -200,6 +207,7 @@ describe("POST /chat — streaming endpoint", () => {
         dbControl.terminalUpdateFailures = 0;
         dbControl.terminalUpdateAttempts = 0;
         dbControl.terminalUpdateGate = null;
+        dbControl.wordChatMissing = false;
         runLLMStream.mockResolvedValue({
             fullText: "hi there",
             events: [],
@@ -336,6 +344,63 @@ describe("POST /chat — streaming endpoint", () => {
                     (value as { role?: unknown }).role === "user",
             )?.value,
         ).toMatchObject({ content: "Visible prompt" });
+        expect(runLLMStream).toHaveBeenCalledWith(
+            expect.objectContaining({ includeAskInputs: false }),
+        );
+    });
+
+    it.each([
+        [{ messages: VALID_BODY.messages }, "document_id must be a UUID"],
+        [
+            {
+                ...VALID_BODY,
+                document_id: "6f783e59-35c4-4ddc-896a-94aa4d05a767",
+                storage: "weird",
+            },
+            'storage must be "cloud" or "local"',
+        ],
+        [
+            {
+                ...VALID_BODY,
+                document_id: "6f783e59-35c4-4ddc-896a-94aa4d05a767",
+                chat_id: "not-a-uuid",
+            },
+            "chat_id must be a UUID",
+        ],
+    ])(
+        "rejects invalid Word-chat input before streaming",
+        async (body, detail) => {
+            const res = await request(app)
+                .post("/word-chat")
+                .set("Authorization", "Bearer test")
+                .send(body);
+
+            expect(res.status).toBe(400);
+            expect(res.body.detail).toBe(detail);
+            expect(runLLMStream).not.toHaveBeenCalled();
+            expect(dbInserts).toEqual([]);
+        },
+    );
+
+    it("rejects a resumed Word chat outside the scoped document and user", async () => {
+        dbControl.wordChatMissing = true;
+
+        const res = await request(app)
+            .post("/word-chat")
+            .set("Authorization", "Bearer test")
+            .send({
+                ...VALID_BODY,
+                document_id: "6f783e59-35c4-4ddc-896a-94aa4d05a767",
+                chat_id: "96fdeaa1-af40-475e-9834-703004783f21",
+                storage: "cloud",
+            });
+
+        expect(res.status).toBe(404);
+        expect(res.body.detail).toBe("Chat not found");
+        expect(runLLMStream).not.toHaveBeenCalled();
+        expect(
+            dbInserts.some(({ table }) => table === "word_chat_messages"),
+        ).toBe(false);
     });
 
     it("streams local Word chats without inserting any chat rows", async () => {
@@ -350,7 +415,9 @@ describe("POST /chat — streaming endpoint", () => {
             });
 
         expect(res.status).toBe(200);
-        expect(res.text).toContain('"chatId":"96fdeaa1-af40-475e-9834-703004783f21"');
+        expect(res.text).toContain(
+            '"chatId":"96fdeaa1-af40-475e-9834-703004783f21"',
+        );
         expect(dbInserts).toEqual([]);
         expect(dbUpdates).toEqual([]);
         expect(runLLMStream).toHaveBeenCalledTimes(1);
@@ -623,16 +690,19 @@ describe("POST /chat — streaming endpoint", () => {
             { ...VALID_BODY, ask_inputs_response: { responses: [] } },
             "ask_inputs_response.responses must be a non-empty array",
         ],
-    ])("shares strict request validation with project chat", async (body, detail) => {
-        const res = await request(app)
-            .post("/chat")
-            .set("Authorization", "Bearer test")
-            .send(body);
+    ])(
+        "shares strict request validation with project chat",
+        async (body, detail) => {
+            const res = await request(app)
+                .post("/chat")
+                .set("Authorization", "Bearer test")
+                .send(body);
 
-        expect(res.status).toBe(400);
-        expect(res.body.detail).toBe(detail);
-        expect(runLLMStream).not.toHaveBeenCalled();
-    });
+            expect(res.status).toBe(400);
+            expect(res.body.detail).toBe(detail);
+            expect(runLLMStream).not.toHaveBeenCalled();
+        },
+    );
 
     it("returns 400 from the Word route when document_context is not a string", async () => {
         const res = await request(app)
@@ -678,9 +748,9 @@ describe("POST /chat — streaming endpoint", () => {
         const streamArgs = runLLMStream.mock.calls[0]?.[0] as {
             docStore: Map<string, { inline_text?: string }>;
         };
-        expect(streamArgs.docStore.get("active-word-document")?.inline_text).toBe(
-            "GOVERNED BY DELAWARE LAW",
-        );
+        expect(
+            streamArgs.docStore.get("active-word-document")?.inline_text,
+        ).toBe("GOVERNED BY DELAWARE LAW");
     });
 
     it("keeps CourtListener disabled for Word chats even when legal research is enabled", async () => {
@@ -703,7 +773,8 @@ describe("POST /chat — streaming endpoint", () => {
             });
 
         expect(res.status).toBe(200);
-        const buildMessagesCall = vi.mocked(chatLib.buildMessages).mock.calls[0];
+        const buildMessagesCall = vi.mocked(chatLib.buildMessages).mock
+            .calls[0];
         expect(buildMessagesCall[4]).toBe(false);
         expect(runLLMStream).toHaveBeenCalledWith(
             expect.objectContaining({ includeResearchTools: false }),
@@ -713,7 +784,6 @@ describe("POST /chat — streaming endpoint", () => {
         };
         expect(streamArgs.apiKeys?.courtlistener).toBeUndefined();
     });
-
 });
 
 describe("PATCH /chat/:chatId", () => {

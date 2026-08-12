@@ -384,12 +384,22 @@ export function useWordTrackedEdits({
             error: undefined,
           });
         } else {
-          editHandlesRef.current.delete(key);
-          setEditRuntimeState(key, {
-            status: "error",
-            busy: false,
-            error: result.error ?? "The tracked change is no longer available.",
-          });
+          if (result.status === "error" && result.handle !== handle) {
+            editHandlesRef.current.set(key, result.handle);
+            setEditRuntimeState(key, {
+              status: "pending",
+              busy: false,
+              error: result.error,
+            });
+          } else {
+            editHandlesRef.current.delete(key);
+            setEditRuntimeState(key, {
+              status: "error",
+              busy: false,
+              error:
+                result.error ?? "The tracked change is no longer available.",
+            });
+          }
         }
       } catch (error) {
         if (

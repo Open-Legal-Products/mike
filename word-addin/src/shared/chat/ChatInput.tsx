@@ -36,7 +36,7 @@ export function ChatInput({
     onSubmit,
     isLoading = false,
     onCancel,
-    placeholder = "Ask Mike…",
+    placeholder = "How can I help?",
     disabled = false,
     leftSlot,
     rightSlot,
@@ -67,7 +67,8 @@ export function ChatInput({
         let previousWidth = inputArea.getBoundingClientRect().width;
         let resizeFrame: number | null = null;
         const observer = new ResizeObserver((entries) => {
-            const width = entries[0]?.contentRect.width ?? inputArea.offsetWidth;
+            const width =
+                entries[0]?.contentRect.width ?? inputArea.offsetWidth;
             if (Math.abs(width - previousWidth) < 0.5) return;
             previousWidth = width;
             if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
@@ -88,7 +89,7 @@ export function ChatInput({
     }, [resizeTextarea]);
 
     const handleKeyDown = (
-        e: React.KeyboardEvent<HTMLTextAreaElement>
+        e: React.KeyboardEvent<HTMLTextAreaElement>,
     ): void => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -103,7 +104,7 @@ export function ChatInput({
             data-testid="chat-input"
             className={cn(
                 "rounded-[18px] border border-white/65 bg-white/60 shadow-[0_4px_10px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.85),inset_0_-6px_14px_rgba(255,255,255,0.18)] backdrop-blur-2xl",
-                className
+                className,
             )}
         >
             {attachments && (
@@ -124,21 +125,29 @@ export function ChatInput({
                 />
             </div>
             <div className="flex items-center justify-between gap-2 p-2">
-                <div className="flex min-w-0 items-center gap-2">{leftSlot}</div>
+                <div className="flex min-w-0 items-center gap-2">
+                    {leftSlot}
+                </div>
                 <div className="flex shrink-0 items-center gap-1">
                     {rightSlot}
                     <button
                         type="button"
-                        onClick={() => (isLoading ? onCancel?.() : canSend && onSubmit())}
+                        onClick={() =>
+                            isLoading ? onCancel?.() : canSend && onSubmit()
+                        }
                         disabled={!isLoading && !canSend}
                         aria-label={isLoading ? "Stop" : "Send"}
                         className={cn(
                             "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-white/30 bg-gradient-to-b from-neutral-700 to-black text-white backdrop-blur-xl transition-all duration-150 cursor-pointer active:enabled:scale-95 disabled:cursor-default disabled:from-neutral-600 disabled:to-black",
-                            "shadow-[0_5px_14px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.24)]"
+                            "shadow-[0_5px_14px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.24)]",
                         )}
                     >
                         {isLoading ? (
-                            <Square className="h-4 w-4" fill="currentColor" strokeWidth={0} />
+                            <Square
+                                className="h-4 w-4"
+                                fill="currentColor"
+                                strokeWidth={0}
+                            />
                         ) : (
                             <ArrowRight className="h-4 w-4" />
                         )}

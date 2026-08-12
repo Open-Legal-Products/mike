@@ -59,12 +59,8 @@ interface ChatStreamOpts {
   errorBefore?: string;
   /** Return a non-2xx HTTP response instead of a stream (>=400 triggers the failure path). */
   status?: number;
-  /**
-   * Hold the `/word-chat` response pending for this many milliseconds before
-   * fulfilling. Lets a test deterministically observe the in-flight streaming
-   * state (e.g. input/Send disabled) before the stream completes.
-   */
-  holdMs?: number;
+  /** Hold the response until the returned controller's release() is called. */
+  deferred?: boolean;
   /** Stable chat identity emitted in the leading `chat_id` SSE event. */
   chatId?: string;
   /** Stable assistant-message UUID used to persist Word edit anchors. */
@@ -132,7 +128,10 @@ export interface Addin {
    * `[DONE]`. `opts.errorBefore` injects a pre-`[DONE]` error event;
    * `opts.status` (>=400) returns an HTTP failure instead.
    */
-  mockChatStream(chunks: string[], opts?: ChatStreamOpts): Promise<void>;
+  mockChatStream(
+    chunks: string[],
+    opts?: ChatStreamOpts,
+  ): Promise<{ release: () => void }>;
   /** Mock any Mike API endpoint returning JSON for the given METHOD + URL glob. */
   mockApiJson(
     method: HttpMethod,
@@ -160,6 +159,23 @@ export const test = base.extend<{ addin: Addin }>({
       }),
     );
 
+    // Fail closed: API requests not explicitly mocked by the fixture or a spec
+    // must never escape to a developer's backend or Supabase project. Static
+    // task-pane assets are the only network traffic allowed through.
+    await page.route("**/*", (route, request) => {
+      const url = new URL(request.url());
+      if (
+        (url.hostname === "localhost" || url.hostname === "127.0.0.1") &&
+        url.port === "3100"
+      ) {
+        return route.fallback();
+      }
+      if (url.hostname === "appsforoffice.microsoft.com") {
+        return route.fallback();
+      }
+      return route.abort("blockedbyclient");
+    });
+
     // Default the API-key status probe (fired on every authed mount by
     // ApiKeyBanner) to "claude configured" so the banner stays out of
     // unrelated specs — and so the request never escapes to a real backend,
@@ -173,8 +189,8 @@ export const test = base.extend<{ addin: Addin }>({
         contentType: "application/json",
         body: JSON.stringify({
           claude: true,
-          gemini: false,
-          openai: false,
+          gemini: true,
+          openai: true,
           openrouter: false,
           courtlistener: false,
           sources: {
@@ -416,6 +432,10 @@ export const test = base.extend<{ addin: Addin }>({
       },
 
       async mockChatStream(chunks, opts) {
+        let releaseResponse = (): void => undefined;
+        const responseGate = new Promise<void>((resolve) => {
+          releaseResponse = resolve;
+        });
         await page.route(CHAT_GLOB, async (route, request) => {
           if (request.method() !== "POST") return route.fallback();
           if (opts?.status && opts.status >= 400) {
@@ -425,11 +445,7 @@ export const test = base.extend<{ addin: Addin }>({
               body: "chat request failed",
             });
           }
-          // Optionally hold the response pending so the streaming/in-flight UI
-          // state is observable before the stream resolves.
-          if (opts?.holdMs && opts.holdMs > 0) {
-            await new Promise((resolve) => setTimeout(resolve, opts.holdMs));
-          }
+          if (opts?.deferred) await responseGate;
           let body = "";
           if (opts?.chatId || opts?.assistantMessageId) {
             body += `data: ${JSON.stringify({
@@ -472,6 +488,7 @@ export const test = base.extend<{ addin: Addin }>({
             body,
           });
         });
+        return { release: releaseResponse };
       },
 
       async mockApiJson(method, urlGlob, json, opts) {

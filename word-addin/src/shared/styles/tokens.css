@@ -24,6 +24,11 @@
     --color-blue-200: rgba(0, 136, 255, 0.3);
     --color-blue-600: rgb(0, 136, 255);
     --color-blue-700: rgb(0, 120, 230);
+    --color-app-background: var(--app-background);
+    --color-app-surface: var(--app-surface);
+    --color-app-surface-hover: var(--app-surface-hover);
+    --color-app-surface-active: var(--app-surface-active);
+    --color-app-floating: var(--app-floating);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -62,6 +67,11 @@
 :root {
     --radius: 0.625rem;
     --color-azure: 0, 136, 255;
+    --app-background: #fafafa;
+    --app-surface: #fdfdfe;
+    --app-surface-hover: #f5f6f8;
+    --app-surface-active: #eceef2;
+    --app-floating: rgba(253, 253, 254, 0.82);
     --background: oklch(0.985 0 0);
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
