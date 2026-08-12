@@ -25,10 +25,20 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        workspace: [backend, frontend]
+        # Every directory with its own package-lock.json gets a gate —
+        # including the repo root (Playwright e2e tooling), which is just as
+        # much shipped-to-developers code as the workspaces.
+        include:
+          - workspace: root
+            dir: "."
+          - workspace: backend
+            dir: backend
+          - workspace: frontend
+            dir: frontend
+    name: dependency-audit (${{ matrix.workspace }})
     defaults:
       run:
-        working-directory: ${{ matrix.workspace }}
+        working-directory: ${{ matrix.dir }}
     steps:
       # Pinned to commit SHAs, not tags — repo-wide posture since #246:
       # tags are mutable, so a compromised action repo could silently swap
@@ -38,4 +48,4 @@ jobs:
         with:
           node-version: 22
       - name: Dependency security audit
-        run: node ../scripts/audit-gate.mjs
+        run: node "$GITHUB_WORKSPACE/scripts/audit-gate.mjs"

@@ -17,6 +17,24 @@
 
 version: 2
 updates:
+  # Repo root — Playwright e2e tooling with its own package-lock.json
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    groups:
+      security-fixes:
+        applies-to: security-updates
+        patterns: ["*"]
+      dev-dependencies:
+        applies-to: version-updates
+        dependency-type: "development"
+      production-dependencies:
+        applies-to: version-updates
+        dependency-type: "production"
+
   # Backend workspace
   - package-ecosystem: "npm"
     directory: "/backend"
