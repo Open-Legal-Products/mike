@@ -1852,6 +1852,49 @@ create index if not exists audit_events_user_created on public.audit_events (use
 create index if not exists audit_events_project_created on public.audit_events (project_id, created_at desc);
 alter table public.audit_events enable row level security;
 
+-- Restricted conflicts-check data. These records are intentionally absent
+-- from broad project/library endpoints and are available only through the
+-- owner-scoped, MFA-aware /conflicts API.
+create table if not exists public.conflict_records (
+  id uuid primary key default gen_random_uuid(),
+  owner_user_id uuid not null,
+  client_name text not null,
+  matter_name text,
+  parties jsonb not null default '[]'::jsonb check (jsonb_typeof(parties) = 'array'),
+  affiliates jsonb not null default '[]'::jsonb check (jsonb_typeof(affiliates) = 'array'),
+  search_text text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists conflict_records_owner_created on public.conflict_records (owner_user_id, created_at desc);
+create table if not exists public.conflict_searches (
+  id uuid primary key default gen_random_uuid(),
+  owner_user_id uuid not null,
+  search_input jsonb not null check (jsonb_typeof(search_input) = 'object'),
+  matched_record_ids uuid[] not null default '{}',
+  result_count integer not null default 0 check (result_count >= 0),
+  status text not null default 'pending_review' check (status in ('pending_review', 'cleared', 'conflict_found')),
+  reviewer_notes text,
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists conflict_searches_owner_created on public.conflict_searches (owner_user_id, created_at desc);
+create table if not exists public.conflict_audit_events (
+  id uuid primary key default gen_random_uuid(),
+  owner_user_id uuid not null,
+  actor_user_id uuid not null,
+  action text not null check (action in ('record.created', 'search.performed', 'review.decided')),
+  record_id uuid,
+  search_id uuid,
+  detail jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists conflict_audit_owner_created on public.conflict_audit_events (owner_user_id, created_at desc);
+alter table public.conflict_records enable row level security;
+alter table public.conflict_searches enable row level security;
+alter table public.conflict_audit_events enable row level security;
+
 revoke all on public.user_profiles from anon, authenticated;
 revoke all on public.projects from anon, authenticated;
 revoke all on public.project_subfolders from anon, authenticated;
@@ -1879,6 +1922,9 @@ revoke all on public.user_mcp_tool_audit_logs from anon, authenticated;
 revoke all on public.courtlistener_citation_index from anon, authenticated;
 revoke all on public.courtlistener_opinion_cluster_index from anon, authenticated;
 revoke all on public.audit_events from anon, authenticated;
+revoke all on public.conflict_records from anon, authenticated;
+revoke all on public.conflict_searches from anon, authenticated;
+revoke all on public.conflict_audit_events from anon, authenticated;
 
 -- Tables created by this file are owned by the database bootstrap role. The
 -- backend connects as service_role, so grant it only the data privileges that

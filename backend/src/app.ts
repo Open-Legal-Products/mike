@@ -15,6 +15,7 @@ import { modelsRouter } from "./routes/models";
 import { downloadsRouter } from "./routes/downloads";
 import { caseLawRouter } from "./routes/caseLaw";
 import { auditRouter } from "./routes/audit";
+import { conflictsRouter } from "./routes/conflicts";
 import { manifestPublicKey } from "./lib/manifestSigning";
 import { safeErrorLog } from "./lib/safeError";
 
@@ -178,6 +179,7 @@ app.use("/users", userRouter);
 app.use("/download", downloadsRouter);
 app.use("/case-law", caseLawRouter);
 app.use("/audit", auditRouter);
+app.use("/conflicts", conflictsRouter);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 

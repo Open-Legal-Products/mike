@@ -444,6 +444,116 @@ export async function exportAuditHistory(params: {
     return apiBlobRequest(`/audit/export?${qs.toString()}`);
 }
 
+// ---------------------------------------------------------------------------
+// Restricted conflicts checks
+// ---------------------------------------------------------------------------
+
+export interface ConflictRecord {
+  id: string;
+  client_name: string;
+  matter_name: string | null;
+  parties: string[];
+  affiliates: string[];
+  created_at: string;
+  matched_fields?: string[];
+}
+
+export interface ConflictSearch {
+  id: string;
+  search_input: {
+    prospectiveClient?: string;
+    matterName?: string;
+    parties: string[];
+    affiliates: string[];
+  };
+  result_count: number;
+  status: "pending_review" | "cleared" | "conflict_found";
+  reviewer_notes: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+export interface ConflictAuditEvent {
+  id: string;
+  action: "record.created" | "search.performed" | "review.decided";
+  record_id: string | null;
+  search_id: string | null;
+  detail: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export type ConflictNamesInput = {
+  prospectiveClient?: string;
+  matterName?: string;
+  parties: string[];
+  affiliates: string[];
+};
+
+export async function listConflictRecords(): Promise<ConflictRecord[]> {
+  const out = await apiRequest<{ records: ConflictRecord[] }>(
+    "/conflicts/records",
+  );
+  return out.records;
+}
+
+export async function createConflictRecord(input: {
+  clientName: string;
+  matterName?: string;
+  parties: string[];
+  affiliates: string[];
+}): Promise<ConflictRecord> {
+  const out = await apiRequest<{ record: ConflictRecord }>(
+    "/conflicts/records",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  return out.record;
+}
+
+export async function runConflictSearch(input: ConflictNamesInput): Promise<{
+  search: ConflictSearch;
+  records: ConflictRecord[];
+  disclaimer: string;
+}> {
+  return apiRequest("/conflicts/searches", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function listConflictSearches(): Promise<ConflictSearch[]> {
+  const out = await apiRequest<{ searches: ConflictSearch[] }>(
+    "/conflicts/searches",
+  );
+  return out.searches;
+}
+
+export async function reviewConflictSearch(
+  searchId: string,
+  input: { status: "cleared" | "conflict_found"; notes: string },
+): Promise<ConflictSearch> {
+  const out = await apiRequest<{ search: ConflictSearch }>(
+    `/conflicts/searches/${encodeURIComponent(searchId)}/review`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  return out.search;
+}
+
+export async function listConflictAuditEvents(): Promise<ConflictAuditEvent[]> {
+  const out = await apiRequest<{ events: ConflictAuditEvent[] }>(
+    "/conflicts/audit",
+  );
+  return out.events;
+}
+
 export async function getUserProfile(): Promise<UserProfile> {
     return apiRequest<UserProfile>("/user/profile");
 }

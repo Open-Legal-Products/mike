@@ -14,6 +14,7 @@ import {
     ChevronsUpDown,
     ChevronDown,
   Loader2,
+  ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { useUserProfile } from "@/app/contexts/UserProfileContext";
@@ -49,6 +50,7 @@ const NAV_ITEMS = [
     icon: TabularReviewSkeuoIcon,
   },
     { href: "/workflows", label: "Workflows", icon: WorkflowSkeuoIcon },
+    { href: "/conflicts", label: "Conflicts", icon: ShieldCheck },
 ];
 
 const RECENT_PROJECT_PAGE_SIZE = 10;
