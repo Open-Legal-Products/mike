@@ -96,6 +96,16 @@ export function ModalSelect({
         align="start"
         sideOffset={4}
         collisionPadding={12}
+        onEscapeKeyDown={(event) => {
+          // These selects live inside Modal, which closes on any Escape it
+          // sees on `window`. Radix's dismissable layer hears the key first
+          // (document-level capture runs before the event bubbles back out
+          // to window), so stopping propagation here scopes the first
+          // Escape to closing just the dropdown instead of discarding the
+          // whole form. A second Escape, with the dropdown gone, reaches
+          // the Modal and closes it as before.
+          event.stopPropagation();
+        }}
         className="max-h-56 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto"
       >
         {options.map((option) => (
