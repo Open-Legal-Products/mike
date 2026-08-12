@@ -1,13 +1,5 @@
 [
     {
-        "ghsa": "GHSA-6g55-p6wh-862q",
-        "reason": "postcss arbitrary file read via attacker-controlled sourceMappingURL. Affects only Next's internal copy — next pins postcss at exactly 8.4.31, so no in-range fix exists (the root tree already resolves patched postcss 8.5.x). Build-time only: this copy processes the repo's own CSS, never untrusted input. REMOVE WHEN: Next bumps its postcss pin past 8.5.17."
-    },
-    {
-        "ghsa": "GHSA-r28c-9q8g-f849",
-        "reason": "postcss source-map path traversal — same pinned copy (next's postcss 8.4.31) and same build-time-only, first-party-CSS exposure as GHSA-6g55-p6wh-862q. REMOVE WHEN: Next bumps its postcss pin past 8.5.17."
-    },
-    {
         "ghsa": "GHSA-4cwx-7wf7-3272",
         "reason": "undici cache-directive parsing flaw, reachable only through miniflare (wrangler's local dev simulator), which pins undici at exactly 7.28.0 — dev-machine only, never part of the deployed app. REMOVE WHEN: wrangler ships a miniflare with undici >=7.29.0 (weekly dev-dep Dependabot bump will carry it)."
     }
