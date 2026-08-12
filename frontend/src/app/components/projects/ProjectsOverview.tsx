@@ -46,6 +46,7 @@ import {
     type TableSortDirection,
     TableStickyCell,
 } from "@/app/components/shared/TablePrimitive";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import { PillButton } from "@/app/components/ui/pill-button";
 import { TabPillButton } from "@/app/components/ui/tab-pill-button";
 
@@ -554,35 +555,30 @@ export function ProjectsOverview() {
                     </TableBody>
                 ) : loadError ? (
                     <TableEmptyState>
-                        <OpenProjectSvgIcon className="mb-4 h-8 w-8" />
-                        <p className="text-2xl font-medium font-serif text-gray-900">
-                            Projects
-                        </p>
-                        <p className="mt-1 text-xs text-red-500 max-w-xs">
-                            {loadError}
-                        </p>
-                        <PillButton
-                            tone="black"
-                            size="sm"
-                            onClick={retry}
-                            className="mt-4 px-3"
+                        <EmptyState
+                            icon={OpenProjectSvgIcon}
+                            title="Projects"
+                            description={loadError}
+                            descriptionClassName="text-red-500"
                         >
-                            Try again
-                        </PillButton>
+                            <PillButton
+                                tone="black"
+                                size="sm"
+                                onClick={retry}
+                                className="mt-4 px-3"
+                            >
+                                Try again
+                            </PillButton>
+                        </EmptyState>
                     </TableEmptyState>
                 ) : visibleProjects.length === 0 ? (
                     <TableEmptyState>
                         {activeFilter === "all" || activeFilter === "mine" ? (
-                            <>
-                                <OpenProjectSvgIcon className="mb-4 h-8 w-8" />
-                                <p className="text-2xl font-medium font-serif text-gray-900">
-                                    Projects
-                                </p>
-                                <p className="mt-1 text-xs text-gray-400 max-w-xs">
-                                    Upload documents into projects and to
-                                    commence chats and tabular reviews with
-                                    them.
-                                </p>
+                            <EmptyState
+                                icon={OpenProjectSvgIcon}
+                                title="Projects"
+                                description="Upload documents into projects and to commence chats and tabular reviews with them."
+                            >
                                 <PillButton
                                     tone="black"
                                     size="sm"
@@ -592,7 +588,7 @@ export function ProjectsOverview() {
                                     <Plus className="h-3.5 w-3.5" />
                                     Create
                                 </PillButton>
-                            </>
+                            </EmptyState>
                         ) : (
                             <p className="text-sm text-gray-400">
                                 No {activeFilter} projects

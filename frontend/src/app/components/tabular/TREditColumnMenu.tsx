@@ -16,6 +16,7 @@ import {
     LiquidDropdownContent,
     LiquidDropdownRadioItem,
 } from "@/app/components/ui/liquid-dropdown";
+import { GlassIconButton } from "@/app/components/ui/glass-icon-button";
 import { PillButton } from "@/app/components/ui/pill-button";
 
 // Liquid-glass field styling shared by the menu's inputs/controls, matching the
@@ -248,14 +249,12 @@ export function TREditColumnMenu({
                         <p className="font-serif text-lg font-medium text-gray-900">
                             Edit Column
                         </p>
-                        <button
-                            type="button"
+                        <GlassIconButton
                             onClick={() => setOpen(false)}
                             aria-label="Close"
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/70 bg-white/55 text-gray-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),inset_0_-1px_0_rgba(255,255,255,0.55),0_6px_18px_rgba(15,23,42,0.08)] backdrop-blur-xl transition-colors hover:bg-white/75 hover:text-gray-700"
                         >
                             <X className="h-3.5 w-3.5" />
-                        </button>
+                        </GlassIconButton>
                     </div>
                     <label className="text-xs font-medium text-gray-800">
                         Label

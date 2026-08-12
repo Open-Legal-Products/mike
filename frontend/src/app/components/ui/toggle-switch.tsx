@@ -37,7 +37,11 @@ export function ToggleSwitch({
                 aria-hidden="true"
                 className={cn(
                     "relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors duration-200",
-                    checked ? "bg-blue-600" : "bg-gray-100",
+                    // The white thumb on a gray-100 track is ~1.07:1, which
+                    // leaves the off state effectively invisible. A ring gives
+                    // the control a discernible boundary (WCAG 1.4.11) without
+                    // the 1px thumb shift a border would cause.
+                    checked ? "bg-blue-600" : "bg-gray-100 ring-1 ring-gray-300",
                 )}
             >
                 <span

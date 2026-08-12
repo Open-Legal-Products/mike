@@ -52,11 +52,18 @@ export const SearchBar = React.forwardRef<HTMLInputElement, SearchBarProps>(
         ref,
     ) => {
         const classes = sizeClasses[size];
+        // A placeholder is not an accessible name, so without this the input
+        // is announced only as "search" (WCAG 4.1.2). An explicit aria-label
+        // from the call site still wins.
+        const label = props["aria-label"] ?? placeholder;
 
         return (
             <div
                 className={cn(
                     "flex items-center border border-white/70 bg-white/55 text-gray-700 shadow-[0_3px_9px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.86),inset_0_-1px_0_rgba(255,255,255,0.58)] backdrop-blur-xl transition-colors focus-within:border-white/90 focus-within:bg-white/70",
+                    // The white/70 → white/90 shift alone is imperceptible, so
+                    // the field had no usable focus indicator (WCAG 2.4.7).
+                    "focus-within:ring-2 focus-within:ring-blue-500/40",
                     classes.wrapper,
                     className,
                     wrapperClassName,
@@ -73,6 +80,7 @@ export const SearchBar = React.forwardRef<HTMLInputElement, SearchBarProps>(
                     type="search"
                     value={value}
                     placeholder={placeholder}
+                    aria-label={label}
                     onChange={(event) => onValueChange(event.target.value)}
                     className={cn(
                         "min-w-0 flex-1 bg-transparent text-gray-700 outline-none placeholder:text-gray-400 [&::-webkit-search-cancel-button]:hidden",

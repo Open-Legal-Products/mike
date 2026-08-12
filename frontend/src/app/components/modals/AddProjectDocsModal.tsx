@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Loader2, Upload, X } from "lucide-react";
+import { Loader2, Upload, X } from "lucide-react";
+import { CheckSquare } from "@/app/components/ui/check-square";
 import { SearchBar } from "@/app/components/ui/search-bar";
 import { getProject, uploadProjectDocument } from "@/app/lib/mikeApi";
 import type { Document } from "../shared/types";
@@ -202,17 +203,7 @@ export function AddProjectDocsModal({
                                           : "hover:bg-gray-100/70"
                                 }`}
                             >
-                                <span
-                                    className={`shrink-0 h-3.5 w-3.5 rounded border flex items-center justify-center ${
-                                        checked
-                                            ? "bg-gray-900 border-gray-900"
-                                            : "border-gray-300"
-                                    }`}
-                                >
-                                    {checked && (
-                                        <Check className="h-2.5 w-2.5 text-white" />
-                                    )}
-                                </span>
+                                <CheckSquare checked={checked} />
                                 <DocFileIcon fileType={doc.file_type} />
                                 <span
                                     className={`flex-1 truncate ${

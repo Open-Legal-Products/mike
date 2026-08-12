@@ -40,6 +40,7 @@ export function PillButton({
             type={asChild ? undefined : type}
             className={cn(
                 "inline-flex items-center justify-center gap-1.5 rounded-full border font-medium transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100",
+                "outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-2",
                 toneClasses[tone],
                 sizeClasses[size],
                 className,

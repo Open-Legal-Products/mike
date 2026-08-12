@@ -13,12 +13,12 @@ describe("SearchBar", () => {
         ).toBeInTheDocument();
     });
 
-    it("falls back to a generic label when no placeholder is given", () => {
-        render(
-            <SearchBar value="" onValueChange={vi.fn()} placeholder={undefined} />,
-        );
+    it("falls back to the default placeholder when none is given", () => {
+        render(<SearchBar value="" onValueChange={vi.fn()} />);
 
-        expect(screen.getByRole("searchbox")).toHaveAccessibleName("Search");
+        expect(screen.getByRole("searchbox")).toHaveAccessibleName(
+            "Search...",
+        );
     });
 
     it("lets an explicit aria-label win over the placeholder", () => {

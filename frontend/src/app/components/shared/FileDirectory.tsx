@@ -1,10 +1,11 @@
 "use client";
 
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { Check, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import type { Document, LibraryFolder, Project } from "./types";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { ProjectSvgIcon, SubfolderSvgIcon } from "./FolderSvgIcon";
+import { CheckSquare } from "@/app/components/ui/check-square";
 import { SearchBar } from "@/app/components/ui/search-bar";
 import { TabPillButton } from "@/app/components/ui/tab-pill-button";
 import { SkeletonLine } from "./TablePrimitive";
@@ -495,13 +496,7 @@ export function FileDirectory({
           selected ? APP_SURFACE_ACTIVE_CLASS : APP_SURFACE_HOVER_CLASS
                 }`}
             >
-                <span
-                    className={`shrink-0 h-3.5 w-3.5 rounded border flex items-center justify-center ${
-            selected ? "bg-gray-900 border-gray-900" : "border-gray-300"
-                    }`}
-                >
-                    {selected && <Check className="h-2.5 w-2.5 text-white" />}
-                </span>
+                <CheckSquare checked={selected} />
                 <DocFileIcon fileType={doc.file_type} />
                 <span
           className={`min-w-0 truncate ${selected ? "text-gray-900" : "text-gray-700"}`}
@@ -549,7 +544,7 @@ export function FileDirectory({
                         style={{ paddingLeft: indentedRowPadding(depth) }}
                         className={`w-full rounded-md ${DIRECTORY_GRID_CLASS} py-2 pr-2 text-xs transition-all text-left ${APP_SURFACE_HOVER_CLASS}`}
                     >
-                        <span
+                        <CheckSquare
                             role="checkbox"
                             aria-checked={someSelected ? "mixed" : allSelected}
               aria-disabled={!folderSelectionReady}
@@ -564,17 +559,12 @@ export function FileDirectory({
                                 toggleDocuments(docsInFolder);
                 }
                             }}
-                            className={`shrink-0 h-3.5 w-3.5 rounded border flex items-center justify-center ${
-                                allSelected || someSelected
-                                    ? "bg-gray-900 border-gray-900"
-                  : !folderSelectionReady || docsInFolder.length === 0
-                                      ? "border-gray-200 bg-gray-50"
-                                      : "border-gray-300"
-                            }`}
-                        >
-              {allSelected && <Check className="h-2.5 w-2.5 text-white" />}
-                            {someSelected && <span className="h-px w-2 bg-white" />}
-                        </span>
+                            checked={someSelected ? "mixed" : allSelected}
+                            muted={
+                                !folderSelectionReady ||
+                                docsInFolder.length === 0
+                            }
+                        />
             {(libraryTab && loadingFolderIds[libraryTab].has(folder.id)) ||
             (projectId &&
               loadingProjectLevels.has(`${projectId}:${folder.id}`)) ||
@@ -955,7 +945,7 @@ export function FileDirectory({
                       onClick={() => toggleFolder(project.id)}
                                         className={`w-full rounded-md ${DIRECTORY_GRID_CLASS} px-2 py-2 text-xs transition-all text-left ${APP_SURFACE_HOVER_CLASS}`}
                                     >
-                                        <span
+                                        <CheckSquare
                                             role="checkbox"
                                             aria-checked={
                                                 someProjectDocsSelected
@@ -974,21 +964,16 @@ export function FileDirectory({
                                                 toggleDocuments(docs);
                           }
                                             }}
-                                            className={`shrink-0 h-3.5 w-3.5 rounded border flex items-center justify-center ${
-                          allProjectDocsSelected || someProjectDocsSelected
-                                                    ? "bg-gray-900 border-gray-900"
-                            : !projectSelectionReady || docs.length === 0
-                                                      ? "border-gray-200 bg-gray-50"
-                                                      : "border-gray-300"
-                                            }`}
-                                        >
-                                            {allProjectDocsSelected && (
-                                                <Check className="h-2.5 w-2.5 text-white" />
-                                            )}
-                                            {someProjectDocsSelected && (
-                                                <span className="h-px w-2 bg-white" />
-                                            )}
-                                        </span>
+                                            checked={
+                                                someProjectDocsSelected
+                                                    ? "mixed"
+                                                    : allProjectDocsSelected
+                                            }
+                                            muted={
+                                                !projectSelectionReady ||
+                                                docs.length === 0
+                                            }
+                                        />
                                         <ProjectSvgIcon
                                             open={isExpanded}
                                             className="h-3.5 w-3.5 shrink-0"

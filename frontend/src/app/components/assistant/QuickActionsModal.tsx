@@ -1,6 +1,6 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { CheckSquare } from "@/app/components/ui/check-square";
 import { Modal } from "../modals/Modal";
 import { QUICK_ACTIONS, type QuickActionId } from "./quickActionsPreferences";
 
@@ -61,17 +61,10 @@ export function QuickActionsModal({
                                 <span className="min-w-0 truncate">
                                     {action.label}
                                 </span>
-                                <span
-                                    className={`ml-auto flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${
-                                        checked
-                                            ? "bg-gray-900 border-gray-900"
-                                            : "border-gray-300"
-                                    }`}
-                                >
-                                    {checked && (
-                                        <Check className="h-2.5 w-2.5 text-white" />
-                                    )}
-                                </span>
+                                <CheckSquare
+                                    checked={checked}
+                                    className="ml-auto"
+                                />
                             </button>
                         );
                     })}

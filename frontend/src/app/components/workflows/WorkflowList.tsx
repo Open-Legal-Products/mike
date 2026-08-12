@@ -24,6 +24,7 @@ import { OwnerOnlyPopup } from "@/app/components/popups/OwnerOnlyPopup";
 import { ConfirmPopup } from "@/app/components/popups/ConfirmPopup";
 import { MikeIcon } from "@/app/components/chat/mike-icon";
 import { PageHeader } from "@/app/components/shared/PageHeader";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import { PillButton } from "@/app/components/ui/pill-button";
 import { TabPillButton } from "@/app/components/ui/tab-pill-button";
 import { TableLoadMoreRow } from "@/app/components/shared/TableLoadMoreRow";
@@ -593,12 +594,12 @@ export function WorkflowList() {
                 ) : filtered.length === 0 ? (
                     <TableEmptyState>
                         {sourceFilter === "user" ? (
-                            <>
-                                <WorkflowSkeuoIcon className="mb-4 h-8 w-8" />
-                                <p className="text-2xl font-medium font-serif text-gray-900">User Workflows</p>
-                                <p className="mt-1 text-xs text-gray-400 text-left">
-                                    Build reusable prompts and tabular review templates tailored to your practice.
-                                </p>
+                            <EmptyState
+                                icon={WorkflowSkeuoIcon}
+                                title="User Workflows"
+                                description="Build reusable prompts and tabular review templates tailored to your practice."
+                                descriptionClassName="text-left"
+                            >
                                 <PillButton
                                     tone="black"
                                     size="sm"
@@ -608,23 +609,21 @@ export function WorkflowList() {
                                     <Plus className="h-3.5 w-3.5" />
                                     Create
                                 </PillButton>
-                            </>
+                            </EmptyState>
                         ) : sourceFilter === "shared" ? (
-                            <>
-                                <WorkflowSkeuoIcon className="mb-4 h-8 w-8" />
-                                <p className="text-2xl font-medium font-serif text-gray-900">Shared Workflows</p>
-                                <p className="mt-1 text-xs text-gray-400 text-left">
-                                    Workflows shared with you by other users will appear here.
-                                </p>
-                            </>
+                            <EmptyState
+                                icon={WorkflowSkeuoIcon}
+                                title="Shared Workflows"
+                                description="Workflows shared with you by other users will appear here."
+                                descriptionClassName="text-left"
+                            />
                         ) : (
-                            <>
-                                <WorkflowSkeuoIcon className="mb-4 h-8 w-8" />
-                                <p className="text-2xl font-medium font-serif text-gray-900">Workflows</p>
-                                <p className="mt-1 text-xs text-gray-400 text-left">
-                                    Automate document analysis with reusable prompts and tabular review templates.
-                                </p>
-                            </>
+                            <EmptyState
+                                icon={WorkflowSkeuoIcon}
+                                title="Workflows"
+                                description="Automate document analysis with reusable prompts and tabular review templates."
+                                descriptionClassName="text-left"
+                            />
                         )}
                     </TableEmptyState>
                 ) : (

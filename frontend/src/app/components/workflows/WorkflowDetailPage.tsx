@@ -46,6 +46,7 @@ import {
 import { PeopleModal } from "@/app/components/modals/PeopleModal";
 import { OpenSourceWorkflowModal } from "@/app/components/workflows/OpenSourceWorkflowModal";
 import { PageHeader } from "@/app/components/shared/PageHeader";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import { PillButton } from "@/app/components/ui/pill-button";
 import { TabPillButton } from "@/app/components/ui/tab-pill-button";
 import { LIQUID_TABLE_SURFACE_CLASS } from "@/app/components/ui/liquid-surface";
@@ -693,24 +694,26 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
                         >
                             {visibleColumns.length === 0 ? (
                                 <TableEmptyState>
-                                    <TabularReviewSkeuoIcon className="mb-4 h-8 w-8" />
-                                    <p className="text-2xl font-medium font-serif text-gray-900">
-                                        Columns
-                                    </p>
-                                    <p className="mt-1 text-xs text-gray-400 text-left">
-                                        Add columns to define what this tabular review workflow extracts from each document.
-                                    </p>
-                                    {!readOnly && (
-                                        <PillButton
-                                            tone="black"
-                                            size="sm"
-                                            onClick={() => setAddColumnOpen(true)}
-                                            className="mt-4 px-3"
-                                        >
-                                            <Plus className="h-3.5 w-3.5" />
-                                            Add Column
-                                        </PillButton>
-                                    )}
+                                    <EmptyState
+                                        icon={TabularReviewSkeuoIcon}
+                                        title="Columns"
+                                        description="Add columns to define what this tabular review workflow extracts from each document."
+                                        descriptionClassName="text-left"
+                                    >
+                                        {!readOnly && (
+                                            <PillButton
+                                                tone="black"
+                                                size="sm"
+                                                onClick={() =>
+                                                    setAddColumnOpen(true)
+                                                }
+                                                className="mt-4 px-3"
+                                            >
+                                                <Plus className="h-3.5 w-3.5" />
+                                                Add Column
+                                            </PillButton>
+                                        )}
+                                    </EmptyState>
                                 </TableEmptyState>
                             ) : (
                                 <TableBody>

@@ -6,6 +6,16 @@ import { CheckIcon, ChevronRightIcon } from "lucide-react";
 
 import { cn } from "@/app/lib/utils";
 
+/**
+ * Items set `outline-hidden` and lean on `focus:bg-accent` for the highlight,
+ * but skins that override that background — `liquid-dropdown` swaps it for a
+ * near-white hover colour at ~1.02:1 — leave keyboard users with no visible
+ * focus indicator (WCAG 2.4.7). The ring is independent of the background, so
+ * it survives those overrides.
+ */
+const MENU_ITEM_FOCUS_RING =
+    "focus-visible:ring-2 focus-visible:ring-blue-500/40";
+
 function DropdownMenu({
     ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
@@ -81,6 +91,7 @@ function DropdownMenuItem({
             data-variant={variant}
             className={cn(
                 "focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 dark:data-[variant=destructive]:focus:bg-destructive/20 data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:*:[svg]:!text-destructive [&_svg:not([class*='text-'])]:text-muted-foreground relative flex cursor-default items-center gap-2 rounded-lg px-3 py-1.5 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+                MENU_ITEM_FOCUS_RING,
                 className
             )}
             {...props}
@@ -99,6 +110,7 @@ function DropdownMenuCheckboxItem({
             data-slot="dropdown-menu-checkbox-item"
             className={cn(
                 "focus:bg-accent focus:text-accent-foreground relative flex cursor-default items-center gap-2 rounded-lg py-1.5 pr-2 pl-8 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+                MENU_ITEM_FOCUS_RING,
                 className
             )}
             checked={checked}
@@ -134,7 +146,11 @@ function DropdownMenuRadioItem({
         <DropdownMenuPrimitive.RadioItem
             data-slot="dropdown-menu-radio-item"
             className={cn(
-                "focus:bg-accent focus:text-accent-foreground data-[state=checked]:bg-gray-100 relative flex cursor-default items-center gap-2 rounded-lg py-1.5 px-3 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+                // gray-100 on a white popover is ~1.03:1, so the checked
+                // background is not on its own a usable selection cue. The
+                // weight is a second, non-colour channel (WCAG 1.4.1).
+                "focus:bg-accent focus:text-accent-foreground data-[state=checked]:bg-gray-100 data-[state=checked]:font-medium relative flex cursor-default items-center gap-2 rounded-lg py-1.5 px-3 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+                MENU_ITEM_FOCUS_RING,
                 className
             )}
             {...props}
@@ -215,6 +231,7 @@ function DropdownMenuSubTrigger({
             data-inset={inset}
             className={cn(
                 "focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground flex cursor-default items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-hidden select-none data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+                MENU_ITEM_FOCUS_RING,
                 className
             )}
             {...props}

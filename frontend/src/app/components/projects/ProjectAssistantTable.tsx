@@ -23,6 +23,7 @@ import {
     type TableSortDirection,
     TableStickyCell,
 } from "@/app/components/shared/TablePrimitive";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import { PillButton } from "@/app/components/ui/pill-button";
 import { ChatSkeuoIcon } from "@/app/components/shared/AppSidebarSkeuoIcons";
 import type { Chat } from "@/app/components/shared/types";
@@ -225,23 +226,21 @@ export function ProjectAssistantTable({
                 <ProjectAssistantLoadingRows />
             ) : chats.length === 0 ? (
                 <TableEmptyState>
-                    <ChatSkeuoIcon className="mb-4 h-8 w-8" />
-                    <p className="text-2xl font-medium font-serif text-gray-900">
-                        Assistant
-                    </p>
-                    <p className="mt-1 text-xs text-gray-400 max-w-xs">
-                        Ask questions and get answers grounded in the documents
-                        in this project.
-                    </p>
-                    <PillButton
-                        tone="black"
-                        size="sm"
-                        onClick={onCreateChat}
-                        className="mt-4 px-3"
+                    <EmptyState
+                        icon={ChatSkeuoIcon}
+                        title="Assistant"
+                        description="Ask questions and get answers grounded in the documents in this project."
                     >
-                        <Plus className="h-3.5 w-3.5" />
-                        Create
-                    </PillButton>
+                        <PillButton
+                            tone="black"
+                            size="sm"
+                            onClick={onCreateChat}
+                            className="mt-4 px-3"
+                        >
+                            <Plus className="h-3.5 w-3.5" />
+                            Create
+                        </PillButton>
+                    </EmptyState>
                 </TableEmptyState>
             ) : (
                 <TableBody>

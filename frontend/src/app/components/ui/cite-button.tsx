@@ -39,9 +39,20 @@ export function CiteButton({
 
     return (
         <button
+            type="button"
             onClick={handleClick}
-            className={`transition-colors flex items-center gap-1 ${className}`}
+            className={`transition-colors flex items-center gap-1 outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-2 ${className}`}
             title="Copy Quote and Citation"
+            // Only label it when there is no visible text: an icon-only button
+            // would otherwise have no accessible name (WCAG 4.1.2), while
+            // overriding the visible "Cite" would break label-in-name (2.5.3).
+            aria-label={
+                showText
+                    ? undefined
+                    : isCopied
+                      ? "Citation copied"
+                      : "Copy quote and citation"
+            }
         >
             {isCopied ? (
                 <Check
