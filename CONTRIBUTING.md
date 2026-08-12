@@ -55,6 +55,22 @@ Frontend:
 npm run build --prefix frontend
 ```
 
+## Frontend UI
+
+Before writing a new component from scratch, check
+`frontend/src/app/components/ui/` for a primitive that already covers it — most
+new UI should be composed from that shared layer rather than hand-rolled. If
+there's no primitive but the pattern is a standard one (dialog, tooltip,
+popover, select, tabs), take it from the [shadcn/ui](https://ui.shadcn.com)
+registry so we inherit Radix's keyboard and ARIA behaviour instead of
+reimplementing it. Hand-write a one-off only when it's used on a single screen
+and has no interaction semantics worth sharing, and keep it in the feature
+folder. When you find yourself copying the same markup into a third place —
+especially a `shadow-[...]` glass recipe — promote it to `components/ui/` with a
+test and migrate every call site in that PR. Tokens, the de facto spacing and
+type scales, and the accessibility rules for primitives are documented in
+[`docs/design-system.md`](docs/design-system.md).
+
 ## Testing
 
 ```bash
