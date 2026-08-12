@@ -19,6 +19,7 @@
     "build:e2e": "npm run typecheck && REACT_APP_API_BASE_URL=http://localhost:3001 REACT_APP_SUPABASE_URL=http://localhost:54321 REACT_APP_SUPABASE_ANON_KEY=test-anon-key REACT_APP_WEB_APP_URL=http://localhost:3000 webpack --mode production",
     "serve:e2e": "http-server dist -p 3100 -a 127.0.0.1 -c-1 --silent",
     "test:e2e": "playwright test",
+    "test:e2e:webkit": "playwright test --project=webkit",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui"
   },

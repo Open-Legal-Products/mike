@@ -41,6 +41,15 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
+    // WebKit is NOT redundant coverage here: WKWebView (the Word-on-Mac task
+    // pane host) ignores `overflow-anchor: none` and re-anchors scrollTop when
+    // a descendant resizes, while Chromium honours the opt-out. The scroll
+    // pinning assertions in e2e/chat-layout.spec.ts only bite under this
+    // project — dropping it silently un-tests the WebKit scroll fix.
+    {
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
+    },
   ],
 
   // Build the production bundle, then static-serve dist/ over HTTP. Build runs
@@ -50,6 +59,9 @@ export default defineConfig({
     command: "npm run build:e2e && npm run serve:e2e",
     url: `${BASE_URL}/taskpane.html`,
     reuseExistingServer: !process.env.CI,
-    timeout: 180_000,
+    // Generous because the command includes a cold typecheck + production
+    // webpack build on CI runners; a webServer timeout aborts the whole run
+    // (retries never apply to it).
+    timeout: 300_000,
   },
 });
