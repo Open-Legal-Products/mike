@@ -4,6 +4,7 @@ Thanks for helping improve Mike. Please keep contributions small, focused, and e
 
 ## Guidelines
 
+- For changes that touch multiple subsystems, the data model, or public API/behavior, open a PRD issue first using the "New PRD" template (`docs/templates/PRD.md`); for small, well-understood fixes, a plain issue is fine.
 - Prefer targeted edits over broad refactors.
 - Keep each PR focused on one bug, feature, or cleanup.
 - Update docs or env examples when changing setup, config, or user-facing behavior.

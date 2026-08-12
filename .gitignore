@@ -27,3 +27,8 @@ e2e/.auth/
 # harness only; CI scaffolds its own fresh copy on every run
 /supabase/
 backend/supabase/
+
+# dev-cycle scratch files
+.current-issue.md
+.implementation-plan.md
+.implement-config
