@@ -2,6 +2,7 @@
 
 import { toWordText } from "../lib/wordText";
 import type { RedlineEdit } from "../lib/redline";
+import { createSecureUuid } from "../lib/secureUuid";
 import {
   bookmarkNameForEdit,
   getWordEditAnchor,
@@ -188,7 +189,7 @@ function serializeWordMutation<T>(operation: () => Promise<T>): Promise<T> {
 
 function createTrackedEditHandle(): TrackedEditHandle {
   nextTrackedEditHandle += 1;
-  return `mike-edit-${Date.now().toString(36)}-${nextTrackedEditHandle.toString(36)}-${Math.random().toString(36).slice(2)}` as TrackedEditHandle;
+  return `mike-edit-${Date.now().toString(36)}-${nextTrackedEditHandle.toString(36)}-${createSecureUuid()}` as TrackedEditHandle;
 }
 
 function rememberTerminalState(

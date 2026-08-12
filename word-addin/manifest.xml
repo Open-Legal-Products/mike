@@ -6,18 +6,18 @@
   xsi:type="TaskPaneApp">
 
   <Id>a1b2c3d4-e5f6-7890-abcd-ef1234567890</Id>
-  <Version>1.0.0.0</Version>
+  <Version>1.0.0.1</Version>
   <ProviderName>Mike Legal AI</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Mike" />
   <Description DefaultValue="AI-powered legal assistant for Word" />
 
-  <IconUrl DefaultValue="https://localhost:3000/assets/icon-32.png" />
-  <HighResolutionIconUrl DefaultValue="https://localhost:3000/assets/icon-80.png" />
-  <SupportUrl DefaultValue="https://localhost:3000" />
+  <IconUrl DefaultValue="https://localhost:3200/assets/icon-32.png" />
+  <HighResolutionIconUrl DefaultValue="https://localhost:3200/assets/icon-80.png" />
+  <SupportUrl DefaultValue="https://localhost:3200" />
 
   <AppDomains>
-    <AppDomain>https://localhost:3000</AppDomain>
+    <AppDomain>https://localhost:3200</AppDomain>
   </AppDomains>
 
   <Hosts>
@@ -31,7 +31,7 @@
   </Requirements>
 
   <DefaultSettings>
-    <SourceLocation DefaultValue="https://localhost:3000/taskpane.html" />
+    <SourceLocation DefaultValue="https://localhost:3200/taskpane.html" />
   </DefaultSettings>
 
   <Permissions>ReadWriteDocument</Permissions>
@@ -78,13 +78,13 @@
 
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16x16" DefaultValue="https://localhost:3000/assets/icon-16.png" />
-        <bt:Image id="Icon.32x32" DefaultValue="https://localhost:3000/assets/icon-32.png" />
-        <bt:Image id="Icon.80x80" DefaultValue="https://localhost:3000/assets/icon-80.png" />
+        <bt:Image id="Icon.16x16" DefaultValue="https://localhost:3200/assets/icon-16.png" />
+        <bt:Image id="Icon.32x32" DefaultValue="https://localhost:3200/assets/icon-32.png" />
+        <bt:Image id="Icon.80x80" DefaultValue="https://localhost:3200/assets/icon-80.png" />
       </bt:Images>
       <bt:Urls>
-        <bt:Url id="Commands.Url" DefaultValue="https://localhost:3000/commands.html" />
-        <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3000/taskpane.html" />
+        <bt:Url id="Commands.Url" DefaultValue="https://localhost:3200/commands.html" />
+        <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3200/taskpane.html" />
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="GroupLabel" DefaultValue="Mike Legal AI" />

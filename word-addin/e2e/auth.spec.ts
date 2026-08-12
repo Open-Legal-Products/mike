@@ -55,7 +55,7 @@ test.describe("auth flow", () => {
     await expect(signIn).toBeDisabled();
   });
 
-  test("login card fits a narrow Word task pane without horizontal overflow", async ({
+  test("login form fits a narrow Word task pane without horizontal overflow", async ({
     addin,
     page,
   }) => {
@@ -81,25 +81,22 @@ test.describe("auth flow", () => {
     );
     expect(horizontalOverflow).toBeLessThanOrEqual(0);
 
-    const card = await page.getByTestId("login-card").boundingBox();
-    expect(card).not.toBeNull();
-    const loginCard = page.getByTestId("login-card");
-    await expect(loginCard).toHaveClass(/bg-gray-50\/95/);
-    await expect(loginCard).toHaveClass(/rounded-3xl/);
-    expect(await loginCard.getAttribute("class")).toContain(
-      "shadow-[0_14px_40px_rgba(15,23,42,0.101),0_5px_14px_rgba(15,23,42,0.067)]"
-    );
+    const form = await page.getByTestId("login-form").boundingBox();
+    expect(form).not.toBeNull();
+    const loginForm = page.getByTestId("login-form");
+    await expect(loginForm).not.toHaveClass(/bg-gray-50\/95/);
+    await expect(loginForm).not.toHaveClass(/rounded-3xl/);
     const button = await loginButton.boundingBox();
     expect(button).not.toBeNull();
-    expect((button?.width ?? 0) < (card?.width ?? 0) / 2).toBe(true);
+    expect((button?.width ?? 0) < (form?.width ?? 0) / 2).toBe(true);
     expect(
       Math.abs(
         (button?.x ?? 0) +
           (button?.width ?? 0) -
-          ((card?.x ?? 0) + (card?.width ?? 0) - 24)
+          ((form?.x ?? 0) + (form?.width ?? 0))
       )
     ).toBeLessThan(2);
-    expect(Math.abs((card?.y ?? 0) + (card?.height ?? 0) / 2 - 310)).toBeLessThan(
+    expect(Math.abs((form?.y ?? 0) + (form?.height ?? 0) / 2 - 310)).toBeLessThan(
       2
     );
     await expect(page.getByRole("heading", { name: "Log In" })).toHaveCSS(

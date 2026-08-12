@@ -29,9 +29,9 @@ const distPath = path.resolve(__dirname, "../dist");
 const outputPath = path.join(distPath, "manifest.xml");
 const manifest = fs
   .readFileSync(sourcePath, "utf8")
-  .replaceAll("https://localhost:3000", publicUrl);
+  .replaceAll("https://localhost:3200", publicUrl);
 
-if (manifest.includes("https://localhost:3000")) {
+if (manifest.includes("https://localhost:3200")) {
   throw new Error("Production manifest still contains localhost URLs");
 }
 

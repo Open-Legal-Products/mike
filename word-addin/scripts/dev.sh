@@ -12,12 +12,11 @@
 #      before the bundle is built.
 #   3. Runs `npm install` to verify and repair the dependency tree.
 #   4. Checks the Mike backend (and Supabase) are reachable (warns if not).
-#   5. Verifies port 3000 is free — the dev server + manifest are hardwired to
-#      it, and the Mike web app on :3000 collides. Fails fast with a fix.
+#   5. Verifies port 3200 is free for the dev server and manifest.
 #   6. Installs the trusted dev HTTPS certificate if Word doesn't already trust
 #      it (this step may prompt for your keychain/admin password).
 #   7. Runs `npm start`; webpack loads `.env`, boots its dev server
-#      on https://localhost:3000 and sideloads the add-in into Word desktop.
+#      on https://localhost:3200 and sideloads the add-in into Word desktop.
 #
 # Prerequisite: the Mike API must be running (`npm run dev` in backend/),
 # and frontend/.env.local must be filled in (see the repo README).
@@ -76,9 +75,9 @@ fi
 # backends (see the proxy config in webpack.config.js). Routing Supabase through
 # the proxy too keeps every request same-origin and side-steps CORS.
 step "Configuring .env (proxied through the HTTPS dev server)"
-DEV_ORIGIN="https://localhost:3000"
-# The web app cannot run on :3000 alongside the add-in. Preserve an explicit
-# override, otherwise link account settings to the deployed Mike app.
+DEV_ORIGIN="https://localhost:3200"
+# Preserve an explicit override; otherwise link account settings to the
+# deployed Mike app.
 WEB_APP_URL="${REACT_APP_WEB_APP_URL:-$(read_addin_env REACT_APP_WEB_APP_URL)}"
 WEB_APP_URL="${WEB_APP_URL:-https://app.mikeoss.com}"
 cat > .env <<EOF
@@ -133,26 +132,24 @@ if [ -n "$SUPA_URL" ]; then
     fi
 fi
 
-# ── 6. Port 3000 availability ─────────────────────────────────────────────────
+# ── 6. Port 3200 availability ─────────────────────────────────────────────────
 # The webpack dev server AND the add-in manifest are hardwired to
-# https://localhost:3000. The Mike web app (`npm run dev:web`) also
-# binds 3000, so the two collide. Fail fast with a clear message BEFORE the cert
-# prompt / launch — otherwise `npm start` dies with an opaque EADDRINUSE.
+# https://localhost:3200. Fail fast with a clear message BEFORE the cert prompt /
+# launch — otherwise `npm start` dies with an opaque EADDRINUSE.
 # (Skipped for --setup-only, which never launches; re-running while the add-in's
 # own server is already up correctly trips this too.)
 if [ "$SETUP_ONLY" != 1 ]; then
-    step "Checking port 3000 is free"
-    if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:3000 -sTCP:LISTEN >/dev/null 2>&1; then
-        holder="$(lsof -nP -iTCP:3000 -sTCP:LISTEN 2>/dev/null | awk 'NR==2{print $1" (pid "$2")"}')"
-        warn "Port 3000 is already in use by: ${holder:-another process}"
-        echo "    The add-in dev server and Word's manifest both require https://localhost:3000."
-        echo "    This is most likely the Mike web app — stop it first:"
-        echo "      lsof -nP -iTCP:3000 -sTCP:LISTEN     # confirm what it is"
-        echo "      # then stop that process (e.g. quit 'npm run dev:web')"
+    step "Checking port 3200 is free"
+    if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:3200 -sTCP:LISTEN >/dev/null 2>&1; then
+        holder="$(lsof -nP -iTCP:3200 -sTCP:LISTEN 2>/dev/null | awk 'NR==2{print $1" (pid "$2")"}')"
+        warn "Port 3200 is already in use by: ${holder:-another process}"
+        echo "    The add-in dev server and Word's manifest both require https://localhost:3200."
+        echo "    Stop the process using it first:"
+        echo "      lsof -nP -iTCP:3200 -sTCP:LISTEN     # confirm what it is"
         echo "    Then re-run this script."
         exit 1
     fi
-    ok "port 3000 is free"
+    ok "port 3200 is free"
 fi
 
 # ── 7. Dev HTTPS certificate ─────────────────────────────────────────────────
@@ -218,7 +215,7 @@ if [ "$BACKEND_OK" != 1 ]; then
 fi
 
 step "Starting dev server + sideloading into Word"
-echo "    (webpack serves https://localhost:3000 and proxies /auth + /api to the"
+echo "    (webpack serves https://localhost:3200 and proxies /auth + /api to the"
 echo "     real backends; Word opens with the add-in.)"
 echo "    In Word: Home → Mike Legal AI → Mike"
 exec npm start

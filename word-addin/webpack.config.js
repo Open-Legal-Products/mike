@@ -34,7 +34,7 @@ module.exports = async (_env, options) => {
 
   /** @type {import('webpack-dev-server').Configuration} */
   const devServerConfig = {
-    port: 3000,
+    port: 3200,
     hot: true,
     // compress defaults to true, and the gzip middleware buffers
     // text/event-stream bodies until the response ends — which turns the /chat
@@ -54,7 +54,7 @@ module.exports = async (_env, options) => {
 
   if (isDev) {
     // Dev-only: self-signed HTTPS cert for the webpack-dev-server on
-    // localhost:3000. office-addin-dev-certs installs its CA into the OS
+    // localhost:3200. office-addin-dev-certs installs its CA into the OS
     // keychain, which pops an admin prompt — impossible to approve in
     // automated/headless environments. DEV_HTTPS_CERT/DEV_HTTPS_KEY serve
     // existing cert files directly instead (the driving browser must then

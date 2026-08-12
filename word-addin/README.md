@@ -61,9 +61,9 @@ The sections below explain each step the script automates, and the manual / web 
    ```bash
    cp .env.example .env
    # then edit word-addin/.env
-   REACT_APP_SUPABASE_URL=https://localhost:3000
+   REACT_APP_SUPABASE_URL=https://localhost:3200
    REACT_APP_SUPABASE_ANON_KEY=<your Supabase anon / publishable key>
-   REACT_APP_API_BASE_URL=https://localhost:3000/api
+   REACT_APP_API_BASE_URL=https://localhost:3200/api
    REACT_APP_WEB_APP_URL=https://app.mikeoss.com
    SUPABASE_PROXY_TARGET=https://your-project.supabase.co
    API_PROXY_TARGET=http://localhost:3001
@@ -71,9 +71,9 @@ The sections below explain each step the script automates, and the manual / web 
 
    - `REACT_APP_SUPABASE_ANON_KEY` — the same publishable key as `frontend/.env.local`.
    - The API and Supabase `REACT_APP_*_URL` values point the HTTPS task pane at its same-origin proxy. `SUPABASE_PROXY_TARGET` and `API_PROXY_TARGET` identify the real upstream services.
-   - `REACT_APP_WEB_APP_URL` is used only for account links such as **Set up API keys**. It defaults to the deployed Mike app because the local frontend cannot share port 3000 with the add-in; override it if you run the frontend on another port.
+   - `REACT_APP_WEB_APP_URL` is used only for account links such as **Set up API keys**. It defaults to the deployed Mike app; override it if you want account links to open a local frontend.
 
-   > **Mixed content / HTTPS:** Word serves the task pane over HTTPS and blocks plain-HTTP browser requests. Keep the compiled URLs on `https://localhost:3000`; webpack proxies `/api` to the Mike API and `/auth` to Supabase. The recommended `scripts/dev.sh` configures this automatically.
+   > **Mixed content / HTTPS:** Word serves the task pane over HTTPS and blocks plain-HTTP browser requests. Keep the compiled URLs on `https://localhost:3200`; webpack proxies `/api` to the Mike API and `/auth` to Supabase. The recommended `scripts/dev.sh` configures this automatically.
 
    Existing shell variables take precedence over `.env`, which keeps CI and deployed builds configurable without modifying the file. Production builds continue to require their values from the deployment environment.
 
@@ -81,7 +81,7 @@ The sections below explain each step the script automates, and the manual / web 
 
 3. **Trust the dev SSL certificate (one time only)**
 
-   The dev server runs on `https://localhost:3000` with a self-signed certificate. Word refuses to load add-ins over untrusted HTTPS. Install the trusted cert once:
+   The dev server runs on `https://localhost:3200` with a self-signed certificate. Word refuses to load add-ins over untrusted HTTPS. Install the trusted cert once:
 
    ```bash
    npx office-addin-dev-certs install
@@ -105,7 +105,7 @@ The sections below explain each step the script automates, and the manual / web 
    bun dev
    ```
 
-   Both commands run `office-addin-debugging start manifest.xml`, which starts the webpack dev server on `https://localhost:3000` **and** automatically opens Word with the add-in sideloaded. The task pane appears under **Home → Mike Legal AI → Mike**. Use `bun run dev:server` only when you intentionally want the raw webpack server without sideloading Word.
+   Both commands run `office-addin-debugging start manifest.xml`, which starts the webpack dev server on `https://localhost:3200` **and** automatically opens Word with the add-in sideloaded. The task pane appears under **Home → Mike Legal AI → Mike**. Use `bun run dev:server` only when you intentionally want the raw webpack server without sideloading Word.
 
 ---
 
@@ -124,7 +124,7 @@ Restart Word, then: **Insert → Add-ins → My Add-ins → Mike**
 
 **Insert → Add-ins → Upload My Add-in** → select `manifest.xml`
 
-> **Caveat — the pane will silently fail to load in a normal browser.** Word on the web is a *public* origin (`word-edit.officeapps.live.com`) and the dev pane is `https://localhost:3000`; Chrome's Local Network Access checks block a public page from embedding a localhost iframe, with no visible error — the pane simply never appears. This affects dev sideloads only (a deployed add-in on a public HTTPS host is unaffected). To test against real Word on the web locally, use the ready-made launcher, which starts a browser with those checks disabled, sideloads the manifest, opens the pane, and hands you the window:
+> **Caveat — the pane will silently fail to load in a normal browser.** Word on the web is a *public* origin (`word-edit.officeapps.live.com`) and the dev pane is `https://localhost:3200`; Chrome's Local Network Access checks block a public page from embedding a localhost iframe, with no visible error — the pane simply never appears. This affects dev sideloads only (a deployed add-in on a public HTTPS host is unaffected). To test against real Word on the web locally, use the ready-made launcher, which starts a browser with those checks disabled, sideloads the manifest, opens the pane, and hands you the window:
 >
 > ```bash
 > node e2e-live/word-web-session.mjs --login   # one-time Microsoft sign-in (persistent profile)
@@ -244,8 +244,8 @@ A previous run exited without deregistering (crash, Ctrl-C) and left the sideloa
 **`npm start` fails with `Cannot find module 'semver'` from `office-addin-dev-settings`**
 Run `npm install` in `word-addin/`. `semver` is intentionally a direct development dependency because the Office sideloading tool loads it at runtime without reliably declaring it in every affected dependency graph; do not remove it as “unused.”
 
-**`npm start` / `dev.sh` complains port 3000 is in use**
-The add-in dev server and the manifest are hardwired to `https://localhost:3000`, which collides with the Mike web app's dev server. Find the holder with `lsof -nP -iTCP:3000 -sTCP:LISTEN` and stop it (usually `npm run dev` in `frontend/`).
+**`npm start` / `dev.sh` complains port 3200 is in use**
+The add-in dev server and manifest use `https://localhost:3200`. Find the holder with `lsof -nP -iTCP:3200 -sTCP:LISTEN` and stop it before restarting the add-in.
 
 **The pane never appears in Word on the web**
 See the caveat under [Word on the web](#word-on-the-web) — Chrome's Local Network Access checks silently block the localhost iframe; use `e2e-live/manual-session.mjs`.

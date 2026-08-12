@@ -634,6 +634,33 @@ test("sends a document snapshot without claiming the model read it", async ({
   ).toHaveCount(0);
 });
 
+test("uses Web Crypto for document IDs when randomUUID is unavailable", async ({
+  addin,
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(globalThis.crypto, "randomUUID", {
+      configurable: true,
+      value: undefined,
+    });
+  });
+  await addin.mockChatStream(["ok"]);
+  await addin.gotoTaskpane({ documentText: "Fallback UUID test" });
+  await addin.expectAuthedShell();
+
+  await page.getByPlaceholder("Ask Mike…").fill("Check this document");
+  const requestPromise = page.waitForRequest("**/word-chat");
+  await page.getByRole("button", { name: "Send" }).click();
+  const body = (await requestPromise).postDataJSON();
+
+  expect(body.document_id).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  );
+  expect(
+    (await addin.wordDocument()).settings["mike.word.documentId.v1"],
+  ).toBe(body.document_id);
+});
+
 test("shows Reading and Read only when the model triggers the read tool", async ({
   addin,
   page,

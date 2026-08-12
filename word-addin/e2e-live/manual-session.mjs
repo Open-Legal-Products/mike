@@ -7,7 +7,7 @@
  *
  * The browser runs with Chrome's Local Network Access checks disabled,
  * which a dev sideload needs (Word's public editor frame iframes
- * https://localhost:3000). Prerequisites: the add-in dev server on :3000 and
+ * https://localhost:3200). Prerequisites: the add-in dev server on :3200 and
  * the Mike backend on :3001 (the same services used by scripts/dev.sh).
  */
 import { chromium } from "@playwright/test";
@@ -101,10 +101,10 @@ await dialogFrame
 
 console.log("Waiting for the Mike pane…");
 try {
-  await waitForFrame((f) => f.url().includes("localhost:3000"), 30_000);
+  await waitForFrame((f) => f.url().includes("localhost:3200"), 30_000);
 } catch {
   await wac.getByRole("button", { name: /mike/i }).first().click();
-  await waitForFrame((f) => f.url().includes("localhost:3000"), 60_000);
+  await waitForFrame((f) => f.url().includes("localhost:3200"), 60_000);
 }
 
 console.log(
