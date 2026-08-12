@@ -82,8 +82,14 @@ export interface WordEditStreamController {
   waitForMessageEdits: (messageId: string) => Promise<void>;
 }
 
-export interface WordTrackedEditsController extends WordEditStreamController {
+export interface WordTrackedEditsController {
   editStateByKey: Readonly<Record<string, EditRuntimeState>>;
+  /**
+   * Streaming-facing behavior with a render-stable identity. It is memoized
+   * apart from `editStateByKey` so that hooks depending on it (handleChat)
+   * are not recreated by every edit-state transition during a stream.
+   */
+  streamController: WordEditStreamController;
   viewEdit: (key: string) => Promise<void>;
   resolveOneEdit: (key: string, decision: EditDecision) => Promise<void>;
   resolveMessageEdits: (

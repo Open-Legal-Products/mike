@@ -46,7 +46,9 @@ export function ChatPanel({
     wordDocumentId,
     wordChatStorage,
     wordChatOwnerId,
-    editController: trackedEdits,
+    // Only the identity-stable streaming callbacks; passing the whole
+    // controller would tie handleChat's identity to every edit-state change.
+    editController: trackedEdits.streamController,
   });
 
   return (

@@ -111,6 +111,12 @@ interface TrackedEditRestoreResult {
   error?: string;
 }
 
+export interface TrackedEditRestoreDescriptor {
+  /** Stable `${assistantMessageId}:edit-${blockIndex}` identity. */
+  stableEditId: string;
+  edit: RedlineEdit;
+}
+
 type PersistedTrackedEditRevealStatus =
   | "revealed"
   | "not-found"
@@ -633,11 +639,226 @@ async function restoreTrackedEditNow(
   }
 }
 
-export function restoreTrackedEdit(
-  stableEditId: string,
-  edit: RedlineEdit,
-): Promise<TrackedEditRestoreResult> {
-  return serializeWordMutation(() => restoreTrackedEditNow(stableEditId, edit));
+/**
+ * Batched counterpart of `restoreTrackedEditNow` for chat open, which restores
+ * every stored edit at once. Each `Word.run` costs several host round-trips,
+ * and the global mutation queue serializes them, so restoring per edit makes
+ * the pane's readiness linear in chat history. One shared batch loads ALL
+ * bookmark lookups before each sync, keeping the whole restore at a constant
+ * number of syncs. A missing bookmark is a null object, never a batch failure;
+ * if Word fails the shared batch outright (one stale object fails its whole
+ * `Word.run`), each edit is retried individually so it gets its own verdict.
+ */
+async function restoreTrackedEditsNow(
+  descriptors: readonly TrackedEditRestoreDescriptor[],
+): Promise<TrackedEditRestoreResult[]> {
+  const results = new Map<number, TrackedEditRestoreResult>();
+
+  interface RestoreCandidate {
+    index: number;
+    stableEditId: string;
+    edit: RedlineEdit;
+    bookmarkName: string;
+    anchorWasRegistered: boolean;
+  }
+  const candidates: RestoreCandidate[] = [];
+
+  descriptors.forEach(({ stableEditId, edit }, index) => {
+    for (const [handle, entry] of pendingTrackedEdits) {
+      if (entry.stableEditId === stableEditId) {
+        results.set(index, { stableEditId, status: "restored", handle });
+        return;
+      }
+    }
+
+    let bookmarkName = bookmarkNameForEdit(stableEditId);
+    let anchorWasRegistered = false;
+    try {
+      const anchor = getWordEditAnchor(stableEditId);
+      if (anchor) {
+        bookmarkName = anchor.bookmarkName;
+        anchorWasRegistered = true;
+      }
+    } catch {
+      // The deterministic bookmark name still permits recovery if settings
+      // were unavailable or failed to save.
+    }
+    candidates.push({
+      index,
+      stableEditId,
+      edit,
+      bookmarkName,
+      anchorWasRegistered,
+    });
+  });
+
+  if (candidates.length > 0) {
+    type BatchOutcome =
+      | { status: "not-found" }
+      | { status: "resolved" }
+      | { status: "view-only" }
+      | {
+          status: "restored";
+          collection: Word.TrackedChangeCollection;
+          changes: Word.TrackedChange[];
+          range: Word.Range;
+        };
+    try {
+      const outcomes = await Word.run(async (context) => {
+        const byCandidate = new Map<RestoreCandidate, BatchOutcome>();
+
+        const lookups = candidates.map((candidate) => {
+          const range = context.document.getBookmarkRangeOrNullObject(
+            candidate.bookmarkName,
+          );
+          range.load("isNullObject");
+          return { candidate, range };
+        });
+        await context.sync();
+
+        const present: {
+          candidate: RestoreCandidate;
+          range: Word.Range;
+          collection: Word.TrackedChangeCollection;
+        }[] = [];
+        for (const { candidate, range } of lookups) {
+          if (range.isNullObject) {
+            byCandidate.set(candidate, { status: "not-found" });
+            continue;
+          }
+          const collection = range.getTrackedChanges();
+          collection.load("items");
+          present.push({ candidate, range, collection });
+        }
+        if (present.length > 0) await context.sync();
+
+        const withRevisions: typeof present = [];
+        let staleBookmarkQueued = false;
+        for (const entry of present) {
+          if (entry.collection.items.length === 0) {
+            context.document.deleteBookmark(entry.candidate.bookmarkName);
+            staleBookmarkQueued = true;
+            byCandidate.set(entry.candidate, { status: "resolved" });
+            continue;
+          }
+          for (const change of entry.collection.items) {
+            change.load(["type", "text"]);
+          }
+          withRevisions.push(entry);
+        }
+        if (staleBookmarkQueued || withRevisions.length > 0) {
+          await context.sync();
+        }
+
+        let trackingQueued = false;
+        for (const entry of withRevisions) {
+          if (
+            !trackedChangesMatchEdit(
+              entry.collection.items,
+              entry.candidate.edit,
+            )
+          ) {
+            byCandidate.set(entry.candidate, { status: "view-only" });
+            continue;
+          }
+          entry.collection.track();
+          for (const change of entry.collection.items) change.track();
+          entry.range.track();
+          trackingQueued = true;
+          byCandidate.set(entry.candidate, {
+            status: "restored",
+            collection: entry.collection,
+            changes: entry.collection.items,
+            range: entry.range,
+          });
+        }
+        if (trackingQueued) await context.sync();
+
+        return byCandidate;
+      });
+
+      for (const candidate of candidates) {
+        const outcome = outcomes.get(candidate);
+        // Every candidate is classified inside the batch; treat a gap as a
+        // per-edit failure rather than crashing the other restorations.
+        if (!outcome) continue;
+        if (outcome.status === "not-found" || outcome.status === "resolved") {
+          try {
+            await removeWordEditAnchor(candidate.stableEditId);
+          } catch {
+            // The stale mapping is harmless and will be pruned on a later load.
+          }
+          results.set(candidate.index, {
+            stableEditId: candidate.stableEditId,
+            status: outcome.status,
+          });
+          continue;
+        }
+        if (!candidate.anchorWasRegistered) {
+          await persistWordEditAnchor(
+            candidate.stableEditId,
+            candidate.bookmarkName,
+          ).catch((error) => {
+            console.error(
+              "[tracked-edit/restore] Failed to repair the document anchor registry.",
+              {
+                stableEditId: candidate.stableEditId,
+                bookmarkName: candidate.bookmarkName,
+                error,
+              },
+            );
+          });
+        }
+        if (outcome.status === "view-only") {
+          results.set(candidate.index, {
+            stableEditId: candidate.stableEditId,
+            status: "view-only",
+          });
+          continue;
+        }
+
+        const handle = createTrackedEditHandle();
+        pendingTrackedEdits.set(handle, {
+          expectedEdit: candidate.edit,
+          changes: outcome.changes,
+          parentCollections: [outcome.collection],
+          ranges: [outcome.range],
+          stableEditId: candidate.stableEditId,
+          bookmarkName: candidate.bookmarkName,
+        });
+        results.set(candidate.index, {
+          stableEditId: candidate.stableEditId,
+          status: "restored",
+          handle,
+        });
+      }
+    } catch {
+      // The shared batch failed as a whole. Fall back to one edit at a time
+      // so a single bad object cannot take every other restoration with it.
+      for (const candidate of candidates) {
+        results.set(
+          candidate.index,
+          await restoreTrackedEditNow(candidate.stableEditId, candidate.edit),
+        );
+      }
+    }
+  }
+
+  return descriptors.map(
+    ({ stableEditId }, index) =>
+      results.get(index) ?? {
+        stableEditId,
+        status: "error" as const,
+        error:
+          "Word couldn’t restore this tracked change. Review it from Word’s Review tab.",
+      },
+  );
+}
+
+export function restoreTrackedEdits(
+  descriptors: readonly TrackedEditRestoreDescriptor[],
+): Promise<TrackedEditRestoreResult[]> {
+  return serializeWordMutation(() => restoreTrackedEditsNow(descriptors));
 }
 
 /** Navigate through a persistent bookmark when exact review controls are unsafe. */

@@ -125,11 +125,15 @@ export function useWordAssistantChat({
       let cleanupAssistantMessageId: string | null = null;
       let assistantEvents: WordAssistantEvent[] = [];
 
-      const requestIsCurrent = (): boolean =>
+      // Whether this send still owns the transcript. Cancellation is tracked
+      // separately: an aborted stream is no longer current, but the sealed
+      // edits it already received must still be applied (see the abort path).
+      const sendIsCurrent = (): boolean =>
         mountedRef.current &&
-        !controller.signal.aborted &&
         generation === sessionGenerationRef.current &&
         sendToken === sendSequenceRef.current;
+      const requestIsCurrent = (): boolean =>
+        !controller.signal.aborted && sendIsCurrent();
 
       try {
         let documentContext: string;
@@ -203,10 +207,29 @@ export function useWordAssistantChat({
         // screen can paint. Publishes coalesce onto one rAF, and the flush
         // reads the live locals so it always commits the latest snapshot.
         let publishFrame: number | null = null;
+        // Redline projection re-parses the accumulated answer from index zero,
+        // so running it per SSE chunk costs O(n²) over a whole stream. Sealing
+        // only needs to be observed once per painted frame, so the projection
+        // rides the same flush as the transcript publish. The abort signal is
+        // deliberately not consulted: a cancelled stream's already-received
+        // sealed edits must still apply, exactly as they did when each chunk
+        // was processed synchronously.
+        let redlineParsePending = false;
         const flushAssistantEvents = (): void => {
           publishFrame = null;
           const messageId = assistantMessageId;
           const eventSnapshot = assistantEvents;
+          if (redlineParsePending) {
+            redlineParsePending = false;
+            if (sendIsCurrent()) {
+              editController.processLiveRedlines(
+                messageId,
+                streamedContent,
+                false,
+                assistantMessageHasStableId,
+              );
+            }
+          }
           setMessages((current) =>
             current.map((message) =>
               message.id === messageId && message.role === "assistant"
@@ -316,13 +339,8 @@ export function useWordAssistantChat({
               if (!requestIsCurrent()) return;
               streamedContent += chunk;
               assistantEvents = appendAssistantContent(assistantEvents, chunk);
+              redlineParsePending = true;
               publishAssistantEvents();
-              editController.processLiveRedlines(
-                assistantMessageId,
-                streamedContent,
-                false,
-                assistantMessageHasStableId,
-              );
             },
           );
           publishAssistantEventsNow();
@@ -361,10 +379,7 @@ export function useWordAssistantChat({
           // Commit whatever streamed before the failure so the terminal UI
           // state below always builds on the latest transcript.
           publishAssistantEventsNow();
-          const sessionIsCurrent =
-            mountedRef.current &&
-            generation === sessionGenerationRef.current &&
-            sendToken === sendSequenceRef.current;
+          const sessionIsCurrent = sendIsCurrent();
           if (controller.signal.aborted) {
             if (sessionIsCurrent) {
               editController.markIncompleteRedlines(

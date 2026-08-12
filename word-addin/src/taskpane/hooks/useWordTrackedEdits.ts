@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   releaseTrackedEdits,
   resolveTrackedEdit,
   resolveTrackedEdits,
-  restoreTrackedEdit,
+  restoreTrackedEdits,
   revealPersistedTrackedEdit,
   revealTrackedEdit,
   useWordDoc,
@@ -15,6 +15,7 @@ import type { RedlineEdit } from "../lib/redline";
 import type {
   EditDecision,
   EditRuntimeState,
+  WordEditStreamController,
   WordTrackedEditsController,
 } from "../lib/wordChatTypes";
 import { getEditKey } from "../lib/wordTrackedEditKeys";
@@ -107,19 +108,23 @@ export function useWordTrackedEdits({
       return next;
     });
 
-    void Promise.all(
-      descriptors.map(async ({ key, edit }) => {
-        const result = await restoreTrackedEdit(key, edit);
-        if (
-          !mountedRef.current ||
-          generation !== sessionGenerationRef.current
-        ) {
-          if (result.handle) {
-            await releaseTrackedEdits([result.handle]);
-          }
-          return;
-        }
+    // One batched restore: every bookmark lookup shares a single Word.run
+    // behind the global mutation queue, instead of ~4 serialized syncs per
+    // stored edit. The batch keeps per-edit failure isolation internally.
+    void (async () => {
+      const results = await restoreTrackedEdits(
+        descriptors.map(({ key, edit }) => ({ stableEditId: key, edit })),
+      );
+      if (!mountedRef.current || generation !== sessionGenerationRef.current) {
+        const staleHandles = results.flatMap((result) =>
+          result.handle ? [result.handle] : [],
+        );
+        if (staleHandles.length > 0) await releaseTrackedEdits(staleHandles);
+        return;
+      }
 
+      for (const result of results) {
+        const key = result.stableEditId;
         if (result.status === "restored" && result.handle) {
           editHandlesRef.current.set(key, result.handle);
           persistentViewEditKeysRef.current.add(key);
@@ -128,7 +133,7 @@ export function useWordTrackedEdits({
             busy: false,
             error: undefined,
           });
-          return;
+          continue;
         }
         if (result.status === "view-only") {
           persistentViewEditKeysRef.current.add(key);
@@ -137,15 +142,15 @@ export function useWordTrackedEdits({
             busy: false,
             error: undefined,
           });
-          return;
+          continue;
         }
         setEditRuntimeState(key, {
           status: "historical",
           busy: false,
           error: result.error,
         });
-      }),
-    );
+      }
+    })();
     // sessionKey is the explicit boundary for historical restoration.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionKey]);
@@ -515,11 +520,23 @@ export function useWordTrackedEdits({
     [setEditRuntimeState],
   );
 
+  // handleChat lists the stream controller among its deps. Handing it an
+  // object that also carries editStateByKey would recreate handleChat on
+  // every receiving→applying→pending transition mid-stream — exactly the
+  // churn the chat hook's message refs exist to prevent — so the behavior is
+  // memoized apart from the state it drives.
+  const streamController = useMemo<WordEditStreamController>(
+    () => ({
+      processLiveRedlines,
+      markIncompleteRedlines,
+      waitForMessageEdits,
+    }),
+    [markIncompleteRedlines, processLiveRedlines, waitForMessageEdits],
+  );
+
   return {
     editStateByKey,
-    processLiveRedlines,
-    markIncompleteRedlines,
-    waitForMessageEdits,
+    streamController,
     viewEdit,
     resolveOneEdit,
     resolveMessageEdits,
