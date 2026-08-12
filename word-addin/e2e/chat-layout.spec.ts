@@ -74,10 +74,12 @@ test("uses the frontend assistant spacer while a new answer grows", async ({
     }),
   );
 
-  // The blur ramps down in masked stages instead of ending on one hard edge,
-  // so every blurring layer is masked and none of them draws a shadowed line.
+  // Exactly one blurring layer: each backdrop-filter re-samples the moving
+  // transcript every frame in WKWebView, so the progressive-blur look is
+  // produced by a single blur whose mask alpha ramps down (no stacked
+  // blur-per-stage layers), and it must not draw a shadowed seam.
   const blurLayers = scrimLayers.filter((layer) => layer.blurPx > 0);
-  expect.soft(blurLayers.length).toBeGreaterThanOrEqual(3);
+  expect.soft(blurLayers.length).toBe(1);
   for (const layer of blurLayers) {
     expect.soft(layer.maskImage).toContain("linear-gradient");
     expect.soft(layer.boxShadow).toBe("none");
@@ -492,10 +494,6 @@ test("keeps the submitted turn at 80px while Working becomes Completed", async (
   await waitForStableSample(readPosition);
 
   const completedPosition = await readPosition();
-  console.log("WEBKIT_COMPLETION_DIAGNOSTIC", {
-    workingPosition,
-    completedPosition,
-  });
   expect(
     Math.abs(completedPosition.userTop - (completedPosition.containerTop + 80)),
   ).toBeLessThanOrEqual(4);

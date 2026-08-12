@@ -79,19 +79,23 @@ export function FloatingHeader({
       data-testid="floating-header"
       className="pointer-events-none absolute inset-x-0 top-0 z-40 isolate flex items-center justify-between gap-3 p-3"
     >
-      {/* Content fades out under the header. A single blurred pane ends on a
-          visible seam however softly it is masked, so the blur is ramped down
-          in stages: each layer blurs what the layer above already blurred and
-          is masked out higher up, leaving no edge to catch the eye. */}
+      {/* Content fades out under the header. This used to ramp the blur down
+          in four stacked backdrop-blur layers (1/2/4/8px), but every
+          backdrop-filter re-samples whatever is moving behind it on each
+          frame — in WKWebView that made the streaming transcript pay for four
+          full-width re-samples per scrolled frame. One blurred layer whose
+          mask alpha ramps down through several stops is the standard
+          single-layer approximation of a progressive blur: the cross-fade
+          from blurred to sharp reads as the blur easing off, and the mask
+          reaches zero well before the pane's bottom edge so no seam is left
+          to catch the eye. -webkit-mask-image is spelled out because
+          WKWebView still wants the prefixed form. */}
       <div
         aria-hidden="true"
         data-testid="header-scrim"
         className="pointer-events-none absolute -bottom-2 left-0 right-2 top-0 z-0"
       >
-        <div className="absolute inset-0 backdrop-blur-[1px] [mask-image:linear-gradient(to_bottom,black_0%,black_55%,transparent_100%)]" />
-        <div className="absolute inset-0 backdrop-blur-[2px] [mask-image:linear-gradient(to_bottom,black_0%,black_35%,transparent_78%)]" />
-        <div className="absolute inset-0 backdrop-blur-[4px] [mask-image:linear-gradient(to_bottom,black_0%,black_20%,transparent_56%)]" />
-        <div className="absolute inset-0 backdrop-blur-[8px] [mask-image:linear-gradient(to_bottom,black_0%,black_8%,transparent_34%)]" />
+        <div className="absolute inset-0 backdrop-blur-[8px] [-webkit-mask-image:linear-gradient(to_bottom,black_0%,black_16%,rgba(0,0,0,0.55)_46%,rgba(0,0,0,0.2)_72%,transparent_100%)] [mask-image:linear-gradient(to_bottom,black_0%,black_16%,rgba(0,0,0,0.55)_46%,rgba(0,0,0,0.2)_72%,transparent_100%)]" />
         <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.85)_0%,rgba(255,255,255,0.62)_48%,rgba(255,255,255,0.22)_76%,rgba(255,255,255,0)_100%)]" />
       </div>
 
