@@ -4,6 +4,8 @@ import {
     parseOptionalDocumentContext,
     generateSpotlightNonce,
     spotlight,
+    enrichWithPriorEvents,
+    appendAskInputsResponseToLastAssistantMessage,
 } from "../chat/contextBuilders";
 import {
     ACTIVE_WORD_DOCUMENT_FILENAME,
@@ -106,6 +108,213 @@ describe("spotlight", () => {
         expect(fenced).toContain("[redacted-nonce]");
         // The nonce appears only on the two fence tags themselves.
         expect(fenced.split(nonce)).toHaveLength(3);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Null-content assistant reservations (crashed or concurrent streams)
+//
+// The streaming routes reserve the assistant row with content = null BEFORE
+// streaming, so a stream that dies before its save path (or a concurrently
+// streaming POST) leaves an orphaned null-content row as the newest assistant
+// message. The "latest assistant row" queries must skip those reservations.
+// ---------------------------------------------------------------------------
+
+type FakeAssistantRow = {
+    id: string;
+    chat_id: string;
+    role: string;
+    content: unknown;
+    citations: unknown;
+    created_at: string;
+};
+
+/**
+ * Minimal in-memory chat_messages table that genuinely applies the
+ * eq / not("content","is",null) / order / limit chain, so these tests fail
+ * if the reservation filter is dropped from the production queries.
+ */
+function makeFakeMessagesDb(rows: FakeAssistantRow[]) {
+    const updates: { id: string; content: unknown; citations: unknown }[] = [];
+    const db = {
+        from: () => {
+            let selected = [...rows];
+            let pendingUpdate:
+                | { content: unknown; citations: unknown }
+                | undefined;
+            const builder = {
+                select: () => builder,
+                update: (value: { content: unknown; citations: unknown }) => {
+                    pendingUpdate = value;
+                    return builder;
+                },
+                eq: (column: keyof FakeAssistantRow, value: unknown) => {
+                    selected = selected.filter((row) => row[column] === value);
+                    return builder;
+                },
+                not: (
+                    column: keyof FakeAssistantRow,
+                    operator: string,
+                    value: unknown,
+                ) => {
+                    if (operator === "is" && value === null) {
+                        selected = selected.filter(
+                            (row) => row[column] !== null,
+                        );
+                    }
+                    return builder;
+                },
+                order: (
+                    column: keyof FakeAssistantRow,
+                    opts: { ascending: boolean },
+                ) => {
+                    selected = [...selected].sort(
+                        (a, b) =>
+                            String(a[column]).localeCompare(
+                                String(b[column]),
+                            ) * (opts.ascending ? 1 : -1),
+                    );
+                    return builder;
+                },
+                limit: (count: number) => {
+                    selected = selected.slice(0, count);
+                    return builder;
+                },
+                then: (
+                    resolve: (value: unknown) => unknown,
+                    reject?: (error: unknown) => unknown,
+                ) => {
+                    if (pendingUpdate) {
+                        for (const row of selected) {
+                            updates.push({ id: row.id, ...pendingUpdate });
+                            Object.assign(row, pendingUpdate);
+                        }
+                        return Promise.resolve({
+                            data: null,
+                            error: null,
+                        }).then(resolve, reject);
+                    }
+                    return Promise.resolve({
+                        data: selected,
+                        error: null,
+                    }).then(resolve, reject);
+                },
+            };
+            return builder;
+        },
+    };
+    return { db: db as never, updates };
+}
+
+function realAssistantRow(content: unknown): FakeAssistantRow {
+    return {
+        id: "assistant-real",
+        chat_id: "chat-1",
+        role: "assistant",
+        content,
+        citations: null,
+        created_at: "2026-01-01T00:00:00Z",
+    };
+}
+
+function reservationRow(): FakeAssistantRow {
+    return {
+        id: "assistant-reservation",
+        chat_id: "chat-1",
+        role: "assistant",
+        content: null,
+        citations: null,
+        created_at: "2026-01-01T00:05:00Z",
+    };
+}
+
+describe("null-content assistant reservations", () => {
+    it("enrichWithPriorEvents surfaces the prior real turn's events past a newer reservation", async () => {
+        const { db } = makeFakeMessagesDb([
+            realAssistantRow([
+                {
+                    type: "doc_created",
+                    document_id: "doc-uuid-1",
+                    filename: "Brief.docx",
+                },
+            ]),
+            reservationRow(),
+        ]);
+
+        const enriched = await enrichWithPriorEvents(
+            [
+                { role: "user", content: "Draft a brief" },
+                { role: "assistant", content: "Done." },
+                { role: "user", content: "Now edit it" },
+            ],
+            "chat-1",
+            db,
+            { "doc-0": { document_id: "doc-uuid-1", filename: "Brief.docx" } },
+        );
+
+        expect(enriched[1].content).toContain(
+            "[Tool activity in your previous turn]",
+        );
+        expect(enriched[1].content).toContain(
+            '- generated_document → doc-0 ("Brief.docx")',
+        );
+    });
+
+    it("enrichWithPriorEvents leaves messages untouched when only a reservation exists", async () => {
+        const { db } = makeFakeMessagesDb([reservationRow()]);
+        const messages = [
+            { role: "user", content: "Draft a brief" },
+            { role: "assistant", content: "Done." },
+        ];
+
+        const enriched = await enrichWithPriorEvents(
+            messages,
+            "chat-1",
+            db,
+            {},
+        );
+
+        expect(enriched).toEqual(messages);
+    });
+
+    it("ask-input responses append to the real last message, never the reservation", async () => {
+        const rows = [
+            realAssistantRow([{ type: "ask_inputs", items: [] }]),
+            reservationRow(),
+        ];
+        const { db, updates } = makeFakeMessagesDb(rows);
+
+        await appendAskInputsResponseToLastAssistantMessage(db, "chat-1", {
+            responses: [
+                {
+                    id: "choice-1",
+                    kind: "choice",
+                    question: "Continue?",
+                    answer: "Yes",
+                },
+            ],
+        });
+
+        expect(updates).toHaveLength(1);
+        expect(updates[0].id).toBe("assistant-real");
+        expect(updates[0].content).toEqual([
+            { type: "ask_inputs", items: [] },
+            {
+                type: "ask_inputs_response",
+                responses: [
+                    {
+                        id: "choice-1",
+                        kind: "choice",
+                        question: "Continue?",
+                        answer: "Yes",
+                    },
+                ],
+            },
+        ]);
+        // The reservation stays empty for its own stream's terminal save.
+        expect(
+            rows.find((row) => row.id === "assistant-reservation")?.content,
+        ).toBeNull();
     });
 });
 

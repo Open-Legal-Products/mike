@@ -97,11 +97,16 @@ export async function enrichWithPriorEvents(
   messageTable = "chat_messages",
 ): Promise<ChatMessage[]> {
   if (!chatId) return messages;
+  // Skip streaming reservations: routeStreaming inserts the assistant row
+  // with content = null BEFORE the stream runs, so a crashed stream (or a
+  // concurrently streaming POST) leaves a newer null-content row that would
+  // otherwise shadow the previous turn's real events here.
   const { data: rows } = await db
     .from(messageTable)
     .select("content, created_at")
     .eq("chat_id", chatId)
     .eq("role", "assistant")
+    .not("content", "is", null)
     .order("created_at", { ascending: false })
     .limit(1);
 
@@ -401,11 +406,15 @@ export async function appendAssistantEventsToLastAssistantMessage(
   if (events.length === 0 && (!citations || citations.length === 0)) {
     return;
   }
+  // Skip streaming reservations (content = null, see routeStreaming) so
+  // events are appended to the real last assistant message, not onto an
+  // empty reservation left by a crashed or still-streaming request.
   const { data: rows, error: selectError } = await db
     .from(messageTable)
     .select("id, content, citations")
     .eq("chat_id", chatId)
     .eq("role", "assistant")
+    .not("content", "is", null)
     .order("created_at", { ascending: false })
     .limit(1);
   if (selectError || !rows?.[0]) {

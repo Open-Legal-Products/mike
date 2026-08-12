@@ -17,6 +17,10 @@ const { runLLMStream, dbInserts, dbUpdates, dbControl } = vi.hoisted(() => ({
         terminalUpdateAttempts: 0,
         terminalUpdateGate: null as Promise<void> | null,
         wordChatMissing: false,
+        // When set, selects on chat_messages resolve against these rows with
+        // the eq/not/order/limit chain genuinely applied (a mini query
+        // engine), so tests can prove which assistant row a query picks.
+        assistantMessageRows: null as Record<string, unknown>[] | null,
     },
 }));
 
@@ -44,7 +48,6 @@ function makeQuery(table: string) {
           }
         | undefined;
     const chain = [
-        "select",
         "delete",
         "upsert",
         "neq",
@@ -56,12 +59,34 @@ function makeQuery(table: string) {
         "gte",
         "lte",
         "filter",
-        "order",
-        "limit",
         "range",
         "contains",
     ];
     for (const m of chain) q[m] = vi.fn(() => q);
+    // Select-chain state, applied against dbControl.assistantMessageRows when
+    // the query resolves (see q.then below).
+    let didSelect = false;
+    const selectState = {
+        filters: [] as { column: string; op: string; value: unknown }[],
+        order: null as { column: string; ascending: boolean } | null,
+        limit: null as number | null,
+    };
+    q.select = vi.fn(() => {
+        didSelect = true;
+        return q;
+    });
+    q.not = vi.fn((column: string, operator: string, value: unknown) => {
+        selectState.filters.push({ column, op: `not-${operator}`, value });
+        return q;
+    });
+    q.order = vi.fn((column: string, opts?: { ascending?: boolean }) => {
+        selectState.order = { column, ascending: opts?.ascending !== false };
+        return q;
+    });
+    q.limit = vi.fn((count: number) => {
+        selectState.limit = count;
+        return q;
+    });
     q.insert = vi.fn((value: unknown) => {
         dbInserts.push({ table, value });
         if (
@@ -82,7 +107,8 @@ function makeQuery(table: string) {
         return q;
     });
     q.eq = vi.fn((column: string, value: unknown) => {
-        activeUpdate?.filters.push({ column, value });
+        if (activeUpdate) activeUpdate.filters.push({ column, value });
+        else selectState.filters.push({ column, op: "eq", value });
         return q;
     });
     q.single = vi.fn(() => Promise.resolve(result));
@@ -114,6 +140,33 @@ function makeQuery(table: string) {
                         },
                     };
                 }
+            }
+            if (
+                !activeUpdate &&
+                didSelect &&
+                table === "chat_messages" &&
+                dbControl.assistantMessageRows
+            ) {
+                let rows = [...dbControl.assistantMessageRows];
+                for (const f of selectState.filters) {
+                    if (f.op === "eq") {
+                        rows = rows.filter((row) => row[f.column] === f.value);
+                    } else if (f.op === "not-is" && f.value === null) {
+                        rows = rows.filter((row) => row[f.column] !== null);
+                    }
+                }
+                if (selectState.order) {
+                    const { column, ascending } = selectState.order;
+                    rows = [...rows].sort(
+                        (a, b) =>
+                            String(a[column]).localeCompare(String(b[column])) *
+                            (ascending ? 1 : -1),
+                    );
+                }
+                if (selectState.limit != null) {
+                    rows = rows.slice(0, selectState.limit);
+                }
+                return { data: rows, error: null };
             }
             return result;
         };
@@ -208,6 +261,7 @@ describe("POST /chat — streaming endpoint", () => {
         dbControl.terminalUpdateAttempts = 0;
         dbControl.terminalUpdateGate = null;
         dbControl.wordChatMissing = false;
+        dbControl.assistantMessageRows = null;
         runLLMStream.mockResolvedValue({
             fullText: "hi there",
             events: [],
@@ -647,6 +701,84 @@ describe("POST /chat — streaming endpoint", () => {
                     (value as { role?: unknown }).role === "assistant",
             ),
         ).toEqual([]);
+    });
+
+    it("appends ask-input responses to the real last assistant message, skipping a null-content reservation", async () => {
+        // A stream that died before its save path (or a concurrently
+        // streaming POST) leaves the newest assistant row as an empty
+        // reservation. The continuation must attach the user's answers to
+        // the older, real message that actually asked the question.
+        dbControl.assistantMessageRows = [
+            {
+                id: "assistant-real",
+                chat_id: "chat-1",
+                role: "assistant",
+                content: [{ type: "ask_inputs", items: [] }],
+                citations: null,
+                created_at: "2026-01-01T00:00:00Z",
+            },
+            {
+                id: "assistant-reservation",
+                chat_id: "chat-1",
+                role: "assistant",
+                content: null,
+                citations: null,
+                created_at: "2026-01-01T00:05:00Z",
+            },
+        ];
+
+        const res = await request(app)
+            .post("/chat")
+            .set("Authorization", "Bearer test")
+            .send({
+                ...VALID_BODY,
+                chat_id: "chat-1",
+                ask_inputs_response: {
+                    responses: [
+                        {
+                            id: "choice-1",
+                            kind: "choice",
+                            question: "Continue?",
+                            answer: "Yes",
+                        },
+                    ],
+                },
+            });
+
+        expect(res.status).toBe(200);
+        const askInputsUpdate = dbUpdates.find(
+            ({ table, filters }) =>
+                table === "chat_messages" &&
+                filters.some(
+                    (f) => f.column === "id" && f.value === "assistant-real",
+                ),
+        );
+        expect(askInputsUpdate?.value).toMatchObject({
+            content: [
+                { type: "ask_inputs", items: [] },
+                {
+                    type: "ask_inputs_response",
+                    responses: [
+                        {
+                            id: "choice-1",
+                            kind: "choice",
+                            question: "Continue?",
+                            answer: "Yes",
+                        },
+                    ],
+                },
+            ],
+        });
+        // The orphaned reservation is never selected or written to.
+        expect(
+            dbUpdates.some(({ filters }) =>
+                filters.some(
+                    (f) =>
+                        f.column === "id" &&
+                        f.value === "assistant-reservation",
+                ),
+            ),
+        ).toBe(false);
     });
 
     it("returns 400 on an empty messages array (never starts a stream)", async () => {
