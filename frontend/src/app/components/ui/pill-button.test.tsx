@@ -73,6 +73,14 @@ describe("PillButton", () => {
         expect(onClick).not.toHaveBeenCalled();
     });
 
+    it("renders a visible keyboard focus ring", () => {
+        render(<PillButton tone="black">Save</PillButton>);
+
+        expect(screen.getByRole("button", { name: "Save" })).toHaveClass(
+            "focus-visible:ring-2",
+        );
+    });
+
     it("renders as its child element via asChild", () => {
         render(
             <PillButton tone="blue" asChild>

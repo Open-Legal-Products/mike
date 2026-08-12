@@ -37,4 +37,48 @@ describe("CiteButton", () => {
         expect(writeText).toHaveBeenCalledWith(`"he said 'hi'" Doe 2020`);
         expect(await screen.findByText("Copied")).toBeInTheDocument();
     });
+
+    it("defaults to type=button so it never submits a surrounding form", () => {
+        render(<CiteButton quoteText="hello" citationText="Doe 2020" />);
+
+        expect(screen.getByRole("button")).toHaveAttribute("type", "button");
+    });
+
+    it("keeps an accessible name when rendered icon-only", () => {
+        render(
+            <CiteButton
+                quoteText="hello"
+                citationText="Doe 2020"
+                showText={false}
+            />,
+        );
+
+        expect(screen.getByRole("button")).toHaveAccessibleName(
+            "Copy quote and citation",
+        );
+    });
+
+    it("announces the copied state through its accessible name", async () => {
+        const user = userEvent.setup();
+        vi.spyOn(navigator.clipboard, "writeText");
+        render(
+            <CiteButton
+                quoteText="hello"
+                citationText="Doe 2020"
+                showText={false}
+            />,
+        );
+
+        await user.click(screen.getByRole("button"));
+
+        expect(
+            await screen.findByRole("button", { name: "Citation copied" }),
+        ).toBeInTheDocument();
+    });
+
+    it("renders a visible keyboard focus ring", () => {
+        render(<CiteButton quoteText="hello" citationText="Doe 2020" />);
+
+        expect(screen.getByRole("button")).toHaveClass("focus-visible:ring-2");
+    });
 });
