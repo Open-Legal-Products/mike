@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { User, Loader2 } from "lucide-react";
 import type { ProjectPeople } from "@/app/lib/mikeApi";
 import { AddUserInput } from "../shared/AddUserInput";
@@ -75,21 +75,22 @@ export function PeopleModal({
     const [loadedRosterKey, setLoadedRosterKey] = useState<string | null>(null);
 
     const resourceId = resource?.id ?? null;
-    const sharedWith: string[] = useMemo(
-        () =>
-            Array.isArray(resource?.shared_with)
-                ? (resource.shared_with as string[])
-                : [],
-        [resource?.shared_with],
-    );
+    const sharedWith: string[] = Array.isArray(resource?.shared_with)
+        ? (resource.shared_with as string[])
+        : [];
 
-    useEffect(() => {
-        if (!open) return;
-        setError(null);
-        setBusy(null);
-        setRemovingEmail(null);
-        setMemberMenuEmail(null);
-    }, [open]);
+    // Clear transient add/remove state whenever the modal opens — adjusted
+    // during render instead of an effect.
+    const [prevOpen, setPrevOpen] = useState(false);
+    if (open !== prevOpen) {
+        setPrevOpen(open);
+        if (open) {
+            setError(null);
+            setBusy(null);
+            setRemovingEmail(null);
+            setMemberMenuEmail(null);
+        }
+    }
 
     useEffect(() => {
         if (!memberMenuEmail) return;
@@ -116,12 +117,24 @@ export function PeopleModal({
         .join(",");
     const rosterKey = `${resourceId ?? ""}:${sharedKey}`;
 
+    // Drop the stale roster synchronously when a refetch is due — adjusted
+    // during render so the effect below only owns the fetch.
+    const rosterResetKey = open && resourceId ? rosterKey : null;
+    const [prevRosterResetKey, setPrevRosterResetKey] = useState<
+        string | null
+    >(null);
+    if (rosterResetKey !== prevRosterResetKey) {
+        setPrevRosterResetKey(rosterResetKey);
+        if (rosterResetKey !== null) {
+            setPeopleLoading(true);
+            setPeople(null);
+            setLoadedRosterKey(null);
+        }
+    }
+
     useEffect(() => {
         if (!open || !resourceId) return;
         let cancelled = false;
-        setPeopleLoading(true);
-        setPeople(null);
-        setLoadedRosterKey(null);
         fetchPeople(resourceId)
             .then((data) => {
                 if (cancelled) return;

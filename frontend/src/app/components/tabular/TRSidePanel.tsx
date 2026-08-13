@@ -182,8 +182,52 @@ export function TRSidePanel({
             : undefined,
     );
 
-    // Re-sync when the panel opens for a different cell or citation
-    useEffect(() => {
+    // Re-sync when the panel opens for a different cell or citation. Adjusted
+    // during render with a previous-values guard
+    // (https://react.dev/learn/you-might-not-need-an-effect) instead of an
+    // effect, so the reset lands in the same commit as the new cell/citation.
+    // prevSync starts null so the first render syncs too, like the old
+    // effect's mount run.
+    const [prevSync, setPrevSync] = useState<{
+        cellId: string;
+        displayDocument: boolean;
+        citationCell?: string;
+        citationDocumentId?: string;
+        citationPage?: number;
+        citationQuote?: string;
+        citationRef?: number;
+        citationSheet?: string;
+        documents: Document[];
+        initialDocument?: Document;
+        row: TabularReviewRow;
+    } | null>(null);
+    if (
+        prevSync === null ||
+        prevSync.cellId !== cell.id ||
+        prevSync.displayDocument !== displayDocument ||
+        prevSync.citationCell !== citationCell ||
+        prevSync.citationDocumentId !== citationDocumentId ||
+        prevSync.citationPage !== citationPage ||
+        prevSync.citationQuote !== citationQuote ||
+        prevSync.citationRef !== citationRef ||
+        prevSync.citationSheet !== citationSheet ||
+        prevSync.documents !== documents ||
+        prevSync.initialDocument !== initialDocument ||
+        prevSync.row !== row
+    ) {
+        setPrevSync({
+            cellId: cell.id,
+            displayDocument,
+            citationCell,
+            citationDocumentId,
+            citationPage,
+            citationQuote,
+            citationRef,
+            citationSheet,
+            documents,
+            initialDocument,
+            row,
+        });
         setDocCitation(
             displayDocument && citationQuote
                 ? {
@@ -205,19 +249,7 @@ export function TRSidePanel({
             : initialDocument;
         setActiveDocumentId(nextDocument?.id);
         setDocumentPaneOpen(displayDocument && !!nextDocument);
-    }, [
-        cell.id,
-        displayDocument,
-        citationCell,
-        citationDocumentId,
-        citationPage,
-        citationQuote,
-        citationRef,
-        citationSheet,
-        documents,
-        initialDocument,
-        row,
-    ]);
+    }
 
     useEffect(
         () => () => {

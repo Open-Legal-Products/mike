@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Download, ExternalLink, Loader2 } from "lucide-react";
 import { supabase } from "@/app/lib/supabase";
 import { PillButton } from "@/app/components/ui/pill-button";
@@ -109,6 +109,15 @@ export function DocPanel({
     const [quoteFocusKey, setQuoteFocusKey] = useState(0);
     const [editFocusKey, setEditFocusKey] = useState(0);
 
+    // Re-sync the active quote whenever the derived default changes,
+    // adjusting state during render instead of in an effect.
+    const [prevCitationQuoteId, setPrevCitationQuoteId] =
+        useState(citationQuoteId);
+    if (prevCitationQuoteId !== citationQuoteId) {
+        setPrevCitationQuoteId(citationQuoteId);
+        setActiveCitationQuoteId(citationQuoteId);
+    }
+
     const activeQuoteIndex = activeCitationQuoteId
         ? Number(activeCitationQuoteId.split(":quote:").at(-1))
         : Number.NaN;
@@ -147,10 +156,6 @@ export function DocPanel({
                     : [],
         };
     }, [activeDocumentQuote, isCase, mode.kind]);
-
-    useEffect(() => {
-        setActiveCitationQuoteId(citationQuoteId);
-    }, [citationQuoteId]);
 
     const handleCitationQuoteSelect = useCallback(
         (quoteId: string) => {

@@ -138,10 +138,18 @@ export function ProjectWorkspaceProvider({
     const { saveChat } = useChatHistoryContext();
     const projectChatsPromiseRef = useRef<Promise<Chat[]> | null>(null);
 
-    useEffect(() => {
+    // Drop the cached chat list when the workspace switches projects —
+    // state is adjusted during render; the in-flight promise ref is cleared
+    // in an effect (refs must not be written during render).
+    const [prevProjectId, setPrevProjectId] = useState(projectId);
+    if (projectId !== prevProjectId) {
+        setPrevProjectId(projectId);
         setProjectChats(null);
         setProjectChatsLoading(false);
         setDocumentFolderBreadcrumbs([]);
+    }
+
+    useEffect(() => {
         projectChatsPromiseRef.current = null;
     }, [projectId]);
 
@@ -156,13 +164,21 @@ export function ProjectWorkspaceProvider({
         router.push(`/projects/${projectId}`);
     }, [projectId, router]);
 
+    // Flip the loading flag synchronously with the fetch key — adjusted
+    // during render so the effect below only owns the fetch. The undefined
+    // sentinel makes the first render behave like the old effect's mount run.
+    const projectLoadKey = showShell ? projectId : null;
+    const [prevProjectLoadKey, setPrevProjectLoadKey] = useState<
+        string | null | undefined
+    >(undefined);
+    if (projectLoadKey !== prevProjectLoadKey) {
+        setPrevProjectLoadKey(projectLoadKey);
+        setProjectLoading(projectLoadKey !== null);
+    }
+
     useEffect(() => {
-        if (!showShell) {
-            setProjectLoading(false);
-            return;
-        }
+        if (!showShell) return;
         let cancelled = false;
-        setProjectLoading(true);
         getProject(projectId)
             .then((loaded) => {
                 if (cancelled) return;

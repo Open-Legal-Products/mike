@@ -789,7 +789,10 @@ export function TRChatPanel({
     const [messages, setMessages] = useState<TRMessage[]>([]);
     const [historyOpen, setHistoryOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+    // Starts true when there is an initial chat to load (see the effect that
+    // fetches its messages below), so the effect never has to set it
+    // synchronously.
+    const [isLoadingMessages, setIsLoadingMessages] = useState(!!initialChatId);
     const [minHeight, setMinHeight] = useState("0px");
     const [messagesVisible, setMessagesVisible] = useState(false);
     const [panelWidth, setPanelWidth] = useState(380);
@@ -846,23 +849,25 @@ export function TRChatPanel({
             .catch(() => {});
     }, [reviewId]);
 
-    // Load messages for an initial chat id (e.g. from URL)
+    // Load messages for an initial chat id (e.g. from URL). isLoadingMessages
+    // is initialized to true when initialChatId is set, so the spinner is
+    // already up when this fetch starts.
     useEffect(() => {
         if (!initialChatId) return;
-        setIsLoadingMessages(true);
         getTabularChatMessages(reviewId, initialChatId)
             .then((raw) => setMessages(mapTRMessages(raw) as TRMessage[]))
             .catch(() => {})
             .finally(() => setIsLoadingMessages(false));
     }, [reviewId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Fill in title once chats list arrives
-    useEffect(() => {
-        if (currentChatId && !currentChatTitle) {
-            const chat = chats.find((c) => c.id === currentChatId);
-            if (chat) setCurrentChatTitle(chat.title ?? null);
-        }
-    }, [chats, currentChatId, currentChatTitle]);
+    // Fill in title once chats list arrives. Adjusted during render rather
+    // than in an effect (https://react.dev/learn/you-might-not-need-an-effect):
+    // setting a non-empty title flips the !currentChatTitle guard, and setting
+    // an unchanged value bails out, so this converges immediately.
+    if (currentChatId && !currentChatTitle) {
+        const chat = chats.find((c) => c.id === currentChatId);
+        if (chat) setCurrentChatTitle(chat.title ?? null);
+    }
 
     // Emit currentChatId changes to parent
     const onChatIdChangeRef = useRef(onChatIdChange);
@@ -876,6 +881,7 @@ export function TRChatPanel({
     useEffect(() => {
         if (messages.length === 0) {
             hasScrolledRef.current = false;
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- opacity gate must hide/reveal in the same commit as the transcript swap; the scroll positioning below needs committed DOM
             setMessagesVisible(false);
         } else if (!hasScrolledRef.current) {
             const userMsgCount = messages.filter(
@@ -903,7 +909,7 @@ export function TRChatPanel({
                 setMessagesVisible(true);
             }
         }
-    }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [messages]);
 
     useEffect(() => {
         const userEl = latestUserMessageRef.current;
@@ -915,8 +921,7 @@ export function TRChatPanel({
         setMinHeight(
             `${Math.max(0, containerEl.clientHeight - BOTTOM_PAD - userEl.offsetHeight - messageContainerTopPadding - messageGap)}px`,
         );
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [messages.length, latestUserMessageRef.current]);
+    }, [messages.length]);
 
     useEffect(() => {
         if (!historyOpen) return;

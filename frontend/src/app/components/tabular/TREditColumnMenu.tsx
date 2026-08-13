@@ -62,11 +62,29 @@ export function TREditColumnMenu({
         width: number;
     } | null>(null);
 
-    useEffect(() => {
-        if (!open) {
+    // Adjust state on open/close transitions during render, with a
+    // previous-value guard (https://react.dev/learn/you-might-not-need-an-effect)
+    // instead of effects. Opening syncs the draft fields to the column (the
+    // form is only rendered while open, so this is equivalent to the previous
+    // reset-while-closed effect, which also re-synced whenever the column
+    // changed while closed). Closing clears the menu position so a reopen
+    // can't paint at a stale spot before the positioning effect runs.
+    const [prevOpen, setPrevOpen] = useState(open);
+    if (open !== prevOpen) {
+        setPrevOpen(open);
+        if (open) {
+            setName(column.name);
+            setPrompt(column.prompt);
+            setFormat(column.format ?? "text");
+            setTags(column.tags ?? []);
+            setTagInput("");
+        } else {
             setMenuPos(null);
-            return;
         }
+    }
+
+    useEffect(() => {
+        if (!open) return;
         const update = () => {
             const rect = buttonRef.current?.getBoundingClientRect();
             if (!rect) return;
@@ -101,16 +119,6 @@ export function TREditColumnMenu({
         const timeout = window.setTimeout(() => setOpen(false), 0);
         return () => window.clearTimeout(timeout);
     }, [closeSignal]);
-
-    useEffect(() => {
-        if (!open) {
-            setName(column.name);
-            setPrompt(column.prompt);
-            setFormat(column.format ?? "text");
-            setTags(column.tags ?? []);
-            setTagInput("");
-        }
-    }, [column.name, column.prompt, column.format, column.tags, open]);
 
     // Only one edit-column menu should be open at a time. Broadcast when this
     // one opens and close ourselves when another one broadcasts.

@@ -78,10 +78,26 @@ export function NewTRModal({
     );
     const formId = "new-tabular-review-modal-form";
 
+    // Adjust state when the modal opens, during render with a previous-value
+    // guard (https://react.dev/learn/you-might-not-need-an-effect): flip the
+    // workflows loading flag for the fetch the effect below kicks off, and
+    // preselect the project docs in project mode.
+    const [prevOpen, setPrevOpen] = useState(false);
+    if (open !== prevOpen) {
+        setPrevOpen(open);
+        if (open) {
+            setLoadingWorkflows(true);
+            if (isProjectMode) {
+                const readyProjectDocuments = fixedProjectDocs ?? [];
+                setProjectDocs(readyProjectDocuments);
+                setSelectedDocuments(readyProjectDocuments);
+            }
+        }
+    }
+
     useEffect(() => {
         if (!open) return;
 
-        setLoadingWorkflows(true);
         listWorkflows("tabular")
             .then((workflows) => {
                 devLog("[workflows/ui:tabular-review-modal] loaded", {
@@ -107,13 +123,7 @@ export function NewTRModal({
                 setWorkflows([]);
             })
             .finally(() => setLoadingWorkflows(false));
-
-        if (isProjectMode) {
-            const readyProjectDocuments = fixedProjectDocs ?? [];
-            setProjectDocs(readyProjectDocuments);
-            setSelectedDocuments(readyProjectDocuments);
-        }
-    }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [open]);
 
     if (!open) return null;
 

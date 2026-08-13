@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { EditCardUI } from "@/shared/ui/EditCardUI";
 import { resolveDocumentEdit } from "@/app/lib/mikeApi";
 import type { EditAnnotation } from "../shared/types";
@@ -203,10 +203,26 @@ export function EditCard({
     const status = resolvedStatus ?? localStatus;
     const setStatus = setLocalStatus;
 
-    useEffect(() => {
-        if (busy) return;
-        setLocalStatus(annotation.status);
-    }, [annotation.edit_id, annotation.status, busy]);
+    // Re-sync with the server-side status whenever the card's edit or its
+    // status changes (and whenever a resolve finishes), adjusting state
+    // during render instead of in an effect.
+    const [prevStatusSync, setPrevStatusSync] = useState({
+        editId: annotation.edit_id,
+        status: annotation.status,
+        busy,
+    });
+    if (
+        prevStatusSync.editId !== annotation.edit_id ||
+        prevStatusSync.status !== annotation.status ||
+        prevStatusSync.busy !== busy
+    ) {
+        setPrevStatusSync({
+            editId: annotation.edit_id,
+            status: annotation.status,
+            busy,
+        });
+        if (!busy) setLocalStatus(annotation.status);
+    }
 
     const resolved = status !== "pending";
     // True while an accept/reject request for any edit on this card's

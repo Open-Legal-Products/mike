@@ -49,21 +49,28 @@ export function AddColumnModal({ open, existingCount, onClose, onAdd, editingCol
     );
     const presetsRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        if (!open) return;
-        if (editingColumn) {
-            setColumns([{
-                name: editingColumn.name,
-                prompt: editingColumn.prompt,
-                format: editingColumn.format ?? "text",
-                tags: editingColumn.tags ?? [],
-                tagInput: "",
-            }]);
-        } else {
-            setColumns([{ ...EMPTY_DRAFT }]);
+    // Reset the drafts whenever the modal opens (from the current
+    // editingColumn, when set). Adjusted during render with a previous-value
+    // guard (https://react.dev/learn/you-might-not-need-an-effect) instead of
+    // an effect, so the reset lands in the same commit as the open.
+    const [prevOpen, setPrevOpen] = useState(false);
+    if (open !== prevOpen) {
+        setPrevOpen(open);
+        if (open) {
+            if (editingColumn) {
+                setColumns([{
+                    name: editingColumn.name,
+                    prompt: editingColumn.prompt,
+                    format: editingColumn.format ?? "text",
+                    tags: editingColumn.tags ?? [],
+                    tagInput: "",
+                }]);
+            } else {
+                setColumns([{ ...EMPTY_DRAFT }]);
+            }
+            setCollapsedIndices([]);
         }
-        setCollapsedIndices([]);
-    }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+    }
 
     useEffect(() => {
         if (presetsOpenIndex === null) return;

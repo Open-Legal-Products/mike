@@ -221,10 +221,61 @@ export default function HistoryPage() {
     [action, debouncedSearch, from, sort, status, surface, to],
   );
 
+  // Show the loading state the moment the filters change, during render, via
+  // React's "adjusting state when props change" pattern (mirroring the deps
+  // of `load`) — the effect below then only owns the fetch itself.
+  const filtersKey = JSON.stringify([
+    action,
+    debouncedSearch,
+    from,
+    status,
+    surface,
+    to,
+  ]);
+  const [prevFilters, setPrevFilters] = useState({ key: filtersKey, sort });
+  if (prevFilters.key !== filtersKey || prevFilters.sort !== sort) {
+    setPrevFilters({ key: filtersKey, sort });
+    setLoading(true);
+  }
+
+  // First-page fetch; mirrors load(1, false) but inlined so no setState is
+  // reachable synchronously from the effect body.
   useEffect(() => {
-    void load(1, false);
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    getAuditHistory(
+      {
+        q: debouncedSearch || undefined,
+        action: action || undefined,
+        status: status || undefined,
+        surface: surface || undefined,
+        from: from || undefined,
+        to: to || undefined,
+        sortBy: sort?.key,
+        sortDirection: sort?.direction,
+        page: 1,
+      },
+      controller.signal,
+    )
+      .then((out) => {
+        if (controller.signal.aborted) return;
+        setError(false);
+        setEvents(out.events);
+        setTotal(out.total);
+        setPage(1);
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setEvents([]);
+        setTotal(0);
+        setError(true);
+      })
+      .finally(() => {
+        if (controllerRef.current === controller) setLoading(false);
+      });
     return () => controllerRef.current?.abort();
-  }, [load]);
+  }, [action, debouncedSearch, from, sort, status, surface, to]);
 
   const handleExport = async () => {
     setExporting(true);

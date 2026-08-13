@@ -100,26 +100,27 @@ export function AppSidebar({ isOpen, onToggle }: AppSidebarProps) {
         (userId ? recentProjectsCache.get(userId)?.projects : undefined) ??
         null;
 
-    useEffect(() => {
-        if (!userId) {
-            setRecentProjects([]);
-            setHasMoreRecentProjects(false);
-            setLoadingMoreRecentProjects(false);
-            loadingMoreRecentProjectsRef.current = false;
-            return;
-        }
-
-        const cached = recentProjectsCache.get(userId);
-        if (cached) {
-            setRecentProjects(cached.projects);
-            setHasMoreRecentProjects(cached.hasMore);
-        } else {
-            setRecentProjects(null);
-            setHasMoreRecentProjects(false);
-        }
-        const controller = new AbortController();
+    // Reset the recent-projects pane whenever the signed-in user changes,
+    // adjusting state during render instead of in an effect. `null` means
+    // "loading" while the fetch below is in flight; signed-out shows empty.
+    // The undefined sentinel makes the first render behave like the old
+    // effect's mount run.
+    const [prevRecentProjectsUserId, setPrevRecentProjectsUserId] = useState<
+        string | null | undefined
+    >(undefined);
+    if (prevRecentProjectsUserId !== userId) {
+        setPrevRecentProjectsUserId(userId);
+        const cached = userId ? recentProjectsCache.get(userId) : undefined;
+        setRecentProjects(userId ? (cached?.projects ?? null) : []);
+        setHasMoreRecentProjects(userId ? (cached?.hasMore ?? false) : false);
         setLoadingMoreRecentProjects(false);
+    }
+
+    useEffect(() => {
         loadingMoreRecentProjectsRef.current = false;
+        if (!userId) return;
+
+        const controller = new AbortController();
 
         listProjectSummaries({
             limit: RECENT_PROJECT_PAGE_SIZE + 1,

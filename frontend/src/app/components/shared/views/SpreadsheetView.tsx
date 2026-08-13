@@ -275,15 +275,28 @@ export function SpreadsheetView({
     // Parse the workbook with Luckyexcel, which converts the .xlsx to
     // Fortune-sheet data while preserving styling (fills, fonts, borders,
     // alignment, column widths).
-    useEffect(() => {
-        if (!result) return;
-        if (result.type !== "spreadsheet") {
-            setError("This spreadsheet could not be displayed.");
-            return;
+    // A /display response that isn't raw spreadsheet bytes can't be rendered.
+    // Derived during render (not stored in state) so the effect below only
+    // deals with parseable results.
+    const wrongTypeError =
+        result && result.type !== "spreadsheet"
+            ? "This spreadsheet could not be displayed."
+            : null;
+
+    // Reset the parsed sheets whenever new workbook bytes arrive, adjusted
+    // during render so the parse effect below only talks to Luckyexcel.
+    const [prevResult, setPrevResult] = useState<typeof result>(null);
+    if (result !== prevResult) {
+        setPrevResult(result);
+        if (result && result.type === "spreadsheet") {
+            setSheets(null);
+            setError(null);
         }
+    }
+
+    useEffect(() => {
+        if (!result || result.type !== "spreadsheet") return;
         let cancelled = false;
-        setSheets(null);
-        setError(null);
 
         try {
             const file = new File([result.buffer], "spreadsheet.xlsx");
@@ -298,8 +311,12 @@ export function SpreadsheetView({
                 }
             });
         } catch {
-            if (!cancelled)
-                setError("This spreadsheet could not be displayed.");
+            // Deferred a microtask so the effect body never sets state
+            // synchronously; `cancelled` still guards against late updates.
+            queueMicrotask(() => {
+                if (!cancelled)
+                    setError("This spreadsheet could not be displayed.");
+            });
         }
 
         return () => {
@@ -459,7 +476,9 @@ export function SpreadsheetView({
     const frameClass = `fortune-sheet-viewer relative flex flex-col flex-1 min-h-0 overflow-hidden ${rounded ? "rounded-lg" : ""}`;
 
     const message =
-        error ?? (fetchError ? "Failed to load spreadsheet." : null);
+        wrongTypeError ??
+        error ??
+        (fetchError ? "Failed to load spreadsheet." : null);
     if (message) {
         return (
             <div className={frameClass}>

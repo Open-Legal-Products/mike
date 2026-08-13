@@ -89,7 +89,16 @@ export function UseWorkflowModal({ workflow, onClose, skipSelect = false }: Prop
         "projects",
     );
 
-    useEffect(() => {
+    // Sync the picker to the incoming workflow (keyed on its id, matching
+    // the fetch effect above) — adjusted during render instead of an effect.
+    // The undefined sentinel makes the first render behave like the old
+    // effect's mount run.
+    const workflowId = workflow?.id ?? null;
+    const [prevWorkflowId, setPrevWorkflowId] = useState<
+        string | null | undefined
+    >(undefined);
+    if (workflowId !== prevWorkflowId) {
+        setPrevWorkflowId(workflowId);
         if (workflow) {
             setSelected(workflow);
             setScreen(skipSelect ? "details" : "select");
@@ -97,8 +106,7 @@ export function UseWorkflowModal({ workflow, onClose, skipSelect = false }: Prop
         } else {
             setSelected(null);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [workflow?.id]);
+    }
 
     // Reset configure state on back
     useEffect(() => {

@@ -297,11 +297,17 @@ export default function ProjectAssistantChatPage({ params }: Props) {
         return () => clearFolderDeleteDismissTimer();
     }, [clearFolderDeleteDismissTimer]);
 
-    useEffect(() => {
-        if (activeTabId) return;
-        setActiveQuotes(null);
-        setEditScrollTarget(null);
-    }, [activeTabId]);
+    // Clear citation quotes and edit-scroll targets the moment the last tab
+    // closes, during render, via React's "adjusting state when props change"
+    // pattern.
+    const [prevActiveTabId, setPrevActiveTabId] = useState(activeTabId);
+    if (prevActiveTabId !== activeTabId) {
+        setPrevActiveTabId(activeTabId);
+        if (!activeTabId) {
+            setActiveQuotes(null);
+            setEditScrollTarget(null);
+        }
+    }
 
     useEffect(() => {
         setSidebarOpen(false);
@@ -381,10 +387,16 @@ export default function ProjectAssistantChatPage({ params }: Props) {
             .finally(() => setChatLoaded(true));
     }, [chatId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    useEffect(() => {
-        const match = chats?.find((c) => c.id === chatId);
-        if (match?.title) setChatTitle(match.title);
-    }, [chats, chatId]);
+    // Adopt this chat's title from chat history whenever it changes there
+    // (including on the first render, when history may already hold it),
+    // during render, via React's "adjusting state when props change" pattern.
+    const historyTitle = chats?.find((c) => c.id === chatId)?.title ?? null;
+    const titleSyncKey = JSON.stringify([chatId, historyTitle]);
+    const [prevTitleSyncKey, setPrevTitleSyncKey] = useState("");
+    if (titleSyncKey !== prevTitleSyncKey) {
+        setPrevTitleSyncKey(titleSyncKey);
+        if (historyTitle) setChatTitle(historyTitle);
+    }
 
     useEffect(() => {
         const pendingMessage = pendingInitialUserMessageRef.current;

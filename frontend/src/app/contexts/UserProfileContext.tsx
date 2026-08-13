@@ -97,6 +97,41 @@ function emptyApiKeys(): ApiKeyState {
     };
 }
 
+async function fetchProfileWithRetry(): Promise<ApiUserProfile> {
+    try {
+        return await getUserProfile();
+    } catch {
+        // One retry with a short backoff absorbs a transient network
+        // blip before the app falls back to the degraded profile.
+        await new Promise((resolve) => setTimeout(resolve, 750));
+        return await getUserProfile();
+    }
+}
+
+function fallbackProfile(): UserProfile {
+    // Calculate a default future reset date for fallback
+    const futureResetDate = new Date();
+    futureResetDate.setDate(futureResetDate.getDate() + 30);
+
+    return {
+        displayName: null,
+        organisation: null,
+        messageCreditsUsed: 0,
+        creditsResetDate: futureResetDate.toISOString(),
+        creditsRemaining: 999999, // temporarily unlimited
+        tier: "Free",
+        titleModel: "gemini-3.5-flash-lite",
+        tabularModel: "gemini-3-flash-preview",
+        mfaOnLogin: false,
+        legalResearchUs: true,
+        quickActionsVisible: true,
+        openRouterModels: [],
+        vercelModels: [],
+        openCodeGoModels: [],
+        apiKeys: emptyApiKeys(),
+    };
+}
+
 function toProfile(data: ApiUserProfile): UserProfile {
     const { apiKeyStatus, ...profile } = data;
     const apiKeys = emptyApiKeys();
@@ -127,22 +162,16 @@ function toProfile(data: ApiUserProfile): UserProfile {
 
 export function UserProfileProvider({ children }: { children: ReactNode }) {
     const { user, isAuthenticated } = useAuth();
-    const [profile, setProfile] = useState<UserProfile | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [apiKeysDegraded, setApiKeysDegraded] = useState(false);
     const userId = user?.id ?? null;
+    const [profile, setProfile] = useState<UserProfile | null>(null);
+    // Signed-out visitors have no profile to load, so loading starts false
+    // for them (the auth reset below keeps it in sync afterwards).
+    const [loading, setLoading] = useState(isAuthenticated && !!userId);
+    const [apiKeysDegraded, setApiKeysDegraded] = useState(false);
 
     const loadProfile = useCallback(async () => {
         try {
-            let profileData: ApiUserProfile;
-            try {
-                profileData = await getUserProfile();
-            } catch {
-                // One retry with a short backoff absorbs a transient network
-                // blip before the app falls back to the degraded profile.
-                await new Promise((resolve) => setTimeout(resolve, 750));
-                profileData = await getUserProfile();
-            }
+            const profileData = await fetchProfileWithRetry();
             setProfile(toProfile(profileData));
             setApiKeysDegraded(false);
         } catch (error) {
@@ -151,42 +180,50 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 error,
             );
             setApiKeysDegraded(true);
-            // Calculate a default future reset date for fallback
-            const futureResetDate = new Date();
-            futureResetDate.setDate(futureResetDate.getDate() + 30);
-
             // Set fallback profile data on exception
-            setProfile({
-                displayName: null,
-                organisation: null,
-                messageCreditsUsed: 0,
-                creditsResetDate: futureResetDate.toISOString(),
-                creditsRemaining: 999999, // temporarily unlimited
-                tier: "Free",
-                titleModel: "gemini-3.5-flash-lite",
-                tabularModel: "gemini-3-flash-preview",
-                mfaOnLogin: false,
-                legalResearchUs: true,
-                quickActionsVisible: true,
-                openRouterModels: [],
-                vercelModels: [],
-                openCodeGoModels: [],
-                apiKeys: emptyApiKeys(),
-            });
+            setProfile(fallbackProfile());
         } finally {
             setLoading(false);
         }
     }, []);
 
-    useEffect(() => {
+    // Flip back to loading (or clear to the signed-out state) the moment
+    // auth changes, during render, via React's "adjusting state when props
+    // change" pattern — the effect below only owns the fetch.
+    const [prevAuth, setPrevAuth] = useState({ isAuthenticated, userId });
+    if (
+        prevAuth.isAuthenticated !== isAuthenticated ||
+        prevAuth.userId !== userId
+    ) {
+        setPrevAuth({ isAuthenticated, userId });
         if (isAuthenticated && userId) {
             setLoading(true);
-            loadProfile();
         } else {
             setProfile(null);
             setLoading(false);
         }
-    }, [isAuthenticated, userId, loadProfile]);
+    }
+
+    // Same fetch as loadProfile, inlined so no setState is reachable
+    // synchronously from the effect body.
+    useEffect(() => {
+        if (!isAuthenticated || !userId) return;
+        fetchProfileWithRetry()
+            .then((profileData) => {
+                setProfile(toProfile(profileData));
+                setApiKeysDegraded(false);
+            })
+            .catch((error: unknown) => {
+                console.warn(
+                    "[profile] fetch failed after retry; API key availability is unknown and fails open",
+                    error,
+                );
+                setApiKeysDegraded(true);
+                // Set fallback profile data on exception
+                setProfile(fallbackProfile());
+            })
+            .finally(() => setLoading(false));
+    }, [isAuthenticated, userId]);
 
     const updateDisplayName = useCallback(
         async (displayName: string): Promise<boolean> => {
