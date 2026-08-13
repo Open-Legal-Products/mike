@@ -106,6 +106,14 @@ const SORT_OPTIONS: TableFilterOption<TableSortDirection>[] = [
     { value: "desc", label: "Descending" },
 ];
 
+const SORT_KEY_LABELS: Record<DocumentSortKey, string> = {
+    name: "Name",
+    size: "Size",
+    version: "Version",
+    created: "Created",
+    updated: "Updated",
+};
+
 interface DocTableOperations {
     uploadDocument: (file: File) => Promise<Document>;
     refreshCollection: () => Promise<void>;
@@ -1417,8 +1425,8 @@ export function DocTable({
     function renderLevel(parentId: string | null, depth: number) {
         const nameMultiplier =
             enableHeaderFilters &&
-            sort?.key === "name" &&
-            sort.direction === "desc"
+            effectiveSort?.key === "name" &&
+            effectiveSort.direction === "desc"
                 ? -1
                 : 1;
         const childFolders = folders
@@ -2048,6 +2056,12 @@ export function DocTable({
         clearDocumentSelection();
     }
 
+    // The order actually applied to rows: the user's explicit header choice,
+    // falling back to the consumer's default. Header indicators and the reset
+    // option below derive from this same value so the UI never claims an
+    // order the rows don't have.
+    const effectiveSort = sort ?? defaultSort;
+
     const filteredDocs = useMemo(() => {
         const rows = docs
             .filter(
@@ -2062,7 +2076,6 @@ export function DocTable({
                     documentTypeValue(doc) === typeFilter,
             );
 
-        const effectiveSort = sort ?? defaultSort;
         if (!enableHeaderFilters || !effectiveSort) return rows;
 
         return [...rows].sort((a, b) => {
@@ -2098,21 +2111,29 @@ export function DocTable({
 
             return a.filename.localeCompare(b.filename) * multiplier;
         });
-    }, [defaultSort, docs, enableHeaderFilters, q, sort, typeFilter]);
+    }, [docs, effectiveSort, enableHeaderFilters, q, typeFilter]);
 
-    const nameSortDirection = sort?.key === "name" ? sort.direction : null;
-    const sizeSortDirection = sort?.key === "size" ? sort.direction : null;
+    const nameSortDirection =
+        effectiveSort?.key === "name" ? effectiveSort.direction : null;
+    const sizeSortDirection =
+        effectiveSort?.key === "size" ? effectiveSort.direction : null;
     const versionSortDirection =
-        sort?.key === "version" ? sort.direction : null;
+        effectiveSort?.key === "version" ? effectiveSort.direction : null;
     const createdSortDirection =
-        sort?.key === "created" ? sort.direction : null;
+        effectiveSort?.key === "created" ? effectiveSort.direction : null;
     const updatedSortDirection =
-        sort?.key === "updated" ? sort.direction : null;
+        effectiveSort?.key === "updated" ? effectiveSort.direction : null;
+    // Selecting the reset option clears the explicit sort, which falls back
+    // to `defaultSort` when one exists — so its label names that default
+    // instead of implying insertion order.
+    const resetSortLabel = defaultSort
+        ? `Default (${SORT_KEY_LABELS[defaultSort.key]})`
+        : "Default Order";
     const nameFilterButton = enableHeaderFilters ? (
         <TableFilters
             label="Sort by name"
             value={nameSortDirection}
-            allLabel="Default Order"
+            allLabel={resetSortLabel}
             widthClassName="w-40"
             align="right"
             options={SORT_OPTIONS}
@@ -2133,7 +2154,7 @@ export function DocTable({
         <TableFilters
             label="Sort by size"
             value={sizeSortDirection}
-            allLabel="Default Order"
+            allLabel={resetSortLabel}
             widthClassName="w-40"
             options={SORT_OPTIONS}
             onChange={(direction) => handleSortChange("size", direction)}
@@ -2143,7 +2164,7 @@ export function DocTable({
         <TableFilters
             label="Sort by version"
             value={versionSortDirection}
-            allLabel="Default Order"
+            allLabel={resetSortLabel}
             widthClassName="w-40"
             options={SORT_OPTIONS}
             onChange={(direction) => handleSortChange("version", direction)}
@@ -2153,7 +2174,7 @@ export function DocTable({
         <TableFilters
             label="Sort by created date"
             value={createdSortDirection}
-            allLabel="Default Order"
+            allLabel={resetSortLabel}
             widthClassName="w-40"
             options={SORT_OPTIONS}
             onChange={(direction) => handleSortChange("created", direction)}
@@ -2163,7 +2184,7 @@ export function DocTable({
         <TableFilters
             label="Sort by updated date"
             value={updatedSortDirection}
-            allLabel="Default Order"
+            allLabel={resetSortLabel}
             widthClassName="w-40"
             options={SORT_OPTIONS}
             onChange={(direction) => handleSortChange("updated", direction)}
