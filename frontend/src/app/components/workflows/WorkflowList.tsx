@@ -101,23 +101,40 @@ export function WorkflowList() {
   const [importingAddonId, setImportingAddonId] = useState<string | null>(null);
   const [bulkImportingAddons, setBulkImportingAddons] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [addonsError, setAddonsError] = useState("");
+  const [actionError, setActionError] = useState("");
   const workflowActionsRef = useRef<HTMLDivElement>(null);
+  const openAddonIdRef = useRef<string | null>(null);
   const previewEmptyStates = searchParams.get("emptyStates") === "1";
 
   useEffect(() => {
-    Promise.all([
-      listWorkflows("assistant"),
-      listWorkflows("tabular"),
+    // Load the two datasets independently: the user's own workflows loaded
+    // fine before the add-on catalog existed, and a failing /workflow-addons
+    // endpoint must not blank them.
+    Promise.allSettled([
+      Promise.all([listWorkflows("assistant"), listWorkflows("tabular")]),
       listWorkflowAddons(),
     ])
-      .then(([assistant, tabular, addonRows]) => {
-        setWorkflows([...assistant, ...tabular]);
-        setAddons(addonRows);
-      })
-      .catch((error) => {
-        setLoadError(
-          error instanceof Error ? error.message : "Unable to load workflows.",
-        );
+      .then(([workflowsResult, addonsResult]) => {
+        if (workflowsResult.status === "fulfilled") {
+          const [assistant, tabular] = workflowsResult.value;
+          setWorkflows([...assistant, ...tabular]);
+        } else {
+          setLoadError(
+            workflowsResult.reason instanceof Error
+              ? workflowsResult.reason.message
+              : "Unable to load workflows.",
+          );
+        }
+        if (addonsResult.status === "fulfilled") {
+          setAddons(addonsResult.value);
+        } else {
+          setAddonsError(
+            addonsResult.reason instanceof Error
+              ? addonsResult.reason.message
+              : "Unable to load add-ons.",
+          );
+        }
       })
       .finally(() => setLoading(false));
   }, []);
@@ -168,22 +185,39 @@ export function WorkflowList() {
   }, [addons, previewEmptyStates, query]);
 
   async function openAddon(addon: WorkflowAddon) {
+    openAddonIdRef.current = addon.id;
     setSelectedAddon(addon);
     try {
-      setSelectedAddon(await getWorkflowAddon(addon.id));
+      const detailed = await getWorkflowAddon(addon.id);
+      // Ignore stale responses: the user may have closed the modal or opened
+      // a different add-on while this request was in flight.
+      if (openAddonIdRef.current === addon.id) setSelectedAddon(detailed);
     } catch {
       // The list payload still provides a useful preview.
     }
   }
 
+  function closeAddon() {
+    openAddonIdRef.current = null;
+    setSelectedAddon(null);
+  }
+
   async function importAddon(addon: WorkflowAddon) {
+    if (importingAddonId) return;
     setImportingAddonId(addon.id);
+    setActionError("");
     try {
       const workflow = await importWorkflowAddon(addon.id);
       setWorkflows((current) => [workflow, ...current]);
       setSelectedAddonIds((current) => current.filter((id) => id !== addon.id));
-      setSelectedAddon(null);
+      closeAddon();
       router.push(workflowDetailPath(workflow));
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? `Could not import "${addon.title}": ${error.message}`
+          : `Could not import "${addon.title}".`,
+      );
     } finally {
       setImportingAddonId(null);
     }
@@ -207,7 +241,7 @@ export function WorkflowList() {
       }
       setSelectedAddonIds([]);
       if (imported.length !== selectedAddons.length) {
-        setLoadError("Some selected add-ons could not be imported.");
+        setActionError("Some selected add-ons could not be imported.");
       }
     } finally {
       setBulkImportingAddons(false);
@@ -237,7 +271,7 @@ export function WorkflowList() {
       current.filter((workflow) => !deletedIds.includes(workflow.id)),
     );
     if (deletedIds.length !== ids.length) {
-      setLoadError("Some selected workflows could not be deleted.");
+      setActionError("Some selected workflows could not be deleted.");
     }
     setDeleteStatus("complete");
     window.setTimeout(() => {
@@ -337,11 +371,27 @@ export function WorkflowList() {
         }
       />
 
+      {actionError && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 border-b border-red-100 bg-red-50 px-6 py-2 text-sm text-red-600"
+        >
+          <span>{actionError}</span>
+          <button
+            type="button"
+            onClick={() => setActionError("")}
+            className="shrink-0 text-xs font-medium text-red-500 hover:text-red-700"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {activeTab === "addons" ? (
         <AddonTable
           addons={visibleAddons}
           loading={loading}
-          error={loadError}
+          error={addonsError}
           selectedIds={selectedAddonIds}
           onSelectedIdsChange={setSelectedAddonIds}
           importingAddonId={importingAddonId}
@@ -400,7 +450,7 @@ export function WorkflowList() {
       <WorkflowAddonPreviewModal
         addon={selectedAddon}
         importing={selectedAddon?.id === importingAddonId}
-        onClose={() => setSelectedAddon(null)}
+        onClose={closeAddon}
         onImport={importAddon}
       />
 
