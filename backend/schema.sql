@@ -576,7 +576,10 @@ as $$
   from public.chats c
   left join public.projects p on p.id = c.project_id
   where c.user_id = p_user_id
-     or (p.id is not null and p.user_id = p_user_id)
+     or (
+       p.id is not null
+       and p.user_id = p_user_id
+     )
   order by c.created_at desc, c.id asc
   limit case
     when p_limit is null then null
