@@ -383,9 +383,6 @@ create table if not exists public.default_workflow_installations (
     unique(workflow_id)
 );
 
-create index if not exists default_workflow_installations_user_idx
-  on public.default_workflow_installations(user_id);
-
 create table if not exists public.quick_actions (
   id uuid primary key default gen_random_uuid(),
   user_id text not null,
