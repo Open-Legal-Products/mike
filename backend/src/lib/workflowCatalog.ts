@@ -78,15 +78,29 @@ export function defaultWorkflowPayloads() {
   });
 }
 
+// After the first successful install for a user, the RPC is a pure no-op:
+// the installation markers make it skip every default. Remembering that
+// success per process avoids shipping the multi-KB default payload and
+// taking the per-user advisory lock on every workflow list, quick-action
+// list, and chat message. A new deploy (new process) re-runs the RPC once,
+// which is exactly when new defaults could have shipped.
+const ensuredDefaultUsers = new Set<string>();
+
+export function resetEnsuredDefaultUsersForTests(): void {
+  ensuredDefaultUsers.clear();
+}
+
 export async function ensureDefaultWorkflows(
   userId: string,
   db: Db,
 ): Promise<number> {
+  if (ensuredDefaultUsers.has(userId)) return 0;
   const { data, error } = await db.rpc("install_missing_default_workflows", {
     p_user_id: userId,
     p_defaults: defaultWorkflowPayloads(),
   });
   if (error) throw error;
+  ensuredDefaultUsers.add(userId);
   return typeof data === "number" ? data : 0;
 }
 
@@ -143,21 +157,55 @@ export function workflowAddonSeeds(): WorkflowAddonSeed[] {
   });
 }
 
-export async function syncWorkflowAddonCatalog(db: Db): Promise<void> {
-  const seeds = workflowAddonSeeds();
-  const { error } = await db
-    .from("workflow_addons")
-    .upsert(seeds, { onConflict: "addon_key" });
-  if (error) throw error;
+// The catalog is derived from the generated module, which only changes with
+// a deploy, so one successful sync per process is enough. Concurrent callers
+// share the in-flight promise instead of racing duplicate upserts; a failed
+// sync clears the latch so the next request retries.
+let catalogSyncPromise: Promise<void> | null = null;
 
-  const activeKeys = new Set(seeds.map((seed) => seed.addon_key));
+export function resetCatalogSyncForTests(): void {
+  catalogSyncPromise = null;
+}
+
+export function syncWorkflowAddonCatalog(db: Db): Promise<void> {
+  if (!catalogSyncPromise) {
+    catalogSyncPromise = runCatalogSync(db).catch((err: unknown) => {
+      catalogSyncPromise = null;
+      throw err;
+    });
+  }
+  return catalogSyncPromise;
+}
+
+async function runCatalogSync(db: Db): Promise<void> {
+  const seeds = workflowAddonSeeds();
   const { data: existing, error: listError } = await db
     .from("workflow_addons")
-    .select("id, addon_key")
-    .eq("active", true);
+    .select("id, addon_key, content_hash, active");
   if (listError) throw listError;
+  const existingByKey = new Map(
+    (existing ?? []).map((row) => [row.addon_key, row]),
+  );
+
+  // content_hash covers every seeded column, so rows whose hash matches are
+  // already up to date — skipping them keeps updated_at meaningful and turns
+  // the steady-state sync into a single read.
+  const changed = seeds.filter((seed) => {
+    const current = existingByKey.get(seed.addon_key);
+    return (
+      !current || current.content_hash !== seed.content_hash || !current.active
+    );
+  });
+  if (changed.length > 0) {
+    const { error } = await db
+      .from("workflow_addons")
+      .upsert(changed, { onConflict: "addon_key" });
+    if (error) throw error;
+  }
+
+  const activeKeys = new Set(seeds.map((seed) => seed.addon_key));
   const removedIds = (existing ?? [])
-    .filter((row) => !activeKeys.has(row.addon_key))
+    .filter((row) => row.active && !activeKeys.has(row.addon_key))
     .map((row) => row.id);
   if (removedIds.length > 0) {
     const { error: deactivateError } = await db

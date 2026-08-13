@@ -1,10 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_WORKFLOW_IDS,
   defaultWorkflowPayloads,
+  ensureDefaultWorkflows,
+  resetCatalogSyncForTests,
+  resetEnsuredDefaultUsersForTests,
+  syncWorkflowAddonCatalog,
   workflowAddonSeeds,
 } from "../workflowCatalog";
 import { SYSTEM_WORKFLOWS } from "../systemWorkflows";
+
+vi.mock("../storage", () => ({
+  storageEnabled: false,
+  uploadFile: vi.fn(),
+}));
 
 describe("workflow catalog", () => {
   it("installs the five starter workflows with linked quick-action settings", () => {
@@ -75,5 +84,86 @@ describe("workflow catalog", () => {
     expect(
       seeds.find((item) => item.addon_key === "design-partner-draft")?.pack_key,
     ).toBeNull();
+  });
+});
+
+describe("ensureDefaultWorkflows request-path cost", () => {
+  beforeEach(() => resetEnsuredDefaultUsersForTests());
+
+  it("calls the install RPC once per user per process", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: 5, error: null });
+    const db = { rpc } as never;
+    await expect(ensureDefaultWorkflows("user-1", db)).resolves.toBe(5);
+    await expect(ensureDefaultWorkflows("user-1", db)).resolves.toBe(0);
+    expect(rpc).toHaveBeenCalledTimes(1);
+    await ensureDefaultWorkflows("user-2", db);
+    expect(rpc).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries after a failed install instead of caching the failure", async () => {
+    const rpc = vi
+      .fn()
+      .mockResolvedValueOnce({ data: null, error: new Error("db down") })
+      .mockResolvedValue({ data: 5, error: null });
+    const db = { rpc } as never;
+    await expect(ensureDefaultWorkflows("user-1", db)).rejects.toThrow(
+      "db down",
+    );
+    await expect(ensureDefaultWorkflows("user-1", db)).resolves.toBe(5);
+    expect(rpc).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("syncWorkflowAddonCatalog steady state", () => {
+  beforeEach(() => resetCatalogSyncForTests());
+
+  function makeDb(existingRows: unknown[]) {
+    const upsert = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn(() => ({
+      in: vi.fn().mockResolvedValue({ error: null }),
+    }));
+    const select = vi.fn().mockResolvedValue({
+      data: existingRows,
+      error: null,
+    });
+    const from = vi.fn(() => ({ select, upsert, update }));
+    return { db: { from } as never, from, select, upsert };
+  }
+
+  it("skips the upsert when every stored content hash already matches", async () => {
+    const existing = workflowAddonSeeds().map((seed, index) => ({
+      id: `row-${index}`,
+      addon_key: seed.addon_key,
+      content_hash: seed.content_hash,
+      active: true,
+    }));
+    const { db, upsert } = makeDb(existing);
+    await syncWorkflowAddonCatalog(db);
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it("runs one sync per process and shares it across concurrent callers", async () => {
+    const { db, select } = makeDb([]);
+    await Promise.all([
+      syncWorkflowAddonCatalog(db),
+      syncWorkflowAddonCatalog(db),
+      syncWorkflowAddonCatalog(db),
+    ]);
+    await syncWorkflowAddonCatalog(db);
+    expect(select).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the latch after a failure so the next request retries", async () => {
+    const failing = {
+      from: vi.fn(() => ({
+        select: vi
+          .fn()
+          .mockResolvedValue({ data: null, error: new Error("boom") }),
+      })),
+    } as never;
+    await expect(syncWorkflowAddonCatalog(failing)).rejects.toThrow("boom");
+    const { db, select } = makeDb([]);
+    await syncWorkflowAddonCatalog(db);
+    expect(select).toHaveBeenCalledTimes(1);
   });
 });
