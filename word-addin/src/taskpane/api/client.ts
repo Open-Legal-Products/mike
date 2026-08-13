@@ -345,8 +345,12 @@ export async function updateQuickAction(
     );
 }
 
-export async function listWorkflowAddons(): Promise<WorkflowAddon[]> {
-    return apiRequest<WorkflowAddon[]>("/workflow-addons");
+export async function listWorkflowAddons(
+    type?: WorkflowType,
+): Promise<WorkflowAddon[]> {
+    return apiRequest<WorkflowAddon[]>(
+        type ? `/workflow-addons?type=${type}` : "/workflow-addons",
+    );
 }
 
 export async function importWorkflowAddon(addonId: string): Promise<Workflow> {

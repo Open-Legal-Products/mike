@@ -43,8 +43,11 @@ export function WorkflowPicker({
     () => new Set()
   );
   const [importingAddonId, setImportingAddonId] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const [fetchLoading, setFetchLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [addonsLoading, setAddonsLoading] = useState(true);
+  const [addonsError, setAddonsError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [promptMd, setPromptMd] = useState("");
   const [saveStatus, setSaveStatus] = useState<
@@ -80,14 +83,25 @@ export function WorkflowPicker({
 
   useEffect(() => {
     let cancelled = false;
-    void listWorkflowAddons()
+    // The backend filters by type server-side; ask for assistant add-ons
+    // only, which is all the task pane can run.
+    void listWorkflowAddons("assistant")
       .then((rows) => {
         if (!cancelled) {
-          setAddons(rows.filter((addon) => addon.type === "assistant"));
+          setAddons(rows);
+          setAddonsError(null);
         }
       })
-      .catch(() => {
-        if (!cancelled) setAddons([]);
+      .catch((reason: unknown) => {
+        if (!cancelled) {
+          setAddons([]);
+          setAddonsError(
+            reason instanceof Error ? reason.message : "Failed to load add-ons"
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAddonsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -160,14 +174,14 @@ export function WorkflowPicker({
 
   const importAddon = async (addon: WorkflowAddon): Promise<void> => {
     setImportingAddonId(addon.id);
-    setFetchError(null);
+    setImportError(null);
     try {
       const imported = await importWorkflowAddon(addon.id);
       setWorkflows((current) => [imported, ...current]);
       setTab("workflows");
       onSelectedWorkflowChange(imported);
     } catch (reason) {
-      setFetchError(
+      setImportError(
         reason instanceof Error ? reason.message : "Failed to import add-on",
       );
     } finally {
@@ -278,35 +292,51 @@ export function WorkflowPicker({
           />
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {fetchError && <p className="px-2 py-2 text-xs text-red-500">{fetchError}</p>}
-            <div className="space-y-1">
-              {addonPacks.map((pack) => {
-                const expanded = expandedAddonPackKeys.has(pack.key);
-                return (
-                  <React.Fragment key={pack.key}>
-                    <button
-                      type="button"
-                      aria-expanded={expanded}
-                      onClick={() => toggleAddonPack(pack.key)}
-                      className="flex w-full items-start gap-2 rounded-lg bg-white/55 px-3 py-2.5 text-left"
-                    >
-                      <SubfolderSvgIcon
-                        open={expanded}
-                        className="mt-0.5 h-5 w-5 shrink-0"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-xs font-medium text-gray-800">{pack.title}</span>
-                        <span className="mt-1 block text-[11px] leading-relaxed text-gray-400">
-                          {pack.addons.length} workflow{pack.addons.length === 1 ? "" : "s"}
+            {importError && (
+              <p className="px-2 py-2 text-xs text-red-500">{importError}</p>
+            )}
+            {addonsLoading ? (
+              <div className="flex h-full items-center justify-center">
+                <Spinner label="Loading add-ons…" />
+              </div>
+            ) : addonsError ? (
+              <p className="py-8 text-center text-sm text-destructive">
+                {addonsError}
+              </p>
+            ) : addons.length === 0 ? (
+              <p className="py-8 text-center text-sm text-gray-400">
+                No add-ons available.
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {addonPacks.map((pack) => {
+                  const expanded = expandedAddonPackKeys.has(pack.key);
+                  return (
+                    <React.Fragment key={pack.key}>
+                      <button
+                        type="button"
+                        aria-expanded={expanded}
+                        onClick={() => toggleAddonPack(pack.key)}
+                        className="flex w-full items-start gap-2 rounded-lg bg-white/55 px-3 py-2.5 text-left"
+                      >
+                        <SubfolderSvgIcon
+                          open={expanded}
+                          className="mt-0.5 h-5 w-5 shrink-0"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-medium text-gray-800">{pack.title}</span>
+                          <span className="mt-1 block text-[11px] leading-relaxed text-gray-400">
+                            {pack.addons.length} workflow{pack.addons.length === 1 ? "" : "s"}
+                          </span>
                         </span>
-                      </span>
-                    </button>
-                    {expanded && pack.addons.map((addon) => renderAddon(addon, true))}
-                  </React.Fragment>
-                );
-              })}
-              {standaloneAddons.map((addon) => renderAddon(addon))}
-            </div>
+                      </button>
+                      {expanded && pack.addons.map((addon) => renderAddon(addon, true))}
+                    </React.Fragment>
+                  );
+                })}
+                {standaloneAddons.map((addon) => renderAddon(addon))}
+              </div>
+            )}
           </div>
         )}
       </div>

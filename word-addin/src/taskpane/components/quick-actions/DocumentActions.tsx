@@ -15,6 +15,8 @@ export function DocumentActions(): React.ReactElement {
   const [search, setSearch] = useState("");
   const [selectedAction, setSelectedAction] = useState<QuickAction | null>(null);
   const [actions, setActions] = useState<QuickAction[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     void listQuickActions()
@@ -36,32 +38,44 @@ export function DocumentActions(): React.ReactElement {
     );
   }, [actions, search]);
 
+  // The modal's selectedAction can hold unsaved prompt/document_upload edits,
+  // so toggling Active must only move `enabled` between the modal and the
+  // LIST: the list is merged from the server response alone, and the modal
+  // keeps its local draft with only `enabled` updated.
   async function setActionActive(action: QuickAction, enabled: boolean) {
-    const optimistic = { ...action, enabled };
     setActions((current) =>
-      current.map((item) => (item.id === action.id ? optimistic : item)),
+      current.map((item) =>
+        item.id === action.id ? { ...item, enabled } : item,
+      ),
     );
-    setSelectedAction(optimistic);
+    setSelectedAction({ ...action, enabled });
     try {
       const updated = await updateQuickAction(action.id, { enabled });
-      const merged = {
-        ...updated,
-        prompt: action.prompt,
-        document_upload: action.document_upload,
-      };
       setActions((current) =>
-        current.map((item) => (item.id === merged.id ? merged : item)),
+        current.map((item) => (item.id === updated.id ? updated : item)),
       );
-      setSelectedAction(merged);
+      setSelectedAction((current) =>
+        current && current.id === updated.id
+          ? { ...current, enabled: updated.enabled }
+          : current,
+      );
     } catch {
       setActions((current) =>
-        current.map((item) => (item.id === action.id ? action : item)),
+        current.map((item) =>
+          item.id === action.id ? { ...item, enabled: action.enabled } : item,
+        ),
       );
-      setSelectedAction(action);
+      setSelectedAction((current) =>
+        current && current.id === action.id
+          ? { ...current, enabled: action.enabled }
+          : current,
+      );
     }
   }
 
   async function saveActionDetails(action: QuickAction) {
+    setSaving(true);
+    setSaveError(null);
     try {
       const updated = await updateQuickAction(action.id, {
         prompt: action.prompt,
@@ -71,8 +85,15 @@ export function DocumentActions(): React.ReactElement {
         current.map((item) => (item.id === updated.id ? updated : item)),
       );
       setSelectedAction(null);
-    } catch {
-      // Keep the modal open so the user can retry.
+    } catch (reason) {
+      // Keep the modal open so the user can retry, and say why it failed.
+      setSaveError(
+        reason instanceof Error
+          ? reason.message
+          : "Failed to save quick action",
+      );
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -106,7 +127,10 @@ export function DocumentActions(): React.ReactElement {
               <button
                 key={action.id}
                 type="button"
-                onClick={() => setSelectedAction(action)}
+                onClick={() => {
+                  setSaveError(null);
+                  setSelectedAction(action);
+                }}
                 className="flex w-full min-w-0 items-center gap-3 rounded-md px-3 py-2.5 text-left text-xs text-gray-700 transition-all hover:bg-gray-100"
               >
                 <span className="min-w-0 flex-1 truncate font-medium">
@@ -129,11 +153,15 @@ export function DocumentActions(): React.ReactElement {
 
       <Modal
         open={!!selectedAction}
-        onClose={() => setSelectedAction(null)}
+        onClose={() => {
+          setSelectedAction(null);
+          setSaveError(null);
+        }}
         parentLabel="Quick Actions"
         title={selectedAction?.workflow.title ?? "Quick action details"}
         primaryAction={{
-          label: "Done",
+          label: saving ? "Saving…" : "Done",
+          disabled: saving,
           onClick: () => selectedAction && void saveActionDetails(selectedAction),
         }}
       >
@@ -200,6 +228,11 @@ export function DocumentActions(): React.ReactElement {
                 aria-label="Active"
               />
             </div>
+            {saveError && (
+              <p className="text-[11px] text-red-500" role="alert">
+                {saveError}
+              </p>
+            )}
           </div>
         )}
       </Modal>
