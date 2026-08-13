@@ -681,7 +681,15 @@ export async function buildWorkflowStore(
   const store: WorkflowStore = new Map();
   const normalizedUserEmail = (userEmail ?? "").trim().toLowerCase();
 
-  await ensureDefaultWorkflows(userId, db);
+  // Best-effort: the chat routes call this outside their try blocks, so a
+  // thrown error here becomes an unhandled rejection that kills the process
+  // (Express 4 does not forward async errors). A chat must never fail —
+  // let alone crash the backend — because default installation failed.
+  try {
+    await ensureDefaultWorkflows(userId, db);
+  } catch (err) {
+    console.error("[buildWorkflowStore] ensureDefaultWorkflows failed:", err);
+  }
 
   // Keep repository IDs readable for historical chat attachments, but do not
   // expose them through list_workflows. Current discovery happens through the
