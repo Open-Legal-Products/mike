@@ -25,15 +25,39 @@ Thanks for helping improve Mike. Please keep contributions small, focused, and e
 System workflows live in the sibling
 [`Open-Legal-Products/mike-workflows`](https://github.com/Open-Legal-Products/mike-workflows)
 repository under `assistant-workflows/` and `tabular-review-workflows/`. Put
-structured metadata in the YAML frontmatter at the top of `SKILL.md`, set
-`metadata.mike-availability` to `system`, put workflow instructions in the body
-of `SKILL.md`, and use `table-columns.yaml` for tabular review columns.
+structured metadata in the YAML frontmatter at the top of `SKILL.md`, put
+workflow instructions in the body of `SKILL.md`, and use `table-columns.yaml`
+for tabular review columns.
+
+How workflows reach users:
+
+- **Defaults.** Five hardcoded workflows (`DEFAULT_WORKFLOW_IDS` in
+  `backend/src/lib/workflowCatalog.ts`) are installed for every user on first
+  use, together with their quick-action settings. Changing which workflows are
+  defaults means editing that list — nothing in the workflow repository
+  controls it.
+- **Add-ons.** Every other workflow in the repository ships in the Add-ons
+  catalog. Users import an add-on as an independent, editable copy of the
+  workflow.
+- **Packs.** A directory with a `pack.yaml` groups its child workflow
+  directories into a pack shown together in the catalog. `pack.yaml` must list
+  exactly the workflow directories that exist under it — the build fails on
+  either a listed-but-missing or an unlisted workflow.
+- The `metadata.mike-availability` frontmatter key is deprecated and ignored:
+  the default/add-on split comes from `DEFAULT_WORKFLOW_IDS`, not from the
+  workflow files. Existing files may keep the key; the generator accepts it
+  but never emits it.
 
 After changing system workflows, regenerate the app files:
 
 ```bash
 node scripts/build-workflows.js
 ```
+
+The generator stamps the `mike-workflows` commit it read into the generated
+files (`SYSTEM_WORKFLOWS_SOURCE_COMMIT`), and CI regenerates from that commit
+and fails on any drift — so always commit the regenerated files together with
+a workflow change.
 
 ## Security
 
