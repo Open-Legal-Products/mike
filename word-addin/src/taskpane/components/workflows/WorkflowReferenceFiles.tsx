@@ -8,6 +8,22 @@ import {
   uploadWorkflowReferenceFile,
 } from "../../api/mikeApi";
 
+/**
+ * Open a URL in the system browser. Office's openBrowserWindow is the
+ * sanctioned way out of the task-pane webview — window.open is blocked in
+ * some hosts (notably desktop Word), where it silently does nothing. Fall
+ * back to window.open when the API isn't available (hermetic e2e bundle,
+ * older hosts).
+ */
+function openExternalUrl(url: string): void {
+  const ui = typeof Office !== "undefined" ? Office.context?.ui : undefined;
+  if (ui && typeof ui.openBrowserWindow === "function") {
+    ui.openBrowserWindow(url);
+  } else {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
 export function WorkflowReferenceFiles({
   workflowId,
   readOnly,
@@ -27,9 +43,29 @@ export function WorkflowReferenceFiles({
   };
 
   useEffect(() => {
-    void reload().catch(() => setFiles([]));
-    // The workflow ID fully identifies the reference collection.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Guard against out-of-order responses when the user switches workflows
+    // quickly, and surface failures instead of rendering an empty list.
+    let cancelled = false;
+    listWorkflowReferenceFiles(workflowId)
+      .then((rows) => {
+        if (!cancelled) {
+          setFiles(rows);
+          setError(null);
+        }
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) {
+          setFiles([]);
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : "Could not load reference files",
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [workflowId]);
 
   const upload = async (file: File): Promise<void> => {
@@ -110,7 +146,7 @@ export function WorkflowReferenceFiles({
                 type="button"
                 onClick={() =>
                   void getWorkflowReferenceUrl(workflowId, file.id)
-                    .then(({ url }) => window.open(url, "_blank"))
+                    .then(({ url }) => openExternalUrl(url))
                     .catch((reason: unknown) =>
                       setError(reason instanceof Error ? reason.message : "Download failed"),
                     )
