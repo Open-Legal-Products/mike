@@ -73,6 +73,19 @@ export function InitialView({ onSubmit }: InitialViewProps) {
                                     ? result.value
                                     : actions[index],
                             );
+                            // Only mark the one-shot migration complete when
+                            // every update landed; otherwise a transient API
+                            // failure would permanently discard the user's
+                            // legacy preferences. A partial batch retries on
+                            // the next load — updates are idempotent.
+                            if (
+                                migrations.some(
+                                    (result) => result.status === "rejected",
+                                )
+                            ) {
+                                if (!cancelled) setQuickActions(resolved);
+                                return;
+                            }
                         }
                         window.localStorage.setItem(migratedKey, "1");
                     } catch {
@@ -105,9 +118,18 @@ export function InitialView({ onSubmit }: InitialViewProps) {
     function handleQuickAction(action: QuickAction) {
         const workflow = action.workflow;
         if (action.document_upload) {
+            // The template-drafting default should open the picker on the
+            // Templates tab, as the pre-database quick action did. Title is
+            // the only stable handle the quick-action row exposes today; if
+            // the user renames their copy the picker falls back to Files.
+            const wantsTemplates =
+                workflow.title.trim().toLowerCase() === "draft from template";
             chatInputRef.current?.startWorkflowDocumentSelection(
                 workflow,
                 action.prompt,
+                wantsTemplates
+                    ? { initialDocumentTab: "templates" }
+                    : undefined,
             );
         } else {
             chatInputRef.current?.startWorkflow(workflow, action.prompt);
