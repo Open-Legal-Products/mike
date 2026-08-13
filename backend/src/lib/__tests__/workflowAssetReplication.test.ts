@@ -31,7 +31,7 @@ function toolNames(tools: readonly { function: { name: string } }[]) {
     return tools.map((tool) => tool.function.name);
 }
 
-function replicationDb() {
+function replicationDb(callOrder: string[] = []) {
     const documentRows: Record<string, unknown>[][] = [];
     const versionRows: Record<string, unknown>[][] = [];
     const db = {
@@ -39,12 +39,13 @@ function replicationDb() {
             if (table === "documents") {
                 return {
                     insert(rows: Record<string, unknown>[]) {
+                        callOrder.push("insert:documents");
                         documentRows.push(rows);
                         return {
+                            // Documents rows carry client-generated ids;
+                            // echo them back like Postgres would.
                             select: async () => ({
-                                data: rows.map((_, index) => ({
-                                    id: `new-document-${index + 1}`,
-                                })),
+                                data: rows.map((row) => ({ id: row.id })),
                                 error: null,
                             }),
                         };
@@ -52,11 +53,15 @@ function replicationDb() {
                     update: () => ({
                         eq: async () => ({ data: null, error: null }),
                     }),
+                    delete: () => ({
+                        in: async () => ({ data: null, error: null }),
+                    }),
                 };
             }
             if (table === "document_versions") {
                 return {
                     insert(rows: Record<string, unknown>[]) {
+                        callOrder.push("insert:document_versions");
                         versionRows.push(rows);
                         return {
                             select: async () => ({
@@ -131,10 +136,11 @@ describe("workflow asset replication", () => {
             {},
         );
 
-        expect(store.get("workflow-ref-workflow-1")).toMatchObject({
+        // Handle keys embed the FULL workflow id: builtin-* ids all share
+        // an 8-character prefix, so a truncated id would collide.
+        expect(store.get("workflow-ref-workflow-12345678-1")).toMatchObject({
             filename: "Precedent.docx",
             source_kind: "workflow_asset",
-            source_id: "reference-1",
         });
         expect(
             (result.toolResults[0] as { content: string }).content,
@@ -143,6 +149,8 @@ describe("workflow asset replication", () => {
 
     it("copies an asset into Library Files and registers the copy for editing", async () => {
         const sourceLabel = "workflow-ref-workflow-1-1";
+        const sourceBytes = new TextEncoder().encode("asset").buffer;
+        downloadFile.mockResolvedValue(sourceBytes);
         const store: DocStore = new Map([
             [
                 sourceLabel,
@@ -151,12 +159,16 @@ describe("workflow asset replication", () => {
                     file_type: "pdf",
                     storage_path: "workflow-assets/precedent.pdf",
                     source_kind: "workflow_asset",
-                    source_id: "reference-1",
                 },
             ],
         ]);
         const index: DocIndex = {};
-        const { db, documentRows, versionRows } = replicationDb();
+        const callOrder: string[] = [];
+        uploadFile.mockImplementation((key: unknown) => {
+            callOrder.push(`upload:${String(key)}`);
+            return Promise.resolve(undefined);
+        });
+        const { db, documentRows, versionRows } = replicationDb(callOrder);
 
         const result = await runToolCalls(
             [
@@ -182,19 +194,41 @@ describe("workflow asset replication", () => {
 
         expect(documentRows[0]).toEqual([
             expect.objectContaining({
+                id: expect.any(String),
                 project_id: null,
                 user_id: "user-1",
                 library_kind: "file",
                 library_folder_id: null,
             }),
         ]);
+        const documentId = documentRows[0][0].id as string;
+
+        // The copy's bytes are uploaded to the id-derived storage key
+        // BEFORE any documents row is inserted, so a failed upload can
+        // never leave a "ready" library row without content.
+        const expectedKey = `documents/user-1/${documentId}/source.pdf`;
+        expect(uploadFile).toHaveBeenCalledWith(
+            expectedKey,
+            sourceBytes,
+            "application/pdf",
+        );
+        const insertPosition = callOrder.indexOf("insert:documents");
+        const uploadPositions = callOrder
+            .map((entry, position) => ({ entry, position }))
+            .filter(({ entry }) => entry.startsWith("upload:"))
+            .map(({ position }) => position);
+        expect(uploadPositions.length).toBeGreaterThan(0);
+        expect(Math.max(...uploadPositions)).toBeLessThan(insertPosition);
+
         expect(versionRows[0][0]).toMatchObject({
+            document_id: documentId,
+            storage_path: expectedKey,
             filename: "Client precedent.pdf",
             file_type: "pdf",
             source: "upload",
         });
         expect(index["doc-0"]).toMatchObject({
-            document_id: "new-document-1",
+            document_id: documentId,
             filename: "Client precedent.pdf",
         });
         expect(store.get("doc-0")?.source_kind).toBe("document");
@@ -203,6 +237,52 @@ describe("workflow asset replication", () => {
             ok: true,
             saved_to: "library_files",
         });
+    });
+
+    it("creates no documents row and reports failure when the upload fails", async () => {
+        const sourceLabel = "workflow-ref-workflow-1-1";
+        const store: DocStore = new Map([
+            [
+                sourceLabel,
+                {
+                    filename: "Precedent.pdf",
+                    file_type: "pdf",
+                    storage_path: "workflow-assets/precedent.pdf",
+                    source_kind: "workflow_asset",
+                },
+            ],
+        ]);
+        uploadFile.mockRejectedValue(new Error("bucket unavailable"));
+        const { db, documentRows, versionRows } = replicationDb();
+
+        const result = await runToolCalls(
+            [
+                {
+                    id: "replicate-upload-failure",
+                    function: {
+                        name: "replicate_document",
+                        arguments: JSON.stringify({
+                            doc_id: sourceLabel,
+                            new_filename: "Client precedent.pdf",
+                        }),
+                    },
+                },
+            ],
+            store,
+            "user-1",
+            db as never,
+            () => undefined,
+            undefined,
+            undefined,
+            {},
+        );
+
+        expect(documentRows).toHaveLength(0);
+        expect(versionRows).toHaveLength(0);
+        const toolResult = result.toolResults[0] as { content: string };
+        const payload = JSON.parse(toolResult.content);
+        expect(payload.ok).toBe(false);
+        expect(payload.error).toContain("bucket unavailable");
     });
 
     it("saves the same copy to Project Documents in a project chat", async () => {

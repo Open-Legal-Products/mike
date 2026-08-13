@@ -26,8 +26,6 @@ export type DocStore = Map<
     filename: string;
     /** Identifies source material that must be copied before it is edited. */
     source_kind?: "document" | "library_template" | "workflow_asset";
-    /** The workflow reference row ID when source_kind is workflow_asset. */
-    source_id?: string;
     /**
      * Request-scoped plain text that is already available in memory. Inline
      * documents still flow through read_document so their body only reaches

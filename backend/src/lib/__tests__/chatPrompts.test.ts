@@ -56,8 +56,18 @@ describe("buildSystemPrompt", () => {
             expect(prompt).toContain(
                 "open the relevant files with read_document before continuing",
             );
+            // edit_document only handles .docx, so the copy-then-edit
+            // mandate is scoped to .docx copies in both sections, with a
+            // generate-from-copy path for pdf/xlsx templates.
             expect(
-                prompt.match(/never generate a new document in its place/g),
+                prompt.match(
+                    /call edit_document on the returned copy rather than generating a replacement/g,
+                ),
+            ).toHaveLength(2);
+            expect(
+                prompt.match(
+                    /produce the filled-in result as a new generated document/g,
+                ),
             ).toHaveLength(2);
         }
     });

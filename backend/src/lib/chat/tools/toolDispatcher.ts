@@ -36,6 +36,7 @@ import {
   shouldConvertToPdf,
 } from "../../documentTypes";
 import { buildDownloadUrl } from "../../downloadTokens";
+import { safeErrorMessage } from "../../safeError";
 import {
   contentSha256,
   loadActiveVersion,
@@ -101,10 +102,10 @@ function sourceMaterialNotice(
   sourceKind: "document" | "library_template" | "workflow_asset" | undefined,
 ) {
   if (sourceKind === "library_template") {
-    return "Source type: Library Template (immutable). Before drafting or editing from this file, call replicate_document with a new_filename and use the returned copy.";
+    return "Source type: Library Template (immutable). If this template will be edited or filled in, call replicate_document with a new_filename and work from the returned copy; reading it for information needs no copy.";
   }
   if (sourceKind === "workflow_asset") {
-    return "Source type: Workflow asset (immutable). Before drafting or editing from this file, call replicate_document with a new_filename and use the returned copy.";
+    return "Source type: Workflow asset (immutable). If this file will be used as a template — edited or filled in — call replicate_document with a new_filename and work from the returned copy; reading it for information needs no copy.";
   }
   return null;
 }
@@ -843,13 +844,12 @@ export async function runToolCalls(
       const referenceHandles: { doc_id: string; filename: string }[] = [];
       if (wf) {
         for (const [index, reference] of (wf.reference_files ?? []).entries()) {
-          const docId = `workflow-ref-${wfId.slice(0, 8)}-${index + 1}`;
+          const docId = `workflow-ref-${wfId}-${index + 1}`;
           docStore.set(docId, {
             storage_path: reference.storage_path,
             file_type: reference.file_type,
             filename: reference.filename,
             source_kind: "workflow_asset",
-            source_id: reference.reference_id,
           });
           referenceHandles.push({ doc_id: docId, filename: reference.filename });
         }
@@ -862,7 +862,7 @@ export async function runToolCalls(
       const wfContent = wf ? wf.skill_md : `Workflow '${wfId}' not found.`;
       const instructions = nonce && wf ? spotlightWorkflow(wfContent, nonce) : wfContent;
       const referenceNotice = referenceHandles.length > 0
-        ? `\n\nAvailable immutable workflow reference files (open relevant files with read_document; before drafting or editing from one, call replicate_document with a new_filename and use the copy):\n${referenceHandles
+        ? `\n\nAvailable immutable workflow reference files (open relevant files with read_document; if a file will be used as a template — edited or filled in — call replicate_document with a new_filename and work from the copy; reading one for information needs no copy):\n${referenceHandles
             .map((reference) =>
               `- ${reference.doc_id}: ${spotlightFilename(reference.filename, nonce)}`,
             )
@@ -1754,8 +1754,44 @@ export async function runToolCalls(
               filenames.push(`${baseStem}${suffix}${srcExt}`);
             }
 
-            // Bulk insert N documents in one round-trip.
-            const docRows = filenames.map((fn) => ({
+            // Pre-generate the document ids client-side (mirrors
+            // persistGeneratedFile) so every copy's bytes can be
+            // uploaded BEFORE any documents row exists: a failure
+            // mid-flight then leaves orphaned storage objects, never
+            // a user-visible "ready" library row without content.
+            const newDocs = filenames.map((fn) => ({
+              id: crypto.randomUUID(),
+              filename: fn,
+            }));
+            const contentType = contentTypeForDocumentType(
+              sourceInfo.file_type,
+            );
+
+            // Parallel uploads: the doc bytes (and PDF
+            // rendition if any) for every new copy.
+            const uploadJobs: Promise<unknown>[] = [];
+            const newKeys: string[] = [];
+            const newPdfKeys: (string | null)[] = [];
+            for (const d of newDocs) {
+              const key = storageKey(userId, d.id, d.filename);
+              newKeys.push(key);
+              uploadJobs.push(uploadFile(key, raw, contentType));
+              if (pdfBytes) {
+                const pdfKey = convertedPdfKey(userId, d.id);
+                newPdfKeys.push(pdfKey);
+                uploadJobs.push(
+                  uploadFile(pdfKey, pdfBytes, "application/pdf"),
+                );
+              } else {
+                newPdfKeys.push(null);
+              }
+            }
+            await Promise.all(uploadJobs);
+
+            // Bytes are durable; now record the rows in one
+            // round-trip per table.
+            const docRows = newDocs.map((d) => ({
+              id: d.id,
               project_id: projectId ?? null,
               user_id: userId,
               status: "ready",
@@ -1766,46 +1802,15 @@ export async function runToolCalls(
               .from("documents")
               .insert(docRows)
               .select("id");
-            if (docErr || !insertedDocs || insertedDocs.length === 0) {
+            if (
+              docErr ||
+              !insertedDocs ||
+              insertedDocs.length !== newDocs.length
+            ) {
               fail(
-                `Failed to record replicated documents: ${docErr?.message ?? "unknown"}`,
+                `Failed to record replicated documents: ${safeErrorMessage(docErr?.message ?? "unknown")}`,
               );
             } else {
-              // Preserve the request order so each row pairs
-              // with the right filename. Supabase returns
-              // inserted rows in the same order as the
-              // payload.
-              const newDocs = (insertedDocs as { id: string }[]).map(
-                (doc, idx) => ({
-                  ...doc,
-                  filename: filenames[idx] ?? "Untitled document.docx",
-                }),
-              );
-              const contentType = contentTypeForDocumentType(
-                sourceInfo.file_type,
-              );
-
-              // Parallel uploads: the doc bytes (and PDF
-              // rendition if any) for every new copy.
-              const uploadJobs: Promise<unknown>[] = [];
-              const newKeys: string[] = [];
-              const newPdfKeys: (string | null)[] = [];
-              for (const d of newDocs) {
-                const key = storageKey(userId, d.id, d.filename);
-                newKeys.push(key);
-                uploadJobs.push(uploadFile(key, raw, contentType));
-                if (pdfBytes) {
-                  const pdfKey = convertedPdfKey(userId, d.id);
-                  newPdfKeys.push(pdfKey);
-                  uploadJobs.push(
-                    uploadFile(pdfKey, pdfBytes, "application/pdf"),
-                  );
-                } else {
-                  newPdfKeys.push(null);
-                }
-              }
-              await Promise.all(uploadJobs);
-
               // Bulk insert N versions in one round-trip.
               const versionRows = newDocs.map((d, idx) => ({
                 document_id: d.id,
@@ -1831,8 +1836,18 @@ export async function runToolCalls(
                 !insertedVersions ||
                 insertedVersions.length !== newDocs.length
               ) {
+                // Roll the documents rows back so no version-less
+                // "ready" rows stay visible in the library
+                // (best-effort; the bytes are already uploaded).
+                await db
+                  .from("documents")
+                  .delete()
+                  .in(
+                    "id",
+                    newDocs.map((d) => d.id),
+                  );
                 fail(
-                  `Failed to record replicated document versions: ${verErr?.message ?? "unknown"}`,
+                  `Failed to record replicated document versions: ${safeErrorMessage(verErr?.message ?? "unknown")}`,
                 );
               } else {
                 const versionByDocId = new Map<string, string>();
@@ -1845,9 +1860,11 @@ export async function runToolCalls(
 
                 // current_version_id has to be a per-row
                 // value, so a single UPDATE statement
-                // can't cover all N. Fan out in parallel
-                // instead of sequential awaits.
-                await Promise.all(
+                // can't cover all N. Fan out in parallel,
+                // but check every in-band result: Supabase
+                // builders report failures in `error`, they
+                // never reject.
+                const updateResults = await Promise.all(
                   newDocs.map((d) =>
                     db
                       .from("documents")
@@ -1857,9 +1874,34 @@ export async function runToolCalls(
                       .eq("id", d.id),
                   ),
                 );
+                const failedCopies: { filename: string; error: string }[] =
+                  [];
+                const brokenDocIds: string[] = [];
+                const linkedDocIds = new Set<string>();
+                newDocs.forEach((d, idx) => {
+                  const updateError = updateResults[idx]?.error;
+                  if (!versionByDocId.get(d.id) || updateError) {
+                    failedCopies.push({
+                      filename: d.filename,
+                      error: safeErrorMessage(
+                        updateError?.message ??
+                          "Failed to link the copy to its version",
+                      ),
+                    });
+                    brokenDocIds.push(d.id);
+                  } else {
+                    linkedDocIds.add(d.id);
+                  }
+                });
+                if (brokenDocIds.length > 0) {
+                  // Best-effort: drop copies that never got a
+                  // current_version_id rather than leaving them
+                  // broken in the library.
+                  await db.from("documents").delete().in("id", brokenDocIds);
+                }
 
-                // Register every copy under a fresh doc-N
-                // slug so the model can edit/read any of
+                // Register every successful copy under a fresh
+                // doc-N slug so the model can edit/read any of
                 // them in the same turn.
                 const existingLabels = new Set(Object.keys(docIndex));
                 let nextLabelIdx = 0;
@@ -1879,7 +1921,7 @@ export async function runToolCalls(
                   const d = newDocs[idx];
                   const newKey = newKeys[idx];
                   const versionId = versionByDocId.get(d.id);
-                  if (!versionId) continue;
+                  if (!versionId || !linkedDocIds.has(d.id)) continue;
                   while (existingLabels.has(`doc-${nextLabelIdx}`))
                     nextLabelIdx++;
                   const slug = `doc-${nextLabelIdx}`;
@@ -1908,36 +1950,48 @@ export async function runToolCalls(
                   });
                 }
 
-                write(
-                  `data: ${JSON.stringify({
-                    type: "doc_replicated",
+                if (copies.length === 0) {
+                  fail(
+                    `Failed to finalize replicated copies: ${failedCopies[0]?.error ?? "unknown"}`,
+                  );
+                } else {
+                  write(
+                    `data: ${JSON.stringify({
+                      type: "doc_replicated",
+                      filename: sourceFilename,
+                      count: copies.length,
+                      copies,
+                    })}\n\n`,
+                  );
+                  docsReplicated.push({
                     filename: sourceFilename,
                     count: copies.length,
                     copies,
-                  })}\n\n`,
-                );
-                docsReplicated.push({
-                  filename: sourceFilename,
-                  count: copies.length,
-                  copies,
-                });
-                toolResults.push({
-                  role: "tool",
-                  tool_call_id: tc.id,
-                  content: JSON.stringify({
-                    ok: true,
-                    count: copies.length,
-                    saved_to: projectId
-                      ? "project_documents"
-                      : "library_files",
-                    copies: toolPayloadCopies,
-                  }),
-                });
+                  });
+                  toolResults.push({
+                    role: "tool",
+                    tool_call_id: tc.id,
+                    content: JSON.stringify({
+                      ok: true,
+                      count: copies.length,
+                      saved_to: projectId
+                        ? "project_documents"
+                        : "library_files",
+                      copies: toolPayloadCopies,
+                      // Copies that uploaded but could not be linked
+                      // to their version are reported, not silently
+                      // dropped from an ok:true result.
+                      ...(failedCopies.length > 0
+                        ? { failed_copies: failedCopies }
+                        : {}),
+                    }),
+                  });
+                }
               }
             }
           }
         } catch (e) {
-          fail(`replicate_document failed: ${String(e)}`);
+          fail(`replicate_document failed: ${safeErrorMessage(e)}`);
         }
       }
     } else if (tc.function.name === "generate_docx") {
