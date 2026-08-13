@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+const { execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
@@ -32,6 +33,26 @@ function relative(filePath) {
 
 function fail(message) {
   throw new Error(message);
+}
+
+// The commit of the mike-workflows checkout the generated files were built
+// from. Stamped into both outputs so a reviewer (and the CI drift check) can
+// re-run the generator against the exact same source tree.
+function resolveSourceCommit() {
+  let commit;
+  try {
+    commit = execFileSync("git", ["-C", WORKFLOWS_DIR, "rev-parse", "HEAD"], {
+      encoding: "utf8",
+    }).trim();
+  } catch (error) {
+    fail(
+      `Could not resolve the ${relative(WORKFLOWS_DIR)} HEAD commit: ${error.message}`,
+    );
+  }
+  if (!/^[0-9a-f]{40}$/.test(commit)) {
+    fail(`Unexpected git rev-parse output for ${relative(WORKFLOWS_DIR)}: ${commit}`);
+  }
+  return commit;
 }
 
 function parseScalar(value, label) {
@@ -353,6 +374,9 @@ function readPackFile(category, packPath) {
   if (!Array.isArray(pack.workflows) || pack.workflows.length === 0) {
     fail(`${label}.workflows must be a non-empty list`);
   }
+  pack.workflows.forEach((workflowName, index) => {
+    assertString(workflowName, `${label}.workflows[${index}]`);
+  });
   return {
     key: `${category}:${pack.id}`,
     title: pack.title,
@@ -383,7 +407,7 @@ function readWorkflow(category, workflowDir, pack) {
     ? fs
         .readdirSync(assetsDir, { withFileTypes: true })
         .filter((entry) => entry.isFile() && !entry.name.startsWith("."))
-        .sort((a, b) => a.name.localeCompare(b.name))
+        .sort((a, b) => a.name.localeCompare(b.name, "en"))
         .map((entry) => {
           const assetPath = path.join(assetsDir, entry.name);
           return {
@@ -416,8 +440,19 @@ function readWorkflow(category, workflowDir, pack) {
   if (metadata["mike-type"] !== category) {
     fail(`${label}.metadata.mike-type must be "${category}"`);
   }
-  if (!["system", "add-on"].includes(metadata["mike-availability"])) {
-    fail(`${label}.metadata.mike-availability must be "system" or "add-on"`);
+  // metadata.mike-availability is deprecated: the backend derives the
+  // default/add-on split from DEFAULT_WORKFLOW_IDS in
+  // backend/src/lib/workflowCatalog.ts, so the flag is accepted for
+  // backwards compatibility but never emitted. Warn (don't fail) on
+  // unexpected values so existing content keeps building.
+  const availability = metadata["mike-availability"];
+  if (
+    availability !== undefined &&
+    !["system", "add-on"].includes(availability)
+  ) {
+    console.warn(
+      `Warning: ${label}.metadata.mike-availability has unexpected value ${JSON.stringify(availability)}; the key is deprecated and ignored`,
+    );
   }
   assertString(metadata.practice, `${label}.metadata.practice`);
   assertString(metadata.jurisdictions, `${label}.metadata.jurisdictions`);
@@ -458,7 +493,6 @@ function readWorkflow(category, workflowDir, pack) {
     }
     return {
       id,
-      availability: metadata["mike-availability"],
       metadata: normalizedMetadata,
       skill_md: skillMd,
       source_skill_md: sourceSkillMd,
@@ -486,7 +520,6 @@ function readWorkflow(category, workflowDir, pack) {
 
   return {
     id,
-    availability: metadata["mike-availability"],
     metadata: normalizedMetadata,
     skill_md: skillMd || null,
     source_skill_md: sourceSkillMd,
@@ -532,9 +565,20 @@ function loadWorkflows() {
             fail(`${relative(path.join(entryDir, "pack.yaml"))} lists missing workflow '${workflowName}'`);
           }
         }
+        // The reverse direction matters too: a workflow directory that
+        // pack.yaml does not list would otherwise silently ship as part of
+        // the pack.
+        const listedNames = new Set(pack.workflow_names);
+        for (const discoveredName of discoveredNames) {
+          if (!listedNames.has(discoveredName)) {
+            fail(`${relative(path.join(entryDir, "pack.yaml"))} does not list discovered workflow '${discoveredName}'`);
+          }
+        }
         return childDirectories.map((directory) => ({ directory, pack }));
       })
-      .sort((a, b) => a.directory.localeCompare(b.directory));
+      // Pin the collation locale: a bare localeCompare follows the build
+      // machine's ICU locale, which can reorder the output between machines.
+      .sort((a, b) => a.directory.localeCompare(b.directory, "en"));
 
     for (const workflowDir of workflowDirs) {
       const workflow = readWorkflow(
@@ -550,20 +594,19 @@ function loadWorkflows() {
     }
   }
 
-  return workflows.sort((a, b) => a.id.localeCompare(b.id));
+  return workflows.sort((a, b) => a.id.localeCompare(b.id, "en"));
 }
 
 function formatTs(value) {
   return JSON.stringify(value, null, 4);
 }
 
-function writeGeneratedFiles(workflows) {
+function writeGeneratedFiles(workflows, sourceCommit) {
   const systemWorkflows = workflows.map((workflow) => ({
     user_id: null,
     is_system: true,
     created_at: "",
     id: workflow.id,
-    availability: workflow.availability,
     metadata: workflow.metadata,
     skill_md: workflow.skill_md,
     columns_config: workflow.columns_config,
@@ -585,9 +628,9 @@ function writeGeneratedFiles(workflows) {
     columns: workflow.columns_config ?? [],
   }));
 
-  const backendText = `// This file is generated by scripts/build-workflows.js. Do not edit it directly.\n\nexport type SystemWorkflowContributor = {\n    name: string;\n    organisation: string | null;\n    role: string | null;\n    linkedin: string | null;\n};\n\nexport type SystemWorkflowMetadata = {\n    name: string;\n    title: string;\n    description: string;\n    type: "assistant" | "tabular";\n    contributors: SystemWorkflowContributor[];\n    language: string;\n    version: string;\n    practice: string | null;\n    jurisdictions: string[] | null;\n};\n\nexport type SystemWorkflowReferenceFile = {\n    filename: string;\n    file_type: string;\n    size_bytes: number;\n    content_base64: string;\n};\n\nexport type SystemWorkflowPack = {\n    key: string;\n    title: string;\n    description: string;\n    version: string;\n    workflow_names: string[];\n};\n\nexport type SystemWorkflow = {\n    id: string;\n    availability: "system" | "add-on";\n    user_id: null;\n    is_system: true;\n    created_at: string;\n    metadata: SystemWorkflowMetadata;\n    skill_md: string | null;\n    columns_config: { index: number; name: string; format?: string; prompt: string; tags?: string[] }[] | null;\n    reference_files: SystemWorkflowReferenceFile[];\n    pack: SystemWorkflowPack | null;\n};\n\nexport const SYSTEM_WORKFLOWS: SystemWorkflow[] = ${formatTs(systemWorkflows)};\n\nexport const SYSTEM_WORKFLOW_IDS = new Set(SYSTEM_WORKFLOWS.map((wf) => wf.id));\n\nexport const SYSTEM_ASSISTANT_WORKFLOWS: { id: string; title: string; skill_md: string }[] = ${formatTs(systemAssistantWorkflows)};\n`;
+  const backendText = `// This file is generated by scripts/build-workflows.js. Do not edit it directly.\n// Source: Open-Legal-Products/mike-workflows @ ${sourceCommit}\n\n// The mike-workflows commit these workflows were generated from.\nexport const SYSTEM_WORKFLOWS_SOURCE_COMMIT = "${sourceCommit}";\n\nexport type SystemWorkflowContributor = {\n    name: string;\n    organisation: string | null;\n    role: string | null;\n    linkedin: string | null;\n};\n\nexport type SystemWorkflowMetadata = {\n    name: string;\n    title: string;\n    description: string;\n    type: "assistant" | "tabular";\n    contributors: SystemWorkflowContributor[];\n    language: string;\n    version: string;\n    practice: string | null;\n    jurisdictions: string[] | null;\n};\n\nexport type SystemWorkflowReferenceFile = {\n    filename: string;\n    file_type: string;\n    size_bytes: number;\n    content_base64: string;\n};\n\nexport type SystemWorkflowPack = {\n    key: string;\n    title: string;\n    description: string;\n    version: string;\n    workflow_names: string[];\n};\n\nexport type SystemWorkflow = {\n    id: string;\n    user_id: null;\n    is_system: true;\n    created_at: string;\n    metadata: SystemWorkflowMetadata;\n    skill_md: string | null;\n    columns_config: { index: number; name: string; format?: string; prompt: string; tags?: string[] }[] | null;\n    reference_files: SystemWorkflowReferenceFile[];\n    pack: SystemWorkflowPack | null;\n};\n\nexport const SYSTEM_WORKFLOWS: SystemWorkflow[] = ${formatTs(systemWorkflows)};\n\nexport const SYSTEM_WORKFLOW_IDS = new Set(SYSTEM_WORKFLOWS.map((wf) => wf.id));\n\nexport const SYSTEM_ASSISTANT_WORKFLOWS: { id: string; title: string; skill_md: string }[] = ${formatTs(systemAssistantWorkflows)};\n`;
 
-  const landingText = `// This file is generated by scripts/build-workflows.js. Do not edit it directly.\nimport type { LandingWorkflow } from "./workflow-browser";\n\nexport const LANDING_WORKFLOWS: LandingWorkflow[] = ${formatTs(landingWorkflows)};\n`;
+  const landingText = `// This file is generated by scripts/build-workflows.js. Do not edit it directly.\n// Source: Open-Legal-Products/mike-workflows @ ${sourceCommit}\nimport type { LandingWorkflow } from "./workflow-browser";\n\nexport const LANDING_WORKFLOWS: LandingWorkflow[] = ${formatTs(landingWorkflows)};\n`;
 
   fs.writeFileSync(BACKEND_OUT, backendText);
   if (fs.existsSync(path.dirname(LANDING_OUT))) {
@@ -611,8 +654,11 @@ function main() {
     fail("No workflows found");
   }
 
-  writeGeneratedFiles(workflows);
-  console.log(`Generated ${workflows.length} system workflows.`);
+  const sourceCommit = resolveSourceCommit();
+  writeGeneratedFiles(workflows, sourceCommit);
+  console.log(
+    `Generated ${workflows.length} system workflows from mike-workflows @ ${sourceCommit}.`,
+  );
 }
 
 try {
