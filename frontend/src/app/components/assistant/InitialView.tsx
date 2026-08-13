@@ -172,7 +172,12 @@ export function InitialView({ onSubmit }: InitialViewProps) {
                 setQuickActions((current) =>
                     current.map((item) =>
                         item.id === updated.id
-                            ? { ...updated, ...item, ...changes }
+                            // The server response wins so server-side
+                            // normalization of the edited fields reaches
+                            // state. A concurrent `enabled` toggle still in
+                            // flight is not lost: its own success/rollback
+                            // handler settles that field when it resolves.
+                            ? { ...item, ...updated }
                             : item,
                     ),
                 );
