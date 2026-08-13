@@ -88,6 +88,52 @@ jobs:
           NEXT_PUBLIC_API_BASE_URL: http://localhost:3001
 
   # -----------------------------------------------------------------------
+  # Generated-workflows drift check: the committed generated files must be
+  # exactly what scripts/build-workflows.js produces from the mike-workflows
+  # commit stamped into backend/src/lib/systemWorkflows.ts. Both repos are
+  # checked out as siblings inside the workspace because the generator
+  # resolves the source checkout at <repo-root>/../mike-workflows. The
+  # generator has no npm dependencies, so no install step is needed.
+  # mike-workflows is public, so the default token suffices.
+  # -----------------------------------------------------------------------
+  workflows-drift:
+    name: Generated workflows drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mike
+
+      - name: Read pinned mike-workflows commit
+        id: source
+        working-directory: mike
+        run: |
+          commit=$(grep -oE 'SYSTEM_WORKFLOWS_SOURCE_COMMIT = "[0-9a-f]{40}"' backend/src/lib/systemWorkflows.ts | grep -oE '[0-9a-f]{40}')
+          if [ -z "$commit" ]; then
+            echo "No SYSTEM_WORKFLOWS_SOURCE_COMMIT found in backend/src/lib/systemWorkflows.ts" >&2
+            exit 1
+          fi
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Open-Legal-Products/mike-workflows
+          ref: ${{ steps.source.outputs.commit }}
+          path: mike-workflows
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Regenerate workflows
+        working-directory: mike
+        run: node scripts/build-workflows.js
+
+      - name: Fail on drift against the committed generated files
+        working-directory: mike
+        run: git diff --exit-code -- backend/src/lib/systemWorkflows.ts landing/app/generated-workflows.ts
+
+  # -----------------------------------------------------------------------
   # Offline eval harness: deterministic scorecard for citation accuracy,
   # prompt-injection resistance, and privilege/PII leakage. Runs against
   # committed fixtures (no network, no LLM calls, no secrets), so it is cheap
