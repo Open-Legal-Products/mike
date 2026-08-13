@@ -50,16 +50,47 @@ async function canAccessWorkflow(
   return share ? workflow : null;
 }
 
-async function withWorkflowDetails(rows: QuickActionRow[], db: Db) {
+async function withWorkflowDetails(
+  rows: QuickActionRow[],
+  userId: string,
+  userEmail: string | null | undefined,
+  db: Db,
+) {
   const ids = [...new Set(rows.map((row) => row.workflow_id))];
   if (ids.length === 0) return [];
   const { data: workflows, error } = await db
     .from("workflows")
-    .select("id, title")
+    .select("id, user_id, title")
     .in("id", ids);
   if (error) throw error;
+
+  // A quick action may point at a workflow someone shared and has since
+  // revoked; only keep workflows the user owns or still has a share for,
+  // and drop quick actions whose workflow is no longer accessible.
+  const email = (userEmail ?? "").trim().toLowerCase();
+  const foreignIds = (workflows ?? [])
+    .filter((workflow) => workflow.user_id !== userId)
+    .map((workflow) => workflow.id);
+  const sharedIds = new Set<string>();
+  if (email && foreignIds.length > 0) {
+    const { data: shares, error: sharesError } = await db
+      .from("workflow_shares")
+      .select("workflow_id")
+      .in("workflow_id", foreignIds)
+      .eq("shared_with_email", email);
+    if (sharesError) throw sharesError;
+    for (const share of shares ?? []) sharedIds.add(share.workflow_id);
+  }
   const byId = new Map(
-    (workflows ?? []).map((workflow) => [workflow.id, workflow]),
+    (workflows ?? [])
+      .filter(
+        (workflow) =>
+          workflow.user_id === userId || sharedIds.has(workflow.id),
+      )
+      .map((workflow) => [
+        workflow.id,
+        { id: workflow.id, title: workflow.title },
+      ]),
   );
   return rows
     .map((row) => {
@@ -69,8 +100,21 @@ async function withWorkflowDetails(rows: QuickActionRow[], db: Db) {
     .filter((row): row is QuickActionRow & { workflow: { id: string; title: string } } => !!row);
 }
 
+// quick_actions.sort_order is a Postgres integer; out-of-range values
+// would surface as a 500 from the insert instead of a validation error.
+const MAX_SORT_ORDER = 2147483647;
+
+function isValidSortOrder(value: unknown): value is number {
+  return (
+    Number.isInteger(value) &&
+    (value as number) >= 0 &&
+    (value as number) <= MAX_SORT_ORDER
+  );
+}
+
 quickActionsRouter.get("/", requireAuth, asyncRoute(async (_req, res) => {
   const userId = res.locals.userId as string;
+  const userEmail = res.locals.userEmail as string | undefined;
   const db = createServerSupabase();
   await ensureDefaultWorkflows(userId, db);
   const { data, error } = await db
@@ -80,7 +124,14 @@ quickActionsRouter.get("/", requireAuth, asyncRoute(async (_req, res) => {
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
   if (error) return void res.status(500).json({ detail: error.message });
-  res.json(await withWorkflowDetails((data ?? []) as QuickActionRow[], db));
+  res.json(
+    await withWorkflowDetails(
+      (data ?? []) as QuickActionRow[],
+      userId,
+      userEmail,
+      db,
+    ),
+  );
 }));
 
 quickActionsRouter.post("/", requireAuth, asyncRoute(async (req, res) => {
@@ -91,6 +142,15 @@ quickActionsRouter.post("/", requireAuth, asyncRoute(async (req, res) => {
     : "";
   if (!workflowId) {
     return void res.status(400).json({ detail: "workflow_id is required" });
+  }
+  if (
+    req.body?.sort_order !== undefined &&
+    Number.isInteger(req.body.sort_order) &&
+    !isValidSortOrder(req.body.sort_order)
+  ) {
+    return void res.status(400).json({
+      detail: `sort_order must be between 0 and ${MAX_SORT_ORDER}`,
+    });
   }
   const db = createServerSupabase();
   const workflow = await canAccessWorkflow(workflowId, userId, userEmail, db);
@@ -105,7 +165,7 @@ quickActionsRouter.post("/", requireAuth, asyncRoute(async (req, res) => {
       prompt: typeof req.body?.prompt === "string" ? req.body.prompt : "",
       document_upload: req.body?.document_upload === true,
       enabled: req.body?.enabled !== false,
-      sort_order: Number.isInteger(req.body?.sort_order)
+      sort_order: isValidSortOrder(req.body?.sort_order)
         ? req.body.sort_order
         : 0,
     })
@@ -119,6 +179,7 @@ quickActionsRouter.post("/", requireAuth, asyncRoute(async (req, res) => {
 
 quickActionsRouter.patch("/:quickActionId", requireAuth, asyncRoute(async (req, res) => {
   const userId = res.locals.userId as string;
+  const userEmail = res.locals.userEmail as string | undefined;
   const { quickActionId } = req.params;
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (typeof req.body?.prompt === "string") updates.prompt = req.body.prompt;
@@ -126,7 +187,14 @@ quickActionsRouter.patch("/:quickActionId", requireAuth, asyncRoute(async (req, 
     updates.document_upload = req.body.document_upload;
   }
   if (typeof req.body?.enabled === "boolean") updates.enabled = req.body.enabled;
-  if (Number.isInteger(req.body?.sort_order)) updates.sort_order = req.body.sort_order;
+  if (Number.isInteger(req.body?.sort_order)) {
+    if (!isValidSortOrder(req.body.sort_order)) {
+      return void res.status(400).json({
+        detail: `sort_order must be between 0 and ${MAX_SORT_ORDER}`,
+      });
+    }
+    updates.sort_order = req.body.sort_order;
+  }
 
   const db = createServerSupabase();
   const { data, error } = await db
@@ -139,7 +207,18 @@ quickActionsRouter.patch("/:quickActionId", requireAuth, asyncRoute(async (req, 
   if (error || !data) {
     return void res.status(404).json({ detail: "Quick action not found" });
   }
-  const [result] = await withWorkflowDetails([data as QuickActionRow], db);
+  const [result] = await withWorkflowDetails(
+    [data as QuickActionRow],
+    userId,
+    userEmail,
+    db,
+  );
+  if (!result) {
+    // The quick action row updated, but its workflow is no longer
+    // accessible (e.g. the share was revoked), so it is hidden from
+    // the list and reported the same way here.
+    return void res.status(404).json({ detail: "Quick action not found" });
+  }
   res.json(result);
 }));
 
@@ -155,3 +234,10 @@ quickActionsRouter.delete("/:quickActionId", requireAuth, asyncRoute(async (req,
   res.status(204).send();
 }));
 
+quickActionsRouter.use(
+  (err: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) return next(err);
+    console.error("[quick-actions] unhandled route error", err);
+    res.status(500).json({ detail: "Failed to process quick action request" });
+  },
+);

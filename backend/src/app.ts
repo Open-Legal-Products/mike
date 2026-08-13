@@ -152,6 +152,7 @@ app.post("/single-documents", uploadLimiter);
 app.post("/library/:kind/documents", uploadLimiter);
 app.post("/single-documents/:documentId/versions", uploadLimiter);
 app.post("/workflows/:workflowId/reference-files", uploadLimiter);
+app.post("/workflow-addons/:addonId/import", uploadLimiter);
 app.put(
   "/workflows/:workflowId/reference-files/:referenceId",
   uploadLimiter,

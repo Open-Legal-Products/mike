@@ -8,7 +8,6 @@ import crypto from "crypto";
 import { requireAuth } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
 import {
-  SYSTEM_WORKFLOW_IDS,
   SYSTEM_WORKFLOWS,
   type SystemWorkflow,
 } from "../lib/systemWorkflows";
@@ -371,9 +370,9 @@ workflowsRouter.get(
       return void res.status(500).json({ detail: error.message });
     }
 
-    const databaseWorkflows = ((data ?? []) as WorkflowRecord[])
-      .filter((workflow) => !SYSTEM_WORKFLOW_IDS.has(workflow.id))
-      .map(withDatabaseWorkflow);
+    const databaseWorkflows = ((data ?? []) as WorkflowRecord[]).map(
+      withDatabaseWorkflow,
+    );
     const { data: installations } = await db
       .from("default_workflow_installations")
       .select("workflow_id")
@@ -545,17 +544,24 @@ workflowsRouter.delete(
       .select("storage_path")
       .eq("workflow_id", workflowId)
       .eq("user_id", userId);
-    await Promise.all(
-      (referenceDocuments ?? []).map((reference) =>
-        deleteFile(reference.storage_path).catch(() => {}),
-      ),
-    );
-    const { error } = await db
+    // Delete the DB rows first (reference rows cascade with the
+    // workflow) and only then the storage objects, and only when the
+    // workflow row was actually removed — a DB failure must not leave
+    // rows pointing at already-deleted storage.
+    const { data: deleted, error } = await db
       .from("workflows")
       .delete()
       .eq("id", workflowId)
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .select("id");
     if (error) return void res.status(500).json({ detail: error.message });
+    if ((deleted ?? []).length > 0) {
+      await Promise.all(
+        (referenceDocuments ?? []).map((reference) =>
+          deleteFile(reference.storage_path).catch(() => {}),
+        ),
+      );
+    }
     res.status(204).send();
   }),
 );

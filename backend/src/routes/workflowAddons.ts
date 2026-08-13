@@ -103,9 +103,11 @@ workflowAddonsRouter.post(
         type: addon.type,
         prompt_md: addon.prompt_md,
         columns_config: addon.columns_config,
-        language: addon.language,
-        practice: addon.practice,
-        jurisdictions: addon.jurisdictions,
+        // Catalog rows may omit these; fall back to the workflows
+        // column defaults rather than inserting explicit nulls.
+        language: addon.language ?? "English",
+        practice: addon.practice ?? "General Transactions",
+        jurisdictions: addon.jurisdictions ?? ["General"],
       })
       .select("*")
       .single();
@@ -199,4 +201,14 @@ workflowAddonsRouter.post(
       created_at: workflow.created_at,
     });
   }),
+);
+
+workflowAddonsRouter.use(
+  (err: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) return next(err);
+    console.error("[workflow-addons] unhandled route error", err);
+    res
+      .status(500)
+      .json({ detail: "Failed to process workflow add-on request" });
+  },
 );
