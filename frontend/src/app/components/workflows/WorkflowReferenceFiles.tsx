@@ -20,6 +20,7 @@ import {
   formatUnsupportedDocumentWarning,
   partitionSupportedDocumentFiles,
 } from "@/app/lib/documentUploadValidation";
+import { ConfirmPopup } from "../popups/ConfirmPopup";
 import { FileTypeIcon } from "../shared/FileTypeIcon";
 import { RowActions } from "../shared/RowActions";
 import {
@@ -72,9 +73,15 @@ export const WorkflowReferenceFiles = forwardRef<
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [pendingDeleteFile, setPendingDeleteFile] =
+    useState<WorkflowReferenceDocument | null>(null);
+  const [deleteStatus, setDeleteStatus] = useState<"idle" | "loading">("idle");
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const replaceTargetRef = useRef<WorkflowReferenceDocument | null>(null);
+  // Synchronous guard against overlapping upload batches: drops and the file
+  // picker can both call upload() before React re-renders `busyId`.
+  const uploadInFlightRef = useRef(false);
 
   useImperativeHandle(ref, () => ({
     openUploadPicker: () => uploadInputRef.current?.click(),
@@ -107,13 +114,30 @@ export const WorkflowReferenceFiles = forwardRef<
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId]);
 
+  // Adds a warning without discarding what is already shown, so messages
+  // from one upload batch (e.g. skipped unsupported files) survive later
+  // failures instead of being clobbered.
+  function appendWarning(message: string) {
+    if (!message) return;
+    setError((current) =>
+      current && current !== message ? `${current} ${message}` : message,
+    );
+  }
+
   async function upload(filesToUpload: File[]) {
+    if (uploadInFlightRef.current) {
+      appendWarning(
+        "An upload is already in progress. Wait for it to finish, then add the files again.",
+      );
+      return;
+    }
     const { supported, unsupported } =
       partitionSupportedDocumentFiles(filesToUpload);
     if (supported.length === 0) {
       setError(formatUnsupportedDocumentWarning(unsupported) ?? "");
       return;
     }
+    uploadInFlightRef.current = true;
     setBusyId("upload");
     setError(formatUnsupportedDocumentWarning(unsupported) ?? "");
     try {
@@ -122,8 +146,11 @@ export const WorkflowReferenceFiles = forwardRef<
         setFiles((current) => [...current, created]);
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Upload failed.");
+      appendWarning(
+        caught instanceof Error ? caught.message : "Upload failed.",
+      );
     } finally {
+      uploadInFlightRef.current = false;
       setBusyId(null);
     }
   }
@@ -160,7 +187,10 @@ export const WorkflowReferenceFiles = forwardRef<
     }
   }
 
-  async function remove(file: WorkflowReferenceDocument) {
+  async function confirmRemove() {
+    const file = pendingDeleteFile;
+    if (!file) return;
+    setDeleteStatus("loading");
     setBusyId(file.id);
     try {
       await deleteWorkflowReferenceFile(workflowId, file.id);
@@ -169,6 +199,8 @@ export const WorkflowReferenceFiles = forwardRef<
       setError(caught instanceof Error ? caught.message : "Delete failed.");
     } finally {
       setBusyId(null);
+      setPendingDeleteFile(null);
+      setDeleteStatus("idle");
     }
   }
 
@@ -283,7 +315,9 @@ export const WorkflowReferenceFiles = forwardRef<
                           }
                     }
                     uploadNewVersionLabel="Replace file"
-                    onDelete={readOnly ? undefined : () => void remove(file)}
+                    onDelete={
+                      readOnly ? undefined : () => setPendingDeleteFile(file)
+                    }
                     deleteDisabled={busyId === file.id}
                   />
                 </div>
@@ -292,6 +326,27 @@ export const WorkflowReferenceFiles = forwardRef<
           </TableBody>
         )}
       </TableScrollArea>
+      <ConfirmPopup
+        open={pendingDeleteFile !== null}
+        title="Delete reference file?"
+        message={
+          pendingDeleteFile ? (
+            <p>
+              <span className="font-medium text-gray-950">
+                {pendingDeleteFile.filename}
+              </span>{" "}
+              will be permanently deleted.
+            </p>
+          ) : undefined
+        }
+        confirmLabel="Delete"
+        confirmStatus={deleteStatus}
+        onConfirm={() => void confirmRemove()}
+        onCancel={() => {
+          if (deleteStatus === "loading") return;
+          setPendingDeleteFile(null);
+        }}
+      />
     </>
   );
 });

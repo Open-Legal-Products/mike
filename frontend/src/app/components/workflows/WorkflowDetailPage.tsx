@@ -188,7 +188,13 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
   function handleReferenceDragOver(event: DragEvent<HTMLDivElement>) {
     if (!hasFilePayload(event.dataTransfer)) return;
     event.preventDefault();
-    if (workflow?.metadata.type !== "assistant" || readOnly) return;
+    if (
+      workflow?.metadata.type !== "assistant" ||
+      readOnly ||
+      referenceFilesUploading
+    ) {
+      return;
+    }
     event.dataTransfer.dropEffect = "copy";
     setDraggingReferenceFiles(true);
   }
@@ -207,6 +213,10 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
     event.stopPropagation();
     setDraggingReferenceFiles(false);
     if (workflow?.metadata.type !== "assistant" || readOnly) return;
+    // A batch is already uploading: dropping more files now would interleave
+    // with it (WorkflowReferenceFiles also rejects and explains). The toolbar
+    // button is disabled for the same window.
+    if (referenceFilesUploading) return;
 
     const files = Array.from(event.dataTransfer.files);
     if (files.length === 0) return;
