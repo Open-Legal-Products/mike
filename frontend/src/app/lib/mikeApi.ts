@@ -352,6 +352,14 @@ export async function exportTabularReviewsData(): Promise<{
     return apiBlobRequest("/user/tabular-reviews/export");
 }
 
+export interface ModelCommittee {
+    id: string;
+    label: string;
+    members: string[];
+    chair: string;
+    strategy: "synthesize";
+}
+
 export interface UserProfile {
     displayName: string | null;
     organisation: string | null;
@@ -363,6 +371,7 @@ export interface UserProfile {
     tabularModel: string;
     mfaOnLogin: boolean;
     legalResearchUs: boolean;
+    modelCommittees: ModelCommittee[];
     apiKeyStatus: ApiKeyStatus;
 }
 
@@ -465,12 +474,27 @@ export async function updateUserProfile(payload: {
     titleModel?: string;
     tabularModel?: string;
     legalResearchUs?: boolean;
+    modelCommittees?: ModelCommittee[];
 }): Promise<UserProfile> {
     return apiRequest<UserProfile>("/user/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
     });
+}
+
+export type ConfiguredModelSummary = {
+    id: string;
+    label: string;
+    provider: "claude" | "gemini" | "openai" | "openai-compatible" | "committee";
+    location: "cloud" | "local" | "committee";
+};
+
+export async function getConfiguredModels(): Promise<ConfiguredModelSummary[]> {
+    const response = await apiRequest<{ configured: ConfiguredModelSummary[] }>(
+        "/user/models",
+    );
+    return response.configured;
 }
 
 export async function updateUserMfaOnLogin(

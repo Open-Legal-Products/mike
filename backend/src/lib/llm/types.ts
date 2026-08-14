@@ -58,6 +58,7 @@ export type StreamChatParams = {
     callbacks?: StreamCallbacks;
     runTools?: (calls: NormalizedToolCall[]) => Promise<NormalizedToolResult[]>;
     apiKeys?: UserApiKeys;
+    committeeModels?: CommitteeModel[];
     /**
      * Enable provider-side reasoning/thinking. Off by default — should only
      * be turned on for interactive chat surfaces where the user actually
@@ -75,6 +76,21 @@ export type StreamChatParams = {
 
 export type StreamChatResult = {
     fullText: string;
+};
+
+export type CompleteTextParams = {
+    model: string;
+    systemPrompt?: string;
+    user: string;
+    maxTokens?: number;
+    apiKeys?: UserApiKeys;
+    committeeStack?: string[];
+    requestTimeoutMs?: number;
+    reasoningEffort?: string;
+    responseFormat?: Record<string, unknown>;
+    plugins?: Array<{ id: string }>;
+    committeeModels?: CommitteeModel[];
+    abortSignal?: AbortSignal;
 };
 
 export type ModelLocation = "cloud" | "local";

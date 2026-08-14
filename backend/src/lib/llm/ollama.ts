@@ -186,6 +186,7 @@ export async function completeOllamaText(params: {
   systemPrompt?: string;
   user: string;
   maxTokens?: number;
+  abortSignal?: AbortSignal;
 }): Promise<string> {
   const response = await postChat(
     {
@@ -196,7 +197,7 @@ export async function completeOllamaText(params: {
       max_tokens: params.maxTokens ?? 512,
       stream: false,
     },
-    undefined,
+    params.abortSignal,
   );
   const json = (await response.json()) as {
     choices?: { message?: { content?: string } }[];

@@ -21,7 +21,7 @@ import { useOpenRouterModels } from "@/app/hooks/useOpenRouterModels";
 export interface ModelOption {
     id: string;
     label: string;
-    group: "Anthropic" | "Google" | "OpenAI" | "OpenRouter" | "Local";
+    group: "Anthropic" | "Google" | "OpenAI" | "OpenRouter" | "Local" | "Committee";
 }
 
 export const MODELS: ModelOption[] = [
@@ -53,6 +53,7 @@ export const DEFAULT_MODEL_ID = "gemini-3-flash-preview";
 export const ALLOWED_MODEL_IDS = new Set(MODELS.map((m) => m.id));
 
 const GROUP_ORDER: ModelOption["group"][] = [
+    "Committee",
     "Anthropic",
     "Google",
     "OpenAI",
@@ -75,21 +76,38 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
     const openRouterModels = useOpenRouterModels(
         profile?.apiKeys.openrouter.configured === true,
     );
-    const models = [...MODELS, ...ollamaModels, ...openRouterModels];
+    const committeeModels: ModelOption[] = (profile?.modelCommittees ?? []).map(
+        (committee) => ({
+            id: committee.id,
+            label: committee.label,
+            group: "Committee" as const,
+        }),
+    );
+    const models = [
+        ...MODELS,
+        ...committeeModels,
+        ...ollamaModels,
+        ...openRouterModels,
+    ];
     const selected = models.find((m) => m.id === value);
     const selectedLabel = selected?.label ?? "Model";
     const selectedAvailable = apiKeys
-        ? isModelAvailable(value, apiKeys)
+        ? isModelAvailable(value, apiKeys, profile?.modelCommittees)
         : true;
 
     useEffect(() => {
         if (
-            value.startsWith("openrouter/") &&
-            profile?.apiKeys.openrouter.configured !== true
+            (value.startsWith("user-committee/") &&
+                profile != null &&
+                !profile?.modelCommittees.some(
+                    (committee) => committee.id === value,
+                )) ||
+            (value.startsWith("openrouter/") &&
+                profile?.apiKeys.openrouter.configured !== true)
         ) {
             onChange(DEFAULT_MODEL_ID);
         }
-    }, [onChange, profile?.apiKeys.openrouter.configured, value]);
+    }, [onChange, profile?.apiKeys.openrouter.configured, profile?.modelCommittees, value]);
 
     return (
         <DropdownMenu onOpenChange={setIsOpen}>
@@ -130,7 +148,11 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                             </DropdownMenuLabel>
                             {items.map((m) => {
                                 const available = apiKeys
-                                    ? isModelAvailable(m.id, apiKeys)
+                                    ? isModelAvailable(
+                                          m.id,
+                                          apiKeys,
+                                          profile?.modelCommittees,
+                                      )
                                     : true;
                                 return (
                                     <LiquidDropdownItem

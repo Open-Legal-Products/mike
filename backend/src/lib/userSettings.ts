@@ -5,14 +5,17 @@ import {
     DEFAULT_TABULAR_MODEL,
     OPENAI_LOW_MODELS,
     type UserApiKeys,
+    type CommitteeModel,
 } from "./llm";
 import { getUserApiKeys as getStoredUserApiKeys } from "./userApiKeys";
+import { normalizeUserCommittees } from "./userCommittees";
 
 export type UserModelSettings = {
     title_model: string;
     tabular_model: string;
     legal_research_us: boolean;
     api_keys: UserApiKeys;
+    committee_models: CommitteeModel[];
 };
 
 // Title generation is a lightweight task — always routed to the cheapest model
@@ -33,18 +36,28 @@ export async function getUserModelSettings(
     const client = db ?? createServerSupabase();
     const { data } = await client
         .from("user_profiles")
-        .select("title_model, tabular_model, legal_research_us")
+        .select("title_model, tabular_model, legal_research_us, model_committees")
         .eq("user_id", userId)
         .single();
     const api_keys = await getStoredUserApiKeys(userId, client);
+    const committee_models = normalizeUserCommittees(data?.model_committees);
 
     return {
-        title_model: resolveModel(data?.title_model, resolveTitleModel(api_keys)),
-        tabular_model: resolveModel(data?.tabular_model, DEFAULT_TABULAR_MODEL),
+        title_model: resolveModel(
+            data?.title_model,
+            resolveTitleModel(api_keys),
+            committee_models,
+        ),
+        tabular_model: resolveModel(
+            data?.tabular_model,
+            DEFAULT_TABULAR_MODEL,
+            committee_models,
+        ),
         legal_research_us:
             (data as { legal_research_us?: boolean | null } | null)
                 ?.legal_research_us !== false,
         api_keys,
+        committee_models,
     };
 }
 

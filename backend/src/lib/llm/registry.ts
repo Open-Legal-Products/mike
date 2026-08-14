@@ -67,34 +67,45 @@ export function getConfiguredModel(id: string): ConfiguredModel | null {
   const configured =
     loadModelRegistry().models?.find((model) => model.id === id) ?? null;
   if (configured) return configured;
-  if (!isOpenRouterModelId(id)) return null;
-  return {
-    id,
-    label: openRouterApiModel(id) ?? id,
-    provider: "openai-compatible",
-    location: "cloud",
-    apiModel: openRouterApiModel(id) ?? id,
-    baseUrl: OPENROUTER_API_BASE_URL,
-    apiKeyProvider: "openrouter",
-  };
+  if (isOpenRouterModelId(id)) {
+    return {
+      id,
+      label: openRouterApiModel(id) ?? id,
+      provider: "openai-compatible",
+      location: "cloud",
+      apiModel: openRouterApiModel(id) ?? id,
+      baseUrl: OPENROUTER_API_BASE_URL,
+      apiKeyProvider: "openrouter",
+    };
+  }
+  return null;
 }
 
-export function getCommitteeModel(id: string): CommitteeModel | null {
+export function getCommitteeModel(
+  id: string,
+  additionalCommittees: CommitteeModel[] = [],
+): CommitteeModel | null {
   return (
+    additionalCommittees.find((committee) => committee.id === id) ??
     loadModelRegistry().committees?.find((committee) => committee.id === id) ??
     null
   );
 }
 
-export function configuredModelIds(): string[] {
+export function configuredModelIds(
+  additionalCommittees: CommitteeModel[] = [],
+): string[] {
   const registry = loadModelRegistry();
   return [
     ...(registry.models ?? []).map((model) => model.id),
     ...(registry.committees ?? []).map((committee) => committee.id),
+    ...additionalCommittees.map((committee) => committee.id),
   ];
 }
 
-export function configuredModelSummaries(): {
+export function configuredModelSummaries(
+  additionalCommittees: CommitteeModel[] = [],
+): {
   id: string;
   label: string;
   provider: Provider | "committee";
@@ -114,13 +125,22 @@ export function configuredModelSummaries(): {
       provider: "committee" as const,
       location: "committee" as const,
     })),
+    ...additionalCommittees.map((committee) => ({
+      id: committee.id,
+      label: committee.label || committee.id,
+      provider: "committee" as const,
+      location: "committee" as const,
+    })),
   ];
 }
 
-export function configuredProviderForModel(id: string): Provider | null {
+export function configuredProviderForModel(
+  id: string,
+  additionalCommittees: CommitteeModel[] = [],
+): Provider | null {
   const model = getConfiguredModel(id);
   if (model) return model.provider;
-  if (getCommitteeModel(id)) return "openai-compatible";
+  if (getCommitteeModel(id, additionalCommittees)) return "openai-compatible";
   return null;
 }
 

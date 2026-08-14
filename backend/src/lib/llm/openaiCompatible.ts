@@ -121,10 +121,16 @@ export async function completeOpenAICompatibleText(params: {
   reasoningEffort?: string;
   responseFormat?: Record<string, unknown>;
   plugins?: Array<{ id: string }>;
+  abortSignal?: AbortSignal;
 }): Promise<string> {
+  const timeoutSignal = AbortSignal.timeout(
+    requestTimeoutMs(params.requestTimeoutMs),
+  );
   const response = await fetch(`${baseUrl(params.model)}/chat/completions`, {
     method: "POST",
-    signal: AbortSignal.timeout(requestTimeoutMs(params.requestTimeoutMs)),
+    signal: params.abortSignal
+      ? AbortSignal.any([params.abortSignal, timeoutSignal])
+      : timeoutSignal,
     headers: {
       Authorization: `Bearer ${apiKey(params.model, params.apiKeys)}`,
       "Content-Type": "application/json",

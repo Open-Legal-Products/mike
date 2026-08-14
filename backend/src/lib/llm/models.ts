@@ -1,4 +1,4 @@
-import type { Provider, UserApiKeys } from "./types";
+import type { CommitteeModel, Provider, UserApiKeys } from "./types";
 import {
     configuredModelIds,
     configuredProviderForModel,
@@ -61,8 +61,11 @@ export function builtInModelIds(): string[] {
 // Provider inference
 // ---------------------------------------------------------------------------
 
-export function providerForModel(model: string): Provider {
-    const configured = configuredProviderForModel(model);
+export function providerForModel(
+    model: string,
+    committeeModels: CommitteeModel[] = [],
+): Provider {
+    const configured = configuredProviderForModel(model, committeeModels);
     if (configured) return configured;
     if (model.startsWith("ollama")) return "ollama";
     if (model.startsWith("claude")) return "claude";
@@ -71,9 +74,13 @@ export function providerForModel(model: string): Provider {
     throw new Error(`Unknown model id: ${model}`);
 }
 
-export function resolveModel(id: string | null | undefined, fallback: string): string {
+export function resolveModel(
+    id: string | null | undefined,
+    fallback: string,
+    committeeModels: CommitteeModel[] = [],
+): string {
     if (id && getConfiguredModel(id)) return id;
-    if (id && getCommitteeModel(id)) return id;
+    if (id && getCommitteeModel(id, committeeModels)) return id;
     if (id && (ALL_MODELS.has(id) || id.startsWith("ollama/"))) return id;
     return fallback;
 }
@@ -100,6 +107,19 @@ function providerKeyAvailable(
     }
 }
 
+/** True when the given model has any usable API key (user key or env). */
+export function modelHasApiKey(
+    model: string,
+    apiKeys?: UserApiKeys,
+    committeeModels: CommitteeModel[] = [],
+): boolean {
+    return missingCommitteeApiKeyModels(
+        model,
+        apiKeys,
+        committeeModels,
+    ).length === 0;
+}
+
 /**
  * Return the leaf models that prevent a model or committee from running.
  * Every committee member and its chair must be usable.
@@ -107,9 +127,10 @@ function providerKeyAvailable(
 export function missingCommitteeApiKeyModels(
     model: string,
     apiKeys?: UserApiKeys,
+    committeeModels: CommitteeModel[] = [],
     committeeStack: Set<string> = new Set(),
 ): string[] {
-    const committee = getCommitteeModel(model);
+    const committee = getCommitteeModel(model, committeeModels);
     if (committee) {
         if (committeeStack.has(model)) return [model];
         const nextStack = new Set(committeeStack).add(model);
@@ -125,6 +146,7 @@ export function missingCommitteeApiKeyModels(
                     missingCommitteeApiKeyModels(
                         dependency,
                         apiKeys,
+                        committeeModels,
                         nextStack,
                     ),
                 ),
@@ -146,20 +168,12 @@ export function missingCommitteeApiKeyModels(
         return hasConfiguredKey ? [] : [model];
     }
     try {
-        return providerKeyAvailable(providerForModel(model), apiKeys)
+        return providerKeyAvailable(providerForModel(model, committeeModels), apiKeys)
             ? []
             : [model];
     } catch {
         return [model];
     }
-}
-
-/** True when the given model has any usable API key (user key or env). */
-export function modelHasApiKey(
-    model: string,
-    apiKeys?: UserApiKeys,
-): boolean {
-    return missingCommitteeApiKeyModels(model, apiKeys).length === 0;
 }
 
 /**
@@ -172,16 +186,39 @@ export function resolveUsableModel(
     id: string | null | undefined,
     fallback: string,
     apiKeys?: UserApiKeys,
+    committeeModels: CommitteeModel[] = [],
 ): string {
-    const selected = resolveModel(id, fallback);
-    if (modelHasApiKey(selected, apiKeys)) return selected;
-    for (const candidate of configuredModelIds()) {
-        if (candidate !== selected && modelHasApiKey(candidate, apiKeys)) {
+    if (
+        id?.startsWith("user-committee/") &&
+        !getCommitteeModel(id, committeeModels)
+    ) {
+        throw new Error(
+            `The selected committee (${id}) no longer exists or could not be loaded. Select another model or recreate the committee.`,
+        );
+    }
+    const selected = resolveModel(id, fallback, committeeModels);
+    const selectedCommittee = getCommitteeModel(selected, committeeModels);
+    if (selectedCommittee) {
+        const missingModels = missingCommitteeApiKeyModels(
+            selected,
+            apiKeys,
+            committeeModels,
+        );
+        if (missingModels.length) {
+            throw new Error(
+                `Committee ${selectedCommittee.label || selectedCommittee.id} cannot run because these models are unavailable or missing API keys: ${missingModels.join(", ")}.`,
+            );
+        }
+        return selected;
+    }
+    if (modelHasApiKey(selected, apiKeys, committeeModels)) return selected;
+    for (const candidate of configuredModelIds(committeeModels)) {
+        if (candidate !== selected && modelHasApiKey(candidate, apiKeys, committeeModels)) {
             return candidate;
         }
     }
     for (const candidate of ALL_MODELS) {
-        if (candidate !== selected && modelHasApiKey(candidate, apiKeys)) {
+        if (candidate !== selected && modelHasApiKey(candidate, apiKeys, committeeModels)) {
             return candidate;
         }
     }

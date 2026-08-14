@@ -30,6 +30,7 @@ import {
     type Provider,
     type UserApiKeys,
 } from "../lib/llm";
+import { getConfiguredModel } from "../lib/llm/registry";
 import { getUserModelSettings } from "../lib/userSettings";
 import {
     checkProjectAccess,
@@ -462,20 +463,28 @@ async function loadRowDocumentText(
     return sections.join("\n\n---\n\n");
 }
 
-function providerLabel(provider: Provider): string {
+function providerLabel(provider: Provider | keyof UserApiKeys): string {
     if (provider === "claude") return "Anthropic";
     if (provider === "openai") return "OpenAI";
-    if (provider === "openai-compatible") return "OpenRouter";
+    if (provider === "openrouter") return "OpenRouter";
+    if (provider === "openai-compatible") return "OpenAI-compatible";
+    if (provider === "ollama") return "Ollama";
     return "Gemini";
 }
 
-function missingModelApiKey(model: string, apiKeys: UserApiKeys) {
-    if (modelHasApiKey(model, apiKeys)) return null;
-    const provider = providerForModel(model);
+function missingModelApiKey(
+    model: string,
+    apiKeys: UserApiKeys,
+    committeeModels: import("../lib/llm").CommitteeModel[] = [],
+) {
+    const provider = providerForModel(model, committeeModels);
+    if (modelHasApiKey(model, apiKeys, committeeModels)) return null;
+    const configuredProvider = getConfiguredModel(model)?.apiKeyProvider;
+    const keyProvider = configuredProvider ?? provider;
     return {
-        provider,
+        provider: keyProvider,
         model,
-        detail: `${providerLabel(provider)} API key is required to use ${model}. Add an API key or select a different tabular review model.`,
+        detail: `${providerLabel(keyProvider)} API key is required to use ${model}. Add an API key or select a different tabular review model.`,
     };
 }
 
@@ -679,7 +688,8 @@ tabularRouter.post("/prompt", requireAuth, async (req, res) => {
         `format handling is applied separately and must not be duplicated inside the prompt text.`;
 
     try {
-        const { title_model, api_keys } = await getUserModelSettings(userId);
+        const { title_model, api_keys, committee_models } =
+            await getUserModelSettings(userId);
         const raw = await completeText({
             model: title_model,
             systemPrompt:
@@ -687,6 +697,7 @@ tabularRouter.post("/prompt", requireAuth, async (req, res) => {
             user: userMessage,
             maxTokens: 512,
             apiKeys: api_keys,
+            committeeModels: committee_models,
         });
         const parsed = JSON.parse(
             raw
@@ -1073,8 +1084,13 @@ tabularRouter.post(
         if (allowedSourceIds.length !== sourceIds.length)
       return void res.status(404).json({ detail: "Review row not found" });
 
-    const { tabular_model, api_keys } = await getUserModelSettings(userId, db);
-        const missingKey = missingModelApiKey(tabular_model, api_keys);
+    const { tabular_model, api_keys, committee_models } =
+        await getUserModelSettings(userId, db);
+        const missingKey = missingModelApiKey(
+            tabular_model,
+            api_keys,
+            committee_models,
+        );
         if (missingKey) {
             return void res.status(422).json({
                 code: "missing_api_key",
@@ -1099,6 +1115,7 @@ tabularRouter.post(
             column.format,
             column.tags,
             api_keys,
+            committee_models,
         );
 
         if (!result) {
@@ -1172,8 +1189,13 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
         (row.source_document_ids ?? []).every((id) => allowedSourceIds.has(id)),
     );
 
-    const { tabular_model, api_keys } = await getUserModelSettings(userId, db);
-    const missingKey = missingModelApiKey(tabular_model, api_keys);
+    const { tabular_model, api_keys, committee_models } =
+        await getUserModelSettings(userId, db);
+    const missingKey = missingModelApiKey(
+        tabular_model,
+        api_keys,
+        committee_models,
+    );
     if (missingKey) {
         return void res.status(422).json({
             code: "missing_api_key",
@@ -1247,6 +1269,7 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
                             );
                         },
                         api_keys,
+                        committee_models,
                     );
                 } catch (err) {
                     console.error(
@@ -1566,8 +1589,13 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
         ),
     };
 
-    const { tabular_model, api_keys } = await getUserModelSettings(userId, db);
-    const missingKey = missingModelApiKey(tabular_model, api_keys);
+    const { tabular_model, api_keys, committee_models } =
+        await getUserModelSettings(userId, db);
+    const missingKey = missingModelApiKey(
+        tabular_model,
+        api_keys,
+        committee_models,
+    );
     if (missingKey) {
         return void res.status(422).json({
             code: "missing_api_key",
@@ -1674,7 +1702,8 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
 
         // Generate title on first exchange
         if (chatId && isFirstExchange && !chatTitle && lastUser.content) {
-            const { title_model } = await getUserModelSettings(userId, db);
+            const { title_model, committee_models: titleCommittees } =
+                await getUserModelSettings(userId, db);
             const title = await generateChatTitle(
                 title_model,
                 lastUser.content,
@@ -1683,6 +1712,7 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
                     projectName: clientProjectName ?? null,
                 },
                 api_keys,
+                titleCommittees,
             );
             if (title) {
                 await db
@@ -1818,6 +1848,7 @@ async function queryTabularCell(
     format?: string,
     tags?: string[],
     apiKeys?: import("../lib/llm").UserApiKeys,
+    committeeModels?: import("../lib/llm").CommitteeModel[],
 ) {
     const suffix = formatPromptSuffix(format as never, tags);
     const fullPrompt = `${columnPrompt}${suffix} If not found, state "Not Found". Leave all reasoning and explanation in the "reasoning" field only.`;
@@ -1837,6 +1868,7 @@ The "summary" field must contain only the extracted value with inline citations 
             user: `Document: ${filename}\n\n${documentText}\n\n---\nInstruction: ${fullPrompt}`,
             maxTokens: 2048,
             apiKeys,
+            committeeModels,
         });
     } catch (err) {
         console.error("[queryTabularCell] completion failed", safeErrorLog(err));
@@ -1880,6 +1912,7 @@ async function generateChatTitle(
     firstUserMessage: string,
     context?: { reviewTitle?: string | null; projectName?: string | null },
     apiKeys?: import("../lib/llm").UserApiKeys,
+    committeeModels?: import("../lib/llm").CommitteeModel[],
 ): Promise<string | null> {
     try {
         const contextLines: string[] = [];
@@ -1896,6 +1929,7 @@ async function generateChatTitle(
             user: `${contextBlock}Generate a short title (4-6 words) for a chat that starts with the message below. The title should reflect the user's specific question, not the review or project name. Return only the title, no punctuation, no quotes:\n\n${firstUserMessage}`,
             maxTokens: 64,
             apiKeys,
+            committeeModels,
         });
         return raw.trim().slice(0, 80) || null;
     } catch {
@@ -1923,6 +1957,7 @@ async function queryTabularAllColumns(
     columns: Column[],
     onResult: (columnIndex: number, result: CellResult) => Promise<void>,
     apiKeys?: import("../lib/llm").UserApiKeys,
+    committeeModels?: import("../lib/llm").CommitteeModel[],
 ): Promise<void> {
     const columnsDesc = columns
         .map((col) => {
@@ -1985,6 +2020,7 @@ Rules:
             messages: [{ role: "user", content: USER }],
             tools: [],
             apiKeys,
+            committeeModels,
             callbacks: {
                 onContentDelta: (delta) => {
                     contentBuffer += delta;

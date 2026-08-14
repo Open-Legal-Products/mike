@@ -1,5 +1,5 @@
 import { SETTINGS_MODELS, type ModelOption } from "../components/assistant/ModelToggle";
-import type { ApiKeyState } from "@/app/lib/mikeApi";
+import type { ApiKeyState, ModelCommittee } from "@/app/lib/mikeApi";
 
 export type ModelProvider =
     | "claude"
@@ -19,7 +19,17 @@ export function getModelProvider(modelId: string): ModelProvider | null {
 export function isModelAvailable(
     modelId: string,
     apiKeys: ApiKeyState,
+    committees: ModelCommittee[] = [],
+    committeeStack: Set<string> = new Set(),
 ): boolean {
+    const committee = committees.find((item) => item.id === modelId);
+    if (committee) {
+        if (committeeStack.has(modelId)) return false;
+        const nextStack = new Set(committeeStack).add(modelId);
+        return [...committee.members, committee.chair].every((dependency) =>
+            isModelAvailable(dependency, apiKeys, committees, nextStack),
+        );
+    }
     const provider = getModelProvider(modelId);
     if (!provider) return false;
     return isProviderAvailable(provider, apiKeys);

@@ -51,8 +51,14 @@ let supabaseState: {
     adminGetUserById: QueryResult;
     adminDeleteUser: { error: unknown };
 };
+let profileSelectResults: QueryResult[] = [];
+let profileSelects: string[] = [];
+let lastDbUpdate: unknown = null;
 
 function resetSupabaseState() {
+    profileSelectResults = [];
+    profileSelects = [];
+    lastDbUpdate = null;
     supabaseState = {
         tables: {},
         adminGetUserById: {
@@ -68,6 +74,13 @@ function resultForTable(table: string): QueryResult {
     return supabaseState.tables[table] ?? { data: null, error: null };
 }
 
+function resultForQuery(table: string): QueryResult {
+    if (table === "user_profiles" && profileSelectResults.length > 0) {
+        return profileSelectResults.shift()!;
+    }
+    return resultForTable(table);
+}
+
 function makeQuery(table: string) {
     const q: Record<string, unknown> = {};
     const chain = [
@@ -76,12 +89,20 @@ function makeQuery(table: string) {
         "filter", "order", "limit", "range", "contains",
     ];
     for (const m of chain) q[m] = vi.fn(() => q);
-    q.single = vi.fn(() => Promise.resolve(resultForTable(table)));
-    q.maybeSingle = vi.fn(() => Promise.resolve(resultForTable(table)));
+    q.select = vi.fn((columns: string) => {
+        if (table === "user_profiles") profileSelects.push(columns);
+        return q;
+    });
+    q.update = vi.fn((value: unknown) => {
+        lastDbUpdate = value;
+        return q;
+    });
+    q.single = vi.fn(() => Promise.resolve(resultForQuery(table)));
+    q.maybeSingle = vi.fn(() => Promise.resolve(resultForQuery(table)));
     q.then = (
         resolve: (v: unknown) => unknown,
         reject?: (e: unknown) => unknown,
-    ) => Promise.resolve(resultForTable(table)).then(resolve, reject);
+    ) => Promise.resolve(resultForQuery(table)).then(resolve, reject);
     return q;
 }
 
@@ -231,10 +252,35 @@ describe("user.routes", () => {
                 tier: "Pro",
                 legalResearchUs: true,
                 mfaOnLogin: false,
+                modelCommittees: [],
                 apiKeyStatus: STATUS,
             });
             // Presence-only key status — never plaintext.
             expect(JSON.stringify(res.body)).not.toContain("sk-");
+        });
+
+        it("retries with model_committees dropped when the column is missing", async () => {
+            // Older databases without the model_committees column should
+            // still load: selectProfile retries without the column and
+            // defaults the field to [].
+            profileSelectResults.push(
+                {
+                    data: null,
+                    error: {
+                        code: "42703",
+                        message: 'column "model_committees" does not exist',
+                    },
+                },
+                { data: profileRow(), error: null },
+            );
+
+            const res = await request(app).get("/user/profile").set(...AUTH);
+
+            expect(res.status).toBe(200);
+            expect(res.body.modelCommittees).toEqual([]);
+            expect(profileSelects).toHaveLength(2);
+            expect(profileSelects[0]).toContain("model_committees");
+            expect(profileSelects[1]).not.toContain("model_committees");
         });
 
         it("is NOT guarded by requireMfaIfEnrolled (bootstrap route)", async () => {
@@ -273,6 +319,95 @@ describe("user.routes", () => {
             expect(res.status).toBe(200);
             expect(res.body).toEqual({ ok: true });
             expect(requireMfaIfEnrolled).not.toHaveBeenCalled();
+        });
+    });
+
+    // ── PATCH /user/profile (committee configuration) ──────────────────────
+    describe("PATCH /user/profile", () => {
+        it("persists and returns modelCommittees", async () => {
+            const committees = [
+                {
+                    id: "user-committee/review",
+                    label: "Review Board",
+                    members: ["gpt-5.4", "claude-haiku-4-5"],
+                    chair: "gemini-3-flash-preview",
+                },
+            ];
+            supabaseState.tables.user_profiles = {
+                data: profileRow({ model_committees: committees }),
+                error: null,
+            };
+
+            const res = await request(app)
+                .patch("/user/profile")
+                .set(...AUTH)
+                .send({ modelCommittees: committees });
+
+            expect(res.status).toBe(200);
+            expect(lastDbUpdate).toMatchObject({
+                model_committees: [
+                    expect.objectContaining({
+                        id: "user-committee/review",
+                        strategy: "synthesize",
+                    }),
+                ],
+            });
+            expect(res.body.modelCommittees).toEqual([
+                expect.objectContaining({ id: "user-committee/review" }),
+            ]);
+        });
+
+        it("rejects a committee with unknown member models", async () => {
+            supabaseState.tables.user_profiles = {
+                data: profileRow(),
+                error: null,
+            };
+
+            const res = await request(app)
+                .patch("/user/profile")
+                .set(...AUTH)
+                .send({
+                    modelCommittees: [
+                        {
+                            id: "user-committee/bad",
+                            label: "Bad Board",
+                            members: ["gpt-5.4", "not-a-real-model"],
+                            chair: "gemini-3-flash-preview",
+                        },
+                    ],
+                });
+
+            expect(res.status).toBe(400);
+            expect(res.body.detail).toBe("Unknown committee model: not-a-real-model");
+        });
+    });
+
+    // ── GET /user/models (configured model catalog) ────────────────────────
+    describe("GET /user/models", () => {
+        it("includes the user's personal committees in the catalog", async () => {
+            const committees = [
+                {
+                    id: "user-committee/review",
+                    label: "Review Board",
+                    members: ["gpt-5.4", "claude-haiku-4-5"],
+                    chair: "gemini-3-flash-preview",
+                    strategy: "synthesize",
+                },
+            ];
+            supabaseState.tables.user_profiles = {
+                data: { model_committees: committees },
+                error: null,
+            };
+
+            const res = await request(app).get("/user/models").set(...AUTH);
+
+            expect(res.status).toBe(200);
+            expect(res.body.configured).toContainEqual({
+                id: "user-committee/review",
+                label: "Review Board",
+                provider: "committee",
+                location: "committee",
+            });
         });
     });
 

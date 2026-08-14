@@ -10,6 +10,12 @@ import {
     OPENAI_LOW_MODELS,
     resolveModel,
 } from "../lib/llm";
+import { configuredModelSummaries } from "../lib/llm/registry";
+import {
+    getUserCommittees,
+    normalizeUserCommittees,
+    validateUserCommittees,
+} from "../lib/userCommittees";
 import {
     type ApiKeyStatus,
     getUserApiKeyStatus,
@@ -57,6 +63,7 @@ type UserProfileRow = {
     tabular_model: string;
     mfa_on_login: boolean | null;
     legal_research_us: boolean | null;
+    model_committees?: unknown;
 };
 
 function errorMessage(error: unknown): string {
@@ -162,13 +169,13 @@ function mcpOAuthPopupCsp(nonce: string) {
 }
 
 const PROFILE_SELECT =
-    "display_name, organisation, message_credits_used, credits_reset_date, tier, title_model, tabular_model, mfa_on_login, legal_research_us";
-const PROFILE_SELECT_NO_LEGAL =
-    "display_name, organisation, message_credits_used, credits_reset_date, tier, title_model, tabular_model, mfa_on_login";
-const LEGACY_PROFILE_SELECT =
-    "display_name, organisation, message_credits_used, credits_reset_date, tier, tabular_model";
-const LEGACY_PROFILE_MODEL_SELECT =
-    "display_name, organisation, message_credits_used, credits_reset_date, tier, title_model, tabular_model";
+    "display_name, organisation, message_credits_used, credits_reset_date, tier, title_model, tabular_model, mfa_on_login, legal_research_us, model_committees";
+const OPTIONAL_PROFILE_COLUMN_DEFAULTS: Record<string, unknown> = {
+    model_committees: [],
+    legal_research_us: true,
+    mfa_on_login: false,
+    title_model: null,
+};
 
 function isMissingProfileColumn(error: unknown, column: string): boolean {
     const record =
@@ -179,100 +186,43 @@ function isMissingProfileColumn(error: unknown, column: string): boolean {
     return record.code === "42703" && message.includes(column);
 }
 
-// Loads a profile while tolerating older databases that lack the
-// legal_research_us column. Tries the full select first, then falls back to
-// the legacy cascade (which also handles missing title_model / mfa_on_login)
-// and defaults the feature flag to enabled.
+// Loads a profile while tolerating databases created before optional
+// profile columns existed. Tries the full select first, then retries with
+// the missing column dropped and applies its default value.
 async function selectProfile(
     db: ReturnType<typeof createServerSupabase>,
     userId: string,
     mode: "maybe" | "single",
 ) {
-    const fullQuery = db
-        .from("user_profiles")
-        .select(PROFILE_SELECT)
-        .eq("user_id", userId);
-    const full =
-        mode === "single"
-            ? await fullQuery.single()
-            : await fullQuery.maybeSingle();
-    if (!full.error) return full;
+    const columns = PROFILE_SELECT.split(", ");
+    const defaults: Record<string, unknown> = {};
 
-    const legacy = await selectProfileLegacy(db, userId, mode);
-    if (legacy.data && typeof legacy.data === "object") {
-        const row = legacy.data as Record<string, unknown>;
-        if (!("legal_research_us" in row)) {
-            Object.assign(row, { legal_research_us: true });
-        }
-    }
-    return legacy;
-}
-
-async function selectProfileLegacy(
-    db: ReturnType<typeof createServerSupabase>,
-    userId: string,
-    mode: "maybe" | "single",
-) {
-    const query = db
-        .from("user_profiles")
-        .select(PROFILE_SELECT_NO_LEGAL)
-        .eq("user_id", userId);
-    const result =
-        mode === "single" ? await query.single() : await query.maybeSingle();
-    if (!result.error) {
-        return result;
-    }
-
-    const missingMfaOnLogin = isMissingProfileColumn(
-        result.error,
-        "mfa_on_login",
-    );
-    if (missingMfaOnLogin) {
-        const modelQuery = db
+    while (true) {
+        const query = db
             .from("user_profiles")
-            .select(LEGACY_PROFILE_MODEL_SELECT)
+            .select<string, UserProfileRow>(columns.join(", "))
             .eq("user_id", userId);
-        const modelLegacy =
-            mode === "single"
-                ? await modelQuery.single()
-                : await modelQuery.maybeSingle();
-        if (
-            !modelLegacy.error ||
-            !isMissingProfileColumn(modelLegacy.error, "title_model")
-        ) {
-            if (modelLegacy.data && typeof modelLegacy.data === "object") {
-                const row = modelLegacy.data as Record<string, unknown>;
-                Object.assign(row, {
-                    mfa_on_login: false,
-                });
+        const result =
+            mode === "single" ? await query.single() : await query.maybeSingle();
+        if (!result.error) {
+            if (result.data && typeof result.data === "object") {
+                Object.assign(result.data as Record<string, unknown>, defaults);
             }
-            return modelLegacy;
+            return result;
         }
-    }
 
-    if (
-        !missingMfaOnLogin &&
-        !isMissingProfileColumn(result.error, "title_model")
-    ) {
-        return result;
-    }
+        const missingColumn = Object.keys(
+            OPTIONAL_PROFILE_COLUMN_DEFAULTS,
+        ).find(
+            (column) =>
+                columns.includes(column) &&
+                isMissingProfileColumn(result.error, column),
+        );
+        if (!missingColumn) return result;
 
-    const legacyQuery = db
-        .from("user_profiles")
-        .select(LEGACY_PROFILE_SELECT)
-        .eq("user_id", userId);
-    const legacy =
-        mode === "single"
-            ? await legacyQuery.single()
-            : await legacyQuery.maybeSingle();
-    if (legacy.data && typeof legacy.data === "object") {
-        const row = legacy.data as Record<string, unknown>;
-        Object.assign(row, {
-            title_model: null,
-            mfa_on_login: false,
-        });
+        columns.splice(columns.indexOf(missingColumn), 1);
+        defaults[missingColumn] = OPTIONAL_PROFILE_COLUMN_DEFAULTS[missingColumn];
     }
-    return legacy;
 }
 
 function serializeProfile(row: UserProfileRow, apiKeyStatus?: ApiKeyStatus) {
@@ -284,6 +234,7 @@ function serializeProfile(row: UserProfileRow, apiKeyStatus?: ApiKeyStatus) {
           : apiKeyStatus?.claude
             ? CLAUDE_LOW_MODELS[0]
             : DEFAULT_TITLE_MODEL;
+    const modelCommittees = normalizeUserCommittees(row.model_committees);
     return {
         displayName: row.display_name,
         organisation: row.organisation,
@@ -291,15 +242,23 @@ function serializeProfile(row: UserProfileRow, apiKeyStatus?: ApiKeyStatus) {
         creditsResetDate: row.credits_reset_date,
         creditsRemaining: Math.max(MONTHLY_CREDIT_LIMIT - creditsUsed, 0),
         tier: row.tier || "Free",
-        titleModel: resolveModel(row.title_model, titleFallback),
-        tabularModel: resolveModel(row.tabular_model, DEFAULT_TABULAR_MODEL),
+        titleModel: resolveModel(row.title_model, titleFallback, modelCommittees),
+        tabularModel: resolveModel(
+            row.tabular_model,
+            DEFAULT_TABULAR_MODEL,
+            modelCommittees,
+        ),
         mfaOnLogin: row.mfa_on_login === true,
         legalResearchUs: row.legal_research_us !== false,
+        modelCommittees,
         ...(apiKeyStatus ? { apiKeyStatus } : {}),
     };
 }
 
-function validateProfilePayload(body: unknown):
+function validateProfilePayload(
+    body: unknown,
+    existingCommittees: import("../lib/llm").CommitteeModel[] = [],
+):
     | {
           ok: true;
           update: {
@@ -308,6 +267,7 @@ function validateProfilePayload(body: unknown):
               title_model?: string;
               tabular_model?: string;
               legal_research_us?: boolean;
+              model_committees?: import("../lib/llm").CommitteeModel[];
               updated_at: string;
           };
       }
@@ -323,6 +283,7 @@ function validateProfilePayload(body: unknown):
         "titleModel",
         "tabularModel",
         "legalResearchUs",
+        "modelCommittees",
     ]);
     const invalidField = Object.keys(raw).find(
         (key) => !allowedFields.has(key),
@@ -340,8 +301,22 @@ function validateProfilePayload(body: unknown):
         title_model?: string;
         tabular_model?: string;
         legal_research_us?: boolean;
+        model_committees?: import("../lib/llm").CommitteeModel[];
         updated_at: string;
     } = { updated_at: new Date().toISOString() };
+    let modelCommittees = existingCommittees;
+
+    if ("modelCommittees" in raw) {
+        try {
+            modelCommittees = validateUserCommittees(raw.modelCommittees);
+            update.model_committees = modelCommittees;
+        } catch (error) {
+            return {
+                ok: false,
+                detail: error instanceof Error ? error.message : String(error),
+            };
+        }
+    }
 
     if ("displayName" in raw) {
         if (raw.displayName !== null && typeof raw.displayName !== "string") {
@@ -367,7 +342,7 @@ function validateProfilePayload(body: unknown):
         if (typeof raw.tabularModel !== "string") {
             return { ok: false, detail: "tabularModel must be a string" };
         }
-        const resolved = resolveModel(raw.tabularModel, "");
+        const resolved = resolveModel(raw.tabularModel, "", modelCommittees);
         if (!resolved) {
             return { ok: false, detail: "Unsupported tabularModel" };
         }
@@ -378,7 +353,7 @@ function validateProfilePayload(body: unknown):
         if (typeof raw.titleModel !== "string") {
             return { ok: false, detail: "titleModel must be a string" };
         }
-        const resolved = resolveModel(raw.titleModel, "");
+        const resolved = resolveModel(raw.titleModel, "", modelCommittees);
         if (!resolved) {
             return { ok: false, detail: "Unsupported titleModel" };
         }
@@ -536,13 +511,33 @@ userRouter.get("/profile", requireAuth, async (_req, res) => {
     res.json({ ...data, apiKeyStatus });
 });
 
+// GET /user/models
+userRouter.get("/models", requireAuth, async (_req, res) => {
+    const userId = res.locals.userId as string;
+    const db = createServerSupabase();
+    try {
+        const committees = await getUserCommittees(userId, db);
+        res.json({ configured: configuredModelSummaries(committees) });
+    } catch (error) {
+        res.status(500).json({ detail: errorMessage(error) });
+    }
+});
+
 // PATCH /user/profile
 userRouter.patch("/profile", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
-    const parsed = validateProfilePayload(req.body);
+    const db = createServerSupabase();
+    let existingCommittees: import("../lib/llm").CommitteeModel[];
+    try {
+        existingCommittees = await getUserCommittees(userId, db);
+    } catch (error) {
+        return void res
+            .status(500)
+            .json({ detail: `Failed to load committee configuration: ${errorMessage(error)}` });
+    }
+    const parsed = validateProfilePayload(req.body, existingCommittees);
     if (!parsed.ok) return void res.status(400).json({ detail: parsed.detail });
 
-    const db = createServerSupabase();
     const ensureError = await ensureProfileRow(db, userId);
     if (ensureError)
         return void res.status(500).json({ detail: ensureError.message });

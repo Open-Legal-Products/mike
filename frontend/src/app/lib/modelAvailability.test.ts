@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SETTINGS_MODELS } from "../components/assistant/ModelToggle";
-import type { ApiKeyState } from "./mikeApi";
+import type { ApiKeyState, ModelCommittee } from "./mikeApi";
 import {
     getModelProvider,
     isModelAvailable,
@@ -116,6 +116,33 @@ describe("isProviderAvailable", () => {
         expect(isProviderAvailable("ollama", keys({}))).toBe(true);
         expect(
             isProviderAvailable("ollama", {} as unknown as ApiKeyState),
+        ).toBe(true);
+    });
+
+    it("requires every committee member and chair provider to be available", () => {
+        const committees: ModelCommittee[] = [
+            {
+                id: "user-committee/keys",
+                label: "Key-aware committee",
+                members: ["gpt-5.4", "claude-sonnet-4-6"],
+                chair: "gemini-3-flash-preview",
+                strategy: "synthesize",
+            },
+        ];
+
+        expect(
+            isModelAvailable(
+                committees[0].id,
+                keys({ openai: true }),
+                committees,
+            ),
+        ).toBe(false);
+        expect(
+            isModelAvailable(
+                committees[0].id,
+                keys({ openai: true, claude: true, gemini: true }),
+                committees,
+            ),
         ).toBe(true);
     });
 });
