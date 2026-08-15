@@ -271,17 +271,28 @@ export async function completeClaudeText(params: {
   user: string;
   maxTokens?: number;
   apiKeys?: { claude?: string | null };
+  abortSignal?: AbortSignal;
 }): Promise<string> {
+  throwIfAborted(params.abortSignal);
   const anthropic = client(params.apiKeys?.claude);
   let resp: Awaited<ReturnType<typeof anthropic.messages.create>>;
   try {
-    resp = await anthropic.messages.create({
-      model: params.model,
-      max_tokens: params.maxTokens ?? 512,
-      system: params.systemPrompt,
-      messages: [{ role: "user", content: params.user }],
-    });
+    resp = await anthropic.messages.create(
+      {
+        model: params.model,
+        max_tokens: params.maxTokens ?? 512,
+        system: params.systemPrompt,
+        messages: [{ role: "user", content: params.user }],
+      },
+      { signal: params.abortSignal },
+    );
   } catch (error) {
+    if (
+      params.abortSignal?.aborted ||
+      (error instanceof Error && error.name === "AbortError")
+    ) {
+      throw abortError();
+    }
     throw new Error(claudeErrorMessage(error));
   }
   const text = resp.content

@@ -333,18 +333,30 @@ export async function completeGeminiText(params: {
   systemPrompt?: string;
   user: string;
   apiKeys?: { gemini?: string | null };
+  abortSignal?: AbortSignal;
 }): Promise<string> {
+  throwIfAborted(params.abortSignal);
   const ai = await client(params.apiKeys?.gemini);
   let resp: Awaited<ReturnType<typeof ai.models.generateContent>>;
   try {
     resp = await ai.models.generateContent({
       model: params.model,
       contents: [{ role: "user", parts: [{ text: params.user }] }],
-      config: params.systemPrompt
-        ? { systemInstruction: params.systemPrompt }
-        : undefined,
+      config:
+        params.systemPrompt || params.abortSignal
+          ? {
+              systemInstruction: params.systemPrompt,
+              abortSignal: params.abortSignal,
+            }
+          : undefined,
     });
   } catch (error) {
+    if (
+      params.abortSignal?.aborted ||
+      (error instanceof Error && error.name === "AbortError")
+    ) {
+      throw abortError();
+    }
     throw new Error(geminiErrorMessage(error));
   }
   return resp.text ?? "";

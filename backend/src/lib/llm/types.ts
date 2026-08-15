@@ -2,7 +2,12 @@
 // Callers always speak OpenAI-style tools + { role, content } messages; each
 // provider translates internally.
 
-export type Provider = "claude" | "gemini" | "openai" | "ollama";
+export type Provider =
+    | "claude"
+    | "gemini"
+    | "openai"
+    | "openai-compatible"
+    | "ollama";
 
 export type OpenAIToolSchema = {
     type: "function";
@@ -53,6 +58,7 @@ export type StreamChatParams = {
     callbacks?: StreamCallbacks;
     runTools?: (calls: NormalizedToolCall[]) => Promise<NormalizedToolResult[]>;
     apiKeys?: UserApiKeys;
+    committeeModels?: CommitteeModel[];
     /**
      * Enable provider-side reasoning/thinking. Off by default — should only
      * be turned on for interactive chat surfaces where the user actually
@@ -61,8 +67,60 @@ export type StreamChatParams = {
      */
     enableThinking?: boolean;
     abortSignal?: AbortSignal;
+    /**
+     * Maximum time allowed for each provider response. Providers that do not
+     * expose an abortable request may ignore this value.
+     */
+    requestTimeoutMs?: number;
 };
 
 export type StreamChatResult = {
     fullText: string;
+};
+
+export type CompleteTextParams = {
+    model: string;
+    systemPrompt?: string;
+    user: string;
+    maxTokens?: number;
+    apiKeys?: UserApiKeys;
+    committeeStack?: string[];
+    requestTimeoutMs?: number;
+    reasoningEffort?: string;
+    responseFormat?: Record<string, unknown>;
+    plugins?: Array<{ id: string }>;
+    committeeModels?: CommitteeModel[];
+    abortSignal?: AbortSignal;
+};
+
+export type ModelLocation = "cloud" | "local";
+
+export type ConfiguredModel = {
+    id: string;
+    provider: Provider;
+    location: ModelLocation;
+    label?: string;
+    apiModel?: string;
+    modelName?: string;
+    baseUrl?: string;
+    apiKeyEnv?: string;
+    apiKeyProvider?: keyof UserApiKeys;
+    apiKey?: string;
+    extraBody?: Record<string, unknown>;
+};
+
+export type CommitteeModel = {
+    id: string;
+    label?: string;
+    members: Array<
+        | string
+        | {
+              id?: string;
+              model: string;
+              label?: string;
+              systemPrompt?: string;
+          }
+    >;
+    chair: string;
+    strategy?: "synthesize";
 };

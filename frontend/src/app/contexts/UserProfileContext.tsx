@@ -12,6 +12,7 @@ import { useAuth } from "@/app/contexts/AuthContext";
 import {
     type ApiKeyState,
     type ApiKeyProvider,
+    type ModelCommittee,
     type UserProfile as ApiUserProfile,
     getUserProfile,
     isMfaRequiredError,
@@ -31,6 +32,7 @@ interface UserProfile {
     tabularModel: string;
     mfaOnLogin: boolean;
     legalResearchUs: boolean;
+    modelCommittees: ModelCommittee[];
     apiKeys: ApiKeyState;
 }
 
@@ -43,6 +45,7 @@ interface UserProfileContextType {
         field: "titleModel" | "tabularModel",
         value: string,
     ) => Promise<boolean>;
+    updateModelCommittees: (committees: ModelCommittee[]) => Promise<boolean>;
     updateMfaOnLogin: (enabled: boolean) => Promise<boolean>;
     updateLegalResearchUs: (enabled: boolean) => Promise<boolean>;
     updateApiKey: (
@@ -90,6 +93,7 @@ function toProfile(data: ApiUserProfile): UserProfile {
     return {
         ...profile,
         mfaOnLogin: profile.mfaOnLogin === true,
+        modelCommittees: profile.modelCommittees ?? [],
         apiKeys,
     };
 }
@@ -121,6 +125,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 tabularModel: "gemini-3-flash-preview",
                 mfaOnLogin: false,
                 legalResearchUs: true,
+                modelCommittees: [],
                 apiKeys: emptyApiKeys(),
             });
         } finally {
@@ -184,6 +189,22 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 const updated = await updateUserProfile({
                     [field]: value,
                 });
+                setProfile((prev) =>
+                    prev ? { ...prev, ...toProfile(updated) } : null,
+                );
+                return true;
+            } catch {
+                return false;
+            }
+        },
+        [user],
+    );
+
+    const updateModelCommittees = useCallback(
+        async (modelCommittees: ModelCommittee[]): Promise<boolean> => {
+            if (!user) return false;
+            try {
+                const updated = await updateUserProfile({ modelCommittees });
                 setProfile((prev) =>
                     prev ? { ...prev, ...toProfile(updated) } : null,
                 );
@@ -289,6 +310,7 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 updateDisplayName,
                 updateOrganisation,
                 updateModelPreference,
+                updateModelCommittees,
                 updateMfaOnLogin,
                 updateLegalResearchUs,
                 updateApiKey,

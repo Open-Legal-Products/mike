@@ -1,12 +1,13 @@
 import {
   streamChatWithTools,
-  resolveModel,
+  resolveUsableModel,
   DEFAULT_MAIN_MODEL,
   type LlmMessage,
   type OpenAIToolSchema,
 } from "../llm";
 import { safeErrorMessage } from "../safeError";
 import { createServerSupabase } from "../supabase";
+import { getUserCommittees } from "../userCommittees";
 import { buildUserMcpTools, type McpToolEvent } from "../mcpConnectors";
 import {
   COURTLISTENER_TOOLS,
@@ -337,7 +338,13 @@ export async function runLLMStream(params: {
     }
   };
 
-  const selectedModel = resolveModel(model, DEFAULT_MAIN_MODEL);
+  const committeeModels = await getUserCommittees(userId, db);
+  const selectedModel = resolveUsableModel(
+    model,
+    DEFAULT_MAIN_MODEL,
+    apiKeys,
+    committeeModels,
+  );
 
   try {
     throwIfAborted(signal);
@@ -348,6 +355,7 @@ export async function runLLMStream(params: {
       tools: activeTools as OpenAIToolSchema[],
       maxIterations: 10,
       apiKeys,
+      committeeModels,
       enableThinking: true,
       abortSignal: signal,
       callbacks: {

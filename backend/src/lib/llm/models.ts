@@ -1,4 +1,11 @@
-import type { Provider } from "./types";
+import type { CommitteeModel, Provider, UserApiKeys } from "./types";
+import {
+    configuredModelIds,
+    configuredProviderForModel,
+    getCommitteeModel,
+    getConfiguredModel,
+} from "./registry";
+import { hasEnvApiKey } from "../userApiKeys";
 
 // ---------------------------------------------------------------------------
 // Canonical model IDs
@@ -46,11 +53,20 @@ const ALL_MODELS = new Set<string>([
     ...OPENAI_LOW_MODELS,
 ]);
 
+export function builtInModelIds(): string[] {
+    return [...ALL_MODELS];
+}
+
 // ---------------------------------------------------------------------------
 // Provider inference
 // ---------------------------------------------------------------------------
 
-export function providerForModel(model: string): Provider {
+export function providerForModel(
+    model: string,
+    committeeModels: CommitteeModel[] = [],
+): Provider {
+    const configured = configuredProviderForModel(model, committeeModels);
+    if (configured) return configured;
     if (model.startsWith("ollama")) return "ollama";
     if (model.startsWith("claude")) return "claude";
     if (model.startsWith("gemini")) return "gemini";
@@ -58,7 +74,153 @@ export function providerForModel(model: string): Provider {
     throw new Error(`Unknown model id: ${model}`);
 }
 
-export function resolveModel(id: string | null | undefined, fallback: string): string {
+export function resolveModel(
+    id: string | null | undefined,
+    fallback: string,
+    committeeModels: CommitteeModel[] = [],
+): string {
+    if (id && getConfiguredModel(id)) return id;
+    if (id && getCommitteeModel(id, committeeModels)) return id;
     if (id && (ALL_MODELS.has(id) || id.startsWith("ollama/"))) return id;
     return fallback;
+}
+
+// ---------------------------------------------------------------------------
+// Usable-model resolution (API key awareness)
+// ---------------------------------------------------------------------------
+
+function providerKeyAvailable(
+    provider: Provider,
+    apiKeys?: UserApiKeys,
+): boolean {
+    switch (provider) {
+        case "claude":
+            return !!apiKeys?.claude?.trim() || hasEnvApiKey("claude");
+        case "gemini":
+            return !!apiKeys?.gemini?.trim() || hasEnvApiKey("gemini");
+        case "openai":
+            return !!apiKeys?.openai?.trim() || hasEnvApiKey("openai");
+        case "ollama":
+            return true;
+        default:
+            return false;
+    }
+}
+
+/** True when the given model has any usable API key (user key or env). */
+export function modelHasApiKey(
+    model: string,
+    apiKeys?: UserApiKeys,
+    committeeModels: CommitteeModel[] = [],
+): boolean {
+    return missingCommitteeApiKeyModels(
+        model,
+        apiKeys,
+        committeeModels,
+    ).length === 0;
+}
+
+/**
+ * Return the leaf models that prevent a model or committee from running.
+ * Every committee member and its chair must be usable.
+ */
+export function missingCommitteeApiKeyModels(
+    model: string,
+    apiKeys?: UserApiKeys,
+    committeeModels: CommitteeModel[] = [],
+    committeeStack: Set<string> = new Set(),
+): string[] {
+    const committee = getCommitteeModel(model, committeeModels);
+    if (committee) {
+        if (committeeStack.has(model)) return [model];
+        const nextStack = new Set(committeeStack).add(model);
+        const dependencies = [
+            ...committee.members.map((member) =>
+                typeof member === "string" ? member : member.model,
+            ),
+            committee.chair,
+        ];
+        return [
+            ...new Set(
+                dependencies.flatMap((dependency) =>
+                    missingCommitteeApiKeyModels(
+                        dependency,
+                        apiKeys,
+                        committeeModels,
+                        nextStack,
+                    ),
+                ),
+            ),
+        ];
+    }
+
+    const configured = getConfiguredModel(model);
+    if (configured) {
+        if (configured.apiKey?.trim()) return [];
+        if (!configured.apiKeyProvider && !configured.apiKeyEnv) return [];
+        const userKey = configured.apiKeyProvider
+            ? apiKeys?.[configured.apiKeyProvider]?.trim()
+            : undefined;
+        if (userKey) return [];
+        const hasConfiguredKey = configured.apiKeyEnv
+            ? !!process.env[configured.apiKeyEnv]?.trim()
+            : false;
+        return hasConfiguredKey ? [] : [model];
+    }
+    try {
+        return providerKeyAvailable(providerForModel(model, committeeModels), apiKeys)
+            ? []
+            : [model];
+    } catch {
+        return [model];
+    }
+}
+
+/**
+ * Like resolveModel, but when the resolved model has no usable API key,
+ * substitute the first model that does (registry models first, then
+ * built-ins). Returns the original resolution when nothing is configured so
+ * the provider's own "key not configured" error still surfaces.
+ */
+export function resolveUsableModel(
+    id: string | null | undefined,
+    fallback: string,
+    apiKeys?: UserApiKeys,
+    committeeModels: CommitteeModel[] = [],
+): string {
+    if (
+        id?.startsWith("user-committee/") &&
+        !getCommitteeModel(id, committeeModels)
+    ) {
+        throw new Error(
+            `The selected committee (${id}) no longer exists or could not be loaded. Select another model or recreate the committee.`,
+        );
+    }
+    const selected = resolveModel(id, fallback, committeeModels);
+    const selectedCommittee = getCommitteeModel(selected, committeeModels);
+    if (selectedCommittee) {
+        const missingModels = missingCommitteeApiKeyModels(
+            selected,
+            apiKeys,
+            committeeModels,
+        );
+        if (missingModels.length) {
+            throw new Error(
+                `Committee ${selectedCommittee.label || selectedCommittee.id} cannot run because these models are unavailable or missing API keys: ${missingModels.join(", ")}.`,
+            );
+        }
+        return selected;
+    }
+    if (modelHasApiKey(selected, apiKeys, committeeModels)) return selected;
+    for (const candidate of configuredModelIds(committeeModels)) {
+        if (candidate !== selected && modelHasApiKey(candidate, apiKeys, committeeModels)) {
+            return candidate;
+        }
+    }
+    for (const candidate of ALL_MODELS) {
+        if (candidate !== selected && modelHasApiKey(candidate, apiKeys, committeeModels)) {
+            return candidate;
+        }
+    }
+    return selected;
 }
