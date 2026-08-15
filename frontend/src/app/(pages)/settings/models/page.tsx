@@ -30,12 +30,16 @@ import {
 import { SETTINGS_CONTROL_CLASS } from "@/app/components/settings/SettingsTextInput";
 import { SettingsSection } from "../SettingsSection";
 import { useOllamaModels } from "@/app/hooks/useOllamaModels";
+import { useOpenRouterModels } from "@/app/hooks/useOpenRouterModels";
 
 type ModelPreferenceField = "titleModel" | "tabularModel";
 
 export default function ModelPreferencesPage() {
     const { profile, updateModelPreference } = useUserProfile();
     const ollamaModels = useOllamaModels();
+    const openRouterModels = useOpenRouterModels(
+        profile?.apiKeys.openrouter.configured === true,
+    );
     const [savingField, setSavingField] = useState<ModelPreferenceField | null>(
         null,
     );
@@ -98,7 +102,7 @@ export default function ModelPreferencesPage() {
                             profile?.titleModel ??
                             "gemini-3.1-flash-lite-preview"
                         }
-                        options={[...SETTINGS_MODELS, ...ollamaModels]}
+                        options={[...SETTINGS_MODELS, ...ollamaModels, ...openRouterModels]}
                         apiKeys={profile?.apiKeys}
                         isSaving={savingField === "titleModel"}
                         isSaved={savedField === "titleModel"}
@@ -119,7 +123,7 @@ export default function ModelPreferencesPage() {
                             profile?.tabularModel ??
                             "gemini-3-flash-preview"
                         }
-                        options={[...MODELS, ...ollamaModels]}
+                        options={[...MODELS, ...ollamaModels, ...openRouterModels]}
                         apiKeys={profile?.apiKeys}
                         isSaving={savingField === "tabularModel"}
                         isSaved={savedField === "tabularModel"}
@@ -153,6 +157,7 @@ function ModelPreferenceDropdown({
         "Anthropic",
         "Google",
         "OpenAI",
+        "OpenRouter",
         "Local",
     ];
 
@@ -184,7 +189,7 @@ function ModelPreferenceDropdown({
                 </button>
             </DropdownMenuTrigger>
             <LiquidDropdownContent
-                className="z-50"
+                className="z-50 max-h-[min(70vh,32rem)] overflow-y-auto"
                 style={{ width: "var(--radix-dropdown-menu-trigger-width)" }}
                 align="start"
             >
@@ -214,9 +219,14 @@ function ModelPreferenceDropdown({
                                         }
                                     >
                                         <span
-                                            className={`flex-1 ${available ? "" : "text-gray-400"}`}
+                                            className={`min-w-0 flex-1 ${available ? "" : "text-gray-400"}`}
                                         >
-                                            {m.label}
+                                            <span className="block truncate">{m.label}</span>
+                                            {m.group === "OpenRouter" && (
+                                                <span className="block truncate text-[10px] text-gray-400">
+                                                    {m.id.replace(/^openrouter\//, "")}
+                                                </span>
+                                            )}
                                         </span>
                                         {!available && (
                                             <AlertCircle className="h-3.5 w-3.5 text-red-500 ml-1" />
