@@ -13,12 +13,13 @@ const keys = (configured: {
     claude?: boolean;
     gemini?: boolean;
     openai?: boolean;
+    openrouter?: boolean;
 }): ApiKeyState =>
     ({
         claude: { configured: !!configured.claude, source: null },
         gemini: { configured: !!configured.gemini, source: null },
         openai: { configured: !!configured.openai, source: null },
-        openrouter: { configured: false, source: null },
+        openrouter: { configured: !!configured.openrouter, source: null },
         courtlistener: { configured: false, source: null },
     }) as ApiKeyState;
 
@@ -34,6 +35,17 @@ describe("getModelProvider", () => {
         // in the static list — the prefix alone must be enough.
         expect(getModelProvider("ollama/llama3.2")).toBe("ollama");
         expect(getModelProvider("ollama/some-brand-new-model")).toBe("ollama");
+    });
+
+    it("resolves any openrouter/-prefixed id without consulting SETTINGS_MODELS", () => {
+        // OpenRouter models are fetched from the live catalog, so the prefix
+        // alone must be enough — the id never appears in the static list.
+        expect(getModelProvider("openrouter/anthropic/claude-sonnet-4")).toBe(
+            "openrouter",
+        );
+        expect(
+            getModelProvider("openrouter/meta-llama/llama-3.3-70b"),
+        ).toBe("openrouter");
     });
 
     it("resolves a provider for every model in SETTINGS_MODELS", () => {
@@ -69,6 +81,21 @@ describe("isModelAvailable", () => {
     it("is true for ollama models even with no keys configured", () => {
         expect(isModelAvailable("ollama/llama3.2", keys({}))).toBe(true);
     });
+
+    it("is true for OpenRouter models only when the OpenRouter key is configured", () => {
+        expect(
+            isModelAvailable(
+                "openrouter/anthropic/claude-sonnet-4",
+                keys({ openrouter: true }),
+            ),
+        ).toBe(true);
+        expect(
+            isModelAvailable(
+                "openrouter/anthropic/claude-sonnet-4",
+                keys({ openai: true }),
+            ),
+        ).toBe(false);
+    });
 });
 
 describe("isProviderAvailable", () => {
@@ -97,6 +124,7 @@ describe("providerLabel", () => {
     it("returns the display label for each provider", () => {
         expect(providerLabel("claude")).toBe("Anthropic (Claude)");
         expect(providerLabel("openai")).toBe("OpenAI");
+        expect(providerLabel("openrouter")).toBe("OpenRouter");
         expect(providerLabel("ollama")).toBe("Local (Ollama)");
         expect(providerLabel("gemini")).toBe("Google (Gemini)");
     });
@@ -106,6 +134,7 @@ describe("modelGroupToProvider", () => {
     it("maps every model group to its provider id", () => {
         expect(modelGroupToProvider("Anthropic")).toBe("claude");
         expect(modelGroupToProvider("OpenAI")).toBe("openai");
+        expect(modelGroupToProvider("OpenRouter")).toBe("openrouter");
         expect(modelGroupToProvider("Local")).toBe("ollama");
         expect(modelGroupToProvider("Google")).toBe("gemini");
     });

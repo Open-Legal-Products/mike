@@ -24,6 +24,7 @@ import {
 } from "../lib/chat";
 import {
     completeText,
+    modelHasApiKey,
     providerForModel,
     streamChatWithTools,
     type Provider,
@@ -464,13 +465,13 @@ async function loadRowDocumentText(
 function providerLabel(provider: Provider): string {
     if (provider === "claude") return "Anthropic";
     if (provider === "openai") return "OpenAI";
+    if (provider === "openai-compatible") return "OpenRouter";
     return "Gemini";
 }
 
 function missingModelApiKey(model: string, apiKeys: UserApiKeys) {
+    if (modelHasApiKey(model, apiKeys)) return null;
     const provider = providerForModel(model);
-    if (provider === "ollama") return null; // local, no key
-    if (apiKeys[provider]?.trim()) return null;
     return {
         provider,
         model,

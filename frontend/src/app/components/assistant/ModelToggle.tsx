@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, Check, AlertCircle } from "lucide-react";
 import {
     DropdownMenu,
@@ -14,12 +14,14 @@ import {
 } from "@/app/components/ui/liquid-dropdown";
 import { isModelAvailable } from "@/app/lib/modelAvailability";
 import type { ApiKeyState } from "@/app/lib/mikeApi";
+import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import { useOllamaModels } from "@/app/hooks/useOllamaModels";
+import { useOpenRouterModels } from "@/app/hooks/useOpenRouterModels";
 
 export interface ModelOption {
     id: string;
     label: string;
-    group: "Anthropic" | "Google" | "OpenAI" | "Local";
+    group: "Anthropic" | "Google" | "OpenAI" | "OpenRouter" | "Local";
 }
 
 export const MODELS: ModelOption[] = [
@@ -50,7 +52,13 @@ export const DEFAULT_MODEL_ID = "gemini-3-flash-preview";
 
 export const ALLOWED_MODEL_IDS = new Set(MODELS.map((m) => m.id));
 
-const GROUP_ORDER: ModelOption["group"][] = ["Anthropic", "Google", "OpenAI", "Local"];
+const GROUP_ORDER: ModelOption["group"][] = [
+    "Anthropic",
+    "Google",
+    "OpenAI",
+    "OpenRouter",
+    "Local",
+];
 const itemClassName =
     "rounded-xl px-2.5 py-1.5 text-gray-700 focus:bg-app-surface-hover focus:text-gray-900 data-[highlighted]:bg-app-surface-hover data-[highlighted]:text-gray-900";
 
@@ -61,14 +69,27 @@ interface Props {
 }
 
 export function ModelToggle({ value, onChange, apiKeys }: Props) {
+    const { profile } = useUserProfile();
     const [isOpen, setIsOpen] = useState(false);
     const ollamaModels = useOllamaModels();
-    const models = [...MODELS, ...ollamaModels];
+    const openRouterModels = useOpenRouterModels(
+        profile?.apiKeys.openrouter.configured === true,
+    );
+    const models = [...MODELS, ...ollamaModels, ...openRouterModels];
     const selected = models.find((m) => m.id === value);
     const selectedLabel = selected?.label ?? "Model";
     const selectedAvailable = apiKeys
         ? isModelAvailable(value, apiKeys)
         : true;
+
+    useEffect(() => {
+        if (
+            value.startsWith("openrouter/") &&
+            profile?.apiKeys.openrouter.configured !== true
+        ) {
+            onChange(DEFAULT_MODEL_ID);
+        }
+    }, [onChange, profile?.apiKeys.openrouter.configured, value]);
 
     return (
         <DropdownMenu onOpenChange={setIsOpen}>
@@ -92,7 +113,7 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                 </button>
             </DropdownMenuTrigger>
             <LiquidDropdownContent
-                className="z-50 w-56 p-1.5 text-gray-700"
+                className="z-50 max-h-[min(70vh,32rem)] w-72 overflow-y-auto p-1.5 text-gray-700"
                 side="top"
                 align="end"
             >
@@ -118,9 +139,14 @@ export function ModelToggle({ value, onChange, apiKeys }: Props) {
                                         onSelect={() => onChange(m.id)}
                                     >
                                         <span
-                                            className={`flex-1 ${available ? "" : "text-gray-400"}`}
+                                            className={`min-w-0 flex-1 ${available ? "" : "text-gray-400"}`}
                                         >
-                                            {m.label}
+                                            <span className="block truncate">{m.label}</span>
+                                            {m.group === "OpenRouter" && (
+                                                <span className="block truncate text-[10px] text-gray-400">
+                                                    {m.id.replace(/^openrouter\//, "")}
+                                                </span>
+                                            )}
                                         </span>
                                         {!available && (
                                             <AlertCircle

@@ -512,9 +512,22 @@ export interface OllamaModelOption {
     group: "Local";
 }
 
+export interface OpenRouterModelOption {
+    id: string;
+    label: string;
+    group: "OpenRouter";
+}
+
 export async function getOllamaModels(): Promise<OllamaModelOption[]> {
     const { models } = await apiRequest<{ models: OllamaModelOption[] }>(
         "/models/ollama",
+    );
+    return models;
+}
+
+export async function getOpenRouterModels(): Promise<OpenRouterModelOption[]> {
+    const { models } = await apiRequest<{ models: OpenRouterModelOption[] }>(
+        "/models/openrouter",
     );
     return models;
 }
