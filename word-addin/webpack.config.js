@@ -126,12 +126,6 @@ module.exports = async (_env, options) => {
     resolve: {
       extensions: [".ts", ".tsx", ".js", ".jsx"],
       modules: [path.resolve(__dirname, "node_modules"), "node_modules"],
-      alias: {
-        // Canonical icon set shared with the web app (see shared/icons/README).
-        // The add-in bundles these directly; the frontend copies them into
-        // public/ instead, because Next.js only serves files that live there.
-        "@icons": path.resolve(__dirname, "..", "shared", "icons"),
-      },
     },
     module: {
       rules: [

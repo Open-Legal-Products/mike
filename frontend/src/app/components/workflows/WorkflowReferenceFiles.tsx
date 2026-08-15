@@ -230,7 +230,7 @@ export const WorkflowReferenceFiles = forwardRef<
         }}
       />
       {error && (
-        <p className="mx-4 mb-2 -mt-1 text-xs text-red-600 md:mx-8">{error}</p>
+        <p className="mx-4 mb-2 -mt-1 text-xs text-red-600 md:mx-6">{error}</p>
       )}
       <TableScrollArea
         header={
@@ -287,17 +287,17 @@ export const WorkflowReferenceFiles = forwardRef<
                     fileType={file.file_type || file.filename}
                     className="mr-2 h-4 w-4"
                   />
-                  <span className="min-w-0 flex-1 truncate text-xs text-gray-800">
+                  <span className="min-w-0 flex-1 truncate text-sm text-gray-800">
                     {file.filename}
                   </span>
                 </TableStickyCell>
                 <TableCell className="ml-auto w-20 text-xs uppercase text-gray-500">
                   {file.file_type || "—"}
                 </TableCell>
-                <TableCell className="w-24 text-xs text-gray-500">
+                <TableCell className="w-24 text-sm text-gray-500">
                   {formatBytes(file.size_bytes)}
                 </TableCell>
-                <TableCell className="w-32 text-xs text-gray-500">
+                <TableCell className="w-32 text-sm text-gray-500">
                   {formatDate(file.updated_at)}
                 </TableCell>
                 <div

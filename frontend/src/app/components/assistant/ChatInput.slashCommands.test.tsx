@@ -1,10 +1,9 @@
-import { createRef } from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { listWorkflows } from "@/app/lib/mikeApi";
 import type { Workflow } from "../shared/types";
-import { ChatInput, type ChatInputHandle } from "./ChatInput";
+import { ChatInput } from "./ChatInput";
 
 vi.mock("@/app/lib/mikeApi", () => ({
     listWorkflows: vi.fn(),
@@ -96,43 +95,6 @@ describe("ChatInput workflow slash commands", () => {
                 }),
             ),
         );
-    });
-
-    it("replaces an existing draft with an explicitly supplied workflow prompt", async () => {
-        const ref = createRef<ChatInputHandle>();
-        const user = userEvent.setup();
-        render(
-            <ChatInput
-                ref={ref}
-                onSubmit={vi.fn()}
-                onCancel={vi.fn()}
-                isLoading={false}
-            />,
-        );
-
-        const input = screen.getByRole("combobox");
-        await user.type(input, "Existing draft");
-
-        act(() => {
-            ref.current?.startWorkflow(
-                { id: "workflow-1", title: "Contract Intake" },
-                "Quick Action prompt",
-            );
-        });
-
-        expect(input).toHaveValue("Quick Action prompt");
-
-        await user.clear(input);
-        await user.type(input, "Another existing draft");
-
-        act(() => {
-            ref.current?.startWorkflowDocumentSelection(
-                { id: "workflow-1", title: "Contract Intake" },
-                "Document Quick Action prompt",
-            );
-        });
-
-        expect(input).toHaveValue("Document Quick Action prompt");
     });
 
     it("treats slash as ordinary input when no workflows define commands", async () => {

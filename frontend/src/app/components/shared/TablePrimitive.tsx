@@ -180,7 +180,7 @@ export function TableScrollArea({
     return (
         <div
             className={cn(
-                "mx-4 mb-2 min-h-0 min-w-0 flex-1 rounded-2xl md:mx-8 md:mb-3",
+                "mx-4 mb-2 min-h-0 min-w-0 flex-1 rounded-2xl md:mx-6 md:mb-3",
                 className,
             )}
         >
@@ -399,10 +399,10 @@ export function TablePrimaryCell({
                     }}
                     onBlur={onEditCommit}
                     onClick={(e) => e.stopPropagation()}
-                    className="min-w-0 flex-1 text-xs text-gray-800 bg-transparent outline-none"
+                    className="min-w-0 flex-1 text-sm text-gray-800 bg-transparent outline-none"
                 />
             ) : (
-                <span className="min-w-0 flex-1 truncate text-xs text-gray-800">
+                <span className="min-w-0 flex-1 truncate text-sm text-gray-800">
                     {label}
                 </span>
             )
@@ -426,12 +426,6 @@ export function TablePrimaryCell({
                         onClick={(e) => e.stopPropagation()}
                         className={TABLE_CHECKBOX_CLASS}
                         title={checkboxTitle}
-                        aria-label={
-                            checkboxTitle ??
-                            (typeof label === "string"
-                                ? `Select ${label}`
-                                : undefined)
-                        }
                     />
                 )}
                 {content}
@@ -454,7 +448,7 @@ export function TableHeaderCell({ children, className, ...props }: DivProps) {
 export function TableCell({ children, className, ...props }: DivProps) {
     return (
         <div
-            className={cn("shrink-0 truncate text-xs text-gray-500", className)}
+            className={cn("shrink-0 truncate text-sm text-gray-500", className)}
             {...props}
         >
             {children}
@@ -480,7 +474,7 @@ export function TableEmptyState({
     return (
         <div
             className={cn(
-                "mx-auto flex w-full max-w-[260px] flex-1 flex-col items-start justify-center py-24 text-left",
+                "mx-auto flex w-full max-w-xs flex-1 flex-col items-center justify-center py-24 text-center",
                 className,
             )}
         >

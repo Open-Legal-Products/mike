@@ -1,23 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ApiKeyField } from "@/app/components/settings/ApiKeyField";
 import { useUserProfile } from "@/app/contexts/UserProfileContext";
+import { listQuickActions, updateQuickAction } from "@/app/lib/mikeApi";
+import type { QuickAction } from "@/app/components/shared/types";
 import { SettingsSection } from "../SettingsSection";
 import { SettingsToggle } from "../SettingsToggle";
 
 export default function FeaturesPage() {
-    const {
-        profile,
-        updateApiKey,
-        updateLegalResearchUs,
-        updateQuickActionsVisible,
-    } = useUserProfile();
+    const { profile, updateApiKey, updateLegalResearchUs } = useUserProfile();
+    const [quickActions, setQuickActions] = useState<QuickAction[]>([]);
     const [quickActionsError, setQuickActionsError] = useState<string | null>(
         null,
     );
     const [saving, setSaving] = useState(false);
-    const [savingQuickActions, setSavingQuickActions] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [optimisticLegalResearchUs, setOptimisticLegalResearchUs] = useState<
         boolean | null
@@ -26,14 +23,37 @@ export default function FeaturesPage() {
     const persistedLegalResearchUs = profile?.legalResearchUs ?? true;
     const courtListenerEnabled =
         optimisticLegalResearchUs ?? persistedLegalResearchUs;
-    const quickActionsVisible = profile?.quickActionsVisible ?? true;
+    const quickActionsEnabled = quickActions.some((action) => action.enabled);
 
-    const setQuickActionsVisible = async (visible: boolean) => {
+    useEffect(() => {
+        void listQuickActions().then(setQuickActions).catch(() => {});
+    }, []);
+
+    const updateAllQuickActions = async (enabled: boolean) => {
+        const previous = quickActions;
         setQuickActionsError(null);
-        setSavingQuickActions(true);
-        const ok = await updateQuickActionsVisible(visible);
-        setSavingQuickActions(false);
-        if (!ok) setQuickActionsError("Could not update. Try again.");
+        setQuickActions((current) =>
+            current.map((action) => ({ ...action, enabled })),
+        );
+        const results = await Promise.allSettled(
+            previous.map((action) => updateQuickAction(action.id, { enabled })),
+        );
+        setQuickActions(
+            previous.map((action, index) => {
+                const result = results[index];
+                return result.status === "fulfilled" ? result.value : action;
+            }),
+        );
+        const failed = results.filter(
+            (result) => result.status === "rejected",
+        ).length;
+        if (failed > 0) {
+            setQuickActionsError(
+                failed === results.length
+                    ? "Could not update. Try again."
+                    : "Some quick actions could not be updated. Try again.",
+            );
+        }
     };
 
     const handleCourtListenerChange = async (enabled: boolean) => {
@@ -74,11 +94,10 @@ export default function FeaturesPage() {
                             )}
                         </div>
                         <SettingsToggle
-                            checked={quickActionsVisible}
-                            loading={savingQuickActions}
+                            checked={quickActionsEnabled}
                             size="md"
                             onChange={(checked) => {
-                                void setQuickActionsVisible(checked);
+                                void updateAllQuickActions(checked);
                             }}
                         />
                     </div>
@@ -131,7 +150,9 @@ export default function FeaturesPage() {
                                     value.trim() || null,
                                 )
                             }
-                            onRemove={() => updateApiKey("courtlistener", null)}
+                            onRemove={() =>
+                                updateApiKey("courtlistener", null)
+                            }
                         />
                     )}
                 </SettingsSection>

@@ -1,13 +1,13 @@
 import React, { type ImgHTMLAttributes } from "react";
 import { File } from "lucide-react";
-import excelIcon from "@icons/file-types/excel.svg";
-import pdfIcon from "@icons/file-types/pdf.svg";
-import pptIcon from "@icons/file-types/ppt.svg";
-import wordIcon from "@icons/file-types/word.svg";
-import folderClosedIcon from "@icons/file-system/folder-closed.svg";
-import folderOpenIcon from "@icons/file-system/folder-open.svg";
-import projectClosedIcon from "@icons/file-system/project-closed.svg";
-import projectOpenIcon from "@icons/file-system/project-opened.svg";
+import excelIcon from "../../../assets/icons/file-types/excel.svg";
+import pdfIcon from "../../../assets/icons/file-types/pdf.svg";
+import pptIcon from "../../../assets/icons/file-types/ppt.svg";
+import wordIcon from "../../../assets/icons/file-types/word.svg";
+import folderClosedIcon from "../../../assets/icons/app-sidebar/folder-closed.svg";
+import folderOpenIcon from "../../../assets/icons/app-sidebar/folder-open.svg";
+import projectClosedIcon from "../../../assets/icons/app-sidebar/project-closed.svg";
+import projectOpenIcon from "../../../assets/icons/app-sidebar/project-opened.svg";
 
 type DirectoryIconProps = Omit<
   ImgHTMLAttributes<HTMLImageElement>,

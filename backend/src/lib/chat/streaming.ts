@@ -60,7 +60,6 @@ export type AssistantEvent =
   | {
       type: "doc_find";
       filename: string;
-      document_id?: string;
       query: string;
       total_matches: number;
     }
@@ -437,7 +436,6 @@ export async function runLLMStream(params: {
           events.push({
             type: "doc_find",
             filename: f.filename,
-            document_id: f.document_id,
             query: f.query,
             total_matches: f.total_matches,
           });

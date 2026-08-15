@@ -76,11 +76,6 @@ import {
 } from "@/app/components/shared/TablePrimitive";
 
 export type DocTableFolder = ProjectFolder | LibraryFolder;
-export type DocTableFolderBreadcrumb = {
-    id: string;
-    name: string;
-    onClick: () => void;
-};
 export interface DocTableSelectionActions {
     selectedCount: number;
     hasDocumentsInFolders: boolean;
@@ -144,10 +139,6 @@ interface DocTableProps {
     ) => ReactNode;
     onAddDocumentsActionChange?: (action: (() => void) | null) => void;
     onCreateFolderActionChange?: (action: (() => void) | null) => void;
-    onFolderViewBackActionChange?: (action: (() => void) | null) => void;
-    onFolderViewChange?: (path: DocTableFolderBreadcrumb[]) => void;
-    folderViewId?: string | null;
-    onFolderViewIdChange?: (folderId: string | null) => void;
     onSelectionActionsChange?: (actions: DocTableSelectionActions | null) => void;
     onOwnerOnlyAction?: Dispatch<SetStateAction<string | null>>;
     enableHeaderFilters?: boolean;
@@ -161,9 +152,6 @@ interface DocTableProps {
     documentsHasMoreByLevel?: Record<string, boolean>;
     loadingMoreDocumentsByLevel?: Record<string, boolean>;
     onLoadMoreDocuments?: (parentId: string | null) => void;
-    // Optional client-side visibility limits for collections that already
-    // contain every document but should present the same paged directory UI.
-    documentLimitByLevel?: Record<string, number>;
     // When non-null, these are already filtered/sorted server results and are
     // rendered as a flat list instead of the folder tree.
     serverDocuments?: Document[] | null;
@@ -297,10 +285,6 @@ export function DocTable({
     renderAddDocumentsModal,
     onAddDocumentsActionChange,
     onCreateFolderActionChange,
-    onFolderViewBackActionChange,
-    onFolderViewChange,
-    folderViewId,
-    onFolderViewIdChange,
     onSelectionActionsChange,
     onOwnerOnlyAction,
     enableHeaderFilters = false,
@@ -308,7 +292,6 @@ export function DocTable({
     documentsHasMoreByLevel,
     loadingMoreDocumentsByLevel,
     onLoadMoreDocuments,
-    documentLimitByLevel,
     serverDocuments = null,
     serverQueryLoading = false,
     serverQueryHasMore = false,
@@ -329,9 +312,6 @@ export function DocTable({
         label: string;
     } | null>(null);
     const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
-    const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(
-        () => new Set(),
-    );
     const [selectionCameFromSelectAll, setSelectionCameFromSelectAll] = useState(false);
     const [selectingAllDocuments, setSelectingAllDocuments] = useState(false);
     const [confirmDeleteAllOpen, setConfirmDeleteAllOpen] = useState(false);
@@ -539,9 +519,6 @@ export function DocTable({
 
     // Folder state
     const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set());
-    const [viewedFolderId, setViewedFolderId] = useState<string | null>(
-        folderViewId ?? null,
-    );
     const [loadingChildFolderIds, setLoadingChildFolderIds] = useState<Set<string>>(() => new Set());
     // undefined = not creating; null = creating at root; string = creating inside that folder id
     const [creatingFolderIn, setCreatingFolderIn] = useState<string | null | undefined>(undefined);
@@ -581,9 +558,9 @@ export function DocTable({
 
     const openCreateFolder = useCallback(() => {
         if (loadingRef.current) return;
-        setCreatingFolderIn(viewedFolderId);
+        setCreatingFolderIn(null);
         setNewFolderName("");
-    }, [viewedFolderId]);
+    }, []);
 
     useEffect(() => {
         onCreateFolderActionChange?.(openCreateFolder);
@@ -591,117 +568,20 @@ export function DocTable({
     }, [onCreateFolderActionChange, openCreateFolder]);
 
     useEffect(() => {
+        // In lazy mode, folders start collapsed and their contents are
+        // fetched via onExpandFolder as the user opens them.
+        if (loading || onExpandFolder) return;
+        setExpandedFolderIds(new Set(folders.map((f) => f.id)));
+    }, [loading, folders, onExpandFolder]);
+
+    useEffect(() => {
         setSelectedDocIds([]);
-        setSelectedFolderIds(new Set());
-        setExpandedFolderIds(new Set());
-        setViewedFolderId(null);
         setSelectionCameFromSelectAll(false);
         setConfirmDeleteAllOpen(false);
         setContextMenu(null);
         setTypeFilter(null);
         setSort(null);
     }, [scopeKey]);
-
-    const foldersRef = useRef(folders);
-    foldersRef.current = folders;
-    const viewedFolderIdRef = useRef(viewedFolderId);
-    viewedFolderIdRef.current = viewedFolderId;
-    const onFolderViewIdChangeRef = useRef(onFolderViewIdChange);
-    onFolderViewIdChangeRef.current = onFolderViewIdChange;
-
-    const updateViewedFolder = useCallback((folderId: string | null) => {
-        if (viewedFolderIdRef.current === folderId) return;
-        viewedFolderIdRef.current = folderId;
-        setViewedFolderId(folderId);
-        onFolderViewIdChangeRef.current?.(folderId);
-    }, []);
-
-    useEffect(() => {
-        if (folderViewId === undefined) return;
-        viewedFolderIdRef.current = folderViewId;
-        setViewedFolderId(folderViewId);
-    }, [folderViewId, scopeKey]);
-
-    const backFromFolderView = useCallback(() => {
-        const currentFolderId = viewedFolderIdRef.current;
-        if (!currentFolderId) return;
-        updateViewedFolder(
-            foldersRef.current.find(
-                (folder) => folder.id === currentFolderId,
-            )?.parent_folder_id ?? null,
-        );
-    }, [updateViewedFolder]);
-
-    const navigateToFolder = useCallback((folderId: string) => {
-        updateViewedFolder(folderId);
-        setExpandedFolderIds((previous) => {
-            if (previous.has(folderId)) return previous;
-            return new Set([...previous, folderId]);
-        });
-    }, [updateViewedFolder]);
-
-    const navigateToFolderRoot = useCallback(() => {
-        updateViewedFolder(null);
-    }, [updateViewedFolder]);
-
-    useEffect(() => {
-        onFolderViewBackActionChange?.(
-            viewedFolderId ? backFromFolderView : null,
-        );
-    }, [
-        backFromFolderView,
-        onFolderViewBackActionChange,
-        viewedFolderId,
-    ]);
-
-    const folderPathRef = useRef<DocTableFolder[]>([]);
-    const folderPathKey = useMemo(() => {
-        const path: DocTableFolder[] = [];
-        let current = viewedFolderId
-            ? folders.find((folder) => folder.id === viewedFolderId)
-            : undefined;
-        while (current) {
-            path.unshift(current);
-            current = current.parent_folder_id
-                ? folders.find(
-                      (folder) => folder.id === current?.parent_folder_id,
-                )
-                : undefined;
-        }
-        folderPathRef.current = path;
-        return JSON.stringify(
-            path.map((folder) => [folder.id, folder.name]),
-        );
-    }, [folders, viewedFolderId]);
-
-    useEffect(() => {
-        onFolderViewChange?.(
-            folderPathRef.current.map((folder) => ({
-                id: folder.id,
-                name: folder.name,
-                onClick: () => navigateToFolder(folder.id),
-            })),
-        );
-    }, [folderPathKey, navigateToFolder, onFolderViewChange]);
-
-    const onFolderViewBackActionChangeRef = useRef(
-        onFolderViewBackActionChange,
-    );
-    onFolderViewBackActionChangeRef.current = onFolderViewBackActionChange;
-    const onFolderViewChangeRef = useRef(onFolderViewChange);
-    onFolderViewChangeRef.current = onFolderViewChange;
-
-    useEffect(
-        () => () => {
-            onFolderViewBackActionChangeRef.current?.(null);
-            onFolderViewChangeRef.current?.([]);
-        },
-        [],
-    );
-
-    useEffect(() => {
-        if (search.trim() || serverQueryActive) navigateToFolderRoot();
-    }, [navigateToFolderRoot, search, serverQueryActive]);
 
     // Close context menu on outside click
     useEffect(() => {
@@ -765,13 +645,6 @@ export function DocTable({
         if (opening) void expandFolderChildren(id);
     }
 
-    function openFolderView(id: string) {
-        updateViewedFolder(id);
-        if (expandedFolderIds.has(id)) return;
-        setExpandedFolderIds((prev) => new Set([...prev, id]));
-        void expandFolderChildren(id);
-    }
-
     async function handleCreateFolder(parentId: string | null) {
         const name = newFolderName.trim();
         setNewFolderName("");
@@ -814,20 +687,8 @@ export function DocTable({
         const name = renameFolderValue.trim();
         setRenamingFolderId(null);
         if (!name) return;
-        const updatedAt = new Date().toISOString();
-        setFolders((prev) =>
-            prev.map((folder) =>
-                folder.id === folderId
-                    ? { ...folder, name, updated_at: updatedAt }
-                    : folder,
-            ),
-        );
-        const updated = await operations.renameFolder(folderId, name);
-        setFolders((prev) =>
-            prev.map((folder) =>
-                folder.id === folderId ? { ...folder, ...updated } : folder,
-            ),
-        );
+        setFolders((prev) => prev.map((f) => (f.id === folderId ? { ...f, name } : f)));
+        await operations.renameFolder(folderId, name);
     }
 
     function folderDeleteImpact(folderId: string) {
@@ -877,10 +738,6 @@ export function DocTable({
 
             setFolders((prev) => prev.filter((f) => !toDelete.has(f.id)));
             setDocuments((prev) => prev.filter((d) => !d.folder_id || !toDelete.has(d.folder_id)));
-            const currentFolderId = viewedFolderIdRef.current;
-            if (currentFolderId && toDelete.has(currentFolderId)) {
-                updateViewedFolder(pending.folder.parent_folder_id ?? null);
-            }
             setExpandedFolderIds((prev) => {
                 const next = new Set(prev);
                 for (const id of toDelete) next.delete(id);
@@ -894,11 +751,6 @@ export function DocTable({
             }
             const deletedDocIds = new Set(pending.documentIds);
             setSelectedDocIds((prev) => prev.filter((id) => !deletedDocIds.has(id)));
-            setSelectedFolderIds((prev) => {
-                const next = new Set(prev);
-                for (const id of toDelete) next.delete(id);
-                return next;
-            });
             setExpandedVersionDocIds((prev) => {
                 const next = new Set(prev);
                 for (const id of pending.documentIds) next.delete(id);
@@ -1303,56 +1155,16 @@ export function DocTable({
         if (docId) {
             const doc = documents.find((d) => d.id === docId);
             if (!doc || (doc.folder_id ?? null) === targetFolderId) return;
-            const updatedAt = new Date().toISOString();
-            setDocuments((prev) =>
-                prev.map((document) =>
-                    document.id === docId
-                        ? {
-                              ...document,
-                              folder_id: targetFolderId,
-                              updated_at: updatedAt,
-                          }
-                        : document,
-                ),
-            );
-            const updated = await operations.moveDocument(
-                docId,
-                targetFolderId,
-            );
-            setDocuments((prev) =>
-                prev.map((document) =>
-                    document.id === docId
-                        ? { ...document, ...updated }
-                        : document,
-                ),
-            );
+            setDocuments((prev) => prev.map((d) => (d.id === docId ? { ...d, folder_id: targetFolderId } : d)));
+            await operations.moveDocument(docId, targetFolderId);
         } else if (subFolderId && subFolderId !== targetFolderId) {
             if (targetFolderId !== null && wouldCreateCycle(subFolderId, targetFolderId)) return;
             const folder = folders.find((f) => f.id === subFolderId);
             if (!folder || (folder.parent_folder_id ?? null) === targetFolderId) return;
-            const updatedAt = new Date().toISOString();
             setFolders((prev) =>
-                prev.map((candidate) =>
-                    candidate.id === subFolderId
-                        ? {
-                              ...candidate,
-                              parent_folder_id: targetFolderId,
-                              updated_at: updatedAt,
-                          }
-                        : candidate,
-                ),
+                prev.map((f) => (f.id === subFolderId ? { ...f, parent_folder_id: targetFolderId } : f)),
             );
-            const updated = await operations.moveFolder(
-                subFolderId,
-                targetFolderId,
-            );
-            setFolders((prev) =>
-                prev.map((candidate) =>
-                    candidate.id === subFolderId
-                        ? { ...candidate, ...updated }
-                        : candidate,
-                ),
-            );
+            await operations.moveFolder(subFolderId, targetFolderId);
         }
     }
 
@@ -1371,19 +1183,13 @@ export function DocTable({
                     style={treeNameCellStyle(depth)}
                 >
                     <div className="flex items-center">
-                        <input
-                            type="checkbox"
-                            disabled
-                            aria-label="Select files in new folder"
-                            className={`${TABLE_CHECKBOX_CLASS} cursor-default opacity-40`}
-                        />
-                        <span className="mr-2 flex h-4 w-4 shrink-0 items-center justify-center">
-                            <ChevronRight className="h-4 w-4 text-gray-300" />
+                        <span className="mr-3 flex h-2.5 w-2.5 shrink-0 items-center justify-center">
+                            <ChevronRight className="h-3.5 w-3.5 text-gray-300" />
                         </span>
                         <SubfolderSvgIcon className="mr-2 h-4 w-4 shrink-0" />
                         <input
                             autoFocus
-                            className="flex-1 min-w-0 text-xs text-gray-800 bg-transparent outline-none border-b border-gray-300"
+                            className="flex-1 min-w-0 text-sm text-gray-800 bg-transparent outline-none border-b border-gray-300"
                             placeholder="Folder name"
                             value={newFolderName}
                             onChange={(e) => setNewFolderName(e.target.value)}
@@ -1432,16 +1238,16 @@ export function DocTable({
                         <span className="mr-2 shrink-0">
                             <DocIcon fileType={fileType ?? filename} muted />
                         </span>
-                        <span className="text-xs text-gray-400 truncate">{filename}</span>
+                        <span className="text-sm text-gray-400 truncate">{filename}</span>
                     </div>
                 </div>
-                <div className="ml-auto w-20 shrink-0 text-xs text-gray-300 lowercase truncate">
+                <div className="ml-auto w-20 shrink-0 text-xs text-gray-300 uppercase truncate">
                     {fileType ?? (filename.includes(".") ? filename.split(".").pop() : "file")}
                 </div>
-                <div className="w-24 shrink-0 text-xs text-gray-300">{statusLabel}</div>
-                <div className="w-20 shrink-0 text-xs text-gray-300">—</div>
-                <div className="w-32 shrink-0 text-xs text-gray-300">—</div>
-                <div className="w-32 shrink-0 text-xs text-gray-300">—</div>
+                <div className="w-24 shrink-0 text-sm text-gray-300">{statusLabel}</div>
+                <div className="w-20 shrink-0 text-sm text-gray-300">—</div>
+                <div className="w-32 shrink-0 text-sm text-gray-300">—</div>
+                <div className="w-32 shrink-0 text-sm text-gray-300">—</div>
                 <div className="w-8 shrink-0" />
             </div>
         );
@@ -1461,80 +1267,6 @@ export function DocTable({
 
     const effectiveSort = sort ?? defaultSort;
 
-    function folderTreeIds(folderId: string): Set<string> {
-        const ids = new Set<string>([folderId]);
-        const visit = (parentId: string) => {
-            folders
-                .filter((folder) => folder.parent_folder_id === parentId)
-                .forEach((folder) => {
-                    ids.add(folder.id);
-                    visit(folder.id);
-                });
-        };
-        visit(folderId);
-        return ids;
-    }
-
-    function clearSelectedFolderAncestors(
-        folderId: string | null | undefined,
-    ) {
-        if (!folderId) return;
-        const ancestorIds = new Set<string>();
-        let currentId: string | null = folderId;
-        while (currentId) {
-            ancestorIds.add(currentId);
-            currentId =
-                folders.find((folder) => folder.id === currentId)
-                    ?.parent_folder_id ?? null;
-        }
-        setSelectedFolderIds((prev) => {
-            if (![...ancestorIds].some((id) => prev.has(id))) return prev;
-            const next = new Set(prev);
-            for (const id of ancestorIds) next.delete(id);
-            return next;
-        });
-    }
-
-    useEffect(() => {
-        if (selectedFolderIds.size === 0) return;
-
-        const selectedTreeIds = new Set(selectedFolderIds);
-        let addedDescendant = true;
-        while (addedDescendant) {
-            addedDescendant = false;
-            for (const folder of folders) {
-                if (
-                    folder.parent_folder_id &&
-                    selectedTreeIds.has(folder.parent_folder_id) &&
-                    !selectedTreeIds.has(folder.id)
-                ) {
-                    selectedTreeIds.add(folder.id);
-                    addedDescendant = true;
-                }
-            }
-        }
-
-        const selectedDocumentIds = documents
-            .filter(
-                (document) =>
-                    document.folder_id != null &&
-                    selectedTreeIds.has(document.folder_id),
-            )
-            .map((document) => document.id);
-        if (selectedDocumentIds.length === 0) return;
-
-        setSelectedDocIds((current) => {
-            const next = new Set(current);
-            let changed = false;
-            for (const id of selectedDocumentIds) {
-                if (next.has(id)) continue;
-                next.add(id);
-                changed = true;
-            }
-            return changed ? [...next] : current;
-        });
-    }, [documents, folders, selectedFolderIds]);
-
     function renderLevel(parentId: string | null, depth: number) {
         const nameMultiplier =
             enableHeaderFilters &&
@@ -1545,73 +1277,12 @@ export function DocTable({
         const childFolders = folders
             .filter((f) => f.parent_folder_id === parentId)
             .sort((a, b) => a.name.localeCompare(b.name) * nameMultiplier);
-        const allChildDocs = filteredDocs.filter(
-            (d) => (d.folder_id ?? null) === parentId,
-        );
-        const levelKey = parentId ?? "root";
-        const levelLimit = documentLimitByLevel?.[levelKey];
-        const childDocs =
-            !q && levelLimit != null
-                ? allChildDocs.slice(0, levelLimit)
-                : allChildDocs;
-        const combinedSortKey =
-            effectiveSort?.key === "name" ||
-            effectiveSort?.key === "created" ||
-            effectiveSort?.key === "updated"
-                ? effectiveSort.key
-                : null;
-        const combinedDirection = effectiveSort?.direction === "desc" ? -1 : 1;
-        const rowOrder = new Map(
-            [
-                ...childDocs.map((document) => ({
-                    key: `document:${document.id}`,
-                    name: document.filename,
-                    createdAt: document.created_at,
-                    updatedAt: document.updated_at ?? document.created_at,
-                    fallbackGroup: 0,
-                })),
-                ...childFolders.map((folder) => ({
-                    key: `folder:${folder.id}`,
-                    name: folder.name,
-                    createdAt: folder.created_at,
-                    updatedAt: folder.updated_at ?? folder.created_at,
-                    fallbackGroup: 1,
-                })),
-            ]
-                .sort((a, b) => {
-                    if (combinedSortKey === "name") {
-                        return (
-                            a.name.localeCompare(b.name) * combinedDirection
-                        );
-                    }
-                    if (combinedSortKey === "created") {
-                        const difference =
-                            dateTimeValue(a.createdAt) -
-                            dateTimeValue(b.createdAt);
-                        return difference === 0
-                            ? a.name.localeCompare(b.name)
-                            : difference * combinedDirection;
-                    }
-                    if (combinedSortKey === "updated") {
-                        const difference =
-                            dateTimeValue(a.updatedAt) -
-                            dateTimeValue(b.updatedAt);
-                        return difference === 0
-                            ? a.name.localeCompare(b.name)
-                            : difference * combinedDirection;
-                    }
-                    return (
-                        a.fallbackGroup - b.fallbackGroup ||
-                        a.name.localeCompare(b.name)
-                    );
-                })
-                .map((row, index) => [row.key, index + 1]),
-        );
-        const trailingRowOrder = rowOrder.size + 2;
+        const childDocs = filteredDocs.filter((d) => (d.folder_id ?? null) === parentId);
 
         return (
-            <div className="flex flex-col">
+            <>
                 {parentId === null && renderUploadingDocumentRows(depth)}
+                {/* Files first */}
                 {childDocs.map((doc) => {
                     const docName = doc.filename;
                     const isProcessing = doc.status === "pending" || doc.status === "processing";
@@ -1633,13 +1304,7 @@ export function DocTable({
                         });
                     }
                     return (
-                        <div
-                            key={`doc-${doc.id}`}
-                            style={{
-                                order:
-                                    rowOrder.get(`document:${doc.id}`) ?? 1,
-                            }}
-                        >
+                        <div key={`doc-${doc.id}`}>
                             <div
                                 data-document-row
                                 draggable={renamingDocumentId !== doc.id}
@@ -1697,11 +1362,6 @@ export function DocTable({
                                                             type="checkbox"
                                                             checked={selectedDocIds.includes(doc.id)}
                                                             onChange={() => {
-                                                                if (selectedDocIds.includes(doc.id)) {
-                                                                    clearSelectedFolderAncestors(
-                                                                        doc.folder_id,
-                                                                    );
-                                                                }
                                                                 setSelectedDocIds((prev) =>
                                                                     prev.includes(doc.id)
                                                                         ? prev.filter((x) => x !== doc.id)
@@ -1722,7 +1382,7 @@ export function DocTable({
                                                     {renamingDocumentId === doc.id ? (
                                                         <input
                                                             autoFocus
-                                                            className="min-w-0 flex-1 text-xs text-gray-800 bg-transparent outline-none border-b border-gray-300"
+                                                            className="min-w-0 flex-1 text-sm text-gray-800 bg-transparent outline-none border-b border-gray-300"
                                                             value={renameDocumentValue}
                                                             onClick={(e) => e.stopPropagation()}
                                                             onDragStart={(e) => {
@@ -1741,16 +1401,16 @@ export function DocTable({
                                                             onBlur={() => void submitDocumentRename(doc.id)}
                                                         />
                                                     ) : (
-                                                        <span className="text-xs text-gray-800 truncate">
+                                                        <span className="text-sm text-gray-800 truncate">
                                                             {docName}
                                                         </span>
                                                     )}
                                                 </div>
                                             </div>
-                                            <div className="ml-auto w-20 shrink-0 text-xs text-gray-500 lowercase truncate">
+                                            <div className="ml-auto w-20 shrink-0 text-xs text-gray-500 uppercase truncate">
                                                 {doc.file_type ?? <span className="text-gray-300">—</span>}
                                             </div>
-                                            <div className="w-24 shrink-0 text-xs text-gray-500 truncate">
+                                            <div className="w-24 shrink-0 text-sm text-gray-500 truncate">
                                                 {doc.size_bytes != null ? (
                                                     formatBytes(doc.size_bytes)
                                                 ) : (
@@ -1758,7 +1418,7 @@ export function DocTable({
                                                 )}
                                             </div>
                                             <div
-                                                className="w-20 shrink-0 text-xs text-gray-500 flex items-center gap-1"
+                                                className="w-20 shrink-0 text-sm text-gray-500 flex items-center gap-1"
                                                 onClick={(e) => e.stopPropagation()}
                                             >
                                                 {hasVersions ? (
@@ -1777,14 +1437,14 @@ export function DocTable({
                                                     <span className="text-gray-300 pl-1">—</span>
                                                 )}
                                             </div>
-                                            <div className="w-32 shrink-0 text-xs text-gray-500 truncate">
+                                            <div className="w-32 shrink-0 text-sm text-gray-500 truncate">
                                                 {doc.created_at ? (
                                                     formatDate(doc.created_at)
                                                 ) : (
                                                     <span className="text-gray-300">—</span>
                                                 )}
                                             </div>
-                                            <div className="w-32 shrink-0 text-xs text-gray-500 truncate">
+                                            <div className="w-32 shrink-0 text-sm text-gray-500 truncate">
                                                 {doc.updated_at ? (
                                                     formatDate(doc.updated_at)
                                                 ) : (
@@ -1849,59 +1509,26 @@ export function DocTable({
                     );
                 })}
 
-                {onLoadMoreDocuments && !q && (
-                    <div
-                        style={{
-                            ...treeNameCellStyle(depth),
-                            order: trailingRowOrder,
-                        }}
-                    >
+                {onLoadMoreDocuments && (
+                    <div style={treeNameCellStyle(depth)}>
                         <TableLoadMoreRow
-                            autoLoadOnVisible={autoLoadOnScroll}
                             loading={false}
-                            hasMore={!!documentsHasMoreByLevel?.[levelKey]}
+                            hasMore={!!documentsHasMoreByLevel?.[parentId ?? "root"]}
                             itemCount={childDocs.length}
-                            loadingMore={!!loadingMoreDocumentsByLevel?.[levelKey]}
+                            loadingMore={!!loadingMoreDocumentsByLevel?.[parentId ?? "root"]}
                             hasError={false}
                             onLoadMore={() => onLoadMoreDocuments(parentId)}
                         />
                     </div>
                 )}
 
+                {/* Subfolders after files, sorted alphabetically */}
                 {childFolders.map((folder) => {
                     const isExpanded = expandedFolderIds.has(folder.id);
                     const isRenaming = renamingFolderId === folder.id;
                     const isLoadingChildren = loadingChildFolderIds.has(folder.id);
-                    const folderIds = folderTreeIds(folder.id);
-                    const folderDocumentIds = docs
-                        .filter(
-                            (document) =>
-                                document.folder_id != null &&
-                                folderIds.has(document.folder_id),
-                        )
-                        .map((document) => document.id);
-                    const folderExplicitlySelected = selectedFolderIds.has(
-                        folder.id,
-                    );
-                    const allFolderDocumentsSelected =
-                        folderExplicitlySelected ||
-                        (folderDocumentIds.length > 0 &&
-                            folderDocumentIds.every((id) =>
-                                selectedDocIds.includes(id),
-                            ));
-                    const someFolderDocumentsSelected =
-                        !allFolderDocumentsSelected &&
-                        folderDocumentIds.some((id) =>
-                            selectedDocIds.includes(id),
-                        );
                     return (
-                        <div
-                            key={`folder-${folder.id}`}
-                            style={{
-                                order:
-                                    rowOrder.get(`folder:${folder.id}`) ?? 1,
-                            }}
-                        >
+                        <div key={`folder-${folder.id}`}>
                             <div
                                 draggable={!isRenaming}
                                 onDragStart={(e) => {
@@ -1933,7 +1560,7 @@ export function DocTable({
                                     setDragOverVersionDocId(null);
                                     await handleDropOnFolder(folder.id, e.dataTransfer);
                                 }}
-                                onClick={() => openFolderView(folder.id)}
+                                onClick={() => toggleFolder(folder.id)}
                                 onContextMenu={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -1952,82 +1579,20 @@ export function DocTable({
                                     style={treeNameCellStyle(depth)}
                                 >
                                     <div className="flex items-center">
-                                        <input
-                                            type="checkbox"
-                                            checked={allFolderDocumentsSelected}
-                                            ref={(element) => {
-                                                if (element) {
-                                                    element.indeterminate =
-                                                        someFolderDocumentsSelected;
-                                                }
-                                            }}
-                                            onChange={() => {
-                                                setSelectionCameFromSelectAll(false);
-                                                setSelectedFolderIds((current) => {
-                                                    const next = new Set(current);
-                                                    if (allFolderDocumentsSelected) {
-                                                        next.delete(folder.id);
-                                                    } else {
-                                                        next.add(folder.id);
-                                                    }
-                                                    return next;
-                                                });
-                                                setSelectedDocIds((current) => {
-                                                    const next = new Set(current);
-                                                    if (allFolderDocumentsSelected) {
-                                                        folderDocumentIds.forEach((id) =>
-                                                            next.delete(id),
-                                                        );
-                                                    } else {
-                                                        folderDocumentIds.forEach((id) =>
-                                                            next.add(id),
-                                                        );
-                                                    }
-                                                    return [...next];
-                                                });
-                                                if (
-                                                    !allFolderDocumentsSelected &&
-                                                    !expandedFolderIds.has(folder.id)
-                                                ) {
-                                                    setExpandedFolderIds((current) =>
-                                                        new Set([...current, folder.id]),
-                                                    );
-                                                    void expandFolderChildren(folder.id);
-                                                }
-                                            }}
-                                            onClick={(event) =>
-                                                event.stopPropagation()
-                                            }
-                                            className={TABLE_CHECKBOX_CLASS}
-                                            aria-label={`Select files in ${folder.name}`}
-                                            title={`Select files in ${folder.name}`}
-                                        />
-                                        <button
-                                            type="button"
-                                            aria-label={
-                                                isExpanded
-                                                    ? `Collapse ${folder.name}`
-                                                    : `Expand ${folder.name}`
-                                            }
-                                            onClick={(event) => {
-                                                event.stopPropagation();
-                                                toggleFolder(folder.id);
-                                            }}
-                                            className="mr-2 flex h-4 w-4 shrink-0 items-center justify-center"
-                                        >
+                                        <span className="mr-3 flex h-2.5 w-2.5 shrink-0 items-center justify-center">
                                             {isLoadingChildren ? (
-                                                <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />
                                             ) : isExpanded ? (
-                                                <ChevronDown className="h-4 w-4 text-gray-400" />
+                                                <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
                                             ) : (
-                                                <ChevronRight className="h-4 w-4 text-gray-400" />
+                                                <ChevronRight className="h-3.5 w-3.5 text-gray-400" />
                                             )}
-                                        </button>
+                                        </span>
                                         <SubfolderSvgIcon open={isExpanded} className="mr-2 h-4 w-4 shrink-0" />
                                         {isRenaming ? (
                                             <input
                                                 autoFocus
-                                                className="flex-1 min-w-0 text-xs text-gray-800 bg-transparent outline-none"
+                                                className="flex-1 min-w-0 text-sm text-gray-800 bg-transparent outline-none"
                                                 value={renameFolderValue}
                                                 onDragStart={(e) => {
                                                     e.preventDefault();
@@ -2042,21 +1607,15 @@ export function DocTable({
                                                 onClick={(e) => e.stopPropagation()}
                                             />
                                         ) : (
-                                            <span className="text-xs text-gray-800 truncate">{folder.name}</span>
+                                            <span className="text-sm text-gray-800 truncate">{folder.name}</span>
                                         )}
                                     </div>
                                 </div>
                                 <div className="ml-auto w-20 shrink-0 text-xs text-gray-300">—</div>
-                                <div className="w-24 shrink-0 text-xs text-gray-300">—</div>
-                                <div className="w-20 shrink-0 text-xs text-gray-300">—</div>
-                                <div className="w-32 shrink-0 truncate text-xs text-gray-500">
-                                    {formatDate(folder.created_at)}
-                                </div>
-                                <div className="w-32 shrink-0 truncate text-xs text-gray-500">
-                                    {formatDate(
-                                        folder.updated_at ?? folder.created_at,
-                                    )}
-                                </div>
+                                <div className="w-24 shrink-0 text-sm text-gray-300">—</div>
+                                <div className="w-20 shrink-0 text-sm text-gray-300">—</div>
+                                <div className="w-32 shrink-0 text-sm text-gray-300">—</div>
+                                <div className="w-32 shrink-0 text-sm text-gray-300">—</div>
                                 <div className="w-8 shrink-0 flex justify-end" onClick={(e) => e.stopPropagation()}>
                                     <RowActions
                                         onRename={() => {
@@ -2072,10 +1631,9 @@ export function DocTable({
                     );
                 })}
 
-                <div style={{ order: trailingRowOrder + 1 }}>
-                    {renderFolderInput(parentId, depth)}
-                </div>
-            </div>
+                {/* New-folder input row at the bottom of this level */}
+                {renderFolderInput(parentId, depth)}
+            </>
         );
     }
 
@@ -2107,7 +1665,6 @@ export function DocTable({
     const handleRemoveSelectedFromFolder = useCallback(async () => {
         const ids = selectedDocIds.filter((id) => docs.find((d) => d.id === id)?.folder_id != null);
         if (ids.length === 0) return;
-        setSelectedFolderIds(new Set());
         setDocuments((prev) => prev.map((d) => (ids.includes(d.id) ? { ...d, folder_id: null } : d)));
         await Promise.all(ids.map((id) => operations.moveDocument(id, null).catch(() => {})));
     }, [docs, operations, selectedDocIds, setDocuments]);
@@ -2122,7 +1679,6 @@ export function DocTable({
         setConfirmDeleteAllOpen(false);
         setSelectionCameFromSelectAll(false);
         setSelectedDocIds([]);
-        setSelectedFolderIds(new Set());
         let deletedIds: string[] = [];
         if (operations.bulkDeleteDocuments) {
             try {
@@ -2191,9 +1747,6 @@ export function DocTable({
     const sidePanelDoc = viewingDoc ? (docs.find((doc) => doc.id === viewingDoc.id) ?? viewingDoc) : null;
     const versionUploadAccept = ".pdf,.docx,.doc,.xlsx,.xlsm,.xls,.pptx,.ppt";
     const q = serverQueryActive ? "__server_results__" : search.toLowerCase();
-    const viewedFolder = viewedFolderId
-        ? folders.find((folder) => folder.id === viewedFolderId) ?? null
-        : null;
     const derivedTypeOptions = useMemo(
         () =>
             Array.from(new Set(docs.map(documentTypeValue)))
@@ -2210,10 +1763,7 @@ export function DocTable({
         onServerQueryChange?.({ search, fileType: typeFilter, sort });
     }, [onServerQueryChange, search, sort, typeFilter]);
 
-    const activeDirectoryLevelKey = viewedFolderId ?? "root";
-    const activePageLoadingMore = serverQueryActive
-        ? serverQueryLoadingMore
-        : !!loadingMoreDocumentsByLevel?.[activeDirectoryLevelKey];
+    const activePageLoadingMore = serverQueryActive ? serverQueryLoadingMore : !!loadingMoreDocumentsByLevel?.root;
 
     useEffect(() => {
         if (!activePageLoadingMore) autoLoadTriggeredRef.current = false;
@@ -2239,12 +1789,12 @@ export function DocTable({
 
         if (
             !serverQueryActive &&
-            documentsHasMoreByLevel?.[activeDirectoryLevelKey] &&
-            !loadingMoreDocumentsByLevel?.[activeDirectoryLevelKey] &&
+            documentsHasMoreByLevel?.root &&
+            !loadingMoreDocumentsByLevel?.root &&
             onLoadMoreDocuments
         ) {
             autoLoadTriggeredRef.current = true;
-            onLoadMoreDocuments(viewedFolderId ?? null);
+            onLoadMoreDocuments(null);
         }
     }
 
@@ -2295,15 +1845,6 @@ export function DocTable({
             return a.filename.localeCompare(b.filename) * multiplier;
         });
     }, [docs, effectiveSort, enableHeaderFilters, q, serverQueryActive, typeFilter]);
-    const viewedFolderIsEmpty =
-        !!viewedFolder &&
-        !loadingChildFolderIds.has(viewedFolder.id) &&
-        !docs.some((document) => document.folder_id === viewedFolder.id) &&
-        !folders.some(
-            (folder) => folder.parent_folder_id === viewedFolder.id,
-        ) &&
-        creatingFolderIn !== viewedFolder.id &&
-        uploadingDroppedFilenames.length === 0;
 
     const nameSortDirection = effectiveSort?.key === "name" ? effectiveSort.direction : null;
     const sizeSortDirection = effectiveSort?.key === "size" ? effectiveSort.direction : null;
@@ -2381,7 +1922,6 @@ export function DocTable({
     const handleToggleAllDocuments = useCallback(async () => {
         if (allDocsSelected || selectionCameFromSelectAll) {
             setSelectedDocIds([]);
-            setSelectedFolderIds(new Set());
             setSelectionCameFromSelectAll(false);
             return;
         }
@@ -2667,15 +2207,8 @@ export function DocTable({
                             )}
 
                             {/* Empty state */}
-                            {viewedFolderIsEmpty ? (
-                                <div className="flex flex-1 items-center justify-center py-24 text-center">
-                                    <p className="text-sm text-gray-400">
-                                        Empty folder
-                                    </p>
-                                </div>
-                            ) : docs.length === 0 &&
+                            {docs.length === 0 &&
                             (serverQueryActive || folders.length === 0) &&
-                            creatingFolderIn === undefined &&
                             uploadingDroppedFilenames.length === 0 ? (
                                 serverQueryActive ? (
                                     <div className="flex-1 flex flex-col items-center justify-center py-24 text-center">
@@ -2721,10 +2254,7 @@ export function DocTable({
                                         setDragOverRoot(false);
                                         setDragOverFolderId(null);
                                         setDragOverVersionDocId(null);
-                                        await handleDropOnFolder(
-                                            viewedFolderId,
-                                            e.dataTransfer,
-                                        );
+                                        await handleDropOnFolder(null, e.dataTransfer);
                                     }}
                                 >
                                     {/* Search: flat list; no search: folder tree */}
@@ -2803,13 +2333,6 @@ export function DocTable({
                                                                             type="checkbox"
                                                                             checked={selectedDocIds.includes(doc.id)}
                                                                             onChange={() => {
-                                                                                if (
-                                                                                    selectedDocIds.includes(doc.id)
-                                                                                ) {
-                                                                                    clearSelectedFolderAncestors(
-                                                                                        doc.folder_id,
-                                                                                    );
-                                                                                }
                                                                                 setSelectedDocIds((prev) =>
                                                                                     prev.includes(doc.id)
                                                                                         ? prev.filter(
@@ -2832,7 +2355,7 @@ export function DocTable({
                                                                     {renamingDocumentId === doc.id ? (
                                                                         <input
                                                                             autoFocus
-                                                                            className="min-w-0 flex-1 text-xs text-gray-800 bg-transparent outline-none border-b border-gray-300"
+                                                                            className="min-w-0 flex-1 text-sm text-gray-800 bg-transparent outline-none border-b border-gray-300"
                                                                             value={renameDocumentValue}
                                                                             onClick={(e) => e.stopPropagation()}
                                                                             onDragStart={(e) => {
@@ -2855,18 +2378,18 @@ export function DocTable({
                                                                             }
                                                                         />
                                                                     ) : (
-                                                                        <span className="text-xs text-gray-800 truncate">
+                                                                        <span className="text-sm text-gray-800 truncate">
                                                                             {docName}
                                                                         </span>
                                                                     )}
                                                                 </div>
                                                             </div>
-                                                            <div className="ml-auto w-20 shrink-0 text-xs text-gray-500 lowercase truncate">
+                                                            <div className="ml-auto w-20 shrink-0 text-xs text-gray-500 uppercase truncate">
                                                                 {doc.file_type ?? (
                                                                     <span className="text-gray-300">—</span>
                                                                 )}
                                                             </div>
-                                                            <div className="w-24 shrink-0 text-xs text-gray-500 truncate">
+                                                            <div className="w-24 shrink-0 text-sm text-gray-500 truncate">
                                                                 {doc.size_bytes != null ? (
                                                                     formatBytes(doc.size_bytes)
                                                                 ) : (
@@ -2874,7 +2397,7 @@ export function DocTable({
                                                                 )}
                                                             </div>
                                                             <div
-                                                                className="w-20 shrink-0 text-xs text-gray-500 flex items-center gap-1"
+                                                                className="w-20 shrink-0 text-sm text-gray-500 flex items-center gap-1"
                                                                 onClick={(e) => e.stopPropagation()}
                                                             >
                                                                 {hasVersions ? (
@@ -2893,14 +2416,14 @@ export function DocTable({
                                                                     <span className="text-gray-300 pl-1">—</span>
                                                                 )}
                                                             </div>
-                                                            <div className="w-32 shrink-0 text-xs text-gray-500 truncate">
+                                                            <div className="w-32 shrink-0 text-sm text-gray-500 truncate">
                                                                 {doc.created_at ? (
                                                                     formatDate(doc.created_at)
                                                                 ) : (
                                                                     <span className="text-gray-300">—</span>
                                                                 )}
                                                             </div>
-                                                            <div className="w-32 shrink-0 text-xs text-gray-500 truncate">
+                                                            <div className="w-32 shrink-0 text-sm text-gray-500 truncate">
                                                                 {doc.updated_at ? (
                                                                     formatDate(doc.updated_at)
                                                                 ) : (
@@ -2974,11 +2497,7 @@ export function DocTable({
                                             )}
                                         </>
                                     ) : (
-                                        viewedFolder ? (
-                                            renderLevel(viewedFolder.id, 0)
-                                        ) : (
-                                            renderLevel(null, 0)
-                                        )
+                                        renderLevel(null, 0)
                                     )}
                                 </div>
                             )}

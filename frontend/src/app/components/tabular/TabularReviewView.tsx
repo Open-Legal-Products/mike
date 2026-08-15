@@ -707,7 +707,7 @@ export function TRView({ reviewId, projectId }: Props) {
                                             skeletonClassName: "w-32",
                                             onClick: () =>
                                                 router.push(
-                                                    `/projects/${projectId}`,
+                                                    `/projects/${projectId}/tabular-reviews`,
                                                 ),
                                             title: "Back to project",
                                         }
@@ -715,7 +715,7 @@ export function TRView({ reviewId, projectId }: Props) {
                                             label: project?.name ?? "",
                                             onClick: () =>
                                                 router.push(
-                                                    `/projects/${projectId}`,
+                                                    `/projects/${projectId}/tabular-reviews`,
                                                 ),
                                             title: "Back to project",
                                         },
@@ -728,18 +728,6 @@ export function TRView({ reviewId, projectId }: Props) {
                                       title: "Back to Tabular Reviews",
                                   },
                               ]),
-                        ...(projectId
-                            ? [
-                                  {
-                                      label: "Tabular Reviews",
-                                      onClick: () =>
-                                          router.push(
-                                              `/projects/${projectId}/tabular-reviews`,
-                                          ),
-                                      title: "Back to Tabular Reviews",
-                                  },
-                              ]
-                            : []),
                         loading
                             ? {
                                   loading: true,

@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
 
 // Extracted from the "Load more" button block that was duplicated verbatim
@@ -14,7 +13,6 @@ export function TableLoadMoreRow({
     loadingMore,
     hasError,
     onLoadMore,
-    autoLoadOnVisible = false,
 }: {
     loading: boolean;
     hasMore: boolean;
@@ -22,50 +20,11 @@ export function TableLoadMoreRow({
     loadingMore: boolean;
     hasError: boolean;
     onLoadMore: () => void;
-    autoLoadOnVisible?: boolean;
 }) {
-    const rowRef = useRef<HTMLDivElement>(null);
-    const requestedItemCountRef = useRef<number | null>(null);
-
-    useEffect(() => {
-        if (
-            !autoLoadOnVisible ||
-            loading ||
-            loadingMore ||
-            !hasMore ||
-            itemCount === 0 ||
-            requestedItemCountRef.current === itemCount ||
-            typeof IntersectionObserver === "undefined"
-        ) {
-            return;
-        }
-
-        const row = rowRef.current;
-        if (!row) return;
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (!entries.some((entry) => entry.isIntersecting)) return;
-                requestedItemCountRef.current = itemCount;
-                observer.disconnect();
-                onLoadMore();
-            },
-            { rootMargin: "0px 0px 80px 0px" },
-        );
-        observer.observe(row);
-        return () => observer.disconnect();
-    }, [
-        autoLoadOnVisible,
-        hasMore,
-        itemCount,
-        loading,
-        loadingMore,
-        onLoadMore,
-    ]);
-
     if (loading || !hasMore || itemCount === 0) return null;
 
     return (
-        <div ref={rowRef} className="flex justify-center py-3">
+        <div className="flex justify-center py-3">
             <button
                 onClick={onLoadMore}
                 disabled={loadingMore}

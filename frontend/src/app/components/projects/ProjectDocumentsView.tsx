@@ -9,8 +9,7 @@ import {
     useRef,
     useState,
 } from "react";
-import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronLeft, Plus } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 import {
     createProjectFolder,
     deleteProjectFolder,
@@ -25,7 +24,6 @@ import type { Document } from "@/app/components/shared/types";
 import { AddDocumentsModal } from "@/app/components/modals/AddDocumentsModal";
 import {
     DocTable,
-    type DocTableFolderBreadcrumb,
     type DocTableSelectionActions,
     type DocTableFolder,
 } from "@/app/components/documents/DocTable";
@@ -35,13 +33,9 @@ import { APP_SURFACE_HOVER_CLASS } from "@/app/components/ui/liquid-surface";
 
 interface Props {
     projectId: string;
-    folderId?: string | null;
 }
 
-const PROJECT_DIRECTORY_PAGE_SIZE = 40;
-
-export function ProjectDocumentsView({ projectId, folderId = null }: Props) {
-    const router = useRouter();
+export function ProjectDocumentsView({ projectId }: Props) {
     const workspace = useProjectWorkspace();
     const {
         project,
@@ -52,24 +46,13 @@ export function ProjectDocumentsView({ projectId, folderId = null }: Props) {
         prefetchProjectSections,
         search,
         setOwnerOnlyAction,
-        setDocumentFolderBreadcrumbs,
     } = workspace;
     const [createFolderAction, setCreateFolderAction] = useState<
-        (() => void) | null
-    >(null);
-    const [folderBackAction, setFolderBackAction] = useState<
         (() => void) | null
     >(null);
     const [selectionActions, setSelectionActions] =
         useState<DocTableSelectionActions | null>(null);
     const [actionsOpen, setActionsOpen] = useState(false);
-    const [directoryPagination, setDirectoryPagination] = useState<{
-        projectId: string;
-        limits: Record<string, number>;
-    }>(() => ({
-        projectId,
-        limits: { root: PROJECT_DIRECTORY_PAGE_SIZE },
-    }));
     const actionsRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -86,78 +69,7 @@ export function ProjectDocumentsView({ projectId, folderId = null }: Props) {
         return () => document.removeEventListener("mousedown", handleClick);
     }, [actionsOpen]);
 
-    const documentLimitByLevel = useMemo(() => {
-        const current =
-            directoryPagination.projectId === projectId
-                ? directoryPagination.limits
-                : { root: PROJECT_DIRECTORY_PAGE_SIZE };
-        return folderId && current[folderId] == null
-            ? { ...current, [folderId]: PROJECT_DIRECTORY_PAGE_SIZE }
-            : current;
-    }, [directoryPagination, folderId, projectId]);
-    const documents = useMemo(
-        () => project?.documents ?? [],
-        [project?.documents],
-    );
-    const documentsHasMoreByLevel = useMemo(() => {
-        const counts: Record<string, number> = {};
-        documents.forEach((document) => {
-            const key = document.folder_id ?? "root";
-            counts[key] = (counts[key] ?? 0) + 1;
-        });
-        return Object.fromEntries(
-            Object.entries(documentLimitByLevel).map(([key, limit]) => [
-                key,
-                (counts[key] ?? 0) > limit,
-            ]),
-        );
-    }, [documentLimitByLevel, documents]);
-
-    const handleExpandFolder = useCallback(
-        (nextFolderId: string) => {
-            setDirectoryPagination((current) => {
-                const limits =
-                    current.projectId === projectId
-                        ? current.limits
-                        : { root: PROJECT_DIRECTORY_PAGE_SIZE };
-                if (limits[nextFolderId] != null) {
-                    return current.projectId === projectId
-                        ? current
-                        : { projectId, limits };
-                }
-                return {
-                    projectId,
-                    limits: {
-                        ...limits,
-                        [nextFolderId]: PROJECT_DIRECTORY_PAGE_SIZE,
-                    },
-                };
-            });
-        },
-        [projectId],
-    );
-
-    const handleLoadMoreDocuments = useCallback(
-        (parentId: string | null) => {
-            const key = parentId ?? "root";
-            setDirectoryPagination((current) => {
-                const limits =
-                    current.projectId === projectId
-                        ? current.limits
-                        : { root: PROJECT_DIRECTORY_PAGE_SIZE };
-                return {
-                    projectId,
-                    limits: {
-                        ...limits,
-                        [key]:
-                            (limits[key] ?? PROJECT_DIRECTORY_PAGE_SIZE) +
-                            PROJECT_DIRECTORY_PAGE_SIZE,
-                    },
-                };
-            });
-        },
-        [projectId],
-    );
+    const documents = project?.documents ?? [];
     const setDocuments = useCallback(
         (update: SetStateAction<Document[]>) => {
             setProject((prev) => {
@@ -204,34 +116,6 @@ export function ProjectDocumentsView({ projectId, folderId = null }: Props) {
         },
         [],
     );
-    const handleFolderBackActionChange = useCallback(
-        (action: (() => void) | null) => {
-            setFolderBackAction(() => action);
-        },
-        [],
-    );
-    const handleFolderViewChange = useCallback(
-        (path: DocTableFolderBreadcrumb[]) => {
-            setDocumentFolderBreadcrumbs(
-                path.map((folder) => ({
-                    label: folder.name,
-                    onClick: folder.onClick,
-                })),
-            );
-        },
-        [setDocumentFolderBreadcrumbs],
-    );
-    const handleFolderViewIdChange = useCallback(
-        (nextFolderId: string | null) => {
-            const nextPath = nextFolderId
-                ? `/projects/${encodeURIComponent(projectId)}/folders/${encodeURIComponent(nextFolderId)}`
-                : `/projects/${encodeURIComponent(projectId)}`;
-            router.push(nextPath, {
-                scroll: false,
-            });
-        },
-        [projectId, router],
-    );
     const handleSelectionActionsChange = useCallback(
         (actions: DocTableSelectionActions | null) => {
             setSelectionActions(actions);
@@ -241,12 +125,6 @@ export function ProjectDocumentsView({ projectId, folderId = null }: Props) {
 
     const toolbarActions = (
         <div className="flex items-center gap-1.5">
-            {folderBackAction && (
-                <TabPillButton onClick={folderBackAction}>
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                    Back
-                </TabPillButton>
-            )}
             {selectionActions && (
                 <div ref={actionsRef} className="relative">
                     <TabPillButton
@@ -326,19 +204,8 @@ export function ProjectDocumentsView({ projectId, folderId = null }: Props) {
                     workspace.setAddDocumentsHeaderAction
                 }
                 onCreateFolderActionChange={handleCreateFolderActionChange}
-                onFolderViewBackActionChange={handleFolderBackActionChange}
-                onFolderViewChange={handleFolderViewChange}
-                folderViewId={folderId}
-                onFolderViewIdChange={handleFolderViewIdChange}
                 onSelectionActionsChange={handleSelectionActionsChange}
-                onExpandFolder={handleExpandFolder}
-                documentLimitByLevel={documentLimitByLevel}
-                documentsHasMoreByLevel={documentsHasMoreByLevel}
-                loadingMoreDocumentsByLevel={{}}
-                onLoadMoreDocuments={handleLoadMoreDocuments}
-                autoLoadOnScroll
                 enableHeaderFilters
-                defaultSort={{ key: "updated", direction: "desc" }}
                 renderAddDocumentsModal={(open, onClose, onSelect) =>
                     project ? (
                         <AddDocumentsModal

@@ -169,7 +169,6 @@ export type AssistantEvent =
   | {
       type: "doc_find";
       filename: string;
-      document_id?: string;
       query: string;
       total_matches: number;
       isStreaming?: boolean;
@@ -654,7 +653,6 @@ export interface QuickAction {
   id: string;
   user_id: string;
   workflow_id: string;
-  name: string;
   prompt: string;
   document_upload: boolean;
   enabled: boolean;

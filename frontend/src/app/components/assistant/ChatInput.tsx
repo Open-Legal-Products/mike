@@ -147,14 +147,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
         },
         startWorkflow: (workflow, prompt) => {
             setSelectedWorkflow(workflow);
-            if (prompt !== undefined) setValue(prompt);
+            if (prompt) setValue((current) => current || prompt);
             requestAnimationFrame(() => textareaRef.current?.focus());
         },
         startWorkflowDocumentSelection: (workflow, prompt, options) => {
             setSelectedWorkflow(workflow);
             setDocSelectorInitialTab(options?.initialDocumentTab ?? "files");
-            if (prompt !== undefined) {
-                setValue(prompt);
+            if (prompt) {
+                setValue((current) => current || prompt);
                 requestAnimationFrame(() => {
                     if (!textareaRef.current) return;
                     textareaRef.current.style.height = "auto";
@@ -420,7 +420,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                         onSelect={selectSlashWorkflow}
                     />
                 )}
-                <div className="rounded-[21px] border border-white/65 bg-white/60 shadow-[0_4px_10px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.85),inset_0_-6px_14px_rgba(255,255,255,0.18)] backdrop-blur-2xl">
+                <div className="rounded-[18px] border border-white/65 bg-white/60 shadow-[0_4px_10px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.85),inset_0_-6px_14px_rgba(255,255,255,0.18)] backdrop-blur-2xl md:rounded-[22px]">
                     {/* Attached chips */}
                     {(selectedWorkflow || attachedDocs.length > 0) && (
                         <div className="flex flex-wrap gap-1.5 px-2 pt-2">
@@ -518,7 +518,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                     {/* Controls */}
                     <div
                         ref={controlsRef}
-                        className="flex items-center justify-between p-2.5"
+                        className="flex items-center justify-between md:p-2.5 p-2"
                     >
                         <div className="flex items-center gap-1">
                             {!hideAddDocButton && (
@@ -575,8 +575,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                                     isLoading ? "Stop response" : "Send message"
                                 }
                                 className={cn(
-                                    "relative bg-gradient-to-b from-neutral-700 to-black text-white rounded-[11px] h-8 w-8 flex items-center justify-center cursor-pointer disabled:cursor-default disabled:from-neutral-600 disabled:to-black backdrop-blur-xl border-0 active:enabled:scale-95 transition-all duration-150",
-                                    "shadow-[0_3px_9px_rgba(15,23,42,0.10),inset_1px_1px_0_rgba(255,255,255,0.22),inset_-1px_-1px_0_rgba(255,255,255,0.10),inset_-4px_-4px_9px_rgba(15,23,42,0.2)]",
+                                    "relative bg-gradient-to-b from-neutral-700 to-black text-white rounded-[10px] h-8 w-8 flex items-center justify-center cursor-pointer disabled:cursor-default disabled:from-neutral-600 disabled:to-black backdrop-blur-xl border border-white/30 active:enabled:scale-95 transition-all duration-150",
+                                    "shadow-[0_5px_14px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.24)]",
                                 )}
                                 onClick={handleActionClick}
                                 disabled={

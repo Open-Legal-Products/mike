@@ -1,0 +1,48 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient
+      id="settingsBody"
+      x1="32"
+      y1="4"
+      x2="32"
+      y2="60"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#A2AEBC"/>
+      <stop offset="0.22" stop-color="#8895A6"/>
+      <stop offset="0.48" stop-color="#6E7C8E"/>
+      <stop offset="0.70" stop-color="#556274"/>
+      <stop offset="0.86" stop-color="#46525F"/>
+      <stop offset="1" stop-color="#7A8695"/>
+    </linearGradient>
+    <linearGradient id="settingsRim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.85"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#0F172A" stop-opacity="0.45"/>
+    </linearGradient>
+  </defs>
+
+  <g
+    fill="none"
+    stroke="url(#settingsBody)"
+    stroke-width="9.5"
+    stroke-linecap="round"
+  >
+    <path d="M45 32L54 32"/>
+    <path d="M41.19 41.19L47.56 47.56"/>
+    <path d="M32 45L32 54"/>
+    <path d="M22.81 41.19L16.44 47.56"/>
+    <path d="M19 32L10 32"/>
+    <path d="M22.81 22.81L16.44 16.44"/>
+    <path d="M32 19L32 10"/>
+    <path d="M41.19 22.81L47.56 16.44"/>
+  </g>
+
+  <path
+    fill-rule="evenodd"
+    d="M15 32a17 17 0 1 0 34 0a17 17 0 1 0-34 0Z M24.5 32a7.5 7.5 0 1 0 15 0a7.5 7.5 0 1 0-15 0Z"
+    fill="url(#settingsBody)"
+    stroke="url(#settingsRim)"
+    stroke-width="1.5"
+  />
+</svg>

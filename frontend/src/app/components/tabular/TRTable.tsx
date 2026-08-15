@@ -307,7 +307,6 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                             }}
                             onChange={toggleAll}
                             className={TABLE_CHECKBOX_CLASS}
-                            aria-label={`Select all ${firstColumnLabel.toLowerCase()}`}
                         />
                         <span>{firstColumnLabel}</span>
                     </div>
@@ -358,7 +357,6 @@ export const TRTable = forwardRef<TRTableHandle, Props>(function TRTable(
                                 type="checkbox"
                                 disabled
                                 className="mr-3 h-2.5 w-2.5 shrink-0 rounded border-gray-200 cursor-default accent-black disabled:opacity-100"
-                                aria-label={`Select ${filename}`}
                             />
                             <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin shrink-0" />
                             <span className="line-clamp-1" title={filename}>

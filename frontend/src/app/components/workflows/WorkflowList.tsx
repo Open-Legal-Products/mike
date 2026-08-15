@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import {
   deleteWorkflow,
   getWorkflowFilterOptions,
@@ -12,7 +12,6 @@ import {
   listWorkflowAddons,
 } from "@/app/lib/mikeApi";
 import { useDebouncedValue } from "@/app/hooks/useDebouncedValue";
-import { useQueryParamTab } from "@/app/hooks/useQueryParamTab";
 import { usePaginatedWorkflows } from "@/app/hooks/usePaginatedWorkflows";
 import { deleteTabularReviewsWithConcurrency } from "@/app/lib/deleteTabularReviewsWithConcurrency";
 import type { Workflow, WorkflowAddon } from "../shared/types";
@@ -60,7 +59,6 @@ const WORKFLOW_TABS: { id: WorkflowListTab; label: string }[] = [
   { id: "tabular", label: "Tabular" },
   { id: "addons", label: "Add-ons" },
 ];
-const WORKFLOW_TAB_IDS = WORKFLOW_TABS.map((tab) => tab.id);
 
 const WORKFLOW_SORT_OPTIONS: TableFilterOption<TableSortDirection>[] = [
   { value: "asc", label: "Ascending" },
@@ -82,13 +80,7 @@ function workflowFilterOptions(
     .map((value) => ({ value, label: labelForValue(value) }));
 }
 
-export function WorkflowList({
-  initialTab = "all",
-  packKey = null,
-}: {
-  initialTab?: WorkflowListTab;
-  packKey?: string | null;
-}) {
+export function WorkflowList() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [addons, setAddons] = useState<WorkflowAddon[]>([]);
@@ -96,11 +88,7 @@ export function WorkflowList({
   const [selected, setSelected] = useState<Workflow | null>(null);
   const [newModalOpen, setNewModalOpen] = useState(false);
   const [editingWorkflow, setEditingWorkflow] = useState<Workflow | null>(null);
-  const [activeTab, setActiveTab] = useQueryParamTab(
-    WORKFLOW_TAB_IDS,
-    packKey ? "addons" : initialTab,
-    !!packKey || initialTab === "addons",
-  );
+  const [activeTab, setActiveTab] = useState<WorkflowListTab>("all");
   const [search, setSearch] = useState("");
   const [nameSortDirection, setNameSortDirection] =
     useState<TableSortDirection | null>(null);
@@ -235,52 +223,6 @@ export function WorkflowList({
         addon.practice?.toLowerCase().includes(query),
     );
   }, [addons, previewEmptyStates, query]);
-  const activePack = useMemo(() => {
-    if (!packKey) return null;
-    const addon = addons.find((item) => item.pack_key === packKey);
-    if (!addon) return null;
-    return {
-      key: packKey,
-      title: addon.pack_title || packKey,
-    };
-  }, [addons, packKey]);
-
-  function openAddonPack(nextPackKey: string) {
-    setSearch("");
-    setSelectedAddonIds([]);
-    setActiveTab(
-      "addons",
-      `/workflows/addons/packs/${encodeURIComponent(nextPackKey)}`,
-    );
-  }
-
-  function closeAddonPack() {
-    setSelectedAddonIds([]);
-    setActiveTab("addons", "/workflows/addons");
-  }
-
-  function changeTab(tab: WorkflowListTab) {
-    if (tab !== "all") setTypeFilter(null);
-    setSelectedWorkflowIds([]);
-    setSelectedAddonIds([]);
-    setWorkflowActionsOpen(false);
-
-    if (tab === "addons") {
-      if (packKey) closeAddonPack();
-      else if (initialTab !== "addons") {
-        setActiveTab("addons", "/workflows/addons");
-      } else {
-        setActiveTab("addons");
-      }
-      return;
-    }
-
-    if (packKey || initialTab === "addons") {
-      setActiveTab(tab, "/workflows");
-    } else {
-      setActiveTab(tab);
-    }
-  }
 
   async function openAddon(addon: WorkflowAddon) {
     openAddonIdRef.current = addon.id;
@@ -407,29 +349,20 @@ export function WorkflowList({
         )}
       </div>
     ) : undefined;
-  const addonToolbarActions = activeTab === "addons" ? (
-    <>
-      {packKey && (
-        <TabPillButton onClick={closeAddonPack}>
-          <ChevronLeft className="h-3.5 w-3.5" />
-          Back
-        </TabPillButton>
-      )}
-      {selectedAddonIds.length > 0 && (
-        <button
-          type="button"
-          disabled={bulkImportingAddons}
-          onClick={() => void importSelectedAddons()}
-          className="inline-flex items-center gap-1 px-1.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:text-gray-950 disabled:opacity-50"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          {bulkImportingAddons
-            ? "Importing…"
-            : `Import${selectedAddonIds.length > 1 ? ` (${selectedAddonIds.length})` : ""}`}
-        </button>
-      )}
-    </>
-  ) : undefined;
+  const addonToolbarActions =
+    activeTab === "addons" && selectedAddonIds.length > 0 ? (
+      <button
+        type="button"
+        disabled={bulkImportingAddons}
+        onClick={() => void importSelectedAddons()}
+        className="inline-flex items-center gap-1 px-1.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:text-gray-950 disabled:opacity-50"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        {bulkImportingAddons
+          ? "Importing…"
+          : `Import${selectedAddonIds.length > 1 ? ` (${selectedAddonIds.length})` : ""}`}
+      </button>
+    ) : undefined;
   const pendingDefaultDeleteCount = pendingDeleteWorkflows.filter(
     (workflow) => workflow.is_default,
   ).length;
@@ -451,21 +384,6 @@ export function WorkflowList({
       <PageHeader
         shrink
         loading={loading}
-        breadcrumbs={
-          packKey
-            ? [
-                {
-                  label: "Workflows",
-                  onClick: () => router.push("/workflows"),
-                },
-                { label: "Add-ons", onClick: closeAddonPack },
-                {
-                  label: activePack?.title || packKey,
-                  loading: addonsLoading && !activePack,
-                },
-              ]
-            : undefined
-        }
         actions={[
           {
             type: "search",
@@ -489,7 +407,13 @@ export function WorkflowList({
       <TableToolbar
         items={WORKFLOW_TABS}
         active={activeTab}
-        onChange={changeTab}
+        onChange={(tab) => {
+          setActiveTab(tab);
+          if (tab !== "all") setTypeFilter(null);
+          setSelectedWorkflowIds([]);
+          setSelectedAddonIds([]);
+          setWorkflowActionsOpen(false);
+        }}
         actions={
           activeTab === "addons" ? addonToolbarActions : workflowToolbarActions
         }
@@ -520,8 +444,6 @@ export function WorkflowList({
           onSelectedIdsChange={setSelectedAddonIds}
           importingAddonId={importingAddonId}
           bulkImporting={bulkImportingAddons}
-          activePackKey={packKey}
-          onOpenPack={openAddonPack}
           onOpen={openAddon}
           onImport={importAddon}
         />
@@ -924,26 +846,25 @@ function WorkflowTable({
                         disabled
                         className={TABLE_CHECKBOX_CLASS}
                         title="Shared workflows cannot be deleted"
-                        aria-label={`Select ${workflow.metadata.title}`}
                       />
                     )
                   }
                 />
                 <TableCell className="ml-auto w-28">
-                  <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+                  <span className="inline-flex items-center gap-1.5 text-sm text-gray-600">
                     <Icon className="h-4 w-4 shrink-0" />
                     {workflow.metadata.type === "tabular"
                       ? "Tabular"
                       : "Assistant"}
                   </span>
                 </TableCell>
-                <TableCell className="w-52 text-xs text-gray-600">
+                <TableCell className="w-52 text-sm text-gray-600">
                   {workflow.metadata.practice || "—"}
                 </TableCell>
-                <TableCell className="w-40 truncate text-xs text-gray-600">
+                <TableCell className="w-40 truncate text-sm text-gray-600">
                   {workflow.metadata.jurisdictions?.join(", ") || "—"}
                 </TableCell>
-                <TableCell className="w-28 text-xs text-gray-600">
+                <TableCell className="w-28 text-sm text-gray-600">
                   {workflow.metadata.language || "—"}
                 </TableCell>
                 <div
@@ -983,8 +904,6 @@ function AddonTable({
   onSelectedIdsChange,
   importingAddonId,
   bulkImporting,
-  activePackKey,
-  onOpenPack,
   onOpen,
   onImport,
 }: {
@@ -995,8 +914,6 @@ function AddonTable({
   onSelectedIdsChange: (ids: string[]) => void;
   importingAddonId: string | null;
   bulkImporting: boolean;
-  activePackKey: string | null;
-  onOpenPack: (packKey: string) => void;
   onOpen: (addon: WorkflowAddon) => void;
   onImport: (addon: WorkflowAddon) => Promise<void>;
 }) {
@@ -1029,14 +946,9 @@ function AddonTable({
     }
     return [...grouped.values()].sort((a, b) => a.title.localeCompare(b.title));
   }, [addons]);
-  const activePack = activePackKey
-    ? packs.find((pack) => pack.key === activePackKey) ?? null
-    : null;
   const standaloneAddons = addons.filter((addon) => !addon.pack_key);
-  const isEmpty = activePackKey
-    ? !activePack || activePack.addons.length === 0
-    : packs.length === 0 && standaloneAddons.length === 0;
-  const addonIds = (activePack?.addons ?? addons).map((addon) => addon.id);
+  const isEmpty = packs.length === 0 && standaloneAddons.length === 0;
+  const addonIds = addons.map((addon) => addon.id);
   const allSelected =
     addonIds.length > 0 && addonIds.every((id) => selectedIds.includes(id));
   const someSelected =
@@ -1089,18 +1001,18 @@ function AddonTable({
           onSelectionChange={() => toggleOne(addon.id)}
         />
         <TableCell className="ml-auto w-28">
-          <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+          <span className="inline-flex items-center gap-1.5 text-sm text-gray-600">
             <Icon className="h-4 w-4" />
             {addon.type === "tabular" ? "Tabular" : "Assistant"}
           </span>
         </TableCell>
-        <TableCell className="w-52 text-xs text-gray-600">
+        <TableCell className="w-52 text-sm text-gray-600">
           {addon.practice || "—"}
         </TableCell>
-        <TableCell className="w-40 truncate text-xs text-gray-600">
+        <TableCell className="w-40 truncate text-sm text-gray-600">
           {addon.jurisdictions?.join(", ") || "—"}
         </TableCell>
-        <TableCell className="w-28 text-xs text-gray-600">
+        <TableCell className="w-28 text-sm text-gray-600">
           {addon.language || "—"}
         </TableCell>
         <TableCell className="w-20">
@@ -1162,109 +1074,79 @@ function AddonTable({
             Add-ons
           </p>
           <p className="mt-1 text-xs text-gray-400">
-            {error ||
-              (activePackKey ? "This pack is empty." : "No add-ons found.")}
+            {error || "No add-ons found."}
           </p>
         </TableEmptyState>
       ) : (
         <TableBody>
-          {activePack ? (
-            activePack.addons.map((addon) => renderAddonRow(addon))
-          ) : (
-            <>
-              {packs.map((pack) => {
-                const expanded = expandedPackKeys.has(pack.key);
-                const packSelected = pack.addons.every((addon) =>
-                  selectedIds.includes(addon.id),
-                );
-                const packPartiallySelected =
-                  !packSelected &&
-                  pack.addons.some((addon) =>
-                    selectedIds.includes(addon.id),
-                  );
-                return [
-                  <TableRow
-                    key={`${pack.key}:folder`}
-                    selected={packSelected}
-                    aria-expanded={expanded}
-                    onClick={() => onOpenPack(pack.key)}
-                  >
-                    <TablePrimaryCell
-                      selected={packSelected}
-                      onSelectionChange={() =>
-                        togglePackSelection(pack.addons)
-                      }
-                      selectionIndicator={
-                        <input
-                          type="checkbox"
-                          checked={packSelected}
-                          ref={(element) => {
-                            if (element) {
-                              element.indeterminate = packPartiallySelected;
-                            }
-                          }}
-                          disabled={bulkImporting}
-                          onChange={() => togglePackSelection(pack.addons)}
-                          onClick={(event) => event.stopPropagation()}
-                          className={TABLE_CHECKBOX_CLASS}
-                          title={`Select ${pack.title}`}
-                          aria-label={`Select ${pack.title}`}
-                        />
-                      }
-                      label={
-                        <span className="flex min-w-0 items-center">
-                          <button
-                            type="button"
-                            aria-label={
-                              expanded
-                                ? `Collapse ${pack.title}`
-                                : `Expand ${pack.title}`
-                            }
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              togglePack(pack.key);
-                            }}
-                            className="mr-2 flex h-4 w-4 shrink-0 items-center justify-center"
-                          >
-                            {expanded ? (
-                              <ChevronDown className="h-4 w-4 text-gray-400" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4 text-gray-400" />
-                            )}
-                          </button>
-                          <SubfolderSvgIcon
-                            open={expanded}
-                            className="mr-2 h-4 w-4 shrink-0"
-                          />
-                          <span className="truncate text-xs text-gray-700">
-                            {pack.title}
-                          </span>
-                        </span>
-                      }
+          {packs.map((pack) => {
+            const expanded = expandedPackKeys.has(pack.key);
+            const packSelected = pack.addons.every((addon) =>
+              selectedIds.includes(addon.id),
+            );
+            const packPartiallySelected =
+              !packSelected &&
+              pack.addons.some((addon) => selectedIds.includes(addon.id));
+            return [
+              <TableRow
+                key={`${pack.key}:folder`}
+                selected={packSelected}
+                aria-expanded={expanded}
+                onClick={() => togglePack(pack.key)}
+              >
+                <TablePrimaryCell
+                  selected={packSelected}
+                  onSelectionChange={() => togglePackSelection(pack.addons)}
+                  selectionIndicator={
+                    <input
+                      type="checkbox"
+                      checked={packSelected}
+                      ref={(element) => {
+                        if (element) {
+                          element.indeterminate = packPartiallySelected;
+                        }
+                      }}
+                      disabled={bulkImporting}
+                      onChange={() => togglePackSelection(pack.addons)}
+                      onClick={(event) => event.stopPropagation()}
+                      className={TABLE_CHECKBOX_CLASS}
+                      title={`Select ${pack.title}`}
                     />
-                    <TableCell className="ml-auto w-28 text-xs text-gray-600">
-                      Pack
-                    </TableCell>
-                    <TableCell className="w-52 text-xs text-gray-600">
-                      {pack.addons.length} workflow
-                      {pack.addons.length === 1 ? "" : "s"}
-                    </TableCell>
-                    <TableCell className="w-40 text-xs text-gray-600">
-                      —
-                    </TableCell>
-                    <TableCell className="w-28 text-xs text-gray-600">
-                      —
-                    </TableCell>
-                    <TableCell className="w-20" />
-                  </TableRow>,
-                  ...(expanded
-                    ? pack.addons.map((addon) => renderAddonRow(addon, true))
-                    : []),
-                ];
-              })}
-              {standaloneAddons.map((addon) => renderAddonRow(addon))}
-            </>
-          )}
+                  }
+                  label={
+                    <span className="flex min-w-0 items-center">
+                      {expanded ? (
+                        <ChevronDown className="mr-1 h-3.5 w-3.5 shrink-0 text-gray-400" />
+                      ) : (
+                        <ChevronRight className="mr-1 h-3.5 w-3.5 shrink-0 text-gray-400" />
+                      )}
+                      <SubfolderSvgIcon
+                        open={expanded}
+                        className="mr-2 h-5 w-5 shrink-0"
+                      />
+                      <span className="truncate text-sm text-gray-800">
+                        {pack.title}
+                      </span>
+                    </span>
+                  }
+                />
+                <TableCell className="ml-auto w-28 text-sm text-gray-600">
+                  Pack
+                </TableCell>
+                <TableCell className="w-52 text-sm text-gray-600">
+                  {pack.addons.length} workflow
+                  {pack.addons.length === 1 ? "" : "s"}
+                </TableCell>
+                <TableCell className="w-40 text-sm text-gray-600">—</TableCell>
+                <TableCell className="w-28 text-sm text-gray-600">—</TableCell>
+                <TableCell className="w-20" />
+              </TableRow>,
+              ...(expanded
+                ? pack.addons.map((addon) => renderAddonRow(addon, true))
+                : []),
+            ];
+          })}
+          {standaloneAddons.map((addon) => renderAddonRow(addon))}
         </TableBody>
       )}
     </TableScrollArea>

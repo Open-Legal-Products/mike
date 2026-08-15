@@ -190,7 +190,7 @@ async function loadLibraryLevel(
     { data: folders, error: foldersError },
   ] = await Promise.all([
       documentsQuery.order("updated_at", { ascending: false }),
-      foldersQuery.order("updated_at", { ascending: false }),
+      foldersQuery.order("created_at", { ascending: true }),
     ]);
   if (docsError)
     return {
@@ -307,7 +307,7 @@ libraryRouter.post("/:kind/levels", requireAuth, async (req, res) => {
         parentId,
         limit: Number.isFinite(requestedLimit)
           ? Math.max(1, Math.min(500, Math.floor(requestedLimit)))
-          : 40,
+          : 50,
       },
     ];
   });
@@ -460,46 +460,6 @@ libraryRouter.post(
     await handleDocumentUpload(req, res, userId, null, db, {
       libraryKind: kind,
     });
-  },
-);
-
-// GET /library/:kind/folders/:folderId
-libraryRouter.get(
-  "/:kind/folders/:folderId",
-  requireAuth,
-  async (req, res) => {
-    const userId = res.locals.userId as string;
-    const kind = normalizeLibraryKind(req.params.kind);
-    if (!kind)
-      return void res.status(404).json({ detail: "Library not found" });
-
-    const db = createServerSupabase();
-    const { data, error } = await db
-      .from("library_folders")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("library_kind", kind);
-    if (error) return void res.status(500).json({ detail: error.message });
-
-    const folders = data ?? [];
-    const foldersById = new Map(
-      folders.map((folder) => [folder.id as string, folder]),
-    );
-    const path: typeof folders = [];
-    const visited = new Set<string>();
-    let current = foldersById.get(req.params.folderId);
-    if (!current)
-      return void res.status(404).json({ detail: "Folder not found" });
-
-    while (current && !visited.has(current.id as string)) {
-      visited.add(current.id as string);
-      path.unshift(current);
-      current = current.parent_folder_id
-        ? foldersById.get(current.parent_folder_id as string)
-        : undefined;
-    }
-
-    res.json({ folders: path });
   },
 );
 

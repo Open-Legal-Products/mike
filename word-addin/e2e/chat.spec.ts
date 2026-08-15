@@ -1064,7 +1064,7 @@ test("opens a left-aligned source menu and selects web files from the document m
   addin,
   page,
 }) => {
-  await addin.mockApiJson("GET", "**/library/files?*", {
+  await addin.mockApiJson("GET", "**/library/files", {
     documents: [],
     folders: [],
   });
@@ -1145,11 +1145,11 @@ test("attaches a library template from the Templates tab", async ({
   addin,
   page,
 }) => {
-  await addin.mockApiJson("GET", "**/library/files?*", {
+  await addin.mockApiJson("GET", "**/library/files", {
     documents: [],
     folders: [],
   });
-  await addin.mockApiJson("GET", "**/library/templates?*", {
+  await addin.mockApiJson("GET", "**/library/templates", {
     documents: [
       {
         id: "template-1",
@@ -1189,11 +1189,11 @@ test("expands a project and attaches one of its documents", async ({
   addin,
   page,
 }) => {
-  await addin.mockApiJson("GET", "**/library/files?*", {
+  await addin.mockApiJson("GET", "**/library/files", {
     documents: [],
     folders: [],
   });
-  await addin.mockApiJson("GET", "**/projects?*", [
+  await addin.mockApiJson("GET", "**/projects", [
     {
       id: "project-1",
       name: "Matter Atlas",
@@ -1202,19 +1202,15 @@ test("expands a project and attaches one of its documents", async ({
       document_count: 1,
     },
   ]);
-  await addin.mockApiJson("GET", "**/projects/project-1/directory?*", {
-    documents: [
-      {
-        id: "project-doc-1",
-        filename: "Disclosure letter.pdf",
-        file_type: "pdf",
-        size_bytes: 1024,
-        created_at: "2026-08-08T00:00:00Z",
-      },
-    ],
-    folders: [],
-    documentsHasMore: false,
-  });
+  await addin.mockApiJson("GET", "**/projects/project-1/documents", [
+    {
+      id: "project-doc-1",
+      filename: "Disclosure letter.pdf",
+      file_type: "pdf",
+      size_bytes: 1024,
+      created_at: "2026-08-08T00:00:00Z",
+    },
+  ]);
   await addin.mockChatStream(["Project document received."]);
   await addin.gotoTaskpane();
 
@@ -1240,13 +1236,13 @@ test("expands a project and attaches one of its documents", async ({
 });
 
 test("reports a Templates-tab load failure", async ({ addin, page }) => {
-  await addin.mockApiJson("GET", "**/library/files?*", {
+  await addin.mockApiJson("GET", "**/library/files", {
     documents: [],
     folders: [],
   });
   await addin.mockApiError(
     "GET",
-    "**/library/templates?*",
+    "**/library/templates",
     503,
     "Templates temporarily unavailable",
   );
@@ -1407,7 +1403,7 @@ test("composer controls and workflow modal fit a narrow Word task pane", async (
 }) => {
   await page.setViewportSize({ width: 360, height: 760 });
   await addin.mockApiJson("GET", "**/workflows**", []);
-  await addin.mockApiJson("GET", "**/library/files?*", {
+  await addin.mockApiJson("GET", "**/library/files", {
     documents: [],
     folders: [],
   });

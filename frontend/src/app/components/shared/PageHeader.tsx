@@ -2,7 +2,6 @@
 
 import {
     useEffect,
-    useLayoutEffect,
     useRef,
     useState,
     type ButtonHTMLAttributes,
@@ -12,14 +11,6 @@ import { createPortal } from "react-dom";
 import { ChevronLeft, Loader2, Plus, Search, X } from "lucide-react";
 import { usePageChrome } from "@/app/contexts/PageChromeContext";
 import { cn } from "@/app/lib/utils";
-import {
-    DropdownMenu,
-    DropdownMenuTrigger,
-} from "@/app/components/ui/dropdown-menu";
-import {
-    LiquidDropdownContent,
-    LiquidDropdownItem,
-} from "@/app/components/ui/liquid-dropdown";
 import {
     APP_SURFACE_ACTIVE_CLASS,
     APP_SURFACE_HOVER_CLASS,
@@ -118,7 +109,7 @@ export function PageHeader({
         <div
             className={cn(
                 "flex items-center justify-between",
-                "mx-4 md:mx-8",
+                "mx-4 md:mx-6",
                 "min-h-[76px] pb-4 pt-5.5",
                 shrink && "shrink-0",
             )}
@@ -418,73 +409,13 @@ function PageHeaderActionButton({
 }
 
 function PageHeaderBreadcrumbs({ items }: { items: PageHeaderBreadcrumb[] }) {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const measurementRefs = useRef<Array<HTMLSpanElement | null>>([]);
-    const ellipsisMeasurementRef = useRef<HTMLSpanElement>(null);
-    const [visibleIndices, setVisibleIndices] = useState<number[]>(() =>
-        items.map((_, index) => index),
-    );
     const parent = [...items]
         .slice(0, -1)
         .reverse()
         .find((item) => item.onClick);
 
-    useLayoutEffect(() => {
-        const container = containerRef.current;
-        if (!container) return;
-
-        const measure = () => {
-            if (!window.matchMedia("(min-width: 640px)").matches) {
-                setVisibleIndices(items.map((_, index) => index));
-                return;
-            }
-
-            const availableWidth = container.clientWidth;
-            const widths = items.map(
-                (_, index) =>
-                    measurementRefs.current[index]?.getBoundingClientRect()
-                        .width ?? 0,
-            );
-            const ellipsisWidth =
-                ellipsisMeasurementRef.current?.getBoundingClientRect().width ??
-                32;
-            const plans = breadcrumbVisibilityPlans(items.length);
-            const next =
-                plans.find(
-                    (plan) =>
-                        breadcrumbPlanWidth(
-                            plan,
-                            widths,
-                            ellipsisWidth,
-                        ) <= availableWidth,
-                ) ?? [Math.max(0, items.length - 1)];
-            setVisibleIndices((current) =>
-                current.length === next.length &&
-                current.every((value, index) => value === next[index])
-                    ? current
-                    : next,
-            );
-        };
-
-        const frame = requestAnimationFrame(measure);
-        if (typeof ResizeObserver === "undefined") {
-            return () => cancelAnimationFrame(frame);
-        }
-        const observer = new ResizeObserver(measure);
-        observer.observe(container);
-        return () => {
-            cancelAnimationFrame(frame);
-            observer.disconnect();
-        };
-    }, [items]);
-
-    const entries = collapsedBreadcrumbEntries(items, visibleIndices);
-
     return (
-        <div
-            ref={containerRef}
-            className="relative flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-2xl font-medium font-serif"
-        >
+        <div className="flex min-w-0 items-center gap-1.5 text-2xl font-medium font-serif">
             {parent?.onClick && (
                 <button
                     onClick={parent.onClick}
@@ -495,184 +426,16 @@ function PageHeaderBreadcrumbs({ items }: { items: PageHeaderBreadcrumb[] }) {
                     <ChevronLeft className="h-5 w-5" />
                 </button>
             )}
-            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-                {entries.map((entry) =>
-                    entry.type === "item" ? (
-                        <BreadcrumbItem
-                            key={`item-${entry.index}`}
-                            item={entry.item}
-                            current={entry.index === items.length - 1}
-                        />
-                    ) : (
-                        <CollapsedBreadcrumbGroup
-                            key={`collapsed-${entry.startIndex}`}
-                            items={entry.items}
-                        />
-                    ),
-                )}
-            </div>
-            <div
-                aria-hidden
-                className="pointer-events-none invisible absolute flex w-max items-center gap-1.5"
-            >
+            <div className="flex min-w-0 items-center gap-1.5">
                 {items.map((item, index) => (
-                    <span
+                    <BreadcrumbItem
                         key={index}
-                        ref={(element) => {
-                            measurementRefs.current[index] = element;
-                        }}
-                        className="flex"
-                    >
-                        <BreadcrumbItem
-                            item={item}
-                            current={index === items.length - 1}
-                        />
-                    </span>
+                        item={item}
+                        current={index === items.length - 1}
+                    />
                 ))}
-                <span
-                    ref={ellipsisMeasurementRef}
-                    className="hidden shrink-0 items-center gap-1.5 sm:flex"
-                >
-                    <span>…</span>
-                    <span className="text-gray-300">›</span>
-                </span>
             </div>
         </div>
-    );
-}
-
-function breadcrumbVisibilityPlans(itemCount: number): number[][] {
-    if (itemCount <= 1) return [[0].filter((index) => index < itemCount)];
-    const current = itemCount - 1;
-    const candidates = [
-        Array.from({ length: itemCount }, (_, index) => index),
-        [0, 1, 2, current - 2, current - 1, current],
-        [0, 1, current - 1, current],
-        [1, current - 1, current],
-        [current - 1, current],
-        [current],
-    ];
-    const seen = new Set<string>();
-    return candidates.flatMap((candidate) => {
-        const plan = [...new Set(candidate)]
-            .filter((index) => index >= 0 && index < itemCount)
-            .sort((a, b) => a - b);
-        if (!plan.includes(current)) plan.push(current);
-        const key = plan.join(",");
-        if (seen.has(key)) return [];
-        seen.add(key);
-        return [plan];
-    });
-}
-
-function breadcrumbPlanWidth(
-    visibleIndices: number[],
-    itemWidths: number[],
-    ellipsisWidth: number,
-) {
-    const visible = new Set(visibleIndices);
-    let entryCount = visibleIndices.length;
-    let hiddenGroupCount = 0;
-    let insideHiddenGroup = false;
-    for (let index = 0; index < itemWidths.length; index += 1) {
-        if (visible.has(index)) {
-            insideHiddenGroup = false;
-        } else if (!insideHiddenGroup) {
-            hiddenGroupCount += 1;
-            entryCount += 1;
-            insideHiddenGroup = true;
-        }
-    }
-    const visibleWidth = visibleIndices.reduce(
-        (total, index) => total + (itemWidths[index] ?? 0),
-        0,
-    );
-    return (
-        visibleWidth +
-        hiddenGroupCount * ellipsisWidth +
-        Math.max(0, entryCount - 1) * 6
-    );
-}
-
-type CollapsedBreadcrumbEntry =
-    | {
-          type: "item";
-          index: number;
-          item: PageHeaderBreadcrumb;
-      }
-    | {
-          type: "collapsed";
-          startIndex: number;
-          items: PageHeaderBreadcrumb[];
-      };
-
-function collapsedBreadcrumbEntries(
-    items: PageHeaderBreadcrumb[],
-    visibleIndices: number[],
-): CollapsedBreadcrumbEntry[] {
-    const visible = new Set(visibleIndices);
-    visible.add(items.length - 1);
-    const entries: CollapsedBreadcrumbEntry[] = [];
-    let index = 0;
-    while (index < items.length) {
-        if (visible.has(index)) {
-            entries.push({ type: "item", index, item: items[index] });
-            index += 1;
-            continue;
-        }
-        const startIndex = index;
-        const collapsed: PageHeaderBreadcrumb[] = [];
-        while (index < items.length && !visible.has(index)) {
-            collapsed.push(items[index]);
-            index += 1;
-        }
-        entries.push({ type: "collapsed", startIndex, items: collapsed });
-    }
-    return entries;
-}
-
-function CollapsedBreadcrumbGroup({
-    items,
-}: {
-    items: PageHeaderBreadcrumb[];
-}) {
-    return (
-        <span className="hidden shrink-0 items-center gap-1.5 sm:flex">
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <button
-                        type="button"
-                        className="text-gray-500 transition-colors hover:text-gray-700"
-                        aria-label="Show collapsed breadcrumbs"
-                        title="Show path"
-                    >
-                        …
-                    </button>
-                </DropdownMenuTrigger>
-                <LiquidDropdownContent
-                    align="start"
-                    className="z-[150] min-w-44 p-1 font-sans"
-                >
-                    {items.map((item, index) => (
-                        <LiquidDropdownItem
-                            key={index}
-                            disabled={!item.onClick}
-                            onSelect={item.onClick}
-                            className="max-w-72 truncate"
-                            title={
-                                item.title ??
-                                (typeof item.label === "string"
-                                    ? item.label
-                                    : undefined)
-                            }
-                        >
-                            {item.label}
-                        </LiquidDropdownItem>
-                    ))}
-                </LiquidDropdownContent>
-            </DropdownMenu>
-            <span className="text-gray-300">›</span>
-        </span>
     );
 }
 
@@ -707,50 +470,22 @@ function BreadcrumbItem({
         "min-w-0 truncate transition-colors",
         item.cursor === "text" && "cursor-text",
         current
-            ? cn(
-                  "text-gray-900",
-                  item.onClick && "cursor-pointer hover:text-gray-600",
-              )
+            ? "text-gray-900"
             : item.onClick
               ? "text-gray-500 hover:text-gray-700"
               : "text-gray-500",
     );
     const wrapperClassName = cn(
         "min-w-0 items-center gap-1.5",
-        current
-            ? "flex min-w-[4rem] flex-1 overflow-hidden"
-            : "hidden max-w-56 shrink-0 sm:flex",
+        current ? "flex" : "hidden sm:flex",
     );
 
     return (
         <span className={wrapperClassName}>
-            {current && !item.onClick ? (
-                <span
-                    className={cn(className, "block w-full")}
-                    title={
-                        item.title ??
-                        (typeof item.label === "string"
-                            ? item.label
-                            : undefined)
-                    }
-                >
-                    {content}
-                </span>
+            {current ? (
+                <span className={className}>{content}</span>
             ) : item.onClick ? (
-                <button
-                    type="button"
-                    onClick={item.onClick}
-                    className={cn(
-                        className,
-                        current && "block w-full truncate text-left",
-                    )}
-                    title={
-                        item.title ??
-                        (typeof item.label === "string"
-                            ? item.label
-                            : undefined)
-                    }
-                >
+                <button onClick={item.onClick} className={className}>
                     {content}
                 </button>
             ) : (

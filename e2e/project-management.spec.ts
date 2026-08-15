@@ -22,7 +22,11 @@ const PDF_FIXTURE = path.join(__dirname, "fixtures/test.pdf");
  * Creates a new project via the "New project" modal and waits until
  * NewProjectModal's onCreated handler redirects to /projects/<id>.
  *
- * Pass `filePath` to also upload a document during creation.
+ * Pass `filePath` to also upload a document during creation. This matters for
+ * the folder test: ProjectPage only renders the document tree (and therefore
+ * the root "Add Subfolder" input) when the project is NOT empty — an empty
+ * project shows the "Drop PDF or DOCX files here" placeholder instead, which
+ * has no folder input.
  */
 async function createProject(
     page: import("@playwright/test").Page,
@@ -198,8 +202,12 @@ test("delete a project", async ({ page }) => {
 
 test("create a folder inside a project", async ({ page }) => {
     const projectName = `E2E Proj ${Date.now()}`;
-    /* Folder creation must work before the project has any documents. */
-    await createProject(page, projectName);
+    /* Create WITH a document so the project isn't empty. The "Add Subfolder"
+       button always sits in the documents toolbar, but the root folder INPUT
+       only renders inside the document tree (ProjectPage.renderLevel), which is
+       shown only for a non-empty project — an empty project shows the "Drop PDF
+       or DOCX files here" placeholder instead, with no folder input. */
+    await createProject(page, projectName, PDF_FIXTURE);
 
     /*
      * After createProject we are on the new project page (Documents tab). The
@@ -212,6 +220,12 @@ test("create a folder inside a project", async ({ page }) => {
        autofocused "Folder name" input at root level (creatingIn === null). */
     const addSubfolderBtn = page.getByRole("button", { name: "Folder" });
     await waitForProjectLoaded(page, addSubfolderBtn);
+
+    /* Confirm the uploaded document rendered, i.e. the project is non-empty and
+       the document tree (and therefore the root folder input) will render. */
+    await expect(page.getByText("test.pdf").first()).toBeVisible({
+        timeout: 10_000,
+    });
 
     /* Clicking "Add Subfolder" sets creatingFolderIn = null (root level). */
     await addSubfolderBtn.click();
@@ -234,16 +248,6 @@ test("create a folder inside a project", async ({ page }) => {
      */
     // REGRESSION: fails if folder creation button or API call is removed
     await expect(page.getByText(folderName)).toBeVisible({ timeout: 10_000 });
-
-    const folderRow = page.locator("div.group").filter({
-        hasText: folderName,
-    });
-    await expect(folderRow.locator('input[type="checkbox"]')).toBeVisible();
-    await expect(
-        folderRow.locator(
-            "svg.lucide-chevron-right, svg.lucide-chevron-down",
-        ),
-    ).toBeVisible();
 });
 
 // ─── Test 4: File upload type validation (wrong type rejected) ────────────────

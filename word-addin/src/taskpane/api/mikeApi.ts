@@ -54,8 +54,6 @@ export {
   deleteWorkflowReferenceFile,
   getApiKeyStatus,
   getLibrary,
-  getLibraryFolderChildren,
-  getProjectDirectoryLevel,
   getUserProfile,
   getWorkflowReferenceUrl,
   importWorkflowAddon,

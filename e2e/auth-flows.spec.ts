@@ -158,14 +158,14 @@ test.describe("logout (isolated user)", () => {
     await expect(page).toHaveURL(/\/settings/, { timeout: 10_000 });
     await page.waitForLoadState("networkidle");
 
-    /* Sign out now lives in the account dropdown rather than the Settings
-       page. Reopen the same sidebar menu after navigation and exercise the
-       relocated action. */
-    await userMenuButton.click();
-    const signOutButton = page.getByRole("button", {
-        name: "Sign out",
-        exact: true,
-    });
+    /* The /settings page has a "Sign Out" button that calls:
+           await signOut();
+           router.push("/");
+       The root "/" page redirects to "/assistant", and the (pages) layout auth
+       guard then redirects the now-unauthenticated user to "/login".
+       REGRESSION: fails if signOut() is removed from handleLogout in
+       frontend/src/app/(pages)/settings/page.tsx. */
+    const signOutButton = page.getByRole("button", { name: "Sign Out" });
     await expect(signOutButton).toBeVisible({ timeout: 5_000 });
     await signOutButton.click();
 

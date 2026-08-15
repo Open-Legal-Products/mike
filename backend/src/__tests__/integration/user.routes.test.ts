@@ -175,7 +175,6 @@ function profileRow(overrides: Record<string, unknown> = {}) {
         tabular_model: "gemini-3-flash-preview",
         mfa_on_login: false,
         legal_research_us: true,
-        quick_actions_visible: true,
         ...overrides,
     };
 }
@@ -231,7 +230,6 @@ describe("user.routes", () => {
                 messageCreditsUsed: 3,
                 tier: "Pro",
                 legalResearchUs: true,
-                quickActionsVisible: true,
                 mfaOnLogin: false,
                 apiKeyStatus: STATUS,
             });
@@ -377,20 +375,6 @@ describe("user.routes", () => {
             });
             // Guarded: the crypto path is never reached.
             expect(saveUserApiKey).not.toHaveBeenCalled();
-        });
-    });
-
-    describe("PATCH /user/profile", () => {
-        it("rejects a non-boolean Quick Actions visibility preference", async () => {
-            const res = await request(app)
-                .patch("/user/profile")
-                .set(...AUTH)
-                .send({ quickActionsVisible: "yes" });
-
-            expect(res.status).toBe(400);
-            expect(res.body.detail).toBe(
-                "quickActionsVisible must be a boolean",
-            );
         });
     });
 

@@ -50,7 +50,6 @@ import {
     usePaginatedTabularReviews,
 } from "@/app/hooks/usePaginatedTabularReviews";
 import { deleteTabularReviewsWithConcurrency } from "@/app/lib/deleteTabularReviewsWithConcurrency";
-import { useQueryParamTab } from "@/app/hooks/useQueryParamTab";
 
 type ReviewScope = TabularReviewScope;
 type ReviewSortKey = "name" | "columns" | "documents" | "created";
@@ -60,7 +59,6 @@ const REVIEW_SCOPES: { id: ReviewScope; label: string }[] = [
     { id: "in-project", label: "In Project" },
     { id: "standalone", label: "Standalone" },
 ];
-const REVIEW_SCOPE_IDS = REVIEW_SCOPES.map((scope) => scope.id);
 const SORT_OPTIONS: TableFilterOption<TableSortDirection>[] = [
     { value: "asc", label: "Ascending" },
     { value: "desc", label: "Descending" },
@@ -74,18 +72,13 @@ function formatDate(iso: string) {
 }
 
 export default function TabularReviewsPage() {
-    const router = useRouter();
-    const searchParams = useSearchParams();
     const [projects, setProjects] = useState<Project[]>([]);
     const [creating, setCreating] = useState(false);
     const [newTROpen, setNewTROpen] = useState(false);
     const [detailsReview, setDetailsReview] = useState<TabularReview | null>(
         null,
     );
-    const [activeScope, setActiveScope] = useQueryParamTab(
-        REVIEW_SCOPE_IDS,
-        "all",
-    );
+    const [activeScope, setActiveScope] = useState<ReviewScope>("all");
     const [projectFilter, setProjectFilter] = useState<string | null>(null);
     const [sort, setSort] = useState<{
         key: ReviewSortKey;
@@ -127,6 +120,8 @@ export default function TabularReviewsPage() {
         () => new Set(),
     );
     const actionsRef = useRef<HTMLDivElement>(null);
+    const router = useRouter();
+    const searchParams = useSearchParams();
     const { user } = useAuth();
     const previewEmptyStates = searchParams.get("emptyStates") === "1";
     const effectiveLoading = loading && !previewEmptyStates;
@@ -507,7 +502,7 @@ export default function TabularReviewsPage() {
                                 {!loading && documentsFilterButton}
                             </div>
                         </TableHeaderCell>
-                        <TableHeaderCell className="w-52">
+                        <TableHeaderCell className="w-40">
                             <div className="flex items-center gap-1">
                                 <span>Project</span>
                                 {!loading && projectFilterButton}
@@ -540,7 +535,7 @@ export default function TabularReviewsPage() {
                                 <TableCell className="w-24">
                                     <SkeletonLine className="w-8" />
                                 </TableCell>
-                                <TableCell className="w-52">
+                                <TableCell className="w-40">
                                     <SkeletonLine className="w-24" />
                                 </TableCell>
                                 <TableCell className="w-32">
@@ -675,7 +670,7 @@ export default function TabularReviewsPage() {
                                     <TableCell className="w-24">
                                         {review.document_count ?? 0}
                                     </TableCell>
-                                    <TableCell className="w-52 pr-2">
+                                    <TableCell className="w-40 pr-2">
                                         {projectName ? (
                                             projectName
                                         ) : (

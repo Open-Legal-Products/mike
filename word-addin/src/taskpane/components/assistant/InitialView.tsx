@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import quickActionsIcon from "@icons/features/quick-actions.svg";
+import quickActionsIcon from "../../../assets/icons/app-sidebar/quick-actions.svg";
 import { getUserProfile } from "../../api/mikeApi";
 import { MikeIcon } from "../../../shared/chat/mike-icon";
 import type { QuickAction } from "../../types";

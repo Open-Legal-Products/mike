@@ -117,18 +117,14 @@ describe("FileDirectory", () => {
         const nameHeader = screen.getByText("Name");
         expect(nameHeader.parentElement?.firstElementChild).toBe(nameHeader);
 
-        const folderRow = screen
-            .getByText("Closing documents")
-            .closest("button");
+        const folderRow = screen.getByText("Closing documents").closest("button");
         expect(folderRow).toHaveStyle({ paddingLeft: "8px" });
         fireEvent.click(folderRow!);
 
         expect(screen.getByText("Agreement.pdf")).toBeInTheDocument();
-        expect(screen.getByText("Agreement.pdf").closest("button")).toHaveStyle(
-            {
-                paddingLeft: "30px",
-            },
-        );
+        expect(screen.getByText("Agreement.pdf").closest("button")).toHaveStyle({
+            paddingLeft: "30px",
+        });
     });
 
     it("renders folders inside projects on the Projects tab", () => {
@@ -161,9 +157,7 @@ describe("FileDirectory", () => {
             />,
         );
 
-        expect(
-            screen.getByRole("button", { name: "Files" }),
-        ).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Files" })).toBeInTheDocument();
         expect(
             screen.getByRole("button", { name: "Projects" }),
         ).toBeInTheDocument();
@@ -197,80 +191,6 @@ describe("FileDirectory", () => {
         expect(row).toBeDisabled();
         fireEvent.click(row!);
         expect(onChange).not.toHaveBeenCalled();
-    });
-
-    it("loads the next page when the directory is scrolled to the bottom", () => {
-        const onLoadMore = vi.fn();
-        const document = {
-            id: "document-1",
-            filename: "Agreement.pdf",
-            file_type: "pdf",
-            folder_id: null,
-        } as Document;
-
-        render(
-            <FileDirectory
-                documents={[document]}
-                selectedDocuments={[]}
-                onChange={vi.fn()}
-                showTabs={false}
-                rootDocumentsHasMore
-                onLoadMoreRootDocuments={onLoadMore}
-            />,
-        );
-
-        const viewport = screen.getByLabelText("File directory");
-        Object.defineProperties(viewport, {
-            scrollHeight: { configurable: true, value: 1000 },
-            clientHeight: { configurable: true, value: 500 },
-            scrollTop: { configurable: true, value: 300, writable: true },
-        });
-
-        fireEvent.scroll(viewport);
-        expect(onLoadMore).not.toHaveBeenCalled();
-
-        viewport.scrollTop = 450;
-        fireEvent.scroll(viewport);
-        fireEvent.scroll(viewport);
-        expect(onLoadMore).toHaveBeenCalledTimes(1);
-    });
-
-    it("applies the same page limit to an externally supplied directory", () => {
-        const onLoadMore = vi.fn();
-        const documents = [
-            {
-                id: "document-1",
-                filename: "First agreement.pdf",
-                file_type: "pdf",
-                folder_id: null,
-            },
-            {
-                id: "document-2",
-                filename: "Second agreement.pdf",
-                file_type: "pdf",
-                folder_id: null,
-            },
-        ] as Document[];
-
-        render(
-            <FileDirectory
-                documents={documents}
-                selectedDocuments={[]}
-                onChange={vi.fn()}
-                showTabs={false}
-                documentLimitByLevel={{ root: 1 }}
-                rootDocumentsHasMore
-                onLoadMoreRootDocuments={onLoadMore}
-            />,
-        );
-
-        expect(screen.getByText("First agreement.pdf")).toBeInTheDocument();
-        expect(
-            screen.queryByText("Second agreement.pdf"),
-        ).not.toBeInTheDocument();
-
-        fireEvent.click(screen.getByRole("button", { name: "Load more" }));
-        expect(onLoadMore).toHaveBeenCalledTimes(1);
     });
 
     it.each([

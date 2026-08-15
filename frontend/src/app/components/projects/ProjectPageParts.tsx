@@ -35,10 +35,8 @@ export const NAME_COL_W = TABLE_PRIMARY_CELL_WIDTH_CLASS;
 export const DOC_NAME_COL_W =
     "w-[292px] sm:w-[332px] md:w-[392px] lg:w-[452px] xl:w-[532px] 2xl:w-[592px] shrink-0";
 
-// Each nested row advances by the checkbox width (10px) plus the 12px gap,
-// placing its checkbox directly beneath its parent folder's chevron.
-const TREE_CONTROL_WIDTH_PX = 22;
-const TREE_NAME_PADDING_PX = 12;
+const TREE_CONTROL_WIDTH_PX = 29;
+const TREE_NAME_PADDING_PX = 16;
 
 export function treeNameCellStyle(depth: number): CSSProperties | undefined {
     if (depth <= 0) return undefined;
@@ -137,16 +135,15 @@ export function DocVersionHistory({
                 {Array.from({ length: skeletonCount }).map((_, index) => (
                     <div
                         key={`ver-skeleton-${docId}-${index}`}
-                        className="flex h-10 min-w-max items-center bg-gray-100 pr-3"
+                        className="flex h-10 items-center pr-8 bg-gray-100"
                     >
                         <div
                             className={`sticky left-0 z-[60] ${DOC_NAME_COL_W} bg-gray-100 py-2 pl-3 pr-2`}
                             style={treeNameCellStyle(depth)}
                         >
-                            <div className="flex items-center">
-                                <div className="mr-3 h-2.5 w-2.5 shrink-0 rounded bg-gray-200 animate-pulse" />
-                                <div className="mr-2 h-4 w-4 shrink-0 rounded bg-gray-200 animate-pulse" />
-                                <div className="mr-2 h-4 w-4 shrink-0 rounded bg-gray-200 animate-pulse" />
+                            <div className="flex items-center gap-3">
+                                <div className="h-2.5 w-2.5 shrink-0 rounded bg-gray-200 animate-pulse" />
+                                <div className="h-4 w-4 shrink-0 rounded bg-gray-200 animate-pulse" />
                                 <div className="h-3 w-32 rounded bg-gray-200 animate-pulse" />
                             </div>
                         </div>
@@ -223,7 +220,7 @@ export function DocVersionHistory({
                             if (isEditing || isDeleted) return;
                             onOpenVersion?.(v.id, displayLabel);
                         }}
-                        className={`group flex h-10 min-w-max items-center pr-3 text-xs transition-colors ${rowBg} ${hoverBg} ${
+                        className={`group flex h-10 items-center pr-8 text-sm transition-colors ${rowBg} ${hoverBg} ${
                             isDeleted
                                 ? "cursor-default text-gray-300"
                                 : "cursor-pointer text-gray-500"
@@ -235,9 +232,8 @@ export function DocVersionHistory({
                             }`}
                             style={treeNameCellStyle(depth)}
                         >
-                            <div className="flex items-center">
-                                <span className="mr-3 h-2.5 w-2.5 shrink-0" />
-                                <span className="mr-2 flex h-4 w-4 shrink-0 items-center justify-center">
+                            <div className="flex items-center gap-3">
+                                <span className="flex h-2.5 w-2.5 shrink-0 items-center justify-center">
                                     <CornerDownRight
                                         className={`h-3.5 w-3.5 ${
                                             isDeleted
@@ -247,12 +243,10 @@ export function DocVersionHistory({
                                         aria-hidden="true"
                                     />
                                 </span>
-                                <span className="mr-2 shrink-0">
-                                    <DocIcon
-                                        fileType={versionFileType}
-                                        muted={isDeleted}
-                                    />
-                                </span>
+                                <DocIcon
+                                    fileType={versionFileType}
+                                    muted={isDeleted}
+                                />
                                 {isEditing ? (
                                     <input
                                         autoFocus
@@ -271,11 +265,11 @@ export function DocVersionHistory({
                                             }
                                         }}
                                         onBlur={() => void commit(v.id)}
-                                        className="min-w-0 flex-1 border-b border-gray-300 bg-transparent text-xs text-gray-800 outline-none focus:border-gray-500"
+                                        className="min-w-0 flex-1 border-b border-gray-300 bg-transparent text-sm text-gray-800 outline-none focus:border-gray-500"
                                     />
                                 ) : (
                                     <span
-                                        className={`truncate text-xs ${
+                                        className={`truncate text-sm ${
                                             isDeleted
                                                 ? "text-gray-300"
                                                 : "text-gray-700"
@@ -300,24 +294,24 @@ export function DocVersionHistory({
                                 <span className="text-gray-300">—</span>
                             )}
                         </div>
-                        <div className="w-24 shrink-0 truncate text-xs text-gray-400">
+                        <div className="w-24 shrink-0 truncate text-sm text-gray-400">
                             —
                         </div>
                         <div
-                            className={`w-20 shrink-0 truncate pl-1 text-xs ${
+                            className={`w-20 shrink-0 truncate pl-1 text-sm ${
                                 isDeleted ? "text-gray-300" : "text-gray-500"
                             }`}
                         >
                             {numberLabel}
                         </div>
                         <div
-                            className={`w-32 shrink-0 truncate text-xs ${
+                            className={`w-32 shrink-0 truncate text-sm ${
                                 isDeleted ? "text-gray-300" : "text-gray-500"
                             }`}
                         >
                             {dateLabel ? formatDate(v.created_at) : <span className="text-gray-300">—</span>}
                         </div>
-                        <div className="w-32 shrink-0 truncate text-xs text-gray-400">
+                        <div className="w-32 shrink-0 truncate text-sm text-gray-400">
                             —
                         </div>
                         <div
@@ -363,7 +357,6 @@ export function ProjectPageHeader({
     creatingReview,
     isOwner,
     onBackToProjects,
-    onProjectRoot,
     onOpenDetails,
     onDeleteProject,
     onSearchChange,
@@ -371,7 +364,6 @@ export function ProjectPageHeader({
     onNewChat,
     onNewReview,
     onAddDocuments,
-    documentFolderBreadcrumbs,
 }: {
     project: Project | null;
     search: string;
@@ -380,7 +372,6 @@ export function ProjectPageHeader({
     creatingReview: boolean;
     isOwner: boolean;
     onBackToProjects: () => void;
-    onProjectRoot: () => void;
     onOpenDetails: () => void;
     onDeleteProject: () => void;
     onSearchChange: (search: string) => void;
@@ -388,10 +379,6 @@ export function ProjectPageHeader({
     onNewChat: () => void;
     onNewReview: () => void;
     onAddDocuments?: (() => void) | null;
-    documentFolderBreadcrumbs?: Array<{
-        label: string;
-        onClick: () => void;
-    }>;
 }) {
     const sectionAction: PageHeaderAction =
         activeSection === "documents"
@@ -438,19 +425,12 @@ export function ProjectPageHeader({
                     ...(project
                         ? {
                               label: project.name,
-                              onClick: onProjectRoot,
-                              title: "Back to project documents",
                           }
                         : {
                               loading: true,
                               skeletonClassName: "w-40",
                           }),
                 },
-                ...(activeSection === "assistant"
-                    ? [{ label: "Chats" }]
-                    : activeSection === "reviews"
-                      ? [{ label: "Tabular Reviews" }]
-                      : (documentFolderBreadcrumbs ?? [])),
             ]}
             actionGroups={[
                 [

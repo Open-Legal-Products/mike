@@ -29,7 +29,6 @@ interface ChatHistoryContextType {
   loadMoreChats: () => Promise<void>;
     saveChat: (projectId?: string) => Promise<string | null>;
     renameChat: (chatId: string, title: string) => Promise<void>;
-    updateChatTitle: (chatId: string, title: string) => void;
     newChatMessages: Message[] | null;
     setNewChatMessages: (messages: Message[] | null) => void;
   replaceChatId: (oldChatId: string, newChatId: string, title?: string) => void;
@@ -183,14 +182,6 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
         [loadChats],
     );
 
-    const updateChatTitle = useCallback((chatId: string, title: string) => {
-        setChats((prev) =>
-            (prev ?? []).map((chat) =>
-                chat.id === chatId ? { ...chat, title } : chat,
-            ),
-        );
-    }, []);
-
     const deleteChatFn = useCallback(
         async (chatId: string) => {
             setChats((prev) => (prev ?? []).filter((c) => c.id !== chatId));
@@ -215,7 +206,6 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
             loadMoreChats,
             saveChat,
             renameChat: renameChatFn,
-            updateChatTitle,
             newChatMessages,
             setNewChatMessages,
             replaceChatId,
@@ -230,7 +220,6 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
             loadMoreChats,
             saveChat,
             renameChatFn,
-            updateChatTitle,
             newChatMessages,
             replaceChatId,
             deleteChatFn,

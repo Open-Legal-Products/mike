@@ -48,7 +48,6 @@ import {
 } from "@/app/components/shared/TablePrimitive";
 import { PillButton } from "@/app/components/ui/pill-button";
 import { TabPillButton } from "@/app/components/ui/tab-pill-button";
-import { useQueryParamTab } from "@/app/hooks/useQueryParamTab";
 
 function formatDate(iso: string) {
     return new Date(iso).toLocaleDateString(undefined, {
@@ -80,22 +79,11 @@ const SORT_OPTIONS: TableFilterOption<TableSortDirection>[] = [
     { value: "asc", label: "Ascending" },
     { value: "desc", label: "Descending" },
 ];
-const PROJECT_FILTERS: { id: ProjectFilter; label: string }[] = [
-    { id: "all", label: "All" },
-    { id: "mine", label: "Mine" },
-    { id: "shared-with-me", label: "Shared with me" },
-];
-const PROJECT_FILTER_IDS = PROJECT_FILTERS.map((filter) => filter.id);
 
 export function ProjectsOverview() {
-    const router = useRouter();
-    const searchParams = useSearchParams();
     const [modalOpen, setModalOpen] = useState(false);
     const [detailsProject, setDetailsProject] = useState<Project | null>(null);
-    const [activeFilter, setActiveFilter] = useQueryParamTab(
-        PROJECT_FILTER_IDS,
-        "all",
-    );
+    const [activeFilter, setActiveFilter] = useState<ProjectFilter>("all");
     const [practiceFilter, setPracticeFilter] = useState<string | null>(null);
     const [ownerFilter, setOwnerFilter] = useState<string | null>(null);
     const [sort, setSort] = useState<{
@@ -113,6 +101,8 @@ export function ProjectsOverview() {
         owners: [],
     });
     const actionsRef = useRef<HTMLDivElement>(null);
+    const router = useRouter();
+    const searchParams = useSearchParams();
     const { user, isAuthenticated, authLoading } = useAuth();
     const previewEmptyStates = searchParams.get("emptyStates") === "1";
     const debouncedSearch = useDebouncedValue(search, 250);
@@ -224,6 +214,11 @@ export function ProjectsOverview() {
         clearSelection();
     }
 
+    const filters: { id: ProjectFilter; label: string }[] = [
+        { id: "all", label: "All" },
+        { id: "mine", label: "Mine" },
+        { id: "shared-with-me", label: "Shared with me" },
+    ];
     const nameSortDirection = sort?.key === "name" ? sort.direction : null;
     const cmSortDirection = sort?.key === "cm" ? sort.direction : null;
     const filesSortDirection = sort?.key === "files" ? sort.direction : null;
@@ -433,7 +428,7 @@ export function ProjectsOverview() {
             </PageHeader>
 
             <TableToolbar
-                items={PROJECT_FILTERS}
+                items={filters}
                 active={activeFilter}
                 onChange={(nextFilter) => {
                     setActiveFilter(nextFilter);
@@ -647,10 +642,9 @@ export function ProjectsOverview() {
                                     onSelectionChange={() =>
                                         toggleOne(project.id)
                                     }
-                                    checkboxTitle={`Select ${project.name}`}
                                 >
                                     <ClosedProjectSvgIcon className="mr-2 h-4 w-4 shrink-0" />
-                                    <span className="min-w-0 flex-1 truncate text-xs text-gray-800">
+                                    <span className="min-w-0 flex-1 truncate text-sm text-gray-800">
                                         {project.name}
                                     </span>
                                 </TablePrimaryCell>

@@ -142,11 +142,7 @@ describe("POST /projects/:projectId/chat", () => {
         expect(res.status).toBe(200);
         expect(res.headers["content-type"]).toContain("text/event-stream");
         expect(res.text).toContain('"type":"chat_id"');
-        expect(res.text).toContain('"type":"chat_title"');
         expect(runLLMStream).toHaveBeenCalledTimes(1);
-        expect(runLLMStream).toHaveBeenCalledWith(
-            expect.objectContaining({ emitDone: false }),
-        );
     });
 
     it("normalizes validated request fields before using them", async () => {

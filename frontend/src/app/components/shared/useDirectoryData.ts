@@ -14,7 +14,7 @@ export type DirectoryTab = "files" | "templates" | "projects";
 
 type LibraryDirectoryTab = Exclude<DirectoryTab, "projects">;
 
-const DIRECTORY_PAGE_SIZE = 40;
+const DIRECTORY_PAGE_SIZE = 50;
 const ROOT_LEVEL_KEY = "root";
 
 const EMPTY_LOADING: Record<DirectoryTab, boolean> = {

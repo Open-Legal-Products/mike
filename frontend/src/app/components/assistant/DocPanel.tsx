@@ -28,7 +28,6 @@ import type {
     EditAnnotation,
 } from "../shared/types";
 import { quoteVerificationState } from "./message/citationVerification";
-import { FileTypeIcon } from "../shared/FileTypeIcon";
 
 /**
  * Discriminated-union describing what the panel is showing above the viewer.
@@ -248,7 +247,7 @@ export function DocPanel({
 // Header variants
 // ---------------------------------------------------------------------------
 
-export function DocumentTitleRow({
+function DocumentTitleRow({
     documentId,
     filename,
     versionId,
@@ -262,15 +261,11 @@ export function DocumentTitleRow({
     isReloading: boolean;
 }) {
     return (
-        <div className="flex items-center gap-3 px-3 pt-4 pb-3">
+        <div className="flex items-start gap-3 px-3 pt-4 pb-3">
             <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <FileTypeIcon
-                        fileType={filename}
-                        className="h-4 w-4"
-                    />
                     <h2
-                        className="min-w-0 break-words text-sm font-medium text-gray-800"
+                        className="min-w-0 break-words font-serif text-xl text-gray-900"
                         title={filename}
                     >
                         {filename}

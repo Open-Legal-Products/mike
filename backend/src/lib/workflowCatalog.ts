@@ -15,34 +15,40 @@ export const DEFAULT_WORKFLOW_IDS = [
 ] as const;
 
 const DEFAULT_WORKFLOW_ID_SET = new Set<string>(DEFAULT_WORKFLOW_IDS);
-const DEFAULT_QUICK_ACTION_PROMPT =
-  "Execute this workflow on the selected documents.";
 
-const QUICK_ACTION_DEFAULTS: Partial<
-  Record<
+const QUICK_ACTION_DEFAULTS: Record<
   (typeof DEFAULT_WORKFLOW_IDS)[number],
   { prompt: string; documentUpload: boolean; sortOrder: number }
-  >
 > = {
   "builtin-proofread": {
-    prompt: DEFAULT_QUICK_ACTION_PROMPT,
+    prompt:
+      "Review the current document for drafting quality, internal consistency, grammar, punctuation, formatting, numbering, defined terms, and cross-reference errors. List each issue with its location, severity, and a specific recommended fix.",
     documentUpload: true,
     sortOrder: 0,
   },
   "builtin-compare-documents": {
-    prompt: DEFAULT_QUICK_ACTION_PROMPT,
+    prompt:
+      "Compare the current document with the documents I attach. Present the material similarities, differences, risks, and follow-up points in a structured table, citing the relevant location in each document where available.",
     documentUpload: true,
     sortOrder: 1,
   },
   "builtin-extract-key-terms": {
-    prompt: DEFAULT_QUICK_ACTION_PROMPT,
+    prompt:
+      "Extract the key legal, commercial, and operational terms from the current document. Present them in a concise table with the term, value, location, and notes, and flag material omissions or ambiguities without inventing missing information.",
     documentUpload: true,
     sortOrder: 2,
   },
   "builtin-draft-from-template": {
-    prompt: DEFAULT_QUICK_ACTION_PROMPT,
+    prompt:
+      "Create a completed draft from the template I attach, using the current document and any additional materials as source context. Preserve the template's formatting and structure, replace placeholders consistently, and ask for any essential missing information.",
     documentUpload: true,
     sortOrder: 3,
+  },
+  "builtin-commercial-agreement-tabular-review": {
+    prompt:
+      "Review the commercial agreements I upload and extract the requested terms into the workflow's configured columns. Support every result with the document text, keep entries concise, and mark information that is not found rather than inferring it.",
+    documentUpload: true,
+    sortOrder: 4,
   },
 };
 
@@ -65,10 +71,9 @@ export function defaultWorkflowPayloads() {
       language: workflow.metadata.language,
       practice: workflow.metadata.practice,
       jurisdictions: workflow.metadata.jurisdictions,
-      quick_action_name: action ? workflow.metadata.title : null,
-      quick_action_prompt: action?.prompt ?? null,
-      document_upload: action?.documentUpload ?? false,
-      sort_order: action?.sortOrder ?? null,
+      quick_action_prompt: action.prompt,
+      document_upload: action.documentUpload,
+      sort_order: action.sortOrder,
     };
   });
 }

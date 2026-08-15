@@ -61,33 +61,6 @@ export type AssistantSidePanelTab =
     | EditTab
     | CaseTab;
 
-/**
- * Keep the mounted document viewer's identity stable when another link opens
- * the same document. Event links commonly omit a version while citation and
- * download links include one; replacing that tuple would trigger a fresh
- * fetch/render even though the panel is already showing the document.
- */
-export function mergeAssistantSidePanelTab(
-    existing: AssistantSidePanelTab,
-    incoming: AssistantSidePanelTab,
-): AssistantSidePanelTab {
-    if (existing.kind === "case" || incoming.kind === "case") return incoming;
-    if (existing.documentId !== incoming.documentId) return incoming;
-    if (existing.kind === "document" && incoming.kind === "document") {
-        return existing;
-    }
-    return {
-        ...incoming,
-        id: existing.id,
-        documentId: existing.documentId,
-        filename: existing.filename,
-        versionId: existing.versionId,
-        versionNumber: existing.versionNumber,
-        warning: existing.warning,
-        initialScrollTop: existing.initialScrollTop,
-    };
-}
-
 interface Props {
     tabs: AssistantSidePanelTab[];
     activeTabId: string | null;

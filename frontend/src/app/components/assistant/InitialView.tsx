@@ -8,11 +8,7 @@ import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import { MikeIcon } from "@/app/components/chat/mike-icon";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { QuickActionsModal } from "./QuickActionsModal";
-import {
-    createQuickAction,
-    listQuickActions,
-    updateQuickAction,
-} from "@/app/lib/mikeApi";
+import { listQuickActions, updateQuickAction } from "@/app/lib/mikeApi";
 import type { Message, QuickAction } from "../shared/types";
 
 interface InitialViewProps {
@@ -140,34 +136,66 @@ export function InitialView({ onSubmit }: InitialViewProps) {
         }
     }
 
-    async function saveQuickAction(action: QuickAction) {
-        const updated = await updateQuickAction(action.id, {
-            workflow_id: action.workflow_id,
-            name: action.name,
-            prompt: action.prompt,
-            document_upload: action.document_upload,
-            enabled: action.enabled,
-        });
+    async function toggleQuickAction(action: QuickAction) {
+        const enabled = !action.enabled;
         setQuickActions((current) =>
-            current.map((item) => (item.id === updated.id ? updated : item)),
+            current.map((item) =>
+                item.id === action.id ? { ...item, enabled } : item,
+            ),
         );
+        try {
+            const updated = await updateQuickAction(action.id, { enabled });
+            setQuickActions((current) =>
+                current.map((item) =>
+                    item.id === updated.id ? updated : item,
+                ),
+            );
+        } catch {
+            setQuickActions((current) =>
+                current.map((item) =>
+                    item.id === action.id ? action : item,
+                ),
+            );
+        }
     }
 
-    async function addQuickAction(input: {
-        workflowId: string;
-        name: string;
-        prompt: string;
-        documentUpload: boolean;
-    }) {
-        const created = await createQuickAction({
-            workflow_id: input.workflowId,
-            name: input.name,
-            prompt: input.prompt,
-            document_upload: input.documentUpload,
-            enabled: true,
-            sort_order: quickActions.length,
-        });
-        setQuickActions((current) => [...current, created]);
+    function editQuickAction(
+        action: QuickAction,
+        changes: Partial<Pick<QuickAction, "prompt" | "document_upload">>,
+    ) {
+        const next = { ...action, ...changes };
+        setQuickActions((current) =>
+            current.map((item) => (item.id === action.id ? next : item)),
+        );
+        void updateQuickAction(action.id, changes)
+            .then((updated) => {
+                setQuickActions((current) =>
+                    current.map((item) =>
+                        item.id === updated.id
+                            // The server response wins so server-side
+                            // normalization of the edited fields reaches
+                            // state. A concurrent `enabled` toggle still in
+                            // flight is not lost: its own success/rollback
+                            // handler settles that field when it resolves.
+                            ? { ...item, ...updated }
+                            : item,
+                    ),
+                );
+            })
+            .catch(() => {
+                const rollback: Partial<QuickAction> = {};
+                if ("prompt" in changes) rollback.prompt = action.prompt;
+                if ("document_upload" in changes) {
+                    rollback.document_upload = action.document_upload;
+                }
+                setQuickActions((current) =>
+                    current.map((item) =>
+                        item.id === action.id
+                            ? { ...item, ...rollback }
+                            : item,
+                    ),
+                );
+            });
     }
 
     return (
@@ -223,12 +251,12 @@ export function InitialView({ onSubmit }: InitialViewProps) {
                     </p>
                 </div>
 
-                {profile?.quickActionsVisible !== false && (
+                {visibleQuickActions.length > 0 && (
                     <div className="flex flex-col items-center">
                         <div className="group relative flex h-5 items-center justify-center">
                             <span className="flex items-center gap-1.5 text-xs font-medium text-gray-800">
                                 <Image
-                                    src="/icons/features/quick-actions.svg"
+                                    src="/icons/app-sidebar/quick-actions.svg"
                                     alt=""
                                     width={14}
                                     height={14}
@@ -255,8 +283,7 @@ export function InitialView({ onSubmit }: InitialViewProps) {
                                     onClick={() => handleQuickAction(action)}
                                     className="inline-flex h-8 items-center justify-center rounded-full border border-white/70 bg-white/55 px-3 font-medium text-gray-600 shadow-[0_3px_9px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.86),inset_0_-1px_0_rgba(255,255,255,0.58)] backdrop-blur-xl transition-all hover:bg-white hover:text-gray-900 active:scale-[0.98] disabled:cursor-default disabled:opacity-45 disabled:active:scale-100"
                                 >
-                                    {action.name?.trim() ||
-                                        action.workflow.title}
+                                    {action.workflow.title}
                                 </button>
                             ))}
                         </div>
@@ -268,8 +295,8 @@ export function InitialView({ onSubmit }: InitialViewProps) {
                 open={quickActionsModalOpen}
                 onClose={() => setQuickActionsModalOpen(false)}
                 actions={quickActions}
-                onSave={saveQuickAction}
-                onCreate={addQuickAction}
+                onToggle={(action) => void toggleQuickAction(action)}
+                onUpdate={editQuickAction}
             />
         </div>
     );

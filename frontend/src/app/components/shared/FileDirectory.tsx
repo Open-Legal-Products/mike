@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  type ReactNode,
-  type UIEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Check, Loader2 } from "lucide-react";
 import type { Document, LibraryFolder, Project } from "./types";
 import { FileTypeIcon } from "./FileTypeIcon";
@@ -52,7 +45,7 @@ const EMPTY_LEVEL_STATE: Record<
   "files" | "templates",
   Record<string, boolean>
 > = { files: {}, templates: {} };
-const DIRECTORY_SEARCH_PAGE_SIZE = 40;
+const DIRECTORY_SEARCH_PAGE_SIZE = 50;
 
 function mergeDirectoryRows<T extends { id: string }>(current: T[], next: T[]) {
   const rows = new Map(current.map((row) => [row.id, row]));
@@ -102,7 +95,6 @@ interface FileDirectoryProps {
   loadingMoreFolderIds?: Set<string>;
   loadedFolderIds?: Set<string>;
   onLoadMoreFolderDocuments?: (folderId: string) => void | Promise<void>;
-  documentLimitByLevel?: Record<string, number>;
   rootDocumentsHasMore?: boolean;
   loadingMoreRootDocuments?: boolean;
   onLoadMoreRootDocuments?: () => void | Promise<void>;
@@ -128,13 +120,11 @@ export function FileDirectory({
   loadingMoreFolderIds: externalLoadingMoreFolderIds = new Set<string>(),
   loadedFolderIds: externalLoadedFolderIds = new Set<string>(),
   onLoadMoreFolderDocuments,
-  documentLimitByLevel = {},
   rootDocumentsHasMore = false,
   loadingMoreRootDocuments = false,
   onLoadMoreRootDocuments,
   disabledDocumentIds,
 }: FileDirectoryProps) {
-  const autoLoadTriggeredRef = useRef(false);
     const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
         new Set(),
     );
@@ -369,76 +359,6 @@ export function FileDirectory({
         ((activeTab === "files" && !hasVisibleFiles) ||
             (activeTab === "projects" && !hasVisibleProjects) ||
             (activeTab === "templates" && !hasVisibleTemplates));
-  const activePageLoadingMore = q
-    ? searchLoading
-    : activeTab === "projects"
-      ? loadingMoreProjects
-      : activeTab === "templates"
-        ? !!loadingMoreDocumentsByLevel.templates.root
-        : showTabs
-          ? !!loadingMoreDocumentsByLevel.files.root
-          : loadingMoreRootDocuments;
-
-  useEffect(() => {
-    if (!activePageLoadingMore) autoLoadTriggeredRef.current = false;
-  }, [activePageLoadingMore]);
-
-  useEffect(() => {
-    autoLoadTriggeredRef.current = false;
-  }, [activeTab, q]);
-
-  function handleDirectoryScroll(event: UIEvent<HTMLDivElement>) {
-    if (autoLoadTriggeredRef.current) return;
-    const viewport = event.currentTarget;
-    const distanceFromBottom =
-      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-    if (distanceFromBottom > 80) return;
-
-    if (q) {
-      if (!searchHasMore || searchLoading) return;
-      autoLoadTriggeredRef.current = true;
-      void loadMoreSearchResults();
-      return;
-    }
-
-    if (activeTab === "projects") {
-      if (!projectsHasMore || loadingMoreProjects) return;
-      autoLoadTriggeredRef.current = true;
-      void loadMoreProjects();
-      return;
-    }
-
-    if (activeTab === "templates") {
-      if (
-        !documentsHasMoreByLevel.templates.root ||
-        loadingMoreDocumentsByLevel.templates.root
-      )
-        return;
-      autoLoadTriggeredRef.current = true;
-      void loadMoreLibraryDocuments("templates", null);
-      return;
-    }
-
-    if (showTabs) {
-      if (
-        !documentsHasMoreByLevel.files.root ||
-        loadingMoreDocumentsByLevel.files.root
-      )
-        return;
-      autoLoadTriggeredRef.current = true;
-      void loadMoreLibraryDocuments("files", null);
-      return;
-    }
-
-    if (
-      !rootDocumentsHasMore ||
-      loadingMoreRootDocuments ||
-      !onLoadMoreRootDocuments
-    )
-      return;
-    autoLoadTriggeredRef.current = true;
-    void onLoadMoreRootDocuments();
-  }
 
     function toggle(doc: Document) {
         if (disabledDocumentIds?.has(doc.id)) return;
@@ -625,11 +545,6 @@ export function FileDirectory({
     ): ReactNode {
         return childFolders(folders, parentFolderId).map((folder) => {
             const docsInFolder = collectFolderDocuments(folders, docs, folder.id);
-      const directDocs = folderDocuments(docs, folder.id);
-      const visibleDirectDocs =
-        !q && documentLimitByLevel[folder.id] != null
-          ? directDocs.slice(0, documentLimitByLevel[folder.id])
-          : directDocs;
       const folderSelectionReady = folderIsFullyLoaded(
         folders,
         folder.id,
@@ -711,7 +626,7 @@ export function FileDirectory({
                 libraryTab,
                 projectId,
                             )}
-                            {visibleDirectDocs.map((doc) =>
+                            {folderDocuments(docs, folder.id).map((doc) =>
                                 renderDocumentRow(doc, depth + 1),
                             )}
               {libraryTab && !q && (
@@ -721,10 +636,9 @@ export function FileDirectory({
                   }}
                 >
                   <TableLoadMoreRow
-                    autoLoadOnVisible
                     loading={loadingFolderIds[libraryTab].has(folder.id)}
                     hasMore={!!documentsHasMoreByLevel[libraryTab][folder.id]}
-                    itemCount={visibleDirectDocs.length}
+                    itemCount={folderDocuments(docs, folder.id).length}
                     loadingMore={
                       !!loadingMoreDocumentsByLevel[libraryTab][folder.id]
                     }
@@ -742,7 +656,6 @@ export function FileDirectory({
                   }}
                 >
                   <TableLoadMoreRow
-                    autoLoadOnVisible
                     loading={loadingProjectLevels.has(
                       `${projectId}:${folder.id}`,
                     )}
@@ -751,7 +664,7 @@ export function FileDirectory({
                         `${projectId}:${folder.id}`
                       ]
                     }
-                    itemCount={visibleDirectDocs.length}
+                    itemCount={folderDocuments(docs, folder.id).length}
                     loadingMore={loadingProjectLevels.has(
                       `more:${projectId}:${folder.id}`,
                     )}
@@ -769,10 +682,9 @@ export function FileDirectory({
                   }}
                 >
                   <TableLoadMoreRow
-                    autoLoadOnVisible
                     loading={externalLoadingFolderIds.has(folder.id)}
                     hasMore={!!documentsHasMoreByFolder[folder.id]}
-                    itemCount={visibleDirectDocs.length}
+                    itemCount={folderDocuments(docs, folder.id).length}
                     loadingMore={externalLoadingMoreFolderIds.has(folder.id)}
                     hasError={false}
                     onLoadMore={() => void onLoadMoreFolderDocuments(folder.id)}
@@ -901,11 +813,7 @@ export function FileDirectory({
             ) : (
                 <div className="flex min-h-0 flex-1 flex-col">
                     <FileDirectoryHeader />
-                    <div
-                      aria-label="File directory"
-                      className="min-h-0 flex-1 overflow-y-auto"
-                      onScroll={handleDirectoryScroll}
-                    >
+                    <div className="min-h-0 flex-1 overflow-y-auto">
                     {activeTab === "files" && (
                         <>
                             {visibleUploadingFilenames.map((filename) => (
@@ -935,15 +843,7 @@ export function FileDirectory({
                                 )}
                             {(q
                                 ? visibleStandaloneDocs
-                                : documentLimitByLevel.root != null
-                                  ? folderDocuments(
-                                      directoryStandaloneDocs,
-                                      null,
-                                    ).slice(0, documentLimitByLevel.root)
-                                  : folderDocuments(
-                                      directoryStandaloneDocs,
-                                      null,
-                                    )
+                                : folderDocuments(directoryStandaloneDocs, null)
                             ).map((doc) => renderDocumentRow(doc))}
                 {!q && (
                   <TableLoadMoreRow
@@ -954,13 +854,7 @@ export function FileDirectory({
                         : rootDocumentsHasMore
                     }
                     itemCount={
-                      documentLimitByLevel.root != null
-                        ? Math.min(
-                            folderDocuments(directoryStandaloneDocs, null)
-                              .length,
-                            documentLimitByLevel.root,
-                          )
-                        : folderDocuments(directoryStandaloneDocs, null).length
+                      folderDocuments(directoryStandaloneDocs, null).length
                     }
                     loadingMore={
                       showTabs
@@ -1160,7 +1054,6 @@ export function FileDirectory({
                             )}
                             {!q && (
                               <TableLoadMoreRow
-                                autoLoadOnVisible
                                 loading={false}
                                 hasMore={
                                   !!projectDocumentsHasMoreByLevel[

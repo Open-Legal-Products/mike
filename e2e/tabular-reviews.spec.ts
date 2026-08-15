@@ -161,9 +161,7 @@ test("creates a new tabular review and is redirected to the detail page", async 
     });
 
     // The new review's title appears in the page breadcrumb header
-    await expect(
-        page.getByText(reviewName, { exact: true }).filter({ visible: true }).first(),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(reviewName)).toBeVisible({ timeout: 10_000 });
 });
 
 /* ─── Test 3: review detail page table structure ─────────────────────────── */
@@ -178,24 +176,17 @@ test("review detail page renders the table structure and toolbar controls", asyn
     const reviewName = await createReview(page, "E2E Table Review");
 
     // The breadcrumb header shows the review title via RenameableTitle
-    await expect(
-        page.getByText(reviewName, { exact: true }).filter({ visible: true }).first(),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(reviewName)).toBeVisible({ timeout: 10_000 });
 
-    // Depending on the width available to the header actions, the parent
-    // breadcrumb is either visible or placed in the overflow menu.
-    const parentBreadcrumb = page
-        .getByRole("button", { name: "Tabular Reviews", exact: true })
-        .filter({ visible: true });
-    if (await parentBreadcrumb.first().isVisible()) {
-        await expect(parentBreadcrumb.first()).toBeVisible({ timeout: 5_000 });
-    } else {
-        await page.getByRole("button", { name: "Show collapsed breadcrumbs" }).click();
-        await expect(
-            page.getByRole("menuitem", { name: "Tabular Reviews", exact: true }),
-        ).toBeVisible({ timeout: 5_000 });
-        await page.keyboard.press("Escape");
-    }
+    // The breadcrumb also contains a "Tabular Reviews" back-nav button. Scope to
+    // the <main> landmark: the left sidebar nav also has a "Tabular Reviews"
+    // button, so an unscoped role query is a strict-mode violation. exact:true
+    // avoids also matching the mobile-only "Back to Tabular Reviews" control.
+    await expect(
+        page
+            .getByRole("main")
+            .getByRole("button", { name: "Tabular Reviews", exact: true }),
+    ).toBeVisible({ timeout: 5_000 });
 
     // TRTable always renders a "Document" column header, even when the review
     // is empty. This is visible in both the empty-state and populated states.

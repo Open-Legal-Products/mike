@@ -52,11 +52,7 @@ export class MikeApiError extends Error {
     status: number;
     code: string | null;
 
-    constructor(args: {
-        message: string;
-        status: number;
-        code?: string | null;
-    }) {
+    constructor(args: { message: string; status: number; code?: string | null }) {
         super(args.message);
         this.name = "MikeApiError";
         this.status = args.status;
@@ -218,8 +214,7 @@ export async function listProjectSummaries(pagination?: {
   signal?: AbortSignal;
 }): Promise<Project[]> {
   const params = new URLSearchParams();
-    if (pagination?.limit != null)
-        params.set("limit", String(pagination.limit));
+  if (pagination?.limit != null) params.set("limit", String(pagination.limit));
   if (pagination?.offset != null)
     params.set("offset", String(pagination.offset));
   params.set("view", "summary");
@@ -368,7 +363,6 @@ export interface UserProfile {
     tabularModel: string;
     mfaOnLogin: boolean;
     legalResearchUs: boolean;
-    quickActionsVisible: boolean;
     apiKeyStatus: ApiKeyStatus;
 }
 
@@ -471,7 +465,6 @@ export async function updateUserProfile(payload: {
     titleModel?: string;
     tabularModel?: string;
     legalResearchUs?: boolean;
-    quickActionsVisible?: boolean;
 }): Promise<UserProfile> {
     return apiRequest<UserProfile>("/user/profile", {
         method: "PATCH",
@@ -574,9 +567,7 @@ export async function listMcpConnectors(): Promise<McpConnectorSummary[]> {
 export async function getMcpConnector(
     connectorId: string,
 ): Promise<McpConnectorSummary> {
-    return apiRequest<McpConnectorSummary>(
-        `/user/mcp-connectors/${connectorId}`,
-    );
+  return apiRequest<McpConnectorSummary>(`/user/mcp-connectors/${connectorId}`);
 }
 
 export async function createMcpConnector(payload: {
@@ -804,8 +795,7 @@ export interface LibrarySearchResults {
 
 function libraryPaginationQuery(pagination?: LibraryPagination): string {
     const params = new URLSearchParams();
-    if (pagination?.limit != null)
-        params.set("limit", String(pagination.limit));
+    if (pagination?.limit != null) params.set("limit", String(pagination.limit));
     if (pagination?.offset != null)
         params.set("offset", String(pagination.offset));
     const qs = params.toString();
@@ -833,15 +823,6 @@ export async function getLibraryFolderChildren(
         params.set("offset", String(pagination.offset));
     return apiRequest<LibraryCollection>(
         `/library/${kind}?${params.toString()}`,
-    );
-}
-
-export async function getLibraryFolderPath(
-    kind: LibraryKind,
-    folderId: string,
-): Promise<{ folders: LibraryFolder[] }> {
-    return apiRequest<{ folders: LibraryFolder[] }>(
-        `/library/${kind}/folders/${folderId}`,
     );
 }
 
@@ -879,9 +860,7 @@ export async function searchLibraryDocuments(
 export async function getLibraryFilterOptions(
   kind: LibraryKind,
 ): Promise<{ fileTypes: string[] }> {
-    return apiRequest<{ fileTypes: string[] }>(
-        `/library/${kind}/filter-options`,
-    );
+  return apiRequest<{ fileTypes: string[] }>(`/library/${kind}/filter-options`);
 }
 
 export async function listLibraryDocumentIds(
@@ -1128,14 +1107,11 @@ export async function uploadProjectDocument(
     const authHeaders = await getAuthHeader();
     const form = new FormData();
     form.append("file", file);
-    const response = await fetch(
-        `${API_BASE}/projects/${projectId}/documents`,
-        {
+  const response = await fetch(`${API_BASE}/projects/${projectId}/documents`, {
             method: "POST",
             headers: { ...authHeaders },
             body: form,
-        },
-    );
+  });
     if (!response.ok) throw new Error(await response.text());
     return response.json() as Promise<Document>;
 }
@@ -1756,12 +1732,9 @@ export async function listWorkflowIds(options?: {
     if (options?.jurisdiction) params.set("jurisdiction", options.jurisdiction);
 
     const qs = params.toString() ? `?${params.toString()}` : "";
-    return apiRequest<{ id: string; user_id: string }[]>(
-        `/workflows/ids${qs}`,
-        {
+  return apiRequest<{ id: string; user_id: string }[]>(`/workflows/ids${qs}`, {
     signal: options?.signal,
-        },
-    );
+  });
 }
 
 // Always-unpaginated: the static, code-generated system-workflow list (37
@@ -1912,32 +1885,12 @@ export async function listQuickActions(): Promise<QuickAction[]> {
     return apiRequest<QuickAction[]>("/quick-actions");
 }
 
-export async function createQuickAction(payload: {
-    workflow_id: string;
-    name: string;
-    prompt: string;
-    document_upload: boolean;
-    enabled?: boolean;
-    sort_order?: number;
-}): Promise<QuickAction> {
-    return apiRequest<QuickAction>("/quick-actions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-    });
-}
-
 export async function updateQuickAction(
     quickActionId: string,
     payload: Partial<
         Pick<
             QuickAction,
-            | "workflow_id"
-            | "name"
-            | "prompt"
-            | "document_upload"
-            | "enabled"
-            | "sort_order"
+            "prompt" | "document_upload" | "enabled" | "sort_order"
         >
     >,
 ): Promise<QuickAction> {
@@ -1962,7 +1915,9 @@ export async function getWorkflowAddon(
     return apiRequest<WorkflowAddon>(`/workflow-addons/${addonId}`);
 }
 
-export async function importWorkflowAddon(addonId: string): Promise<Workflow> {
+export async function importWorkflowAddon(
+    addonId: string,
+): Promise<Workflow> {
     return apiRequest<Workflow>(`/workflow-addons/${addonId}/import`, {
         method: "POST",
     });
@@ -1971,9 +1926,7 @@ export async function importWorkflowAddon(addonId: string): Promise<Workflow> {
 export async function listWorkflowReferenceFiles(
     workflowId: string,
 ): Promise<WorkflowReferenceDocument[]> {
-    return apiRequest<WorkflowReferenceDocument[]>(
-        `/workflows/${workflowId}/reference-files`,
-    );
+    return apiRequest<WorkflowReferenceDocument[]>(`/workflows/${workflowId}/reference-files`);
 }
 
 export async function uploadWorkflowReferenceFile(
@@ -1987,8 +1940,7 @@ export async function uploadWorkflowReferenceFile(
         `${API_BASE}/workflows/${workflowId}/reference-files`,
         { method: "POST", headers: { ...authHeaders }, body: form },
     );
-    if (!response.ok)
-        throw await toApiError(response, "/workflows/reference-files");
+    if (!response.ok) throw await toApiError(response, "/workflows/reference-files");
     return response.json() as Promise<WorkflowReferenceDocument>;
 }
 
@@ -2025,8 +1977,6 @@ export async function deleteWorkflowReferenceFile(
 ): Promise<void> {
     await apiRequest(
         `/workflows/${workflowId}/reference-files/${referenceId}`,
-        {
-            method: "DELETE",
-        },
+        { method: "DELETE" },
     );
 }

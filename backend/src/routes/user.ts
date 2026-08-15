@@ -57,7 +57,6 @@ type UserProfileRow = {
     tabular_model: string;
     mfa_on_login: boolean | null;
     legal_research_us: boolean | null;
-    quick_actions_visible: boolean | null;
 };
 
 function errorMessage(error: unknown): string {
@@ -106,14 +105,11 @@ function shortHash(value: string) {
         : null;
 }
 
-function mcpOAuthPopupHtml(
-    payload: {
+function mcpOAuthPopupHtml(payload: {
     success: boolean;
     connectorId?: string;
     detail?: string;
-    },
-    nonce: string,
-) {
+}, nonce: string) {
     const targetOrigin = new URL(frontendUrl()).origin;
     const targetUrl = frontendUrl();
     const message = JSON.stringify({
@@ -166,8 +162,6 @@ function mcpOAuthPopupCsp(nonce: string) {
 }
 
 const PROFILE_SELECT =
-    "display_name, organisation, message_credits_used, credits_reset_date, tier, title_model, tabular_model, mfa_on_login, legal_research_us, quick_actions_visible";
-const PROFILE_SELECT_NO_QUICK_ACTIONS =
     "display_name, organisation, message_credits_used, credits_reset_date, tier, title_model, tabular_model, mfa_on_login, legal_research_us";
 const PROFILE_SELECT_NO_LEGAL =
     "display_name, organisation, message_credits_used, credits_reset_date, tier, title_model, tabular_model, mfa_on_login";
@@ -204,30 +198,12 @@ async function selectProfile(
             : await fullQuery.maybeSingle();
     if (!full.error) return full;
 
-    if (isMissingProfileColumn(full.error, "quick_actions_visible")) {
-        const previousQuery = db
-            .from("user_profiles")
-            .select(PROFILE_SELECT_NO_QUICK_ACTIONS)
-            .eq("user_id", userId);
-        const previous =
-            mode === "single"
-                ? await previousQuery.single()
-                : await previousQuery.maybeSingle();
-        if (!previous.error) {
-            if (previous.data && typeof previous.data === "object") {
-                Object.assign(previous.data, { quick_actions_visible: true });
-            }
-            return previous;
-        }
-    }
-
     const legacy = await selectProfileLegacy(db, userId, mode);
     if (legacy.data && typeof legacy.data === "object") {
         const row = legacy.data as Record<string, unknown>;
         if (!("legal_research_us" in row)) {
             Object.assign(row, { legal_research_us: true });
         }
-        Object.assign(row, { quick_actions_visible: true });
     }
     return legacy;
 }
@@ -319,7 +295,6 @@ function serializeProfile(row: UserProfileRow, apiKeyStatus?: ApiKeyStatus) {
         tabularModel: resolveModel(row.tabular_model, DEFAULT_TABULAR_MODEL),
         mfaOnLogin: row.mfa_on_login === true,
         legalResearchUs: row.legal_research_us !== false,
-        quickActionsVisible: row.quick_actions_visible !== false,
         ...(apiKeyStatus ? { apiKeyStatus } : {}),
     };
 }
@@ -333,7 +308,6 @@ function validateProfilePayload(body: unknown):
               title_model?: string;
               tabular_model?: string;
               legal_research_us?: boolean;
-              quick_actions_visible?: boolean;
               updated_at: string;
           };
       }
@@ -349,7 +323,6 @@ function validateProfilePayload(body: unknown):
         "titleModel",
         "tabularModel",
         "legalResearchUs",
-        "quickActionsVisible",
     ]);
     const invalidField = Object.keys(raw).find(
         (key) => !allowedFields.has(key),
@@ -367,7 +340,6 @@ function validateProfilePayload(body: unknown):
         title_model?: string;
         tabular_model?: string;
         legal_research_us?: boolean;
-        quick_actions_visible?: boolean;
         updated_at: string;
     } = { updated_at: new Date().toISOString() };
 
@@ -421,16 +393,6 @@ function validateProfilePayload(body: unknown):
             };
         }
         update.legal_research_us = raw.legalResearchUs;
-    }
-
-    if ("quickActionsVisible" in raw) {
-        if (typeof raw.quickActionsVisible !== "boolean") {
-            return {
-                ok: false,
-                detail: "quickActionsVisible must be a boolean",
-            };
-        }
-        update.quick_actions_visible = raw.quickActionsVisible;
     }
 
     return { ok: true, update };

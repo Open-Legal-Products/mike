@@ -74,7 +74,6 @@ import { TRExpandedCellSurface } from "@/app/components/tabular/TRExpandedCellSu
 import { UploadOverlay } from "@/app/components/assistant/UploadOverlay";
 import { useAuth } from "@/app/contexts/AuthContext";
 import { useUserProfile } from "@/app/contexts/UserProfileContext";
-import { useQueryParamTab } from "@/app/hooks/useQueryParamTab";
 import { downloadWorkflowZip } from "./workflowZipExport";
 import {
   WorkflowReferenceFiles,
@@ -104,7 +103,6 @@ const PROMPT_COL_W = "min-w-[240px] max-w-[360px] flex-1";
 const PROMPT_HEADER_WITH_ACTIONS_W = "min-w-[272px] max-w-[392px] flex-1 pr-8";
 const WORKFLOW_CONTRIBUTIONS_ENABLED =
   process.env.NEXT_PUBLIC_WORKFLOW_CONTRIBUTIONS_ENABLED === "true";
-const ASSISTANT_TABS: readonly AssistantTab[] = ["prompt", "assets"];
 
 // ---------------------------------------------------------------------------
 // Page
@@ -126,17 +124,12 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
   // Editor state
   const [promptMd, setPromptMd] = useState("");
   const [columns, setColumns] = useState<ColumnConfig[]>([]);
+  const [assistantTab, setAssistantTab] = useState<AssistantTab>("prompt");
   const [referenceFilesUploading, setReferenceFilesUploading] = useState(false);
   const [draggingReferenceFiles, setDraggingReferenceFiles] = useState(false);
   const referenceFilesRef = useRef<WorkflowReferenceFilesHandle>(null);
   const pendingReferenceFilesRef = useRef<File[] | null>(null);
   const searchParams = useSearchParams();
-  const [assistantTab, setAssistantTab] = useQueryParamTab(
-    ASSISTANT_TABS,
-    "prompt",
-    false,
-    workflowType === "assistant",
-  );
   const previewEmptyStates = searchParams.get("emptyStates") === "1";
   const visibleColumns = previewEmptyStates ? [] : columns;
 
@@ -658,7 +651,7 @@ export function WorkflowDetailPage({ id, workflowType }: Props) {
               }
             />
             {assistantTab === "prompt" ? (
-              <div className="mx-4 mb-2 min-h-0 min-w-0 flex-1 md:mx-8 md:mb-3">
+              <div className="mx-4 mb-2 min-h-0 min-w-0 flex-1 md:mx-6 md:mb-3">
                 <WorkflowPromptEditor
                   value={promptMd}
                   onChange={readOnly ? undefined : handlePromptChange}
@@ -949,7 +942,7 @@ function AssistantWorkflowEditorSkeleton() {
         ]}
         active="prompt"
       />
-      <div className="mx-4 mb-2 min-h-0 min-w-0 flex-1 md:mx-8 md:mb-3">
+      <div className="mx-4 mb-2 min-h-0 min-w-0 flex-1 md:mx-6 md:mb-3">
         <div className={`h-full px-5 py-4 ${LIQUID_TABLE_SURFACE_CLASS}`}>
           <div className="space-y-3">
             <div className="h-3 w-24 animate-pulse rounded bg-gray-100" />

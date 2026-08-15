@@ -155,12 +155,7 @@ maybeDescribe("Supabase stack — auth contract + RLS deny-all firewall", () => 
         expect(installationResult.error).toBeNull();
         const actionResult = await admin
             .from("quick_actions")
-            .insert({
-                user_id: userA,
-                workflow_id: workflowId,
-                name: "Verify cascade",
-                prompt: "Verify cascade",
-            });
+            .insert({ user_id: userA, workflow_id: workflowId, prompt: "Verify cascade" });
         expect(actionResult.error).toBeNull();
 
         const deletionResult = await admin

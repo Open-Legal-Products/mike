@@ -16,40 +16,20 @@ vi.mock("../storage", () => ({
 }));
 
 describe("workflow catalog", () => {
-  it("installs five starter workflows but links Quick Actions only to assistants", () => {
+  it("installs the five starter workflows with linked quick-action settings", () => {
     const defaults = defaultWorkflowPayloads();
     expect(defaults).toHaveLength(5);
     expect(defaults.map((item) => `builtin-${item.default_key}`)).toEqual(
       DEFAULT_WORKFLOW_IDS,
     );
-    const assistantDefaults = defaults.filter(
-      (item) => item.type === "assistant",
+    expect(defaults.every((item) => item.quick_action_prompt.length > 0)).toBe(
+      true,
     );
-    expect(assistantDefaults).toHaveLength(4);
-    expect(
-      assistantDefaults.every(
-        (item) => (item.quick_action_prompt?.length ?? 0) > 0,
-      ),
-    ).toBe(true);
-    expect(
-      assistantDefaults.every(
-        (item) => item.quick_action_name === item.title,
-      ),
-    ).toBe(true);
-    expect(
-      assistantDefaults.every(
-        (item) =>
-          (item.quick_action_prompt?.length ?? 0) <= 64 &&
-          item.quick_action_prompt?.toLowerCase().includes("document"),
-      ),
-    ).toBe(true);
-    expect(assistantDefaults.every((item) => item.document_upload)).toBe(true);
+    expect(defaults.every((item) => item.document_upload)).toBe(true);
     expect(defaults).toContainEqual(
       expect.objectContaining({
         default_key: "commercial-agreement-tabular-review",
         type: "tabular",
-        quick_action_name: null,
-        quick_action_prompt: null,
       }),
     );
   });

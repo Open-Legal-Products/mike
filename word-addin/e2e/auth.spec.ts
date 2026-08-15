@@ -158,9 +158,13 @@ test.describe("auth flow", () => {
     // Pre-seeded token => app shell renders straight away.
     await addin.expectAuthedShell();
 
-    // Sign out lives in the navigation menu, not in Settings.
+    // Sign out lives in Settings, not in the navigation menu.
     await page.getByRole("button", { name: "Open menu" }).click();
-    await page.getByRole("menuitem", { name: "Sign out" }).click();
+    await expect(
+      page.getByRole("menuitem", { name: "Sign out" })
+    ).toHaveCount(0);
+    await page.getByRole("menuitem", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "Sign out" }).click();
 
     // Logout drops the token and falls back to the LoginPage.
     await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
@@ -324,7 +328,8 @@ test.describe("session refresh", () => {
     await refreshStarted;
 
     await page.getByRole("button", { name: "Open menu" }).click();
-    await page.getByRole("menuitem", { name: "Sign out" }).click();
+    await page.getByRole("menuitem", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "Sign out" }).click();
     await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
 
     const refreshFinished = page.waitForResponse("**/auth/v1/token**");

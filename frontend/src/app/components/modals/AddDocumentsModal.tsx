@@ -37,8 +37,6 @@ interface Props {
     disabledDocumentIds?: ReadonlySet<string>;
 }
 
-const DIRECTORY_PAGE_SIZE = 40;
-
 export function AddDocumentsModal({
     open,
     onClose,
@@ -62,11 +60,6 @@ export function AddDocumentsModal({
     const [projectFolders, setProjectFolders] = useState<Folder[]>([]);
     const [projectDirectoryLoading, setProjectDirectoryLoading] =
         useState(false);
-    const [projectDocumentLimitByLevel, setProjectDocumentLimitByLevel] =
-        useState<Record<string, number>>({ root: DIRECTORY_PAGE_SIZE });
-    const [loadedProjectFolderIds, setLoadedProjectFolderIds] = useState<
-        Set<string>
-    >(new Set());
     // Tracks whether the modal has ever been opened, so keepMounted only
     // keeps it (and its directory fetch) alive after first use rather than
     // eagerly loading on page mount.
@@ -91,8 +84,6 @@ export function AddDocumentsModal({
                     ),
                 );
                 setProjectFolders(project.folders ?? []);
-                setProjectDocumentLimitByLevel({ root: DIRECTORY_PAGE_SIZE });
-                setLoadedProjectFolderIds(new Set());
             })
             .catch(() => {
                 if (cancelled) return;
@@ -250,37 +241,6 @@ export function AddDocumentsModal({
               ),
           ]
         : extraUploadedDocs;
-    const projectDocumentCountsByLevel: Record<string, number> = {};
-    directoryDocuments.forEach((document) => {
-        const key = document.folder_id ?? "root";
-        projectDocumentCountsByLevel[key] =
-            (projectDocumentCountsByLevel[key] ?? 0) + 1;
-    });
-    const projectDocumentsHasMoreByFolder = Object.fromEntries(
-        [...loadedProjectFolderIds].map((folderId) => [
-            folderId,
-            (projectDocumentCountsByLevel[folderId] ?? 0) >
-                (projectDocumentLimitByLevel[folderId] ?? DIRECTORY_PAGE_SIZE),
-        ]),
-    );
-
-    function handleExpandProjectFolder(folderId: string) {
-        setLoadedProjectFolderIds((current) => new Set(current).add(folderId));
-        setProjectDocumentLimitByLevel((current) =>
-            current[folderId] != null
-                ? current
-                : { ...current, [folderId]: DIRECTORY_PAGE_SIZE },
-        );
-    }
-
-    function handleLoadMoreProjectLevel(parentId: string | null) {
-        const key = parentId ?? "root";
-        setProjectDocumentLimitByLevel((current) => ({
-            ...current,
-            [key]:
-                (current[key] ?? DIRECTORY_PAGE_SIZE) + DIRECTORY_PAGE_SIZE,
-        }));
-    }
 
     return (
         <Modal
@@ -341,28 +301,6 @@ export function AddDocumentsModal({
                     tabs={tabs}
                     excludeProjectId={projectDocumentsOnly ? undefined : projectId}
                     disabledDocumentIds={disabledDocumentIds}
-                    onExpandFolder={
-                        projectDocumentsOnly
-                            ? handleExpandProjectFolder
-                            : undefined
-                    }
-                    loadedFolderIds={loadedProjectFolderIds}
-                    documentLimitByLevel={projectDocumentLimitByLevel}
-                    documentsHasMoreByFolder={
-                        projectDocumentsHasMoreByFolder
-                    }
-                    onLoadMoreFolderDocuments={(folderId) =>
-                        handleLoadMoreProjectLevel(folderId)
-                    }
-                    rootDocumentsHasMore={
-                        projectDocumentsOnly &&
-                        (projectDocumentCountsByLevel.root ?? 0) >
-                            (projectDocumentLimitByLevel.root ??
-                                DIRECTORY_PAGE_SIZE)
-                    }
-                    onLoadMoreRootDocuments={() =>
-                        handleLoadMoreProjectLevel(null)
-                    }
                 />
             </div>
         </Modal>

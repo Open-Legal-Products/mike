@@ -1,5 +1,5 @@
 import React from "react";
-import { Trash2 } from "lucide-react";
+import { LogOut, Trash2 } from "lucide-react";
 import { ToggleSwitch } from "../../../shared/ui/toggle-switch";
 import { PageTitle } from "../primitives/PageTitle";
 import { PillButton } from "../primitives/PillButton";
@@ -10,12 +10,14 @@ interface SettingsPageProps {
   storageMode: WordChatStorageMode;
   onStorageModeChange: (mode: WordChatStorageMode) => Promise<void>;
   onClearLocalChats: () => Promise<void>;
+  onSignOut: () => void;
 }
 
 export function SettingsPage({
   storageMode,
   onStorageModeChange,
   onClearLocalChats,
+  onSignOut,
 }: SettingsPageProps): React.ReactElement {
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -89,6 +91,21 @@ export function SettingsPage({
         </div>
       </section>
 
+      <section className="mt-3 rounded-xl border border-white/70 bg-white/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_8px_24px_rgba(15,23,42,0.06)]">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="text-sm font-medium text-gray-900">Account</h2>
+            <p className="mt-1 text-xs leading-5 text-gray-500">
+              Signing out clears this device&rsquo;s session. Cloud chats stay
+              in your account.
+            </p>
+          </div>
+          <PillButton tone="black" onClick={onSignOut} className="shrink-0">
+            <LogOut className="h-3.5 w-3.5" />
+            Sign out
+          </PillButton>
+        </div>
+      </section>
       <Modal
         open={clearConfirmOpen}
         onClose={() => !clearing && setClearConfirmOpen(false)}

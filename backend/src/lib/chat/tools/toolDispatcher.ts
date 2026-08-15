@@ -474,12 +474,7 @@ export async function runToolCalls(
 ): Promise<{
   toolResults: unknown[];
   docsRead: { filename: string; document_id?: string }[];
-  docsFound: {
-    filename: string;
-    document_id?: string;
-    query: string;
-    total_matches: number;
-  }[];
+  docsFound: { filename: string; query: string; total_matches: number }[];
   docsCreated: DocCreatedResult[];
   docsReplicated: DocReplicatedResult[];
   workflowsApplied: { workflow_id: string; title: string }[];
@@ -493,7 +488,6 @@ export async function runToolCalls(
   const docsRead: { filename: string; document_id?: string }[] = [];
   const docsFound: {
     filename: string;
-    document_id?: string;
     query: string;
     total_matches: number;
   }[] = [];
@@ -752,7 +746,6 @@ export async function runToolCalls(
         }
         docsFound.push({
           filename,
-          document_id: docIndex?.[docId]?.document_id,
           query,
           total_matches: totalMatches,
         });

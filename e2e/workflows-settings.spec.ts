@@ -94,12 +94,9 @@ test.describe("Workflows", () => {
         await createWorkflowAndOpenDetail(page, workflowTitle);
 
         // The detail page shows the newly created workflow's title
-        await expect(
-            page
-                .getByText(workflowTitle, { exact: true })
-                .filter({ visible: true })
-                .first(),
-        ).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByText(workflowTitle)).toBeVisible({
+            timeout: 10_000,
+        });
     });
 
     /* ── Test 3: installed default workflows remain editable ──────────────── */

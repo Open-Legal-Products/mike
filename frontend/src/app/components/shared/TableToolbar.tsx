@@ -57,7 +57,7 @@ export function TableToolbar<T extends string>({
     );
 
     return (
-        <div className="mx-4 mb-2 flex h-10 items-center md:mx-8">
+        <div className="mx-4 mb-2 flex h-10 items-center md:mx-6">
             {(leading || hasItems) && (
                 <div className="-my-2 flex flex-1 items-center gap-1.5 overflow-x-auto py-2">
                     {leading}

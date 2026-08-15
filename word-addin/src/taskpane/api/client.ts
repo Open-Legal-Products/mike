@@ -160,18 +160,8 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
     return (await response.json()) as T;
 }
 
-export async function listProjects(pagination?: {
-    limit?: number;
-    offset?: number;
-}): Promise<Project[]> {
-    const params = new URLSearchParams({ view: "summary" });
-    if (pagination?.limit != null) {
-        params.set("limit", String(pagination.limit));
-    }
-    if (pagination?.offset != null) {
-        params.set("offset", String(pagination.offset));
-    }
-    return apiRequest<Project[]>(`/projects?${params.toString()}`);
+export async function listProjects(): Promise<Project[]> {
+    return apiRequest<Project[]>("/projects");
 }
 
 interface UserProfile {
@@ -225,60 +215,12 @@ type LibraryKind = "files" | "templates";
 interface LibraryCollection {
     documents: Document[];
     folders: LibraryFolder[];
-    documentsHasMore?: boolean;
 }
 
 export async function getLibrary(
     kind: LibraryKind,
-    pagination?: { limit?: number; offset?: number },
 ): Promise<LibraryCollection> {
-    const params = new URLSearchParams();
-    if (pagination?.limit != null) {
-        params.set("limit", String(pagination.limit));
-    }
-    if (pagination?.offset != null) {
-        params.set("offset", String(pagination.offset));
-    }
-    const query = params.toString();
-    return apiRequest<LibraryCollection>(
-        `/library/${kind}${query ? `?${query}` : ""}`,
-    );
-}
-
-export async function getLibraryFolderChildren(
-    kind: LibraryKind,
-    folderId: string,
-    pagination?: { limit?: number; offset?: number },
-): Promise<LibraryCollection> {
-    const params = new URLSearchParams({ parent_folder_id: folderId });
-    if (pagination?.limit != null) {
-        params.set("limit", String(pagination.limit));
-    }
-    if (pagination?.offset != null) {
-        params.set("offset", String(pagination.offset));
-    }
-    return apiRequest<LibraryCollection>(
-        `/library/${kind}?${params.toString()}`,
-    );
-}
-
-export async function getProjectDirectoryLevel(
-    projectId: string,
-    options?: {
-        parentFolderId?: string | null;
-        limit?: number;
-        offset?: number;
-    },
-): Promise<LibraryCollection> {
-    const params = new URLSearchParams();
-    if (options?.parentFolderId) {
-        params.set("parent_folder_id", options.parentFolderId);
-    }
-    if (options?.limit != null) params.set("limit", String(options.limit));
-    if (options?.offset != null) params.set("offset", String(options.offset));
-    return apiRequest<LibraryCollection>(
-        `/projects/${projectId}/directory?${params.toString()}`,
-    );
+    return apiRequest<LibraryCollection>(`/library/${kind}`);
 }
 
 export async function streamWordChat(payload: {

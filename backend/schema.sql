@@ -24,7 +24,6 @@ create table if not exists public.user_profiles (
   quote_model text,
   mfa_on_login boolean not null default false,
   legal_research_us boolean not null default true,
-  quick_actions_visible boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -419,7 +418,6 @@ create table if not exists public.quick_actions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   workflow_id uuid not null references public.workflows(id) on delete cascade,
-  name text not null,
   prompt text not null default '',
   document_upload boolean not null default false,
   enabled boolean not null default true,
@@ -577,11 +575,9 @@ begin
       workflow_uuid
     );
 
-    if item->>'type' = 'assistant' then
     insert into public.quick_actions (
       user_id,
       workflow_id,
-      name,
       prompt,
       document_upload,
       enabled,
@@ -589,13 +585,11 @@ begin
     ) values (
       p_user_id::uuid,
       workflow_uuid,
-      coalesce(nullif(trim(item->>'quick_action_name'), ''), item->>'title'),
       coalesce(item->>'quick_action_prompt', ''),
       coalesce((item->>'document_upload')::boolean, false),
       true,
       coalesce((item->>'sort_order')::integer, installed_count)
     );
-    end if;
 
     installed_count := installed_count + 1;
   end loop;

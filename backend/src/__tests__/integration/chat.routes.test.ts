@@ -288,7 +288,6 @@ describe("POST /chat — streaming endpoint", () => {
         expect(res.status).toBe(200);
         expect(res.headers["content-type"]).toContain("text/event-stream");
         expect(res.text).toContain('"type":"chat_id"');
-        expect(res.text).toContain('"type":"chat_title"');
         expect(runLLMStream).toHaveBeenCalledTimes(1);
         expect(runLLMStream).toHaveBeenCalledWith(
             expect.objectContaining({ emitDone: false }),

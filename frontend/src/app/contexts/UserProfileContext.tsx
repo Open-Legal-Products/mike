@@ -31,7 +31,6 @@ interface UserProfile {
     tabularModel: string;
     mfaOnLogin: boolean;
     legalResearchUs: boolean;
-    quickActionsVisible: boolean;
     apiKeys: ApiKeyState;
 }
 
@@ -46,7 +45,6 @@ interface UserProfileContextType {
     ) => Promise<boolean>;
     updateMfaOnLogin: (enabled: boolean) => Promise<boolean>;
     updateLegalResearchUs: (enabled: boolean) => Promise<boolean>;
-    updateQuickActionsVisible: (visible: boolean) => Promise<boolean>;
     updateApiKey: (
         provider: ApiKeyProvider,
         value: string | null,
@@ -123,7 +121,6 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 tabularModel: "gemini-3-flash-preview",
                 mfaOnLogin: false,
                 legalResearchUs: true,
-                quickActionsVisible: true,
                 apiKeys: emptyApiKeys(),
             });
         } finally {
@@ -233,24 +230,6 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
         [user],
     );
 
-    const updateQuickActionsVisible = useCallback(
-        async (visible: boolean): Promise<boolean> => {
-            if (!user) return false;
-            try {
-                const updated = await updateUserProfile({
-                    quickActionsVisible: visible,
-                });
-                setProfile((prev) =>
-                    prev ? { ...prev, ...toProfile(updated) } : null,
-                );
-                return true;
-            } catch {
-                return false;
-            }
-        },
-        [user],
-    );
-
     const updateApiKey = useCallback(
         async (
             provider: ApiKeyProvider,
@@ -312,7 +291,6 @@ export function UserProfileProvider({ children }: { children: ReactNode }) {
                 updateModelPreference,
                 updateMfaOnLogin,
                 updateLegalResearchUs,
-                updateQuickActionsVisible,
                 updateApiKey,
                 reloadProfile,
                 incrementMessageCredits,

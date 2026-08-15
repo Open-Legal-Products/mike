@@ -1,12 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown, MessageSquare, Table2, X } from "lucide-react";
 import { SearchBar } from "@/app/components/ui/search-bar";
-import {
-    ChatSkeuoIcon,
-    TabularReviewSkeuoIcon,
-} from "@/app/components/shared/AppSidebarSkeuoIcons";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ColumnConfig, Workflow } from "../shared/types";
@@ -150,8 +146,8 @@ export function WorkflowPickerContent({
                                 const isSelected = selected?.id === workflow.id;
                                 const TypeIcon =
                                     workflow.metadata.type === "tabular"
-                                        ? TabularReviewSkeuoIcon
-                                        : ChatSkeuoIcon;
+                                        ? Table2
+                                        : MessageSquare;
                                 return (
                                     <button
                                         key={workflow.id}

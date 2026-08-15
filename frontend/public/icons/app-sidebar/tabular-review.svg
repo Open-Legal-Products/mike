@@ -1,0 +1,39 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F9FAFB" stop-opacity="0.96"/>
+      <stop offset="0.5" stop-color="#EDEFF2" stop-opacity="0.94"/>
+      <stop offset="1" stop-color="#D1D5DB" stop-opacity="0.96"/>
+    </linearGradient>
+    <linearGradient id="header" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34D399"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#374151" stop-opacity="0.4"/>
+    </linearGradient>
+    <radialGradient id="sheen">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.6" stop-color="#FFFFFF" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="clipCard"><rect x="5" y="9" width="54" height="44" rx="10"/></clipPath>
+  </defs>
+
+  <rect x="5" y="9" width="54" height="44" rx="10" fill="url(#card)" stroke="url(#rim)" stroke-width="1.5"/>
+
+  <g clip-path="url(#clipCard)">
+    <rect x="5" y="9" width="54" height="12" fill="url(#header)"/>
+    <ellipse cx="32" cy="12" rx="25" ry="5" fill="url(#sheen)" opacity="0.6"/>
+    <g stroke="#9CA3AF" stroke-width="1.6" opacity="0.9">
+      <line x1="23" y1="21" x2="23" y2="53"/>
+      <line x1="41" y1="21" x2="41" y2="53"/>
+      <line x1="5" y1="31.67" x2="59" y2="31.67"/>
+      <line x1="5" y1="42.33" x2="59" y2="42.33"/>
+    </g>
+    <ellipse cx="10" cy="34" rx="4" ry="12" fill="url(#sheen)" opacity="0.38"/>
+    <ellipse cx="32" cy="24" rx="26" ry="4" fill="url(#sheen)" opacity="0.45"/>
+  </g>
+</svg>

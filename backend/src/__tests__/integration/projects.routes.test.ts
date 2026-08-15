@@ -389,50 +389,6 @@ describe("projects.routes", () => {
   });
 
   describe("Library query endpoints", () => {
-    it("returns the ancestor path for a Library folder", async () => {
-      supabaseState.tables.library_folders = {
-        data: [
-          {
-            id: "nested",
-            name: "Nested",
-            parent_folder_id: "parent",
-          },
-          {
-            id: "unrelated",
-            name: "Unrelated",
-            parent_folder_id: null,
-          },
-          {
-            id: "parent",
-            name: "Parent",
-            parent_folder_id: null,
-          },
-        ],
-        error: null,
-      };
-
-      const res = await request(app)
-        .get("/library/templates/folders/nested")
-        .set(...AUTH);
-
-      expect(res.status).toBe(200);
-      expect(res.body.folders.map((folder: { id: string }) => folder.id)).toEqual([
-        "parent",
-        "nested",
-      ]);
-    });
-
-    it("returns 404 for a Library folder outside the requested collection", async () => {
-      supabaseState.tables.library_folders = { data: [], error: null };
-
-      const res = await request(app)
-        .get("/library/files/folders/missing")
-        .set(...AUTH);
-
-      expect(res.status).toBe(404);
-      expect(res.body).toEqual({ detail: "Folder not found" });
-    });
-
     it("returns a flat paginated search result", async () => {
       const captured = captureRpcArgs();
       supabaseState.rpc = {

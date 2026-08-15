@@ -23,11 +23,6 @@ test-results/
 playwright-report/
 e2e/.auth/
 
-# Generated mirror of shared/icons — Next.js can only serve static files that
-# physically exist under public/, so frontend/scripts/sync-shared-icons.mjs
-# copies them in from predev/prebuild/predeploy. Edit the art in shared/icons.
-frontend/public/icons/
-
 # Local Supabase scaffold. Keep the shared project configuration reproducible,
 # while excluding CLI state and other generated local files.
 /supabase/

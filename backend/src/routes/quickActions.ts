@@ -1,9 +1,4 @@
-import {
-  Router,
-  type NextFunction,
-  type Request,
-  type Response,
-} from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import { requireAuth } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
 import { ensureDefaultWorkflows } from "../lib/workflowCatalog";
@@ -15,7 +10,6 @@ type QuickActionRow = {
   id: string;
   user_id: string;
   workflow_id: string;
-  name: string;
   prompt: string;
   document_upload: boolean;
   enabled: boolean;
@@ -40,10 +34,10 @@ async function canAccessWorkflow(
 ) {
   const { data: workflow } = await db
     .from("workflows")
-    .select("id, user_id, title, type")
+    .select("id, user_id, title")
     .eq("id", workflowId)
     .maybeSingle();
-  if (!workflow || workflow.type !== "assistant") return null;
+  if (!workflow) return null;
   if (workflow.user_id === userId) return workflow;
   const email = (userEmail ?? "").trim().toLowerCase();
   if (!email) return null;
@@ -66,7 +60,7 @@ async function withWorkflowDetails(
   if (ids.length === 0) return [];
   const { data: workflows, error } = await db
     .from("workflows")
-    .select("id, user_id, title, type")
+    .select("id, user_id, title")
     .in("id", ids);
   if (error) throw error;
 
@@ -91,8 +85,7 @@ async function withWorkflowDetails(
     (workflows ?? [])
       .filter(
         (workflow) =>
-          workflow.type === "assistant" &&
-          (workflow.user_id === userId || sharedIds.has(workflow.id)),
+          workflow.user_id === userId || sharedIds.has(workflow.id),
       )
       .map((workflow) => [
         workflow.id,
@@ -104,12 +97,7 @@ async function withWorkflowDetails(
       const workflow = byId.get(row.workflow_id);
       return workflow ? { ...row, workflow } : null;
     })
-    .filter(
-      (
-        row,
-      ): row is QuickActionRow & { workflow: { id: string; title: string } } =>
-        !!row,
-    );
+    .filter((row): row is QuickActionRow & { workflow: { id: string; title: string } } => !!row);
 }
 
 // quick_actions.sort_order is a Postgres integer; out-of-range values
@@ -124,176 +112,127 @@ function isValidSortOrder(value: unknown): value is number {
   );
 }
 
-quickActionsRouter.get(
-  "/",
-  requireAuth,
-  asyncRoute(async (_req, res) => {
-    const userId = res.locals.userId as string;
-    const userEmail = res.locals.userEmail as string | undefined;
-    const db = createServerSupabase();
-    await ensureDefaultWorkflows(userId, db);
-    const { data, error } = await db
-      .from("quick_actions")
-      .select("*")
-      .eq("user_id", userId)
-      .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: true });
-    if (error) return void res.status(500).json({ detail: error.message });
-    res.json(
-      await withWorkflowDetails(
-        (data ?? []) as QuickActionRow[],
-        userId,
-        userEmail,
-        db,
-      ),
-    );
-  }),
-);
+quickActionsRouter.get("/", requireAuth, asyncRoute(async (_req, res) => {
+  const userId = res.locals.userId as string;
+  const userEmail = res.locals.userEmail as string | undefined;
+  const db = createServerSupabase();
+  await ensureDefaultWorkflows(userId, db);
+  const { data, error } = await db
+    .from("quick_actions")
+    .select("*")
+    .eq("user_id", userId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) return void res.status(500).json({ detail: error.message });
+  res.json(
+    await withWorkflowDetails(
+      (data ?? []) as QuickActionRow[],
+      userId,
+      userEmail,
+      db,
+    ),
+  );
+}));
 
-quickActionsRouter.post(
-  "/",
-  requireAuth,
-  asyncRoute(async (req, res) => {
-    const userId = res.locals.userId as string;
-    const userEmail = res.locals.userEmail as string | undefined;
-    const workflowId =
-      typeof req.body?.workflow_id === "string"
-        ? req.body.workflow_id.trim()
-        : "";
-    if (!workflowId) {
-      return void res.status(400).json({ detail: "workflow_id is required" });
-    }
-    if (
-      req.body?.sort_order !== undefined &&
-      Number.isInteger(req.body.sort_order) &&
-      !isValidSortOrder(req.body.sort_order)
-    ) {
+quickActionsRouter.post("/", requireAuth, asyncRoute(async (req, res) => {
+  const userId = res.locals.userId as string;
+  const userEmail = res.locals.userEmail as string | undefined;
+  const workflowId = typeof req.body?.workflow_id === "string"
+    ? req.body.workflow_id.trim()
+    : "";
+  if (!workflowId) {
+    return void res.status(400).json({ detail: "workflow_id is required" });
+  }
+  if (
+    req.body?.sort_order !== undefined &&
+    Number.isInteger(req.body.sort_order) &&
+    !isValidSortOrder(req.body.sort_order)
+  ) {
+    return void res.status(400).json({
+      detail: `sort_order must be between 0 and ${MAX_SORT_ORDER}`,
+    });
+  }
+  const db = createServerSupabase();
+  const workflow = await canAccessWorkflow(workflowId, userId, userEmail, db);
+  if (!workflow) {
+    return void res.status(404).json({ detail: "Workflow not found" });
+  }
+  const { data, error } = await db
+    .from("quick_actions")
+    .insert({
+      user_id: userId,
+      workflow_id: workflowId,
+      prompt: typeof req.body?.prompt === "string" ? req.body.prompt : "",
+      document_upload: req.body?.document_upload === true,
+      enabled: req.body?.enabled !== false,
+      sort_order: isValidSortOrder(req.body?.sort_order)
+        ? req.body.sort_order
+        : 0,
+    })
+    .select("*")
+    .single();
+  if (error || !data) {
+    return void res.status(500).json({ detail: error?.message ?? "Create failed" });
+  }
+  res.status(201).json({ ...data, workflow });
+}));
+
+quickActionsRouter.patch("/:quickActionId", requireAuth, asyncRoute(async (req, res) => {
+  const userId = res.locals.userId as string;
+  const userEmail = res.locals.userEmail as string | undefined;
+  const { quickActionId } = req.params;
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (typeof req.body?.prompt === "string") updates.prompt = req.body.prompt;
+  if (typeof req.body?.document_upload === "boolean") {
+    updates.document_upload = req.body.document_upload;
+  }
+  if (typeof req.body?.enabled === "boolean") updates.enabled = req.body.enabled;
+  if (Number.isInteger(req.body?.sort_order)) {
+    if (!isValidSortOrder(req.body.sort_order)) {
       return void res.status(400).json({
         detail: `sort_order must be between 0 and ${MAX_SORT_ORDER}`,
       });
     }
-    const db = createServerSupabase();
-    const workflow = await canAccessWorkflow(workflowId, userId, userEmail, db);
-    if (!workflow) {
-      return void res.status(404).json({ detail: "Workflow not found" });
-    }
-    const { data, error } = await db
-      .from("quick_actions")
-      .insert({
-        user_id: userId,
-        workflow_id: workflowId,
-        name:
-          typeof req.body?.name === "string" && req.body.name.trim()
-            ? req.body.name.trim()
-            : workflow.title,
-        prompt: typeof req.body?.prompt === "string" ? req.body.prompt : "",
-        document_upload: req.body?.document_upload === true,
-        enabled: req.body?.enabled !== false,
-        sort_order: isValidSortOrder(req.body?.sort_order)
-          ? req.body.sort_order
-          : 0,
-      })
-      .select("*")
-      .single();
-    if (error || !data) {
-      return void res
-        .status(500)
-        .json({ detail: error?.message ?? "Create failed" });
-    }
-    res.status(201).json({ ...data, workflow });
-  }),
-);
+    updates.sort_order = req.body.sort_order;
+  }
 
-quickActionsRouter.patch(
-  "/:quickActionId",
-  requireAuth,
-  asyncRoute(async (req, res) => {
-    const userId = res.locals.userId as string;
-    const userEmail = res.locals.userEmail as string | undefined;
-    const { quickActionId } = req.params;
-    const updates: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
-    };
-    if (typeof req.body?.name === "string") {
-      const name = req.body.name.trim();
-      if (!name) {
-        return void res.status(400).json({ detail: "name cannot be empty" });
-      }
-      updates.name = name;
-    }
-    if (typeof req.body?.prompt === "string") updates.prompt = req.body.prompt;
-    if (typeof req.body?.document_upload === "boolean") {
-      updates.document_upload = req.body.document_upload;
-    }
-    if (typeof req.body?.enabled === "boolean")
-      updates.enabled = req.body.enabled;
-    if (Number.isInteger(req.body?.sort_order)) {
-      if (!isValidSortOrder(req.body.sort_order)) {
-        return void res.status(400).json({
-          detail: `sort_order must be between 0 and ${MAX_SORT_ORDER}`,
-        });
-      }
-      updates.sort_order = req.body.sort_order;
-    }
+  const db = createServerSupabase();
+  const { data, error } = await db
+    .from("quick_actions")
+    .update(updates)
+    .eq("id", quickActionId)
+    .eq("user_id", userId)
+    .select("*")
+    .maybeSingle();
+  if (error || !data) {
+    return void res.status(404).json({ detail: "Quick action not found" });
+  }
+  const [result] = await withWorkflowDetails(
+    [data as QuickActionRow],
+    userId,
+    userEmail,
+    db,
+  );
+  if (!result) {
+    // The quick action row updated, but its workflow is no longer
+    // accessible (e.g. the share was revoked), so it is hidden from
+    // the list and reported the same way here.
+    return void res.status(404).json({ detail: "Quick action not found" });
+  }
+  res.json(result);
+}));
 
-    const db = createServerSupabase();
-    if (typeof req.body?.workflow_id === "string") {
-      const workflowId = req.body.workflow_id.trim();
-      if (!workflowId) {
-        return void res.status(400).json({ detail: "workflow_id is required" });
-      }
-      const workflow = await canAccessWorkflow(
-        workflowId,
-        userId,
-        userEmail,
-        db,
-      );
-      if (!workflow) {
-        return void res.status(404).json({ detail: "Workflow not found" });
-      }
-      updates.workflow_id = workflowId;
-    }
-    const { data, error } = await db
-      .from("quick_actions")
-      .update(updates)
-      .eq("id", quickActionId)
-      .eq("user_id", userId)
-      .select("*")
-      .maybeSingle();
-    if (error || !data) {
-      return void res.status(404).json({ detail: "Quick action not found" });
-    }
-    const [result] = await withWorkflowDetails(
-      [data as QuickActionRow],
-      userId,
-      userEmail,
-      db,
-    );
-    if (!result) {
-      // The quick action row updated, but its workflow is no longer
-      // accessible (e.g. the share was revoked), so it is hidden from
-      // the list and reported the same way here.
-      return void res.status(404).json({ detail: "Quick action not found" });
-    }
-    res.json(result);
-  }),
-);
-
-quickActionsRouter.delete(
-  "/:quickActionId",
-  requireAuth,
-  asyncRoute(async (req, res) => {
-    const userId = res.locals.userId as string;
-    const db = createServerSupabase();
-    const { error } = await db
-      .from("quick_actions")
-      .delete()
-      .eq("id", req.params.quickActionId)
-      .eq("user_id", userId);
-    if (error) return void res.status(500).json({ detail: error.message });
-    res.status(204).send();
-  }),
-);
+quickActionsRouter.delete("/:quickActionId", requireAuth, asyncRoute(async (req, res) => {
+  const userId = res.locals.userId as string;
+  const db = createServerSupabase();
+  const { error } = await db
+    .from("quick_actions")
+    .delete()
+    .eq("id", req.params.quickActionId)
+    .eq("user_id", userId);
+  if (error) return void res.status(500).json({ detail: error.message });
+  res.status(204).send();
+}));
 
 quickActionsRouter.use(
   (err: unknown, _req: Request, res: Response, next: NextFunction) => {

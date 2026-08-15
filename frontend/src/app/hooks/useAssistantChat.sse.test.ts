@@ -19,9 +19,8 @@ import {
 } from "vitest";
 import type { Message } from "@/app/components/shared/types";
 
-const { getSessionMock, updateChatTitleMock } = vi.hoisted(() => ({
+const { getSessionMock } = vi.hoisted(() => ({
     getSessionMock: vi.fn(),
-    updateChatTitleMock: vi.fn(),
 }));
 vi.mock("@/app/lib/supabase", () => ({
     supabase: { auth: { getSession: getSessionMock } },
@@ -36,9 +35,14 @@ vi.mock("@/app/contexts/ChatHistoryContext", () => ({
         setCurrentChatId: vi.fn(),
         saveChat: vi.fn().mockResolvedValue("new-chat"),
         setNewChatMessages: vi.fn(),
-        updateChatTitle: updateChatTitleMock,
     }),
 }));
+vi.mock("./useGenerateChatTitle", () => ({
+    useGenerateChatTitle: () => ({
+        generate: vi.fn().mockResolvedValue(undefined),
+    }),
+}));
+
 import { useAssistantChat } from "./useAssistantChat";
 
 const fetchMock = vi.fn();
@@ -118,35 +122,6 @@ describe("useAssistantChat SSE parsing", () => {
         expect(assistant?.events).toEqual([
             { type: "content", text: "AB", isStreaming: true },
         ]);
-    });
-
-    it("updates chat history as soon as a streamed title event arrives", async () => {
-        await sendAndGetAssistant([
-            'data: {"type":"chat_id","chatId":"c-42"}\n\n',
-            'data: {"type":"chat_title","chatId":"c-42","title":"German Liquidity Review"}\n\n',
-            'data: {"type":"content_delta","text":"Still streaming"}\n\n',
-        ]);
-
-        expect(updateChatTitleMock).toHaveBeenCalledWith(
-            "c-42",
-            "German Liquidity Review",
-        );
-    });
-
-    it("preserves document identity across streamed search lifecycle events", async () => {
-        const { assistant } = await sendAndGetAssistant([
-            'data: {"type":"doc_find_start","filename":"agreement.pdf","document_id":"document-1","query":"termination"}\n\n',
-            'data: {"type":"doc_find","filename":"agreement.pdf","document_id":"document-1","query":"termination","total_matches":2}\n\n',
-        ]);
-
-        expect(assistant?.events).toContainEqual({
-            type: "doc_find",
-            filename: "agreement.pdf",
-            document_id: "document-1",
-            query: "termination",
-            total_matches: 2,
-            isStreaming: false,
-        });
     });
 
     it("finalizes reasoning when content starts, keeping event order", async () => {

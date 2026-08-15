@@ -10,7 +10,6 @@ import type { ChatInputHandle } from "./ChatInput";
 import { AskInputPopup } from "./AskInputPopup";
 import {
     AssistantSidePanel,
-    mergeAssistantSidePanelTab,
     type AssistantSidePanelTab,
 } from "./AssistantSidePanel";
 import { AssistantWorkflowModal } from "./AssistantWorkflowModal";
@@ -196,10 +195,16 @@ export function ChatView({
                 );
                 if (idx >= 0) {
                     const existing = prev[idx];
-                    const merged = mergeAssistantSidePanelTab(existing, tab);
-                    if (merged === existing) return prev;
                     const copy = prev.slice();
-                    copy[idx] = merged;
+                    copy[idx] =
+                        tab.kind === "case" || existing.kind === "case"
+                            ? tab
+                            : {
+                                  ...tab,
+                                  id: existing.id,
+                                  warning: existing.warning,
+                                  initialScrollTop: existing.initialScrollTop,
+                              };
                     return copy;
                 }
                 return [...prev, tab];
