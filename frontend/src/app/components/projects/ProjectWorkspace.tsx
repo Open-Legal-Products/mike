@@ -241,7 +241,24 @@ export function ProjectWorkspaceProvider({
         void ensureProjectChats();
     }, [ensureProjectChats]);
 
+    // Role derived from the loaded project; "owner" until it loads, matching
+    // the historic `is_owner !== false` optimism. The server enforces.
+    const accessRole: ProjectRole = project ? roleFrom(project) : "owner";
+    const canDo = useCallback(
+        (capability: Capability) => can(accessRole, capability),
+        [accessRole],
+    );
+
     const createChat = useCallback(async () => {
+        // Creating a chat in a project is editor-tier server-side; without
+        // this gate an org viewer's click fails with a silent 404.
+        if (project && !canDo("content.edit")) {
+            setOwnerOnlyAction({
+                action: "start a chat in this project",
+                requiredRole: "editor",
+            });
+            return;
+        }
         setCreatingChat(true);
         try {
             const id = await saveChat(projectId);
@@ -268,11 +285,29 @@ export function ProjectWorkspaceProvider({
         } finally {
             setCreatingChat(false);
         }
-    }, [profile?.displayName, projectId, router, saveChat, user?.id]);
+    }, [
+        canDo,
+        profile?.displayName,
+        project,
+        projectId,
+        router,
+        saveChat,
+        user?.id,
+    ]);
 
     const openNewReview = useCallback(() => {
+        // Creating a review is editor-tier server-side (POST /tabular-review
+        // gates on content.edit) — stop viewers before the modal, not after
+        // an unexplained failed submit.
+        if (project && !canDo("content.edit")) {
+            setOwnerOnlyAction({
+                action: "create a tabular review",
+                requiredRole: "editor",
+            });
+            return;
+        }
         setNewTRModalOpen(true);
-    }, []);
+    }, [canDo, project]);
 
     async function handleCreateReview(
         title: string,
@@ -297,14 +332,6 @@ export function ProjectWorkspaceProvider({
             setCreatingReview(false);
         }
     }
-
-    // Role derived from the loaded project; "owner" until it loads, matching
-    // the historic `is_owner !== false` optimism. The server enforces.
-    const accessRole: ProjectRole = project ? roleFrom(project) : "owner";
-    const canDo = useCallback(
-        (capability: Capability) => can(accessRole, capability),
-        [accessRole],
-    );
 
     async function handleProjectDetailsSave(values: {
         name: string;

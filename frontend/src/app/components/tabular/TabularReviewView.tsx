@@ -44,6 +44,7 @@ import { TRWorkflowModal } from "./TRWorkflowModal";
 import { AddDocumentsModal } from "../modals/AddDocumentsModal";
 import { PeopleModal } from "../modals/PeopleModal";
 import { OwnerOnlyPopup } from "../popups/OwnerOnlyPopup";
+import { WarningPopup } from "../popups/WarningPopup";
 import { ApiKeyMissingPopup } from "../popups/ApiKeyMissingPopup";
 import { ConfirmPopup } from "../popups/ConfirmPopup";
 import { HeaderActionsMenu } from "../shared/HeaderActionsMenu";
@@ -118,6 +119,9 @@ export function TRView({ reviewId, projectId }: Props) {
     const [uploadingDroppedFilenames, setUploadingDroppedFilenames] = useState<
         string[]
     >([]);
+    const [dropUploadWarning, setDropUploadWarning] = useState<string | null>(
+        null,
+    );
     const searchParams = useSearchParams();
     const initialChatParamRef = useRef<string | null>(searchParams.get("chat"));
     const [chatOpen, setChatOpen] = useState(!!initialChatParamRef.current);
@@ -211,13 +215,28 @@ export function TRView({ reviewId, projectId }: Props) {
         return false;
     }
 
+    // Generation and review chat are editor-tier server-side; without this
+    // gate an org viewer is offered affordances that always fail with an
+    // unexplained error.
+    const canEditContent = can(reviewRole, "content.edit");
+
+    function requireContent(action: string): boolean {
+        if (canEditContent) return true;
+        setOwnerOnlyAction({ action, requiredRole: "editor" });
+        return false;
+    }
+
     async function saveColumnsConfig(nextColumns: ColumnConfig[]) {
         setSavingColumnsConfig(true);
         try {
             const updated = await updateTabularReview(reviewId, {
                 columns_config: nextColumns,
             });
-            setReview(updated);
+            // The PATCH response is the bare DB row — no access_role /
+            // is_owner — so replacing the review state with it would send
+            // roleFrom's fallback to "owner" and silently open every client
+            // gate for a manager. Merge so the detail fields survive.
+            setReview((prev) => (prev ? { ...prev, ...updated } : updated));
             setColumns(updated.columns_config || nextColumns);
         } finally {
             setSavingColumnsConfig(false);
@@ -260,8 +279,9 @@ export function TRView({ reviewId, projectId }: Props) {
         // attach actually requires.
         if (!requireStructure("add documents to this review")) return;
         setUploadingDroppedFilenames(files.map((file) => file.name));
+        const uploaded: Document[] = [];
+        let failedNames: string[] = [];
         try {
-            const uploaded: Document[] = [];
             const documentIds = documents.map((document) => document.id);
             for (const file of files) {
                 const document = await uploadReviewDocument(reviewId, file, {
@@ -272,15 +292,31 @@ export function TRView({ reviewId, projectId }: Props) {
                 uploaded.push(document);
                 documentIds.push(document.id);
             }
-            await handleAddDocuments(uploaded);
         } catch (err) {
             console.error("Tabular review document drop upload failed", err);
+            failedNames = files.slice(uploaded.length).map((f) => f.name);
+        }
+        try {
+            // Each successful upload already attached itself server-side, so
+            // refresh even after a mid-loop failure — otherwise the attached
+            // files stay invisible until a manual reload.
+            if (uploaded.length > 0) await handleAddDocuments(uploaded);
+        } catch (err) {
+            console.error("Refreshing review documents failed", err);
         } finally {
             setUploadingDroppedFilenames([]);
+        }
+        if (failedNames.length > 0) {
+            setDropUploadWarning(
+                failedNames.length === 1
+                    ? `"${failedNames[0]}" could not be uploaded. Please try again.`
+                    : `${failedNames.length} files could not be uploaded. Please try again.`,
+            );
         }
     }
 
     async function handleRegenerateCell(rowId: string, colIndex: number) {
+        if (!requireContent("regenerate cells")) return;
         if (apiKeys && !isModelAvailable(tabularModel, apiKeys)) {
             setApiKeyModalProvider(getModelProvider(tabularModel));
             return;
@@ -333,6 +369,7 @@ export function TRView({ reviewId, projectId }: Props) {
 
     async function handleGenerate() {
         if (!review || generating) return;
+        if (!requireContent("run generation")) return;
 
         // If columns changed since last save, update the review first
         if (columns.length === 0) return;
@@ -629,6 +666,13 @@ export function TRView({ reviewId, projectId }: Props) {
         // unchanged value would 403 a manager editing just the title.
         const nextProjectId = values.projectId ?? null;
         const projectChanged = nextProjectId !== (review.project_id ?? null);
+        // Moving a review between projects is owner-only server-side; gate
+        // it here so a manager changing the project selector gets an
+        // explanation instead of an unexplained failed save.
+        if (projectChanged && reviewRole !== "owner") {
+            setOwnerOnlyAction("move this review to another project");
+            return;
+        }
         const updated = await updateTabularReview(reviewId, {
             title: values.title,
             ...(projectChanged ? { project_id: nextProjectId } : {}),
@@ -1308,6 +1352,12 @@ export function TRView({ reviewId, projectId }: Props) {
                         : ownerOnlyAction?.requiredRole
                 }
                 onClose={() => setOwnerOnlyAction(null)}
+            />
+
+            <WarningPopup
+                open={dropUploadWarning !== null}
+                onClose={() => setDropUploadWarning(null)}
+                message={dropUploadWarning}
             />
 
             <ApiKeyMissingPopup
