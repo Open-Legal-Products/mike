@@ -25,6 +25,31 @@ type Db = ReturnType<typeof createServerSupabase>;
 
 const VALID_ROLES: OrgRole[] = ["owner", "admin", "member"];
 
+type DbError = { code?: string; message: string } | null;
+
+/**
+ * The existence pre-checks in addMember/addTeamMember/createTeam race with
+ * concurrent inserts; the unique constraints backstop correctness, but a
+ * raw 23505 would surface as a 500. Map it onto the same 409 the sequential
+ * path returns.
+ */
+function isUniqueViolation(error: DbError): boolean {
+    return error?.code === "23505";
+}
+
+/**
+ * The org_members_protect_last_owner trigger (20260821_08) closes the
+ * read-then-act race on last-owner protection at the DB level; when it
+ * fires, translate its 23514 into the same `last_owner` result the
+ * sequential in-process check produces.
+ */
+function isLastOwnerViolation(error: DbError): boolean {
+    return (
+        error?.code === "23514" &&
+        (error?.message ?? "").includes("at least one owner")
+    );
+}
+
 export type OrgResult<T> =
     | ({ ok: true } & T)
     | { ok: false; kind: "validation"; detail: string }
@@ -200,12 +225,19 @@ export async function addMember(
         })
         .select("*")
         .single();
-    if (error || !member)
+    if (error || !member) {
+        if (isUniqueViolation(error))
+            return {
+                ok: false,
+                kind: "conflict",
+                detail: "User is already a member",
+            };
         return {
             ok: false,
             kind: "db_error",
             detail: error?.message ?? "Failed to add member",
         };
+    }
     return { ok: true, member };
 }
 
@@ -254,12 +286,14 @@ export async function updateMember(
         .eq("user_id", params.targetUserId)
         .select("*")
         .single();
-    if (error || !member)
+    if (error || !member) {
+        if (isLastOwnerViolation(error)) return { ok: false, kind: "last_owner" };
         return {
             ok: false,
             kind: "db_error",
             detail: error?.message ?? "Failed to update member",
         };
+    }
     return { ok: true, member };
 }
 
@@ -294,7 +328,29 @@ export async function removeMember(
         .delete()
         .eq("org_id", params.orgId)
         .eq("user_id", params.targetUserId);
-    if (error) return { ok: false, kind: "db_error", detail: error.message };
+    if (error) {
+        if (isLastOwnerViolation(error)) return { ok: false, kind: "last_owner" };
+        return { ok: false, kind: "db_error", detail: error.message };
+    }
+
+    // Teams group existing members — leaving the org must also vacate the
+    // member's seats on this org's teams, or the roster keeps listing them.
+    const { data: orgTeams, error: teamsError } = await db
+        .from("teams")
+        .select("id")
+        .eq("org_id", params.orgId);
+    if (teamsError)
+        return { ok: false, kind: "db_error", detail: teamsError.message };
+    const teamIds = ((orgTeams ?? []) as { id: string }[]).map((t) => t.id);
+    if (teamIds.length > 0) {
+        const { error: seatError } = await db
+            .from("team_members")
+            .delete()
+            .in("team_id", teamIds)
+            .eq("user_id", params.targetUserId);
+        if (seatError)
+            return { ok: false, kind: "db_error", detail: seatError.message };
+    }
     return { ok: true };
 }
 
@@ -333,12 +389,19 @@ export async function createTeam(
         .insert({ org_id: params.orgId, name, created_by: params.userId })
         .select("*")
         .single();
-    if (error || !team)
+    if (error || !team) {
+        if (isUniqueViolation(error))
+            return {
+                ok: false,
+                kind: "conflict",
+                detail: "A team with that name already exists",
+            };
         return {
             ok: false,
             kind: "db_error",
             detail: error?.message ?? "Failed to create team",
         };
+    }
     return { ok: true, team };
 }
 
@@ -415,12 +478,19 @@ export async function addTeamMember(
         .insert({ team_id: params.teamId, user_id: params.targetUserId })
         .select("*")
         .single();
-    if (error || !member)
+    if (error || !member) {
+        if (isUniqueViolation(error))
+            return {
+                ok: false,
+                kind: "conflict",
+                detail: "User is already on this team",
+            };
         return {
             ok: false,
             kind: "db_error",
             detail: error?.message ?? "Failed to add team member",
         };
+    }
     return { ok: true, member };
 }
 

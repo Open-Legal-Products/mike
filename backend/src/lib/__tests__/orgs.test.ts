@@ -333,6 +333,41 @@ describe("orgs.service RBAC", () => {
         ).resolves.toMatchObject({ ok: true });
     });
 
+    it("vacates the removed member's team seats in that org only", async () => {
+        // Teams group existing members: removal from the org must also
+        // remove the user from the org's teams, but never touch their seats
+        // in OTHER orgs' teams.
+        const db = makeDb({
+            organizations: [
+                { id: "o1", name: "Acme", created_by: "owner1" },
+                { id: "o2", name: "Other", created_by: "owner9" },
+            ],
+            org_members: [
+                { org_id: "o1", user_id: "owner1", role: "owner" },
+                { org_id: "o1", user_id: "member1", role: "member" },
+                { org_id: "o2", user_id: "member1", role: "member" },
+            ],
+            teams: [
+                { id: "t1", org_id: "o1", name: "Litigation" },
+                { id: "t2", org_id: "o2", name: "Elsewhere" },
+            ],
+            team_members: [
+                { id: "tm1", team_id: "t1", user_id: "member1" },
+                { id: "tm2", team_id: "t2", user_id: "member1" },
+            ],
+        });
+        await expect(
+            removeMember(db, {
+                actorId: "owner1",
+                orgId: "o1",
+                targetUserId: "member1",
+            }),
+        ).resolves.toMatchObject({ ok: true });
+        const seats = db._tables.team_members as Row[];
+        expect(seats.find((s) => s.id === "tm1")).toBeUndefined();
+        expect(seats.find((s) => s.id === "tm2")).toBeDefined();
+    });
+
     it("gates team creation on owner/admin and requires org membership to join a team", async () => {
         const db = seededOrg();
         await expect(
