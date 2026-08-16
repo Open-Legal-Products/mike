@@ -96,7 +96,12 @@ export async function listUserOrgIds(userId: string, db: Db): Promise<string[]> 
 
 /**
  * The caller's auto-provisioned personal org id (the tenant new content lands
- * in by default), or null if it somehow doesn't exist yet.
+ * in by default). Self-heals when missing: the signup trigger deliberately
+ * swallows errors so a provisioning hiccup can never block signup, and the
+ * backfill migration ran exactly once — a user who slipped through both
+ * would otherwise stay un-tenanted forever (all their content org_id null,
+ * GET /orgs empty). The partial unique index on (created_by) where personal
+ * makes the lazy create race-safe: the loser re-reads the winner's row.
  */
 export async function getPersonalOrgId(
     userId: string,
@@ -108,7 +113,39 @@ export async function getPersonalOrgId(
         .eq("created_by", userId)
         .eq("personal", true)
         .single();
-    return (data as { id?: string } | null)?.id ?? null;
+    const existing = (data as { id?: string } | null)?.id ?? null;
+    if (existing) return existing;
+
+    const { data: profile } = await db
+        .from("user_profiles")
+        .select("email")
+        .eq("user_id", userId)
+        .single();
+    const name =
+        (profile as { email?: string | null } | null)?.email ?? "Personal";
+    const { data: created, error } = await db
+        .from("organizations")
+        .insert({ name, personal: true, created_by: userId })
+        .select("id")
+        .single();
+    if (error || !created) {
+        // Lost the create race (or insert failed): take whatever exists now.
+        const { data: raced } = await db
+            .from("organizations")
+            .select("id")
+            .eq("created_by", userId)
+            .eq("personal", true)
+            .single();
+        return (raced as { id?: string } | null)?.id ?? null;
+    }
+    const orgId = (created as { id: string }).id;
+    // Membership powers GET /orgs and the org visibility arms; content
+    // visibility for the owner never depends on it (owner arm), so a failed
+    // insert here degrades softly rather than blocking the caller.
+    await db
+        .from("org_members")
+        .insert({ org_id: orgId, user_id: userId, role: "owner" });
+    return orgId;
 }
 
 /**
