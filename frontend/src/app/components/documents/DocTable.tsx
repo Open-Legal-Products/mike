@@ -475,16 +475,38 @@ export function DocTable({
         await handleDropDocumentVersions(doc, [file]);
     }
 
+    /**
+     * Version file-replace and delete are owner-only server-side
+     * (documents.ts gates them on access.isOwner, i.e. the document's
+     * creator) — a capability check can't express that, so gate on the row
+     * itself and explain instead of letting the request 403 into a
+     * console.error.
+     */
+    function requireDocOwnerForVersions(docId: string, action: string): boolean {
+        const doc = documents.find((d) => d.id === docId);
+        if (!doc || !isSharedDocument(doc)) return true;
+        setOwnerOnlyAction({ action, requiredRole: "owner" });
+        return false;
+    }
+
     async function submitNewVersion(doc: Document, file: File, filename: string) {
+        // Same tier as the server's POST /versions guard (content.edit).
+        if (!requireCapability("content.edit", "upload a new version", "editor"))
+            return;
         try {
             await uploadDocumentVersion(doc.id, file, filename);
             await refreshDocumentVersionState(doc.id);
         } catch (e) {
             console.error("uploadDocumentVersion failed", e);
+            setDocumentUploadWarning("Version upload failed. Please try again.");
         }
     }
 
     async function replaceVersionFile(docId: string, versionId: string, file: File, filename: string) {
+        if (
+            !requireDocOwnerForVersions(docId, "replace this version's file")
+        )
+            return;
         await replaceDocumentVersionFile(docId, versionId, file, filename);
         const res = await refreshDocumentVersionState(docId);
         const replaced = res.versions.find((version) => version.id === versionId);
@@ -517,6 +539,9 @@ export function DocTable({
      * Patch a version filename and update the local cache in place.
      */
     async function handleRenameVersion(docId: string, versionId: string, filename: string | null) {
+        // Server PATCH /versions/:id guard is content.edit.
+        if (!requireCapability("content.edit", "rename versions", "editor"))
+            return;
         const previousFilename = versionsByDocId
             .get(docId)
             ?.versions.find((version) => version.id === versionId)
@@ -544,6 +569,8 @@ export function DocTable({
     }
 
     async function handleDeleteVersion(docId: string, versionId: string) {
+        if (!requireDocOwnerForVersions(docId, "delete document versions"))
+            return;
         try {
             await deleteDocumentVersion(docId, versionId);
             const res = await refreshDocumentVersionState(docId);
@@ -1204,7 +1231,8 @@ export function DocTable({
         if (!requireCapability("content.edit", "add documents", "editor"))
             return;
         const { supported, unsupported } = partitionSupportedDocumentFiles(files);
-        setDocumentUploadWarning(formatUnsupportedDocumentWarning(unsupported));
+        const unsupportedWarning = formatUnsupportedDocumentWarning(unsupported);
+        setDocumentUploadWarning(unsupportedWarning);
         if (supported.length === 0) return;
         setUploadingDroppedFilenames(supported.map((file) => file.name));
         try {
@@ -1230,10 +1258,15 @@ export function DocTable({
                     firstFailure.reason,
                 );
                 const detail = apiErrorDetail(firstFailure.reason);
+                const failureWarning = detail
+                    ? `Upload failed: ${detail}`
+                    : "Upload failed. Please try again.";
+                // Keep the unsupported-files message alongside the failure
+                // instead of overwriting one problem with the other.
                 setDocumentUploadWarning(
-                    detail
-                        ? `Upload failed: ${detail}`
-                        : "Upload failed. Please try again.",
+                    [unsupportedWarning, failureWarning]
+                        .filter(Boolean)
+                        .join(" "),
                 );
             }
         } finally {
@@ -1290,6 +1323,10 @@ export function DocTable({
 
     async function handleDropDocumentVersions(doc: Document, files: File[]) {
         if (files.length === 0) return;
+        // Same tier as the server's POST /versions guard (content.edit) —
+        // without it an org viewer's drop fails into console.error only.
+        if (!requireCapability("content.edit", "upload a new version", "editor"))
+            return;
         const { supported, unsupported } = partitionSupportedDocumentFiles(files);
         setDocumentUploadWarning(formatUnsupportedDocumentWarning(unsupported));
         if (supported.length === 0) return;
@@ -1302,6 +1339,7 @@ export function DocTable({
             await refreshDocumentVersionState(doc.id);
         } catch (err) {
             console.error("Document version drop upload failed", err);
+            setDocumentUploadWarning("Version upload failed. Please try again.");
         } finally {
             setUploadingVersionDocIds((prev) => {
                 const next = new Set(prev);

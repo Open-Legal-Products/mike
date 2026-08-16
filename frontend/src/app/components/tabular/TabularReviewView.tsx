@@ -172,8 +172,13 @@ export function TRView({ reviewId, projectId }: Props) {
     }, [actionsOpen]);
 
     useEffect(() => {
+        // Cancellation flag: on a rapid reviewId change the previous fetch
+        // can resolve AFTER the new one and clobber fresh state with stale
+        // data; drop its results instead.
+        let cancelled = false;
         const fetches: Promise<unknown>[] = [
             getTabularReview(reviewId).then(({ review, cells, rows, documents }) => {
+                if (cancelled) return;
                 setReview(review);
                 setCells(cells);
                 setRows(rows);
@@ -184,17 +189,28 @@ export function TRView({ reviewId, projectId }: Props) {
         if (projectId) {
             fetches.push(
                 getProject(projectId)
-                    .then(setProject)
+                    .then((loaded) => {
+                        if (!cancelled) setProject(loaded);
+                    })
                     .catch(() => {}),
             );
         } else {
             fetches.push(
                 listProjects()
-                    .then(setAvailableProjects)
-                    .catch(() => setAvailableProjects([])),
+                    .then((loaded) => {
+                        if (!cancelled) setAvailableProjects(loaded);
+                    })
+                    .catch(() => {
+                        if (!cancelled) setAvailableProjects([]);
+                    }),
             );
         }
-        Promise.all(fetches).finally(() => setLoading(false));
+        Promise.all(fetches).finally(() => {
+            if (!cancelled) setLoading(false);
+        });
+        return () => {
+            cancelled = true;
+        };
     }, [reviewId, projectId]);
 
     function getNextColumnIndex() {
@@ -622,6 +638,7 @@ export function TRView({ reviewId, projectId }: Props) {
 
     async function clearResultsForRows(rowIds: string[]) {
         if (rowIds.length === 0) return;
+        const previousCells = cells;
         setCells((prev) =>
             prev.map((c) =>
                 rowIds.includes(c.row_id)
@@ -631,7 +648,14 @@ export function TRView({ reviewId, projectId }: Props) {
         );
         setSelectedRowIds([]);
         setActionsOpen(false);
-        await clearTabularCells(reviewId, rowIds);
+        try {
+            await clearTabularCells(reviewId, rowIds);
+        } catch (err) {
+            // Roll the optimistic clear back — otherwise the cells sit in
+            // "pending" (content already blanked) until a manual reload.
+            console.error("Failed to clear tabular cells", err);
+            setCells(previousCells);
+        }
     }
 
     async function handleClearResults() {
@@ -897,7 +921,18 @@ export function TRView({ reviewId, projectId }: Props) {
                         {
                             actions: [
                                 {
-                                    onClick: () => setAddDocsOpen(true),
+                                    onClick: () => {
+                                        // Same pre-modal gate as openNewReview:
+                                        // stop non-managers before the modal,
+                                        // not after a doomed submit.
+                                        if (
+                                            !requireStructure(
+                                                "edit the document set",
+                                            )
+                                        )
+                                            return;
+                                        setAddDocsOpen(true);
+                                    },
                                     disabled: loading || savingColumnsConfig,
                                     title: "Add documents",
                                     icon: <Upload className="h-4 w-4" />,
@@ -1117,7 +1152,15 @@ export function TRView({ reviewId, projectId }: Props) {
                                 onUpdateColumn={handleUpdateColumn}
                                 onDeleteColumn={handleDeleteColumn}
                                 onAddColumn={() => setAddColOpen(true)}
-                                onAddDocuments={() => setAddDocsOpen(true)}
+                                onAddDocuments={() => {
+                                    if (
+                                        !requireStructure(
+                                            "edit the document set",
+                                        )
+                                    )
+                                        return;
+                                    setAddDocsOpen(true);
+                                }}
                             />
                         </div>
                     </div>
@@ -1133,6 +1176,7 @@ export function TRView({ reviewId, projectId }: Props) {
                             }}
                             initialChatId={selectedChatId}
                             onChatIdChange={setSelectedChatId}
+                            canSend={canEditContent}
                         />
                     )}
                 </div>
