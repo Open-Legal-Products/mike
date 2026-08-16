@@ -457,7 +457,11 @@ async function handleProjectDirectorySearch(req: Request, res: Response) {
       db
         .from("projects")
         .select("*")
-        .contains("shared_with", [normalizedUserEmail]),
+        // .contains(col, [x]) serializes the array as PgArray "{x}" syntax,
+        // which Postgres rejects for a jsonb column ("invalid input syntax
+        // for type json") — 500ing this endpoint for every caller. Use the
+        // JSON containment idiom listAccessibleProjectIds already uses.
+        .filter("shared_with", "cs", JSON.stringify([normalizedUserEmail])),
     );
   }
   // Third access branch (multi-tenant): projects in an org the caller belongs
