@@ -23,6 +23,7 @@ import {
     type OrgResult,
 } from "../lib/orgs";
 import { findProfileUserByEmail } from "../lib/userLookup";
+import { getOrgRole, roleCanManage } from "../lib/access";
 
 export const orgsRouter = Router();
 
@@ -109,6 +110,16 @@ orgsRouter.post("/:orgId/members", requireAuth, async (req, res) => {
         return void res.status(400).json({ detail: "email is required" });
 
     const db = createServerSupabase();
+    // Prove the caller may manage this org BEFORE touching the email: with
+    // the lookup first, the two distinguishable 404s ("No user with that
+    // email" vs "Organization not found") let any authenticated user probe
+    // which emails have accounts. addMember re-checks; this only fixes the
+    // ordering.
+    const actorRole = await getOrgRole(userId, req.params.orgId, db);
+    if (!actorRole) return sendFailure(res, { ok: false, kind: "not_found" });
+    if (!roleCanManage(actorRole))
+        return sendFailure(res, { ok: false, kind: "forbidden" });
+
     const targetUserId = await resolveUserIdByEmail(db, email);
     if (!targetUserId)
         return void res.status(404).json({ detail: "No user with that email" });
@@ -196,6 +207,14 @@ orgsRouter.post(
             return void res.status(400).json({ detail: "email is required" });
 
         const db = createServerSupabase();
+        // Same ordering as POST /members: manage-role first, email lookup
+        // second, so non-managers can't use the response to probe accounts.
+        const actorRole = await getOrgRole(userId, req.params.orgId, db);
+        if (!actorRole)
+            return sendFailure(res, { ok: false, kind: "not_found" });
+        if (!roleCanManage(actorRole))
+            return sendFailure(res, { ok: false, kind: "forbidden" });
+
         const targetUserId = await resolveUserIdByEmail(db, email);
         if (!targetUserId)
             return void res
