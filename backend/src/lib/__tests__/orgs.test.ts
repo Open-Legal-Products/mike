@@ -217,6 +217,31 @@ describe("orgs.service RBAC", () => {
         ).resolves.toMatchObject({ ok: false, kind: "conflict" });
     });
 
+    it("refuses to add members to a personal org", async () => {
+        // Every org-less row a user creates is tagged with their personal org
+        // (resolveContentOrgId), so admitting a member here would share the
+        // owner's entire private library through the org visibility arms.
+        const db = makeDb({
+            organizations: [
+                {
+                    id: "p1",
+                    name: "Personal",
+                    created_by: "owner1",
+                    personal: true,
+                },
+            ],
+            org_members: [{ org_id: "p1", user_id: "owner1", role: "owner" }],
+        });
+        await expect(
+            addMember(db, {
+                actorId: "owner1",
+                orgId: "p1",
+                targetUserId: "friend1",
+                role: "member",
+            }),
+        ).resolves.toMatchObject({ ok: false, kind: "validation" });
+    });
+
     it("protects the last owner from demotion and removal", async () => {
         const db = makeDb({
             organizations: [{ id: "o1", name: "Solo", created_by: "owner1" }],

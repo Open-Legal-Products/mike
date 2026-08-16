@@ -156,6 +156,24 @@ export async function addMember(
     if (!actorRole) return { ok: false, kind: "not_found" };
     if (!roleCanManage(actorRole)) return { ok: false, kind: "forbidden" };
 
+    // Personal orgs are the tenant behind a user's private content — every
+    // org-less row is tagged with one via resolveContentOrgId. Admitting a
+    // second member would silently share the caller's ENTIRE private library
+    // through the org visibility arms, so membership stays structurally
+    // single-user. (The caller is necessarily the owner here: nobody else
+    // can hold a role in a personal org.)
+    const { data: org } = await db
+        .from("organizations")
+        .select("personal")
+        .eq("id", params.orgId)
+        .single();
+    if ((org as { personal?: boolean } | null)?.personal)
+        return {
+            ok: false,
+            kind: "validation",
+            detail: "Personal organizations cannot have additional members",
+        };
+
     const role =
         typeof params.role === "string" && VALID_ROLES.includes(params.role as OrgRole)
             ? (params.role as OrgRole)
