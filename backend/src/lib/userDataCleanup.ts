@@ -200,39 +200,50 @@ export async function deleteUserOrganizations(db: Db, userId: string) {
     }[]) {
         if (personalOrgIds.has(m.org_id)) continue; // already cascade-deleted
 
+        // Sole-owner handoff happens BEFORE the membership row goes away:
+        // promote the earliest other member, or delete the org outright if
+        // nobody else is left (the cascade then removes the membership).
+        // Ordering matters twice over — it never leaves a window where the
+        // org exists ownerless, and the org_members_protect_last_owner
+        // trigger (20260821_08) would reject deleting a sole owner of a
+        // still-existing org.
+        if (m.role === "owner") {
+            const { data: otherOwners } = await db
+                .from("org_members")
+                .select("id")
+                .eq("org_id", m.org_id)
+                .eq("role", "owner")
+                .neq("id", m.id);
+            if (((otherOwners ?? []) as unknown[]).length === 0) {
+                const { data: remaining } = await db
+                    .from("org_members")
+                    .select("id")
+                    .eq("org_id", m.org_id)
+                    .neq("id", m.id)
+                    .order("created_at", { ascending: true })
+                    .limit(1);
+                const heir = ((remaining ?? []) as { id: string }[])[0];
+                if (heir) {
+                    const { error: promoteError } = await db
+                        .from("org_members")
+                        .update({ role: "owner" })
+                        .eq("id", heir.id);
+                    await throwIfError(
+                        promoteError,
+                        "Failed to hand off org ownership",
+                    );
+                } else {
+                    await deleteByIds(db, "organizations", [m.org_id]);
+                    continue; // cascade removed the membership row
+                }
+            }
+        }
+
         const { error: deleteError } = await db
             .from("org_members")
             .delete()
             .eq("id", m.id);
         await throwIfError(deleteError, "Failed to remove org membership");
-
-        if (m.role !== "owner") continue;
-
-        // Sole-owner handoff: if no owners remain, promote the earliest member;
-        // if the org is now empty, delete it.
-        const { data: owners } = await db
-            .from("org_members")
-            .select("id")
-            .eq("org_id", m.org_id)
-            .eq("role", "owner");
-        if (((owners ?? []) as unknown[]).length > 0) continue;
-
-        const { data: remaining } = await db
-            .from("org_members")
-            .select("id")
-            .eq("org_id", m.org_id)
-            .order("created_at", { ascending: true })
-            .limit(1);
-        const heir = ((remaining ?? []) as { id: string }[])[0];
-        if (heir) {
-            const { error: promoteError } = await db
-                .from("org_members")
-                .update({ role: "owner" })
-                .eq("id", heir.id);
-            await throwIfError(promoteError, "Failed to hand off org ownership");
-        } else {
-            await deleteByIds(db, "organizations", [m.org_id]);
-        }
     }
 
     const { error: teamError } = await db

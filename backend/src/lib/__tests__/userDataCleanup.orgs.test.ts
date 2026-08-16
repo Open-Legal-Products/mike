@@ -15,6 +15,7 @@ function makeDb(initial: Record<string, Row[]>) {
     function query(table: string) {
         const filters: (
             | { type: "eq"; col: string; val: unknown }
+            | { type: "neq"; col: string; val: unknown }
             | { type: "in"; col: string; vals: unknown[] }
         )[] = [];
         let op: "select" | "update" | "delete" = "select";
@@ -26,11 +27,11 @@ function makeDb(initial: Record<string, Row[]>) {
         const ensure = () => (tables[table] ??= []);
         const matches = (rows: Row[]) =>
             rows.filter((r) =>
-                filters.every((f) =>
-                    f.type === "eq"
-                        ? r[f.col] === f.val
-                        : f.vals.includes(r[f.col]),
-                ),
+                filters.every((f) => {
+                    if (f.type === "eq") return r[f.col] === f.val;
+                    if (f.type === "neq") return r[f.col] !== f.val;
+                    return f.vals.includes(r[f.col]);
+                }),
             );
 
         function resolveMany(): Promise<{ data: Row[]; error: null }> {
@@ -70,6 +71,10 @@ function makeDb(initial: Record<string, Row[]>) {
             select: () => builder,
             eq: (col: string, val: unknown) => {
                 filters.push({ type: "eq", col, val });
+                return builder;
+            },
+            neq: (col: string, val: unknown) => {
+                filters.push({ type: "neq", col, val });
                 return builder;
             },
             order: (col: string, opts?: { ascending?: boolean }) => {

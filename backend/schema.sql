@@ -161,6 +161,57 @@ create index if not exists idx_org_members_org on public.org_members(org_id);
 
 alter table public.org_members enable row level security;
 
+-- DB-level guard for "an organization must keep at least one owner". The
+-- service layer checks this too, but its read-then-act check races: two
+-- concurrent departures of two different owners can both pass and strand the
+-- org ownerless with no repair path (granting owner requires an owner). The
+-- trigger serializes owner departures per org by locking the organizations
+-- row, and steps aside for the two legitimate cascades: org deletion (the
+-- org row is already gone in this transaction) and auth-user deletion (the
+-- member's auth row is already gone). security definer so the auth.users
+-- probe works regardless of the calling role, mirroring handle_new_user.
+create or replace function public.org_members_protect_last_owner()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if old.role <> 'owner' then
+    return coalesce(new, old);
+  end if;
+  if tg_op = 'UPDATE' and new.role = 'owner' then
+    return new;
+  end if;
+
+  perform 1 from public.organizations where id = old.org_id for update;
+  if not found then
+    return coalesce(new, old);
+  end if;
+
+  if tg_op = 'DELETE' and not exists (
+    select 1 from auth.users where id = old.user_id
+  ) then
+    return old;
+  end if;
+
+  if not exists (
+    select 1 from public.org_members
+    where org_id = old.org_id and role = 'owner' and user_id <> old.user_id
+  ) then
+    raise exception 'An organization must keep at least one owner'
+      using errcode = '23514';
+  end if;
+
+  return coalesce(new, old);
+end;
+$$;
+
+drop trigger if exists org_members_last_owner_guard on public.org_members;
+create trigger org_members_last_owner_guard
+  before delete or update of role on public.org_members
+  for each row execute procedure public.org_members_protect_last_owner();
+
 create table if not exists public.teams (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id) on delete cascade,
