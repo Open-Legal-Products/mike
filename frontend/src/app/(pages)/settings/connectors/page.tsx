@@ -41,7 +41,10 @@ import {
     startMcpConnectorOAuth,
     updateMcpConnector,
 } from "@/app/lib/mikeApi";
-import { settingsGlassIconButtonClassName } from "../settingsStyles";
+import {
+    settingsGlassIconButtonClassName,
+    settingsGlassPrimaryButtonClassName,
+} from "../settingsStyles";
 import { SettingsSection } from "../SettingsSection";
 import { SettingsToggle } from "../SettingsToggle";
 
@@ -335,7 +338,7 @@ function GoogleDriveCard({
     });
 
     return (
-        <AccountSection className="p-4">
+        <SettingsSection className="p-4">
             <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-900">
@@ -363,7 +366,7 @@ function GoogleDriveCard({
                         type="button"
                         onClick={() => void connect()}
                         disabled={busy || !status.configured}
-                        className={`inline-flex h-9 items-center gap-1.5 text-sm ${accountGlassPrimaryButtonClassName}`}
+                        className={`inline-flex h-9 items-center gap-1.5 text-sm ${settingsGlassPrimaryButtonClassName}`}
                     >
                         {busy ? "Waiting for Google…" : "Connect"}
                     </button>
@@ -390,7 +393,7 @@ function GoogleDriveCard({
                     {error}
                 </p>
             )}
-        </AccountSection>
+        </SettingsSection>
     );
 }
 
