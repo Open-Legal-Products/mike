@@ -7,7 +7,7 @@
  * "owner OR shared project member OR org member" check so every route uses
  * the same logic instead of re-implementing the join.
  *
- * Access is granted through three branches, evaluated in this precedence:
+ * Access can arrive through three branches:
  *   1. row owner  — the row's `user_id` matches the caller.
  *   2. shared_with — the caller's email is in the row's shared_with list
  *                    (email-based sharing, unchanged by the org feature).
@@ -21,6 +21,12 @@
  *   - branch (3) org owner/admin → "manager" (curate, not delete containers)
  *   - branch (3) plain member    → "viewer"  (visibility, not ownership)
  *
+ * When several branches match, the caller gets the STRONGEST derived role
+ * (`strongerRole` in lib/permissions.ts): a grant can only ever add standing.
+ * An explicit share on top of plain org membership yields "editor", and an
+ * org admin who also appears in shared_with keeps "manager" — adding someone
+ * to a share list must never demote them.
+ *
  * Legacy flags are kept for compatibility and derived from the role:
  *   - `isOwner`   — TRUE only for branch (1), the row owner.
  *   - `canManage` — `can(projectRole, "members.manage")`.
@@ -28,7 +34,7 @@
  */
 
 import type { createServerSupabase } from "./supabase";
-import { can, type ProjectRole } from "./permissions";
+import { can, strongerRole, type ProjectRole } from "./permissions";
 
 export { can, type Capability, type ProjectRole } from "./permissions";
 
@@ -173,29 +179,27 @@ export async function checkProjectAccess(
     }
     const sharedWith = Array.isArray(proj.shared_with) ? proj.shared_with : [];
     const email = (userEmail ?? "").trim().toLowerCase();
-    if (email && sharedWith.some((e) => (e ?? "").toLowerCase() === email)) {
-        return {
-            ok: true,
-            isOwner: false,
-            role: null,
-            canManage: false,
-            projectRole: "editor",
-            project: proj,
-        };
-    }
+    const sharedRole: ProjectRole | null =
+        email && sharedWith.some((e) => (e ?? "").toLowerCase() === email)
+            ? "editor"
+            : null;
+    // Merge the share and org branches strongest-wins: a plain org member
+    // with an explicit share is an editor, an org admin stays a manager even
+    // if someone also added them to shared_with.
     const role = await getOrgRole(userId, proj.org_id, db);
-    if (role) {
-        const projectRole = orgRoleToProjectRole(role);
-        return {
-            ok: true,
-            isOwner: false,
-            role,
-            canManage: can(projectRole, "members.manage"),
-            projectRole,
-            project: proj,
-        };
-    }
-    return { ok: false };
+    const projectRole = strongerRole(
+        sharedRole,
+        role ? orgRoleToProjectRole(role) : null,
+    );
+    if (!projectRole) return { ok: false };
+    return {
+        ok: true,
+        isOwner: false,
+        role,
+        canManage: can(projectRole, "members.manage"),
+        projectRole,
+        project: proj,
+    };
 }
 
 type ResourceAccess =
@@ -225,12 +229,14 @@ function resourceAccessFor(
 /**
  * Check whether the current user can access a document the caller has
  * already loaded (saves a round-trip vs. having the helper re-fetch).
- * Owner-of-doc passes immediately; then the project fall-through — which
- * carries the `shared_with` editor branch and must not be shadowed by a
- * weaker org "viewer" (see the precedence note in the file header) — and
- * finally a direct org-membership check on the doc's own org_id, which
- * covers org-tagged docs outside any project and can only upgrade (an org
- * owner/admin is a manager even where the project branch said viewer).
+ * Owner-of-doc passes immediately; otherwise the project verdict (which
+ * already merges its share and org branches strongest-wins) is merged with
+ * a direct org-membership check on the doc's own org_id — covering
+ * org-tagged docs outside any project and docs whose org differs from
+ * their project's. Merging means the doc-org branch can only upgrade the
+ * verdict, never downgrade it. isOwner keeps meaning "owns this row": the
+ * project owner is not the owner of a collaborator's document, but
+ * inherits the project role for capability checks.
  */
 export async function ensureDocAccess(
     doc: { user_id: string; project_id: string | null; org_id?: string | null },
@@ -249,24 +255,22 @@ export async function ensureDocAccess(
     const access = doc.project_id
         ? await checkProjectAccess(doc.project_id, userId, userEmail, db)
         : ({ ok: false } as const);
-    if (access.ok && access.projectRole !== "viewer") {
-        // isOwner keeps meaning "owns this row": the project owner is
-        // not the owner of a collaborator's document, but inherits the
-        // project role for capability checks.
-        return resourceAccessFor(access.projectRole, access.role);
+    let best: ProjectRole | null = access.ok ? access.projectRole : null;
+    let bestOrg: OrgRole | null = access.ok ? access.role : null;
+    // Skip the doc-org lookup when the project verdict already folded in
+    // this same org's membership.
+    if (doc.org_id && (!access.ok || doc.org_id !== access.project.org_id)) {
+        const docRole = await getOrgRole(userId, doc.org_id, db);
+        if (docRole) {
+            const viaDocOrg = orgRoleToProjectRole(docRole);
+            if (strongerRole(best, viaDocOrg) !== best) {
+                best = viaDocOrg;
+                bestOrg = docRole;
+            }
+        }
     }
-    const docRole = await getOrgRole(userId, doc.org_id, db);
-    if (docRole) {
-        const orgProjectRole = orgRoleToProjectRole(docRole);
-        return resourceAccessFor(
-            access.ok && orgProjectRole === "viewer"
-                ? access.projectRole
-                : orgProjectRole,
-            docRole,
-        );
-    }
-    if (access.ok) return resourceAccessFor(access.projectRole, access.role);
-    return { ok: false };
+    if (!best) return { ok: false };
+    return resourceAccessFor(best, bestOrg);
 }
 
 /**
@@ -299,32 +303,44 @@ export async function ensureReviewAccess(
             projectRole: "owner",
         };
     const email = (userEmail ?? "").trim().toLowerCase();
-    if (email && Array.isArray(review.shared_with)) {
-        if (review.shared_with.some((e) => (e ?? "").toLowerCase() === email)) {
-            return resourceAccessFor("editor", null);
-        }
-    }
-    // Project fall-through before the review's own org branch — the project
-    // check carries the `shared_with` editor branch, which must not be
-    // shadowed by a weaker org "viewer" (precedence note in the file header).
+    const directShare =
+        email &&
+        Array.isArray(review.shared_with) &&
+        review.shared_with.some((e) => (e ?? "").toLowerCase() === email);
+    // Merge all three branches strongest-wins. The direct review share is a
+    // floor, not a ceiling: it must not shadow a stronger standing coming
+    // from the project (its owner, an org admin) — being added to a review's
+    // share list must never demote the project owner to editor.
     const access = review.project_id
         ? await checkProjectAccess(review.project_id, userId, userEmail, db)
         : ({ ok: false } as const);
-    if (access.ok && access.projectRole !== "viewer") {
-        return resourceAccessFor(access.projectRole, access.role);
+    let best: ProjectRole | null = directShare ? "editor" : null;
+    let bestOrg: OrgRole | null = null;
+    // On a tie the project verdict wins so the org `role` field survives.
+    if (
+        access.ok &&
+        strongerRole(access.projectRole, best) === access.projectRole
+    ) {
+        best = access.projectRole;
+        bestOrg = access.role;
     }
-    const reviewRole = await getOrgRole(userId, review.org_id, db);
-    if (reviewRole) {
-        const orgProjectRole = orgRoleToProjectRole(reviewRole);
-        return resourceAccessFor(
-            access.ok && orgProjectRole === "viewer"
-                ? access.projectRole
-                : orgProjectRole,
-            reviewRole,
-        );
+    // Skip the review-org lookup when the project verdict already folded in
+    // this same org's membership.
+    if (
+        review.org_id &&
+        (!access.ok || review.org_id !== access.project.org_id)
+    ) {
+        const reviewRole = await getOrgRole(userId, review.org_id, db);
+        if (reviewRole) {
+            const viaOrg = orgRoleToProjectRole(reviewRole);
+            if (strongerRole(best, viaOrg) !== best) {
+                best = viaOrg;
+                bestOrg = reviewRole;
+            }
+        }
     }
-    if (access.ok) return resourceAccessFor(access.projectRole, access.role);
-    return { ok: false };
+    if (!best) return { ok: false };
+    return resourceAccessFor(best, bestOrg);
 }
 
 /**

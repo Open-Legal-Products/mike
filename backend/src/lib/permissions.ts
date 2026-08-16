@@ -59,6 +59,20 @@ const REQUIRED_RANK: Record<Capability, number> = {
     "container.delete": ROLE_RANK.owner,
 };
 
+/**
+ * The stronger of two roles; null loses to any role. Access branches merge
+ * through this so overlapping grants (say, an explicit share on top of org
+ * membership) can only ever add standing, never subtract it.
+ */
+export function strongerRole(
+    a: ProjectRole | null,
+    b: ProjectRole | null,
+): ProjectRole | null {
+    if (!a) return b;
+    if (!b) return a;
+    return ROLE_RANK[a] >= ROLE_RANK[b] ? a : b;
+}
+
 /** Fail closed: an absent/unknown role can do nothing. */
 export function can(
     role: ProjectRole | null | undefined,

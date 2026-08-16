@@ -314,9 +314,6 @@ describe("org RBAC access", () => {
     });
 
     it("keeps org owners/admins at manager on shared projects (no downgrade either way)", async () => {
-        // Dave is an org admin; the doc's own org grants manager even though
-        // the project branch would only find him via the org (manager) too —
-        // and a doc org check must still upgrade a project "viewer" verdict.
         await expect(
             ensureDocAccess(
                 { user_id: "alice", project_id: "proj-a", org_id: "org-a" },
@@ -325,6 +322,91 @@ describe("org RBAC access", () => {
                 db,
             ),
         ).resolves.toMatchObject({ ok: true, projectRole: "manager" });
+    });
+
+    it("upgrades a project-viewer verdict via the doc's own (different) org", async () => {
+        // Dave is a plain member of the project's org (viewer) but an admin
+        // of the org the doc itself is tagged with — the doc-org branch must
+        // lift him to manager. This is the only fixture where the doc org
+        // check actually decides the outcome: the project org and doc org
+        // must differ, or checkProjectAccess already settles it.
+        const splitDb = makeDb({
+            org_members: [
+                { org_id: "org-x", user_id: "dave", role: "member" },
+                { org_id: "org-a", user_id: "dave", role: "admin" },
+            ],
+            projects: [
+                {
+                    id: "proj-x",
+                    user_id: "bob",
+                    shared_with: [],
+                    org_id: "org-x",
+                },
+            ],
+        });
+        await expect(
+            ensureDocAccess(
+                { user_id: "bob", project_id: "proj-x", org_id: "org-a" },
+                "dave",
+                "dave@example.com",
+                splitDb,
+            ),
+        ).resolves.toMatchObject({
+            ok: true,
+            projectRole: "manager",
+            role: "admin",
+        });
+    });
+
+    it("keeps an org admin at manager when they are also in shared_with", async () => {
+        // The mirror image of the carol overlap: dave already stands as
+        // manager through the org; someone also adding him to shared_with
+        // (editor tier) must not demote him. Branches merge strongest-wins.
+        const overlapDb = makeDb({
+            org_members: [{ org_id: "org-a", user_id: "dave", role: "admin" }],
+            projects: [
+                {
+                    id: "proj-a",
+                    user_id: "alice",
+                    shared_with: ["dave@example.com"],
+                    org_id: "org-a",
+                },
+            ],
+        });
+        await expect(
+            checkProjectAccess("proj-a", "dave", "dave@example.com", overlapDb),
+        ).resolves.toMatchObject({
+            ok: true,
+            isOwner: false,
+            role: "admin",
+            canManage: true,
+            projectRole: "manager",
+        });
+    });
+
+    it("does not demote the project owner when a review is shared with them", async () => {
+        // Frank creates a review inside alice's project and politely adds
+        // alice@ to the review's own share list. The direct-share branch
+        // (editor) must not shadow alice's standing as the project owner —
+        // she keeps owner-tier capabilities on the review. isOwner stays
+        // false: she does not own the review row itself.
+        await expect(
+            ensureReviewAccess(
+                {
+                    user_id: "frank",
+                    project_id: "proj-a",
+                    shared_with: ["alice@example.com"],
+                    org_id: "org-a",
+                },
+                "alice",
+                "alice@example.com",
+                db,
+            ),
+        ).resolves.toMatchObject({
+            ok: true,
+            isOwner: false,
+            projectRole: "owner",
+        });
     });
 
     it("lists org projects for members but not other tenants'", async () => {
