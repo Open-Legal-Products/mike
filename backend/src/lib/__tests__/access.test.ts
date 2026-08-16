@@ -279,6 +279,54 @@ describe("org RBAC access", () => {
         ).resolves.toMatchObject({ ok: true, isOwner: false });
     });
 
+    it("does not downgrade a shared editor who is also a plain org member", async () => {
+        // Carol is BOTH a member of org-a (viewer tier) and explicitly in the
+        // project's shared_with (editor tier) — the common in-firm sharing
+        // case. The org "viewer" branch must not shadow the share: she keeps
+        // content collaboration on the project's docs and reviews.
+        const overlapDb = makeDb({
+            org_members: [{ org_id: "org-a", user_id: "carol", role: "member" }],
+            projects: [
+                {
+                    id: "proj-a",
+                    user_id: "alice",
+                    shared_with: ["carol@example.com"],
+                    org_id: "org-a",
+                },
+            ],
+        });
+        await expect(
+            ensureDocAccess(
+                { user_id: "alice", project_id: "proj-a", org_id: "org-a" },
+                "carol",
+                "carol@example.com",
+                overlapDb,
+            ),
+        ).resolves.toMatchObject({ ok: true, projectRole: "editor" });
+        await expect(
+            ensureReviewAccess(
+                { user_id: "alice", project_id: "proj-a", org_id: "org-a" },
+                "carol",
+                "carol@example.com",
+                overlapDb,
+            ),
+        ).resolves.toMatchObject({ ok: true, projectRole: "editor" });
+    });
+
+    it("keeps org owners/admins at manager on shared projects (no downgrade either way)", async () => {
+        // Dave is an org admin; the doc's own org grants manager even though
+        // the project branch would only find him via the org (manager) too —
+        // and a doc org check must still upgrade a project "viewer" verdict.
+        await expect(
+            ensureDocAccess(
+                { user_id: "alice", project_id: "proj-a", org_id: "org-a" },
+                "dave",
+                "dave@example.com",
+                db,
+            ),
+        ).resolves.toMatchObject({ ok: true, projectRole: "manager" });
+    });
+
     it("lists org projects for members but not other tenants'", async () => {
         const ids = await listAccessibleProjectIds(
             "carol",
