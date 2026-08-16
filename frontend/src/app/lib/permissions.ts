@@ -39,10 +39,15 @@ export function can(
 }
 
 /**
- * Resolve a role from an API row. Detail endpoints return `access_role`;
- * list endpoints only return `is_owner`, where a non-owner row means "shared
- * with me" — historically full edit access, so editor is the faithful
- * fallback.
+ * Resolve a role from an API row. Detail endpoints return `access_role`
+ * (for every role, including "owner"); list endpoints only return
+ * `is_owner`, where a non-owner row means "shared with me" — historically
+ * full edit access, so editor is the faithful fallback.
+ *
+ * A row carrying NEITHER field is not a detail or list payload — it's a
+ * bare mutation response (PATCH handlers return the raw DB row). Guessing
+ * "owner" there would silently open every client gate, so it resolves
+ * viewer: fail closed, like `can` does for unknown roles.
  */
 export function roleFrom(row: {
     access_role?: ProjectRole | null;
@@ -50,5 +55,7 @@ export function roleFrom(row: {
 }): ProjectRole {
     if (row.access_role && row.access_role in ROLE_RANK)
         return row.access_role;
-    return row.is_owner === false ? "editor" : "owner";
+    if (row.is_owner === false) return "editor";
+    if (row.is_owner === true) return "owner";
+    return "viewer";
 }

@@ -72,8 +72,16 @@ describe("roleFrom", () => {
 
     it("falls back to the is_owner list-row contract", () => {
         expect(roleFrom({ is_owner: true })).toBe("owner");
-        expect(roleFrom({})).toBe("owner");
         expect(roleFrom({ is_owner: false })).toBe("editor");
+    });
+
+    it("fails closed when a row carries neither field", () => {
+        // Bare mutation responses (PATCH handlers return the raw DB row)
+        // have neither access_role nor is_owner. Defaulting to "owner"
+        // here once let a manager's client gates silently open after a
+        // column save; the unknown case must resolve to the weakest role.
+        expect(roleFrom({})).toBe("viewer");
+        expect(roleFrom({ access_role: null, is_owner: null })).toBe("viewer");
     });
 
     it("ignores unknown access_role values", () => {
