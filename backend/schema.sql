@@ -2058,6 +2058,14 @@ as $$
           and p.user_id::text <> p_user_id
           and p.shared_with @> jsonb_build_array(p_user_email)
         )
+        or (
+          p.org_id is not null
+          and p.user_id::text <> p_user_id
+          and exists (
+            select 1 from public.org_members m
+            where m.org_id = p.org_id and m.user_id::text = p_user_id
+          )
+        )
       )
       and (
         coalesce(p_scope, 'all') = 'all'
@@ -2179,6 +2187,14 @@ as $$
         and p.user_id::text <> p_user_id
         and p.shared_with @> jsonb_build_array(p_user_email)
       )
+      or (
+        p.org_id is not null
+        and p.user_id::text <> p_user_id
+        and exists (
+          select 1 from public.org_members m
+          where m.org_id = p.org_id and m.user_id::text = p_user_id
+        )
+      )
     )
     and (
       coalesce(p_scope, 'all') = 'all'
@@ -2292,10 +2308,41 @@ as $$
     where lower(ws.shared_with_email) = lower(coalesce(p_user_email, ''))
       and (p_type is null or w.type = p_type)
   ),
+  org_shared as (
+    -- Workflows in an org the caller belongs to (read-only; edits stay
+    -- owner/share-gated). Mirrors the org branch in lib/access.ts and the
+    -- legacy 3-argument overload. Under the scope filter these rows count
+    -- as "shared" — shared-with-me and shared-via-my-org are one bucket
+    -- from the caller's point of view.
+    select
+      w.id, w.user_id::text as user_id, w.title, w.type, w.prompt_md,
+      w.columns_config, w.language, w.practice, w.jurisdictions,
+      false as is_system, w.created_at,
+      false as allow_edit, false as is_owner,
+      nullif(trim(up.display_name), '') as shared_by_name,
+      2 as sort_bucket
+    from public.workflows w
+    left join public.user_profiles up
+      on up.user_id::text = w.user_id::text
+    where w.org_id is not null
+      and (w.user_id is null or w.user_id::text <> p_user_id)
+      and (p_type is null or w.type = p_type)
+      and exists (
+        select 1 from public.org_members m
+        where m.org_id = w.org_id and m.user_id::text = p_user_id
+      )
+      and not exists (
+        select 1 from public.workflow_shares ws
+        where ws.workflow_id = w.id
+          and lower(ws.shared_with_email) = lower(coalesce(p_user_email, ''))
+      )
+  ),
   visible_workflows as (
     select * from owned
     union all
     select * from shared
+    union all
+    select * from org_shared
   )
   select
     vw.id, vw.user_id, vw.title, vw.type, vw.prompt_md, vw.columns_config,
@@ -2305,7 +2352,7 @@ as $$
   where (
       coalesce(p_scope, 'all') = 'all'
       or (p_scope = 'owned' and vw.sort_bucket = 0)
-      or (p_scope = 'shared' and vw.sort_bucket = 1)
+      or (p_scope = 'shared' and vw.sort_bucket in (1, 2))
     )
     and (
       p_search_term is null
@@ -2373,17 +2420,39 @@ as $$
     where lower(ws.shared_with_email) = lower(coalesce(p_user_email, ''))
       and (p_type is null or w.type = p_type)
   ),
+  org_shared as (
+    -- Same org-membership arm as get_workflows_overview: the ids RPC must
+    -- compute the same visible set, or "select all matching" silently
+    -- omits org-shared rows the list view shows.
+    select w.id, w.user_id::text as user_id, w.title, w.practice, w.language, w.jurisdictions,
+      w.created_at, 2 as sort_bucket
+    from public.workflows w
+    where w.org_id is not null
+      and (w.user_id is null or w.user_id::text <> p_user_id)
+      and (p_type is null or w.type = p_type)
+      and exists (
+        select 1 from public.org_members m
+        where m.org_id = w.org_id and m.user_id::text = p_user_id
+      )
+      and not exists (
+        select 1 from public.workflow_shares ws
+        where ws.workflow_id = w.id
+          and lower(ws.shared_with_email) = lower(coalesce(p_user_email, ''))
+      )
+  ),
   visible_workflows as (
     select * from owned
     union all
     select * from shared
+    union all
+    select * from org_shared
   )
   select vw.id, vw.user_id
   from visible_workflows vw
   where (
       coalesce(p_scope, 'all') = 'all'
       or (p_scope = 'owned' and vw.sort_bucket = 0)
-      or (p_scope = 'shared' and vw.sort_bucket = 1)
+      or (p_scope = 'shared' and vw.sort_bucket in (1, 2))
     )
     and (
       p_search_term is null
@@ -2433,6 +2502,14 @@ as $$
        coalesce(p_user_email, '') <> ''
        and p.user_id::text <> p_user_id
        and p.shared_with @> jsonb_build_array(p_user_email)
+     )
+     or (
+       p.org_id is not null
+       and p.user_id::text <> p_user_id
+       and exists (
+         select 1 from public.org_members m
+         where m.org_id = p.org_id and m.user_id::text = p_user_id
+       )
      )
   order by p.updated_at desc, p.created_at desc, p.id asc
   limit greatest(coalesce(p_limit, 11), 1)

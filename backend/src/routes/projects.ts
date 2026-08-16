@@ -24,6 +24,7 @@ import {
   checkProjectAccess,
   getOrgRole,
   getPersonalOrgId,
+  listUserOrgIds,
   resolveContentOrgId,
 } from "../lib/access";
 import { can } from "../lib/permissions";
@@ -458,6 +459,14 @@ async function handleProjectDirectorySearch(req: Request, res: Response) {
         .select("*")
         .contains("shared_with", [normalizedUserEmail]),
     );
+  }
+  // Third access branch (multi-tenant): projects in an org the caller belongs
+  // to are searchable, mirroring listAccessibleProjectIds and the overview
+  // RPCs — otherwise the document picker would hide org content the project
+  // list shows.
+  const orgIds = await listUserOrgIds(userId, db);
+  if (orgIds.length > 0) {
+    projectQueries.push(db.from("projects").select("*").in("org_id", orgIds));
   }
   const projectResults = await Promise.all(projectQueries);
   const projectError = projectResults.find((result) => result.error)?.error;
