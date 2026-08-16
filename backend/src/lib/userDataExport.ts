@@ -384,7 +384,13 @@ export async function buildUserAccountExport(
         userEmail
             ? selectAll(db, "tabular_reviews", (query) =>
                   query
-                      .filter("shared_with", "cs", JSON.stringify([userEmail]))
+                      .filter(
+                          "shared_with",
+                          "cs",
+                          // shared_with entries are stored lowercased; a raw
+                          // mixed-case login email would silently miss them.
+                          JSON.stringify([userEmail.trim().toLowerCase()]),
+                      )
                       .neq("user_id", userId)
                       .order("created_at", { ascending: true }),
                   "id, user_id, project_id, title, practice, created_at, updated_at",

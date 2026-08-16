@@ -121,8 +121,11 @@ describe("parseQuery", () => {
 
 /**
  * Chainable Supabase mock. `projects` select responses are keyed by whether the
- * query used .eq (owned) or .contains (shared). The audit_events builder
- * records the .or / .eq filter it was given so tests can assert scoping.
+ * query used .eq (owned) or .filter (shared containment). The audit_events
+ * builder records the .or / .eq filter it was given so tests can assert
+ * scoping. The builder deliberately has no .contains: shared_with is jsonb, and
+ * supabase-js .contains serializes arrays as PgArray, which Postgres rejects —
+ * a regression back to it fails loudly here.
  */
 function makeDb(
     owned: string[],
@@ -136,6 +139,7 @@ function makeDb(
         order?: [string, { ascending: boolean; nullsFirst: boolean }];
         ilike?: [string, string];
         profileUserIds?: string[];
+        sharedFilter?: [string, string, string];
     } = { eq: [] };
 
     function projectsBuilder() {
@@ -146,7 +150,8 @@ function makeDb(
                 mode = "owned";
                 return b;
             },
-            contains: () => {
+            filter: (column: string, op: string, value: string) => {
+                calls.sharedFilter = [column, op, value];
                 mode = "shared";
                 return b;
             },
@@ -244,6 +249,16 @@ describe("queryEvents visibility scoping", () => {
             "u1@example.com",
         );
         expect([...both].sort()).toEqual(["p1", "p2", "p3"]);
+    });
+
+    it("sends shared containment as a lowercased jsonb literal", async () => {
+        const { db, calls } = makeDb([], ["p-shared"]);
+        await accessibleProjectIds(db, "u1", " U1@Example.com ");
+        expect(calls.sharedFilter).toEqual([
+            "shared_with",
+            "cs",
+            JSON.stringify(["u1@example.com"]),
+        ]);
     });
 
     it("applies categorical filters and the requested sort", async () => {

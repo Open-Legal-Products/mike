@@ -27,10 +27,14 @@ export async function accessibleProjectIds(
   const own = await db.from("projects").select("id").eq("user_id", userId);
   for (const row of (own.data ?? []) as { id: string }[]) ids.add(row.id);
   if (email) {
+    // shared_with is jsonb, so containment must be sent as a jsonb literal.
+    // supabase-js .contains() serializes arrays as a PgArray ({...}), which
+    // Postgres rejects for jsonb; the error was swallowed below and every
+    // shared-project event silently vanished from the feed.
     const shared = await db
       .from("projects")
       .select("id")
-      .contains("shared_with", [email.trim().toLowerCase()]);
+      .filter("shared_with", "cs", JSON.stringify([email.trim().toLowerCase()]));
     for (const row of (shared.data ?? []) as { id: string }[]) ids.add(row.id);
   }
   return [...ids];
