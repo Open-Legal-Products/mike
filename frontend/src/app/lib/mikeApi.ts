@@ -755,11 +755,19 @@ export interface Org {
     role: OrgRole;
 }
 
-export interface OrgMember {
+/**
+ * Bare org_members row, as mutation endpoints return it (POST /members
+ * responds with the inserted row — no profile enrichment).
+ */
+export interface OrgMemberRow {
     id: string;
     user_id: string;
     role: OrgRole;
     created_at?: string;
+}
+
+/** Roster row from GET /members: the bare row plus mirrored profile fields. */
+export interface OrgMember extends OrgMemberRow {
     email: string | null;
     display_name: string | null;
 }
@@ -768,6 +776,14 @@ export interface OrgTeamMember {
     user_id: string;
     email: string | null;
     display_name: string | null;
+}
+
+/** Bare team_members row from POST — no profile enrichment. */
+export interface OrgTeamMemberRow {
+    id: string;
+    team_id: string;
+    user_id: string;
+    created_at?: string;
 }
 
 export interface OrgTeam {
@@ -798,8 +814,8 @@ export async function addOrgMember(
     orgId: string,
     email: string,
     role: OrgRole = "member",
-): Promise<OrgMember> {
-    return apiRequest<OrgMember>(`/orgs/${orgId}/members`, {
+): Promise<OrgMemberRow> {
+    return apiRequest<OrgMemberRow>(`/orgs/${orgId}/members`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, role }),
@@ -810,8 +826,8 @@ export async function updateOrgMember(
     orgId: string,
     userId: string,
     role: OrgRole,
-): Promise<OrgMember> {
-    return apiRequest<OrgMember>(`/orgs/${orgId}/members/${userId}`, {
+): Promise<OrgMemberRow> {
+    return apiRequest<OrgMemberRow>(`/orgs/${orgId}/members/${userId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role }),
@@ -853,12 +869,15 @@ export async function addOrgTeamMember(
     orgId: string,
     teamId: string,
     email: string,
-): Promise<OrgTeamMember> {
-    return apiRequest<OrgTeamMember>(`/orgs/${orgId}/teams/${teamId}/members`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-    });
+): Promise<OrgTeamMemberRow> {
+    return apiRequest<OrgTeamMemberRow>(
+        `/orgs/${orgId}/teams/${teamId}/members`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email }),
+        },
+    );
 }
 
 export async function removeOrgTeamMember(
