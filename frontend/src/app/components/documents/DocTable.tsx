@@ -1208,16 +1208,34 @@ export function DocTable({
         if (supported.length === 0) return;
         setUploadingDroppedFilenames(supported.map((file) => file.name));
         try {
-            const uploaded = await Promise.all(supported.map((file) => operations.uploadDocument(file)));
-            handleDocsSelected(uploaded);
-        } catch (err) {
-            console.error("Document drop upload failed", err);
-            const detail = apiErrorDetail(err);
-            setDocumentUploadWarning(
-                detail
-                    ? `Upload failed: ${detail}`
-                    : "Upload failed. Please try again.",
+            // Settle every upload so one failure doesn't discard sibling
+            // uploads that succeeded server-side — those docs exist and must
+            // land in the table, not reappear only after a reload.
+            const settled = await Promise.allSettled(
+                supported.map((file) => operations.uploadDocument(file)),
             );
+            const uploaded = settled
+                .filter(
+                    (r): r is PromiseFulfilledResult<Document> =>
+                        r.status === "fulfilled",
+                )
+                .map((r) => r.value);
+            if (uploaded.length > 0) handleDocsSelected(uploaded);
+            const firstFailure = settled.find(
+                (r): r is PromiseRejectedResult => r.status === "rejected",
+            );
+            if (firstFailure) {
+                console.error(
+                    "Document drop upload failed",
+                    firstFailure.reason,
+                );
+                const detail = apiErrorDetail(firstFailure.reason);
+                setDocumentUploadWarning(
+                    detail
+                        ? `Upload failed: ${detail}`
+                        : "Upload failed. Please try again.",
+                );
+            }
         } finally {
             setUploadingDroppedFilenames([]);
         }
