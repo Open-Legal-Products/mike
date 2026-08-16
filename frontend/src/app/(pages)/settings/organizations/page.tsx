@@ -205,6 +205,10 @@ function OrgCard({
     onLeftOrg: () => void;
 }) {
     const canManage = roleCanManage(org.role);
+    // Admins manage members but never owners: the server forbids an admin
+    // from changing or removing an owner and from granting the owner role,
+    // so those controls must not render as live for them.
+    const actorIsOwner = org.role === "owner";
     const [members, setMembers] = useState<OrgMember[] | null>(null);
     const [teams, setTeams] = useState<OrgTeam[] | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -230,14 +234,20 @@ function OrgCard({
         if (open && members === null) void refresh();
     }, [open, members, refresh]);
 
-    async function run(key: string, fn: () => Promise<void>) {
-        if (busyKey) return;
+    async function run(key: string, fn: () => Promise<void>): Promise<boolean> {
+        // Returns whether the action ran to completion, so callers like
+        // AddUserInput can keep their input when the action was skipped
+        // (another one busy) or failed, instead of clearing it as if it
+        // had succeeded.
+        if (busyKey) return false;
         setBusyKey(key);
         setError(null);
         try {
             await fn();
+            return true;
         } catch (err) {
             setError(errorMessage(err));
+            return false;
         } finally {
             setBusyKey(null);
         }
@@ -316,7 +326,10 @@ function OrgCard({
                                                     </span>
                                                 ) : null}
                                             </span>
-                                            {canManage && !isSelf ? (
+                                            {canManage &&
+                                            !isSelf &&
+                                            (m.role !== "owner" ||
+                                                actorIsOwner) ? (
                                                 <select
                                                     aria-label={`Role for ${memberLabel(m)}`}
                                                     value={m.role}
@@ -349,11 +362,16 @@ function OrgCard({
                                                     }
                                                 >
                                                     {(
-                                                        [
-                                                            "owner",
-                                                            "admin",
-                                                            "member",
-                                                        ] as OrgRole[]
+                                                        (actorIsOwner
+                                                            ? [
+                                                                  "owner",
+                                                                  "admin",
+                                                                  "member",
+                                                              ]
+                                                            : [
+                                                                  "admin",
+                                                                  "member",
+                                                              ]) as OrgRole[]
                                                     ).map((r) => (
                                                         <option
                                                             key={r}
@@ -366,7 +384,10 @@ function OrgCard({
                                             ) : (
                                                 <RoleBadge role={m.role} />
                                             )}
-                                            {canManage || isSelf ? (
+                                            {isSelf ||
+                                            (canManage &&
+                                                (m.role !== "owner" ||
+                                                    actorIsOwner)) ? (
                                                 <button
                                                     type="button"
                                                     aria-label={
@@ -568,12 +589,14 @@ function OrgCard({
                 onConfirm={() => {
                     const target = pendingRemove;
                     if (!target) return;
+                    // Close the popup whether or not the removal succeeded:
+                    // the failure detail (e.g. the last-owner 409) renders in
+                    // the card body, which the open modal would cover.
                     void run(`remove-${target.user_id}`, async () => {
                         await removeOrgMember(org.id, target.user_id);
-                        setPendingRemove(null);
                         if (target.user_id === currentUserId) onLeftOrg();
                         else await refresh();
-                    });
+                    }).finally(() => setPendingRemove(null));
                 }}
             />
         </SettingsSection>

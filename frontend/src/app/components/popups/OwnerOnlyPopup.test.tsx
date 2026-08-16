@@ -13,9 +13,7 @@ describe("OwnerOnlyPopup", () => {
         );
         expect(screen.getByText("Owner-only action")).toBeInTheDocument();
         expect(
-            screen.getByText(
-                "Only the project owner can delete this project.",
-            ),
+            screen.getByText("Only the owner can delete this project."),
         ).toBeInTheDocument();
     });
 

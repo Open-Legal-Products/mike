@@ -26,7 +26,9 @@ const ROLE_SUBJECT: Record<
     NonNullable<Props["requiredRole"]>,
     { title: string; subject: string }
 > = {
-    owner: { title: "Owner-only action", subject: "the project owner" },
+    // "the owner" rather than "the project owner": the same popup fronts
+    // review-level denials, where the container's owner is the review owner.
+    owner: { title: "Owner-only action", subject: "the owner" },
     manager: {
         title: "Manager-only action",
         subject: "the owner or a manager",
