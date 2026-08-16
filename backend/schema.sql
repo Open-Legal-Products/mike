@@ -1888,6 +1888,16 @@ as $$
          and p.user_id::text <> p_user_id
          and p.shared_with @> jsonb_build_array(p_user_email)
        )
+       or (
+         -- Org arm: same predicate as get_projects_overview, so the filter
+         -- dropdowns and the list agree on what is visible.
+         p.org_id is not null
+         and p.user_id::text <> p_user_id
+         and exists (
+           select 1 from public.org_members m
+           where m.org_id = p.org_id and m.user_id::text = p_user_id
+         )
+       )
   ),
   distinct_owners as (
     select distinct vp.user_id
@@ -1951,10 +1961,32 @@ as $$
     where lower(ws.shared_with_email) = lower(coalesce(p_user_email, ''))
       and (p_type is null or w.type = p_type)
   ),
+  org_shared as (
+    -- Same org-membership arm as get_workflows_overview, including the
+    -- workflow_shares NOT EXISTS dedup, so a row visible via both routes
+    -- contributes its options exactly once. Tagged 'shared' to match the
+    -- overview's scope bucketing.
+    select w.practice, w.language, w.jurisdictions, 'shared'::text as source
+    from public.workflows w
+    where w.org_id is not null
+      and (w.user_id is null or w.user_id::text <> p_user_id)
+      and (p_type is null or w.type = p_type)
+      and exists (
+        select 1 from public.org_members m
+        where m.org_id = w.org_id and m.user_id::text = p_user_id
+      )
+      and not exists (
+        select 1 from public.workflow_shares ws
+        where ws.workflow_id = w.id
+          and lower(ws.shared_with_email) = lower(coalesce(p_user_email, ''))
+      )
+  ),
   visible as (
     select * from owned
     union all
     select * from shared
+    union all
+    select * from org_shared
   ),
   scoped as (
     select * from visible
