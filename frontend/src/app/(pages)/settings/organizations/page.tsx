@@ -131,7 +131,7 @@ export default function OrganizationsPage() {
                                 if (e.key === "Enter") void handleCreateOrg();
                             }}
                             placeholder="New organization name…"
-                            className={cn(SETTINGS_CONTROL_CLASS, "flex-1")}
+                            className={cn(SETTINGS_CONTROL_CLASS, "h-10", "flex-1")}
                         />
                         <PillButton
                             tone="black"
@@ -408,6 +408,7 @@ function OrgCard({
                                     placeholder="New team name…"
                                     className={cn(
                                         SETTINGS_CONTROL_CLASS,
+                                        "h-10",
                                         "flex-1",
                                     )}
                                 />

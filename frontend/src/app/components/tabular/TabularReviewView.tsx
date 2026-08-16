@@ -225,6 +225,9 @@ export function TRView({ reviewId, projectId }: Props) {
     }
 
     async function handleAddDocuments(newDocs: Document[]) {
+        // Changing the review's document set is a structure edit server-side
+        // (PATCH document_ids 403s below manager) — same gate as columns.
+        if (!requireStructure("edit the document set")) return;
         const toAdd = newDocs.filter(
             (d) => !documents.some((existing) => existing.id === d.id),
         );
@@ -251,6 +254,11 @@ export function TRView({ reviewId, projectId }: Props) {
 
     async function handleDropReviewFiles(files: File[]) {
         if (files.length === 0) return;
+        // The drop path uploads first and attaches after; without this gate
+        // an editor's upload succeeds and the attach PATCH 403s, leaving an
+        // orphaned document. Mirror the DocTable drop gate, at the tier the
+        // attach actually requires.
+        if (!requireStructure("add documents to this review")) return;
         setUploadingDroppedFilenames(files.map((file) => file.name));
         try {
             const uploaded: Document[] = [];
@@ -530,6 +538,8 @@ export function TRView({ reviewId, projectId }: Props) {
     }
 
     async function handleDeleteDocuments() {
+        // Removing documents deletes their cells — structural, manager+.
+        if (!requireStructure("remove documents from this review")) return;
         const rowIdsToDelete = [...selectedRowIds];
         if (rowIdsToDelete.length === 0) return;
         const documentIdsToDelete = new Set(
