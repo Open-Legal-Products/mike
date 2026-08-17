@@ -121,37 +121,44 @@ export default function OrganizationsPage() {
                     </p>
                 </div>
 
-                <SettingsSection className="p-4">
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="text"
-                            value={newOrgName}
-                            onChange={(e) => setNewOrgName(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === "Enter") void handleCreateOrg();
-                            }}
-                            placeholder="New organization name…"
-                            className={cn(SETTINGS_CONTROL_CLASS, "h-10", "flex-1")}
-                        />
-                        <PillButton
-                            tone="black"
-                            size="sm"
-                            onClick={() => void handleCreateOrg()}
-                            disabled={!newOrgName.trim() || creatingOrg}
-                        >
-                            {creatingOrg ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                                <Plus className="h-3.5 w-3.5" />
-                            )}
-                            Create organization
-                        </PillButton>
+                <SettingsSection>
+                    <div className="p-4">
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="text"
+                                value={newOrgName}
+                                onChange={(e) => setNewOrgName(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter")
+                                        void handleCreateOrg();
+                                }}
+                                placeholder="New organization name…"
+                                className={cn(
+                                    SETTINGS_CONTROL_CLASS,
+                                    "h-10",
+                                    "flex-1",
+                                )}
+                            />
+                            <PillButton
+                                tone="black"
+                                size="sm"
+                                onClick={() => void handleCreateOrg()}
+                                disabled={!newOrgName.trim() || creatingOrg}
+                            >
+                                {creatingOrg ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                    <Plus className="h-3.5 w-3.5" />
+                                )}
+                                Create organization
+                            </PillButton>
+                        </div>
+                        {createError ? (
+                            <p className="mt-2 text-xs text-red-500">
+                                {createError}
+                            </p>
+                        ) : null}
                     </div>
-                    {createError ? (
-                        <p className="mt-2 text-xs text-red-500">
-                            {createError}
-                        </p>
-                    ) : null}
                 </SettingsSection>
 
                 {loadError ? (
@@ -254,7 +261,7 @@ function OrgCard({
     }
 
     return (
-        <SettingsSection className="p-0">
+        <SettingsSection>
             <button
                 type="button"
                 onClick={onToggle}
