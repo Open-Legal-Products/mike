@@ -40,8 +40,8 @@ as $$
          and p.shared_with @> jsonb_build_array(p_user_email)
        )
        or (
-         -- Org arm: same predicate as get_projects_overview (20260821_06),
-         -- so the filter dropdowns and the list agree on what is visible.
+         -- Org arm: same predicate as get_projects_overview, so the filter
+         -- dropdowns and the list agree on what is visible.
          p.org_id is not null
          and p.user_id::text <> p_user_id
          and exists (
@@ -113,10 +113,10 @@ as $$
       and (p_type is null or w.type = p_type)
   ),
   org_shared as (
-    -- Same org-membership arm as get_workflows_overview (20260821_06),
-    -- including the workflow_shares NOT EXISTS dedup, so a row visible via
-    -- both routes contributes its options exactly once. Tagged 'shared' to
-    -- match the overview's scope bucketing.
+    -- Same org-membership arm as get_workflows_overview, including the
+    -- workflow_shares NOT EXISTS dedup, so a row visible via both routes
+    -- contributes its options exactly once. Tagged 'shared' to match the
+    -- overview's scope bucketing.
     select w.practice, w.language, w.jurisdictions, 'shared'::text as source
     from public.workflows w
     where w.org_id is not null

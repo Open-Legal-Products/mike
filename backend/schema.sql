@@ -184,11 +184,14 @@ begin
     return new;
   end if;
 
+  -- Serialize concurrent owner departures on this org. If the org row is
+  -- already deleted in this transaction (delete cascade), stand aside.
   perform 1 from public.organizations where id = old.org_id for update;
   if not found then
     return coalesce(new, old);
   end if;
 
+  -- Member's auth user being deleted (cascade from auth.users): stand aside.
   if tg_op = 'DELETE' and not exists (
     select 1 from auth.users where id = old.user_id
   ) then
