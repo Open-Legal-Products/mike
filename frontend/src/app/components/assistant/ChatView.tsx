@@ -232,7 +232,6 @@ export function ChatView({
             const document = await resolvePanelDocumentVersion(
                 panelDocumentFromCitation(citation, showQuotes),
             );
-            if (!document) return;
             if (!showQuotes) {
                 upsertTab({
                     kind: "document",
@@ -310,7 +309,6 @@ export function ChatView({
                 version_id: args.versionId,
                 version_number: args.versionNumber,
             });
-            if (!document) return;
             upsertTab({
                 kind: "document",
                 id: assistantSidePanelTabId(document),
