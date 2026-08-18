@@ -814,7 +814,23 @@ export function ChatView({
                                             {
                                                 askInputsResponse: response,
                                             },
-                                        );
+                                            // Hiding the card is optimistic —
+                                            // it assumes the answers reached
+                                            // the server. If the request
+                                            // rejects they did not, and the
+                                            // hide is permanent for the
+                                            // session, so the user's typed
+                                            // answers would be unrecoverable.
+                                            // Put the questions back instead.
+                                        ).catch(() => {
+                                            setHiddenAskInputKeys((prev) => {
+                                                if (!prev.has(activeInput.key))
+                                                    return prev;
+                                                const next = new Set(prev);
+                                                next.delete(activeInput.key);
+                                                return next;
+                                            });
+                                        });
                                     }}
                                     onDismiss={() => {
                                         setHiddenAskInputKeys((prev) => {

@@ -16,6 +16,10 @@ type AskInputsResponse = Extract<
 >;
 
 const OPEN_TEXT_MAX_LENGTH = 5_000;
+// Mirrors the backend's MAX_ASK_INPUT_CHOICE_LENGTH. A choice answer typed
+// into "Other" travels the choice path, not the text path, so it is the
+// 1,000-character limit that applies — not the textarea's 5,000.
+const MAX_CHOICE_LENGTH = 1_000;
 
 export function AskInputPopup({
     event,
@@ -654,8 +658,11 @@ function OptionInput({
                             <span className="min-w-0 flex-1 flex items-start gap-2">
                                 <textarea
                                     name={`other-${item.id}`}
+                                    aria-label={item.other_label || "Other"}
+                                    aria-describedby={`other-${item.id}-limit`}
                                     rows={1}
                                     autoFocus
+                                    maxLength={MAX_CHOICE_LENGTH}
                                     value={otherValue}
                                     disabled={disabled}
                                     onFocus={(e) => {
@@ -665,13 +672,25 @@ function OptionInput({
                                         e.target.style.height = `${e.target.scrollHeight}px`;
                                     }}
                                     onChange={(e) => {
-                                        onOtherValue(e.target.value);
+                                        onOtherValue(
+                                            e.target.value.slice(
+                                                0,
+                                                MAX_CHOICE_LENGTH,
+                                            ),
+                                        );
                                         e.target.style.height = "auto";
                                         e.target.style.height = `${e.target.scrollHeight}px`;
                                     }}
                                     placeholder="Type your answer..."
                                     className="flex-1 resize-none overflow-hidden bg-transparent text-sm leading-5 text-gray-600 outline-none placeholder:text-gray-400"
                                 />
+                                <span
+                                    id={`other-${item.id}-limit`}
+                                    className="mt-0.5 shrink-0 font-sans text-[10px] text-gray-400"
+                                >
+                                    {otherValue.length.toLocaleString()} /{" "}
+                                    {MAX_CHOICE_LENGTH.toLocaleString()}
+                                </span>
                             </span>
                         ) : (
                             <span className="min-w-0 flex-1 text-sm text-gray-700">
