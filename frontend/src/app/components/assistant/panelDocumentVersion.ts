@@ -22,6 +22,13 @@ type VersionList = {
  * then open it on its current version, which is what clicking the same link
  * did before versioned tabs existed. Failing to identify a version is not a
  * reason to make the click do nothing.
+ *
+ * "Unpinned" means BOTH version fields cleared, not "left as they arrived".
+ * An incoming version_number that could not be resolved is a claim we failed
+ * to check, and carrying it forward would make the tab lie twice: its key
+ * becomes `doc::number:N` (a second tab for the same bytes a later
+ * `doc::id:X` open already has) and its badge reads "VN" over whatever the
+ * current version actually is.
  */
 export async function resolvePanelDocumentVersion(
     document: PanelDocument,
@@ -29,6 +36,12 @@ export async function resolvePanelDocumentVersion(
         listDocumentVersions,
 ): Promise<PanelDocument> {
     if (document.type === "case" || document.version_id) return document;
+
+    const unpinned: PanelDocument = {
+        ...document,
+        version_id: null,
+        version_number: null,
+    };
 
     try {
         const result = await loadVersions(document.document_id);
@@ -49,13 +62,13 @@ export async function resolvePanelDocumentVersion(
             versions.find(
                 (candidate) => candidate.id === result.current_version_id,
             );
-        if (!version) return document;
+        if (!version) return unpinned;
         return {
             ...document,
             version_id: version.id,
             version_number: version.version_number,
         };
     } catch {
-        return document;
+        return unpinned;
     }
 }

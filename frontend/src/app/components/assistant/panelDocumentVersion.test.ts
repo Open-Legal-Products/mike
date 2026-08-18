@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PanelDocument } from "../shared/types";
 import { resolvePanelDocumentVersion } from "./panelDocumentVersion";
+import { assistantSidePanelTabId } from "./AssistantSidePanel";
 
 const document: PanelDocument = {
     document_id: "document-1",
@@ -87,6 +88,46 @@ describe("resolvePanelDocumentVersion", () => {
         await expect(
             resolvePanelDocumentVersion(document, loadVersions),
         ).resolves.toEqual(document);
+    });
+
+    // V-R1: both fallbacks used to return the document UNCHANGED, so a link
+    // that carried a version_number kept it. The panel then opened current
+    // bytes under the tab key `doc::number:N` and a "V2" badge — a tab that
+    // collides with nothing, duplicates a later `doc::id:X` open of the same
+    // document, and labels the bytes it shows with the wrong version.
+    it("drops an unresolvable version number when the lookup fails", async () => {
+        const loadVersions = vi.fn().mockRejectedValue(new Error("offline"));
+
+        const resolved = await resolvePanelDocumentVersion(
+            { ...document, version_number: 2 },
+            loadVersions,
+        );
+
+        expect(resolved).toEqual({
+            ...document,
+            version_id: null,
+            version_number: null,
+        });
+        expect(assistantSidePanelTabId(resolved)).toBe("document-1::current");
+    });
+
+    it("drops an unresolvable version number when nothing servable matches", async () => {
+        const loadVersions = vi.fn().mockResolvedValue({
+            current_version_id: null,
+            versions: [],
+        });
+
+        const resolved = await resolvePanelDocumentVersion(
+            { ...document, version_number: 2 },
+            loadVersions,
+        );
+
+        expect(resolved).toEqual({
+            ...document,
+            version_id: null,
+            version_number: null,
+        });
+        expect(assistantSidePanelTabId(resolved)).toBe("document-1::current");
     });
 
     // V2: GET /single-documents/:id/versions returns soft-deleted rows too
