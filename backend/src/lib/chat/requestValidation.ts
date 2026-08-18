@@ -1,5 +1,6 @@
 import { parseAskInputsResponsePayload } from "./contextBuilders";
 import {
+  MAX_ASK_INPUT_CHOICE_LENGTH,
   MAX_ASK_INPUT_TEXT_LENGTH,
   type AskInputsResponseRequest,
   type ChatMessage,
@@ -336,14 +337,23 @@ export function parseOptionalAskInputsResponse(
           detail: `${field}.answer must be a non-empty string unless skipped`,
         };
       }
+      // Both answer kinds are capped here, at the same limits the
+      // persistence layer truncates to. Without the choice cap, an
+      // oversized choice answer is accepted, echoed into this turn's
+      // prompt in full, and only silently shortened when it is stored
+      // and replayed — so the model sees one answer now and a
+      // different one later.
+      const maxAnswerLength =
+        response.kind === "text"
+          ? MAX_ASK_INPUT_TEXT_LENGTH
+          : MAX_ASK_INPUT_CHOICE_LENGTH;
       if (
-        response.kind === "text" &&
         typeof response.answer === "string" &&
-        response.answer.length > MAX_ASK_INPUT_TEXT_LENGTH
+        response.answer.length > maxAnswerLength
       ) {
         return {
           ok: false,
-          detail: `${field}.answer must be at most ${MAX_ASK_INPUT_TEXT_LENGTH} characters`,
+          detail: `${field}.answer must be at most ${maxAnswerLength} characters`,
         };
       }
       continue;

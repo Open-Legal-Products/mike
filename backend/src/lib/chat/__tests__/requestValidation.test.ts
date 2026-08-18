@@ -273,6 +273,19 @@ describe("chat request validation", () => {
             {
                 responses: [
                     {
+                        id: "choice-1",
+                        kind: "choice",
+                        question: "Governing law?",
+                        answer: "a".repeat(1_001),
+                    },
+                ],
+            },
+            "ask_inputs_response.responses[0].answer must be at most 1000 characters",
+        ],
+        [
+            {
+                responses: [
+                    {
                         id: "docs-1",
                         kind: "documents",
                         filenames: ["valid.pdf", 42],
