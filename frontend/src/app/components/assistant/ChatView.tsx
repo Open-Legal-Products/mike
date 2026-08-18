@@ -268,8 +268,13 @@ export function ChatView({
      * AssistantMessage when the user clicks an EditCard's View button.
      */
     const openEditor = useCallback(
-        (ann: EditAnnotation, filename: string, changeNumber?: number) => {
-            const document = {
+        async (ann: EditAnnotation, filename: string, changeNumber?: number) => {
+            // Edits recorded before annotations carried a version have null
+            // version columns. They must go through the same resolver as every
+            // other entry point, or the tab they open is keyed "::current"
+            // while a citation to the identical bytes is keyed "::id:<uuid>"
+            // — two tabs showing one document version.
+            const document = await resolvePanelDocumentVersion({
                 document_id: ann.document_id,
                 title: filename,
                 type: panelDocumentType(filename),
@@ -277,7 +282,7 @@ export function ChatView({
                 quotes: [],
                 version_id: ann.version_id ?? null,
                 version_number: ann.version_number ?? null,
-            };
+            });
             upsertTab({
                 kind: "edit",
                 id: assistantSidePanelTabId(document),
