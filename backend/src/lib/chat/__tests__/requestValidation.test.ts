@@ -233,6 +233,58 @@ describe("chat request validation", () => {
         });
     });
 
+    it("measures answers against the limit the way it stores them", () => {
+        // The normalizer trims BEFORE it truncates, so an answer of exactly
+        // the limit plus surrounding whitespace persists intact. Measuring the
+        // raw string rejected it with a 400 the storage layer would never have
+        // hit — and on the ask-inputs path a 400 costs the user their answers.
+        const atLimit = "a".repeat(1_000);
+
+        expect(
+            parseOptionalAskInputsResponse({
+                type: "ask_inputs_response",
+                responses: [
+                    {
+                        id: "choice-1",
+                        kind: "choice",
+                        question: "Governing law?",
+                        answer: `${atLimit}\n`,
+                    },
+                ],
+            }),
+        ).toEqual({
+            ok: true,
+            value: {
+                responses: [
+                    {
+                        id: "choice-1",
+                        kind: "choice",
+                        question: "Governing law?",
+                        answer: atLimit,
+                    },
+                ],
+            },
+        });
+
+        // One real character past the limit is still a 400.
+        expect(
+            parseOptionalAskInputsResponse({
+                type: "ask_inputs_response",
+                responses: [
+                    {
+                        id: "choice-1",
+                        kind: "choice",
+                        question: "Governing law?",
+                        answer: `  ${atLimit}a  `,
+                    },
+                ],
+            }),
+        ).toMatchObject({
+            ok: false,
+            detail: "ask_inputs_response.responses[0].answer must be at most 1000 characters",
+        });
+    });
+
     it.each([
         ["answer", "ask_inputs_response must be an object"],
         [

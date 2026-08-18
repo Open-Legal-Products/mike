@@ -347,9 +347,14 @@ export function parseOptionalAskInputsResponse(
         response.kind === "text"
           ? MAX_ASK_INPUT_TEXT_LENGTH
           : MAX_ASK_INPUT_CHOICE_LENGTH;
+      // Measured on the TRIMMED string, because that is what gets stored:
+      // parseAskInputsResponsePayload trims before it truncates. Comparing the
+      // raw length rejected an answer of exactly the limit that happened to
+      // carry a trailing newline — a 400 the persistence layer would never
+      // have produced, and on this path a 400 costs the user their answers.
       if (
         typeof response.answer === "string" &&
-        response.answer.length > maxAnswerLength
+        response.answer.trim().length > maxAnswerLength
       ) {
         return {
           ok: false,
