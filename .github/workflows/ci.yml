@@ -48,6 +48,12 @@ jobs:
 
       - run: npm run build
 
+      # `npm run build` (tsc -p tsconfig.json) deliberately excludes the test
+      # files so they never reach dist/, which left them entirely unchecked.
+      # tsconfig.test.json re-includes them with noEmit, so a stale mock
+      # signature fails the build instead of silently passing at runtime.
+      - run: npm run typecheck:test
+
   frontend:
     name: Frontend build and tests
     runs-on: ubuntu-latest
@@ -88,7 +94,7 @@ jobs:
           NEXT_PUBLIC_API_BASE_URL: http://localhost:3001
 
   # -----------------------------------------------------------------------
-  # Generated-workflows drift check: the committed generated files must be
+  # Generated-workflows drift check: the committed generated file must be
   # exactly what scripts/build-workflows.js produces from the mike-workflows
   # commit stamped into backend/src/lib/systemWorkflows.ts. Both repos are
   # checked out as siblings inside the workspace because the generator
@@ -131,7 +137,7 @@ jobs:
 
       - name: Fail on drift against the committed generated files
         working-directory: mike
-        run: git diff --exit-code -- backend/src/lib/systemWorkflows.ts landing/app/generated-workflows.ts
+        run: git diff --exit-code -- backend/src/lib/systemWorkflows.ts
 
   # -----------------------------------------------------------------------
   # Offline eval harness: deterministic scorecard for citation accuracy,
