@@ -9,6 +9,13 @@ type VersionList = {
     versions: DocumentVersion[];
 };
 
+export type PanelDocumentVersionResolution =
+    | { ok: true; document: PanelDocument }
+    | {
+          ok: false;
+          reason: "version_unavailable" | "lookup_failed";
+      };
+
 /**
  * Pin a panel link to a concrete document version before the tab is created.
  *
@@ -17,31 +24,20 @@ type VersionList = {
  * resolved against the document's version list so the tab key identifies one
  * set of bytes rather than the moving target "whatever is current".
  *
- * Resolution is best-effort. When the version list cannot be fetched, or
- * names no version we can serve, the document is returned UNPINNED — callers
- * then open it on its current version, which is what clicking the same link
- * did before versioned tabs existed. Failing to identify a version is not a
- * reason to make the click do nothing.
- *
- * "Unpinned" means BOTH version fields cleared, not "left as they arrived".
- * An incoming version_number that could not be resolved is a claim we failed
- * to check, and carrying it forward would make the tab lie twice: its key
- * becomes `doc::number:N` (a second tab for the same bytes a later
- * `doc::id:X` open already has) and its badge reads "VN" over whatever the
- * current version actually is.
+ * File links never fall back to an unpinned "current" target. If an explicit
+ * historical version is missing, substituting the current bytes would show a
+ * different document than the user selected. If lookup fails, opening an
+ * unpinned tab would also give a later successful click a different tab id.
+ * Callers surface the failure and create no tab instead.
  */
 export async function resolvePanelDocumentVersion(
     document: PanelDocument,
     loadVersions: (documentId: string) => Promise<VersionList> =
         listDocumentVersions,
-): Promise<PanelDocument> {
-    if (document.type === "case" || document.version_id) return document;
-
-    const unpinned: PanelDocument = {
-        ...document,
-        version_id: null,
-        version_number: null,
-    };
+): Promise<PanelDocumentVersionResolution> {
+    if (document.type === "case" || document.version_id) {
+        return { ok: true, document };
+    }
 
     try {
         const result = await loadVersions(document.document_id);
@@ -53,22 +49,26 @@ export async function resolvePanelDocumentVersion(
             (candidate) => candidate.deleted_at == null,
         );
         const version =
-            (document.version_number != null
+            document.version_number != null
                 ? versions.find(
                       (candidate) =>
                           candidate.version_number === document.version_number,
                   )
-                : undefined) ??
-            versions.find(
-                (candidate) => candidate.id === result.current_version_id,
-            );
-        if (!version) return unpinned;
+                : versions.find(
+                      (candidate) => candidate.id === result.current_version_id,
+                  );
+        if (!version) {
+            return { ok: false, reason: "version_unavailable" };
+        }
         return {
-            ...document,
-            version_id: version.id,
-            version_number: version.version_number,
+            ok: true,
+            document: {
+                ...document,
+                version_id: version.id,
+                version_number: version.version_number,
+            },
         };
     } catch {
-        return unpinned;
+        return { ok: false, reason: "lookup_failed" };
     }
 }

@@ -51,8 +51,9 @@ export type AssistantSidePanelTab = DocumentTab | CitationTab | EditTab;
 
 /**
  * A document version owns one panel tab. Explicit versions use their stable
- * version id; older links without one fall back to the version number and then
- * to the document's current version.
+ * version id and legacy links can fall back to a version number. "current" is
+ * reserved for non-versioned sources such as cases; file links are resolved to
+ * a concrete version before their tab is created.
  */
 export function assistantSidePanelTabId(document: PanelDocument): string {
     const version = document.version_id

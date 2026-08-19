@@ -22,6 +22,7 @@ import type {
     Citation,
     EditAnnotation,
     Message,
+    PanelDocument,
 } from "../shared/types";
 import {
     panelDocumentFromCaseEvent,
@@ -31,6 +32,7 @@ import {
 import { useSidebar } from "@/app/contexts/SidebarContext";
 import { invalidateDocxBytes } from "@/app/hooks/useFetchDocxBytes";
 import { resolvePanelDocumentVersion } from "./panelDocumentVersion";
+import { WarningPopup } from "../popups/WarningPopup";
 
 interface Props {
     chatId?: string | null;
@@ -54,6 +56,10 @@ const MOBILE_BREAKPOINT_PX = 768;
 const DEFAULT_ASSISTANT_BOTTOM_PADDING = 116;
 const SCROLL_BUTTON_INPUT_GAP = 16;
 const CHAT_INPUT_BOTTOM_OFFSET = 12;
+const VERSION_UNAVAILABLE_WARNING =
+    "This document version is no longer available.";
+const VERSION_LOOKUP_FAILED_WARNING =
+    "Could not load this document version. Please try again.";
 
 function isSmallScreen() {
     return (
@@ -89,6 +95,9 @@ export function ChatView({
     const [reloadingEditIds, setReloadingEditIds] = useState<Set<string>>(
         () => new Set(),
     );
+    const [versionResolutionWarning, setVersionResolutionWarning] = useState<
+        string | null
+    >(null);
     const { setSidebarOpen } = useSidebar();
     const panelCloseTimerRef = useRef<number | null>(null);
 
@@ -222,6 +231,23 @@ export function ChatView({
         [showPanel],
     );
 
+    const resolveDocumentForPanel = useCallback(
+        async (document: PanelDocument): Promise<PanelDocument | null> => {
+            const result = await resolvePanelDocumentVersion(document);
+            if (!result.ok) {
+                setVersionResolutionWarning(
+                    result.reason === "version_unavailable"
+                        ? VERSION_UNAVAILABLE_WARNING
+                        : VERSION_LOOKUP_FAILED_WARNING,
+                );
+                return null;
+            }
+            setVersionResolutionWarning(null);
+            return result.document;
+        },
+        [],
+    );
+
     /**
      * Open a tab showing a single citation quote. Called from
      * AssistantMessage when the user clicks a numbered citation pill.
@@ -229,9 +255,10 @@ export function ChatView({
     const openCitation = useCallback(
         async (citation: Citation, options?: { showQuotes?: boolean }) => {
             const showQuotes = options?.showQuotes ?? true;
-            const document = await resolvePanelDocumentVersion(
+            const document = await resolveDocumentForPanel(
                 panelDocumentFromCitation(citation, showQuotes),
             );
+            if (!document) return;
             if (!showQuotes) {
                 upsertTab({
                     kind: "document",
@@ -247,7 +274,7 @@ export function ChatView({
                 citation,
             });
         },
-        [upsertTab],
+        [resolveDocumentForPanel, upsertTab],
     );
 
     const openCase = useCallback(
@@ -274,7 +301,7 @@ export function ChatView({
             // other entry point, or the tab they open is keyed "::current"
             // while a citation to the identical bytes is keyed "::id:<uuid>"
             // — two tabs showing one document version.
-            const document = await resolvePanelDocumentVersion({
+            const document = await resolveDocumentForPanel({
                 document_id: ann.document_id,
                 title: filename,
                 type: panelDocumentType(filename),
@@ -283,6 +310,7 @@ export function ChatView({
                 version_id: ann.version_id ?? null,
                 version_number: ann.version_number ?? null,
             });
+            if (!document) return;
             upsertTab({
                 kind: "edit",
                 id: assistantSidePanelTabId(document),
@@ -291,7 +319,7 @@ export function ChatView({
                 changeNumber,
             });
         },
-        [upsertTab],
+        [resolveDocumentForPanel, upsertTab],
     );
 
     /**
@@ -305,7 +333,7 @@ export function ChatView({
             versionId: string | null;
             versionNumber: number | null;
         }) => {
-            const document = await resolvePanelDocumentVersion({
+            const document = await resolveDocumentForPanel({
                 document_id: args.documentId,
                 title: args.filename,
                 type: panelDocumentType(args.filename),
@@ -314,13 +342,14 @@ export function ChatView({
                 version_id: args.versionId,
                 version_number: args.versionNumber,
             });
+            if (!document) return;
             upsertTab({
                 kind: "document",
                 id: assistantSidePanelTabId(document),
                 document,
             });
         },
-        [upsertTab],
+        [resolveDocumentForPanel, upsertTab],
     );
 
     const [resolvedEditStatuses, setResolvedEditStatuses] = useState<
@@ -891,6 +920,12 @@ export function ChatView({
                 onClose={() => setWorkflowModalOpen(false)}
                 onSelect={() => setWorkflowModalOpen(false)}
                 initialWorkflowId={workflowModalInitialId}
+            />
+
+            <WarningPopup
+                open={versionResolutionWarning !== null}
+                onClose={() => setVersionResolutionWarning(null)}
+                message={versionResolutionWarning}
             />
 
             {panelMounted && (

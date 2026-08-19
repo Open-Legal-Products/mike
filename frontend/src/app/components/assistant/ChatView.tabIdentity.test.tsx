@@ -82,6 +82,18 @@ vi.mock("./AssistantMessage", () => ({
             >
                 open document
             </button>
+            <button
+                onClick={() =>
+                    onOpenDocument({
+                        documentId: "document-1",
+                        filename: "agreement.docx",
+                        versionId: null,
+                        versionNumber: 2,
+                    })
+                }
+            >
+                open historical document
+            </button>
             <button onClick={() => onEditViewClick(EDIT, "agreement.docx")}>
                 open edit
             </button>
@@ -141,5 +153,46 @@ describe("ChatView panel tab identity", () => {
         expect(
             Array.from(tabs.querySelectorAll("li")).map((li) => li.textContent),
         ).toEqual(["document-1::id:version-3"]);
+    });
+
+    it("warns without creating a fallback tab, then opens one resolved tab on retry", async () => {
+        listDocumentVersions.mockRejectedValueOnce(new Error("offline"));
+        const user = userEvent.setup();
+        renderChatView();
+
+        await user.click(screen.getByText("open document"));
+
+        expect(
+            await screen.findByText(
+                "Could not load this document version. Please try again.",
+            ),
+        ).toBeTruthy();
+        expect(screen.queryByTestId("tabs")).toBeNull();
+
+        await user.click(screen.getByText("open document"));
+
+        const tabs = await screen.findByTestId("tabs");
+        expect(
+            Array.from(tabs.querySelectorAll("li")).map((li) => li.textContent),
+        ).toEqual(["document-1::id:version-3"]);
+        expect(
+            screen.queryByText(
+                "Could not load this document version. Please try again.",
+            ),
+        ).toBeNull();
+    });
+
+    it("warns instead of substituting current for an unavailable historical version", async () => {
+        const user = userEvent.setup();
+        renderChatView();
+
+        await user.click(screen.getByText("open historical document"));
+
+        expect(
+            await screen.findByText(
+                "This document version is no longer available.",
+            ),
+        ).toBeTruthy();
+        expect(screen.queryByTestId("tabs")).toBeNull();
     });
 });
