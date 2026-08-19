@@ -77,10 +77,13 @@ export async function recordChatTurn(
     model?: string | null;
     status?: AuditStatus;
     flags?: Record<string, unknown>;
+    // Callers outside the web app (the Word add-in) name their own surface;
+    // everything else keeps the project/assistant split.
+    surface?: string | null;
   },
   events: unknown[] | null | undefined,
 ): Promise<void> {
-  const surface = base.projectId ? "project" : "assistant";
+  const surface = base.surface ?? (base.projectId ? "project" : "assistant");
   await recordAudit(db, {
     userId: base.userId,
     userEmail: base.userEmail,

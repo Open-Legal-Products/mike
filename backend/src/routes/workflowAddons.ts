@@ -1,13 +1,13 @@
-import {
-  Router,
-  type NextFunction,
-  type Request,
-  type Response,
-} from "express";
+import { Router } from "express";
 import crypto from "crypto";
 import { requireAuth } from "../middleware/auth";
+import { asyncRoute, routerErrorHandler } from "../middleware/asyncRoute";
 import { createServerSupabase } from "../lib/supabase";
 import { syncWorkflowAddonCatalog } from "../lib/workflowCatalog";
+import {
+  withDatabaseWorkflow,
+  type WorkflowRecord,
+} from "../modules/workflows/workflows.service";
 import {
   deleteFile,
   downloadFile,
@@ -18,14 +18,6 @@ import { contentTypeForDocumentType } from "../lib/documentTypes";
 import { contentSha256 } from "../lib/documentVersions";
 
 export const workflowAddonsRouter = Router();
-
-function asyncRoute(
-  handler: (req: Request, res: Response) => Promise<unknown>,
-) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    void handler(req, res).catch(next);
-  };
-}
 
 workflowAddonsRouter.get(
   "/",
@@ -86,12 +78,16 @@ workflowAddonsRouter.post(
     const userId = res.locals.userId as string;
     const db = createServerSupabase();
     await syncWorkflowAddonCatalog(db);
-    const { data: addon } = await db
+    const { data: addon, error: addonError } = await db
       .from("workflow_addons")
       .select("*")
       .eq("id", req.params.addonId)
       .eq("active", true)
       .maybeSingle();
+    // A failed lookup is not the same as a missing add-on; reporting 404 for
+    // both told the user to stop retrying a request that might well succeed.
+    if (addonError)
+      return void res.status(500).json({ detail: addonError.message });
     if (!addon)
       return void res.status(404).json({ detail: "Add-on not found" });
 
@@ -180,35 +176,23 @@ workflowAddonsRouter.post(
       });
     }
 
+    // Serialize through the workflows service so the imported workflow comes
+    // back in exactly the shape GET /workflows/:id returns. Hand-rebuilding it
+    // here had already drifted: metadata.name, contributors, version and
+    // is_default were missing.
     res.status(201).json({
-      id: workflow.id,
-      user_id: workflow.user_id,
-      metadata: {
-        title: workflow.title,
-        description: null,
-        type: workflow.type,
-        contributors: [],
-        language: workflow.language ?? "English",
-        version: null,
-        practice: workflow.practice ?? null,
-        jurisdictions: workflow.jurisdictions ?? null,
-      },
-      skill_md: workflow.prompt_md ?? null,
-      columns_config: workflow.columns_config ?? null,
-      is_system: false,
+      ...withDatabaseWorkflow(workflow as WorkflowRecord),
       is_owner: true,
       allow_edit: true,
-      created_at: workflow.created_at,
+      // An imported add-on is never one of the installed default workflows.
+      is_default: false,
     });
   }),
 );
 
 workflowAddonsRouter.use(
-  (err: unknown, _req: Request, res: Response, next: NextFunction) => {
-    if (res.headersSent) return next(err);
-    console.error("[workflow-addons] unhandled route error", err);
-    res
-      .status(500)
-      .json({ detail: "Failed to process workflow add-on request" });
-  },
+  routerErrorHandler(
+    "[workflow-addons]",
+    "Failed to process workflow add-on request",
+  ),
 );

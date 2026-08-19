@@ -4,6 +4,8 @@
 
 import { Router } from "express";
 import { requireAuth, requireMfaIfEnrolled } from "../middleware/auth";
+import { asyncRoute } from "../middleware/asyncRoute";
+import { listAccessibleProjectIds } from "../lib/access";
 import { createServerSupabase } from "../lib/supabase";
 import { normalizeDisplayName } from "../lib/userLookup";
 
@@ -17,24 +19,6 @@ const EXPORT_LIMIT = 2000;
 // page keeps the offset well inside Postgres' integer range.
 const MAX_PAGE = 100_000;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-export async function accessibleProjectIds(
-  db: ReturnType<typeof createServerSupabase>,
-  userId: string,
-  email: string | undefined,
-): Promise<string[]> {
-  const ids = new Set<string>();
-  const own = await db.from("projects").select("id").eq("user_id", userId);
-  for (const row of (own.data ?? []) as { id: string }[]) ids.add(row.id);
-  if (email) {
-    const shared = await db
-      .from("projects")
-      .select("id")
-      .contains("shared_with", [email.trim().toLowerCase()]);
-    for (const row of (shared.data ?? []) as { id: string }[]) ids.add(row.id);
-  }
-  return [...ids];
-}
 
 type AuditQuery = {
   q?: string;
@@ -126,7 +110,10 @@ export async function queryEvents(
   q: AuditQuery,
   resolveDisplayNames = true,
 ) {
-  const projectIds = await accessibleProjectIds(db, userId, email);
+  // Shared with the chat listings: one definition of "projects this user can
+  // see" for everything that scopes a collection query. A failure here rejects
+  // rather than quietly narrowing the caller's visibility.
+  const projectIds = await listAccessibleProjectIds(userId, email, db);
   let query = db
     .from("audit_events")
     .select(
@@ -186,22 +173,25 @@ export async function queryEvents(
   };
 }
 
-auditRouter.get("/", async (req, res) => {
-  const userId = res.locals.userId as string;
-  const email = res.locals.userEmail as string | undefined;
-  const db = createServerSupabase();
-  const parsed = parseQuery(req.query as Record<string, unknown>, PAGE_SIZE);
-  if (!parsed.ok) return void res.status(400).json({ detail: parsed.error });
-  const q = parsed.query;
-  const { data, error, count } = await queryEvents(db, userId, email, q);
-  if (error) return void res.status(500).json({ detail: error.message });
-  res.json({
-    events: data ?? [],
-    total: count ?? 0,
-    page: q.page,
-    pageSize: PAGE_SIZE,
-  });
-});
+auditRouter.get(
+  "/",
+  asyncRoute(async (req, res) => {
+    const userId = res.locals.userId as string;
+    const email = res.locals.userEmail as string | undefined;
+    const db = createServerSupabase();
+    const parsed = parseQuery(req.query as Record<string, unknown>, PAGE_SIZE);
+    if (!parsed.ok) return void res.status(400).json({ detail: parsed.error });
+    const q = parsed.query;
+    const { data, error, count } = await queryEvents(db, userId, email, q);
+    if (error) return void res.status(500).json({ detail: error.message });
+    res.json({
+      events: data ?? [],
+      total: count ?? 0,
+      page: q.page,
+      pageSize: PAGE_SIZE,
+    });
+  }),
+);
 
 export function csvCell(v: unknown): string {
   let s = v == null ? "" : String(v);
@@ -214,36 +204,46 @@ export function csvCell(v: unknown): string {
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-auditRouter.get("/export", requireMfaIfEnrolled, async (req, res) => {
-  const userId = res.locals.userId as string;
-  const email = res.locals.userEmail as string | undefined;
-  const db = createServerSupabase();
-  const parsed = parseQuery(req.query as Record<string, unknown>, EXPORT_LIMIT);
-  if (!parsed.ok) return void res.status(400).json({ detail: parsed.error });
-  const q = parsed.query;
-  q.page = 1;
-  const { data, error } = await queryEvents(db, userId, email, q, false);
-  if (error) return void res.status(500).json({ detail: error.message });
-  const header =
-    "created_at,user,action,status,title,application,project_id,model";
-  const rows = ((data ?? []) as Record<string, unknown>[]).map((e) =>
-    [
-      e.created_at,
-      e.user_display_name ?? e.user_email,
-      e.action,
-      e.status,
-      e.title,
-      e.surface,
-      e.project_id,
-      e.model,
-    ]
-      .map(csvCell)
-      .join(","),
-  );
-  res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader(
-    "Content-Disposition",
-    'attachment; filename="history-export.csv"',
-  );
-  res.send([header, ...rows].join("\n"));
-});
+auditRouter.get(
+  "/export",
+  requireMfaIfEnrolled,
+  asyncRoute(async (req, res) => {
+    const userId = res.locals.userId as string;
+    const email = res.locals.userEmail as string | undefined;
+    const db = createServerSupabase();
+    const parsed = parseQuery(
+      req.query as Record<string, unknown>,
+      EXPORT_LIMIT,
+    );
+    if (!parsed.ok) return void res.status(400).json({ detail: parsed.error });
+    const q = parsed.query;
+    q.page = 1;
+    // Resolve display names here too. Skipping resolution forced every
+    // user_display_name to null, so the "user" column silently fell back to
+    // the raw email and the export disagreed with the table on screen.
+    const { data, error } = await queryEvents(db, userId, email, q);
+    if (error) return void res.status(500).json({ detail: error.message });
+    const header =
+      "created_at,user,action,status,title,application,project_id,model";
+    const rows = ((data ?? []) as Record<string, unknown>[]).map((e) =>
+      [
+        e.created_at,
+        e.user_display_name ?? e.user_email,
+        e.action,
+        e.status,
+        e.title,
+        e.surface,
+        e.project_id,
+        e.model,
+      ]
+        .map(csvCell)
+        .join(","),
+    );
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="history-export.csv"',
+    );
+    res.send([header, ...rows].join("\n"));
+  }),
+);

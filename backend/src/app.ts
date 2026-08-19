@@ -19,6 +19,7 @@ import { downloadsRouter } from "./modules/downloads/downloads.routes";
 import { sourceDocumentsRouter } from "./routes/sourceDocuments";
 import { auditRouter } from "./routes/audit";
 import { manifestPublicKey } from "./lib/manifestSigning";
+import { routerErrorHandler } from "./middleware/asyncRoute";
 import { safeErrorLog } from "./lib/safeError";
 
 export const app = express();
@@ -219,3 +220,10 @@ app.get("/manifest-signing-key", (_req, res) => {
     });
   }
 });
+
+// Terminal error handler. Routers that mount their own error middleware answer
+// first; anything they re-raise (or that escapes a router without one) lands
+// here instead of Express's default handler, which would leak the stack trace
+// in a non-production environment. Must stay last: Express 4 only reaches an
+// error handler registered after the middleware that failed.
+app.use(routerErrorHandler("[app]", "Internal server error"));
