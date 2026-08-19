@@ -28,8 +28,17 @@ function modelName(modelId: string): string {
   return tag || process.env.OLLAMA_MODEL?.trim() || "qwen3.6";
 }
 
+// Must match the shape the other adapters throw (and that
+// lib/chat/streaming.ts's isAbortError recognizes), or a user-initiated stop
+// is persisted as a failed message instead of an abort.
+function abortError(): Error {
+  const err = new Error("Stream aborted.");
+  err.name = "AbortError";
+  return err;
+}
+
 function throwIfAborted(signal?: AbortSignal) {
-  if (signal?.aborted) throw new Error("Request aborted");
+  if (signal?.aborted) throw abortError();
 }
 
 // Chat-completions message shape (superset of LlmMessage with tool roles).
@@ -113,38 +122,44 @@ export async function streamOllama(
     let assistantText = "";
     let buffer = "";
 
-    while (true) {
-      throwIfAborted(params.abortSignal);
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+    // Every exit from the read loop — abort, malformed JSON, done — has to
+    // release the reader, or the underlying socket is never returned.
+    try {
+      while (true) {
+        throwIfAborted(params.abortSignal);
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
 
-      // SSE: events are newline-delimited "data: {json}" lines.
-      let nl: number;
-      while ((nl = buffer.indexOf("\n")) !== -1) {
-        const line = buffer.slice(0, nl).trim();
-        buffer = buffer.slice(nl + 1);
-        if (!line.startsWith("data:")) continue;
-        const data = line.slice(5).trim();
-        if (data === "[DONE]") continue;
+        // SSE: events are newline-delimited "data: {json}" lines.
+        let nl: number;
+        while ((nl = buffer.indexOf("\n")) !== -1) {
+          const line = buffer.slice(0, nl).trim();
+          buffer = buffer.slice(nl + 1);
+          if (!line.startsWith("data:")) continue;
+          const data = line.slice(5).trim();
+          if (data === "[DONE]") continue;
 
-        const delta = JSON.parse(data)?.choices?.[0]?.delta;
-        if (!delta) continue;
+          const delta = JSON.parse(data)?.choices?.[0]?.delta;
+          if (!delta) continue;
 
-        if (typeof delta.content === "string" && delta.content) {
-          assistantText += delta.content;
-          fullText += delta.content;
-          callbacks.onContentDelta?.(delta.content);
-        }
-        for (const tc of delta.tool_calls ?? []) {
-          const idx = tc.index ?? 0;
-          const acc = partials.get(idx) ?? { id: "", name: "", arguments: "" };
-          if (tc.id) acc.id = tc.id;
-          if (tc.function?.name) acc.name = tc.function.name;
-          if (tc.function?.arguments) acc.arguments += tc.function.arguments;
-          partials.set(idx, acc);
+          if (typeof delta.content === "string" && delta.content) {
+            assistantText += delta.content;
+            fullText += delta.content;
+            callbacks.onContentDelta?.(delta.content);
+          }
+          for (const tc of delta.tool_calls ?? []) {
+            const idx = tc.index ?? 0;
+            const acc = partials.get(idx) ?? { id: "", name: "", arguments: "" };
+            if (tc.id) acc.id = tc.id;
+            if (tc.function?.name) acc.name = tc.function.name;
+            if (tc.function?.arguments) acc.arguments += tc.function.arguments;
+            partials.set(idx, acc);
+          }
         }
       }
+    } finally {
+      await reader.cancel().catch(() => {});
     }
 
     const toolCalls: NormalizedToolCall[] = [...partials.values()].map((p) => {

@@ -55,6 +55,10 @@ function makeDb(responses: Record<string, unknown[]>) {
                 state.filters[`lt:${col}`] = val;
                 return b;
             },
+            limit(n: number) {
+                state.filters["limit"] = n;
+                return b;
+            },
             then(onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) {
                 calls.push({ ...state, filters: { ...state.filters } });
                 const value =

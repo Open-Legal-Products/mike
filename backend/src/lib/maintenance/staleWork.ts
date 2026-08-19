@@ -19,12 +19,17 @@
 //   deployments keep today's behavior: a stuck cell is fixed by re-clicking).
 
 import { createServerSupabase } from "../supabase";
+import { logError } from "../log";
 import { getConversionQueue, conversionJobId } from "../queue/conversionQueue";
 import { getExtractionQueue, extractionJobId } from "../queue/extractionQueue";
 
 type Db = ReturnType<typeof createServerSupabase>;
 
 const DEFAULT_DOC_STALE_MS = 30 * 60 * 1000;
+
+// Cap one sweep's working set: the query is unbounded otherwise, and each cell
+// costs a Redis lookup. Anything left over is picked up by the next sweep.
+const MAX_GENERATING_CELLS_PER_SWEEP = 500;
 
 function docStaleMs(): number {
     const raw = Number(process.env.STALE_DOC_PROCESSING_MS);
@@ -98,54 +103,77 @@ export async function sweepStaleGeneratingCells(
     const { data: cells, error } = await db
         .from("tabular_cells")
         .select("id, review_id, row_id, column_index")
-        .eq("status", "generating");
+        .eq("status", "generating")
+        .limit(MAX_GENERATING_CELLS_PER_SWEEP);
     if (error) {
         console.error("[stale-sweep] cells query failed", error);
         return 0;
     }
 
-    const queue = getExtractionQueue();
-    // One liveness lookup per (review, row) — full-row jobs cover every cell
-    // of their row; single-cell jobs are checked individually.
-    const rowJobLive = new Map<string, boolean>();
-    let flipped = 0;
-    for (const cell of (cells ?? []) as {
+    type GeneratingCell = {
         id: string;
         review_id: string;
         row_id: string;
         column_index: number;
-    }[]) {
-        const rowKey = `${cell.review_id}:${cell.row_id}`;
-        if (!rowJobLive.has(rowKey)) {
-            const rowJob = await queue.getJob(
-                extractionJobId(cell.review_id, cell.row_id),
-            );
-            rowJobLive.set(rowKey, !!rowJob);
-        }
-        if (rowJobLive.get(rowKey)) continue;
-        const cellJob = await queue.getJob(
-            extractionJobId(cell.review_id, cell.row_id, cell.column_index),
-        );
-        if (cellJob) continue;
+    };
 
-        const { error: updateErr } = await db
-            .from("tabular_cells")
-            .update({ status: "error" })
-            .eq("id", cell.id)
-            .eq("status", "generating");
-        if (updateErr) {
-            console.error("[stale-sweep] cell flip failed", {
-                cellId: cell.id,
-                error: updateErr,
-            });
-            continue;
+    // Group by (review, row): a full-row job covers every cell of its row, so
+    // one lookup answers the whole group, and the per-cell lookups that remain
+    // are issued together instead of one round trip at a time.
+    const byRow = new Map<string, GeneratingCell[]>();
+    for (const cell of (cells ?? []) as GeneratingCell[]) {
+        const rowKey = `${cell.review_id}:${cell.row_id}`;
+        const group = byRow.get(rowKey);
+        if (group) group.push(cell);
+        else byRow.set(rowKey, [cell]);
+    }
+
+    const queue = getExtractionQueue();
+    let flipped = 0;
+    for (const group of byRow.values()) {
+        const [first] = group;
+        const rowJob = await queue.getJob(
+            extractionJobId(first.review_id, first.row_id),
+        );
+        if (rowJob) continue;
+
+        const cellJobs = await Promise.all(
+            group.map((cell) =>
+                queue.getJob(
+                    extractionJobId(
+                        cell.review_id,
+                        cell.row_id,
+                        cell.column_index,
+                    ),
+                ),
+            ),
+        );
+
+        for (const [index, cell] of group.entries()) {
+            if (cellJobs[index]) continue;
+
+            const { error: updateErr } = await db
+                .from("tabular_cells")
+                .update({ status: "error" })
+                .eq("id", cell.id)
+                .eq("status", "generating");
+            if (updateErr) {
+                console.error("[stale-sweep] cell flip failed", {
+                    cellId: cell.id,
+                    error: updateErr,
+                });
+                continue;
+            }
+            flipped += 1;
+            console.warn(
+                "[stale-sweep] orphaned generating cell flipped to error",
+                {
+                    reviewId: cell.review_id,
+                    rowId: cell.row_id,
+                    columnIndex: cell.column_index,
+                },
+            );
         }
-        flipped += 1;
-        console.warn("[stale-sweep] orphaned generating cell flipped to error", {
-            reviewId: cell.review_id,
-            rowId: cell.row_id,
-            columnIndex: cell.column_index,
-        });
     }
     return flipped;
 }
@@ -155,11 +183,11 @@ export async function runStaleWorkSweep(
     db: Db = createServerSupabase(),
 ): Promise<{ documents: number; cells: number }> {
     const documents = await sweepStaleProcessingDocuments(db).catch((err) => {
-        console.error("[stale-sweep] document sweep crashed", err);
+        logError("stale-sweep", err, { sweep: "documents" });
         return 0;
     });
     const cells = await sweepStaleGeneratingCells(db).catch((err) => {
-        console.error("[stale-sweep] cell sweep crashed", err);
+        logError("stale-sweep", err, { sweep: "cells" });
         return 0;
     });
     return { documents, cells };

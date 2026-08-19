@@ -1,11 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { createServerSupabase } from "../lib/supabase";
 import { syncProfileEmail } from "../lib/userLookup";
-
-const isDev = process.env.NODE_ENV !== "production";
-const devLog = (...args: Parameters<typeof console.log>) => {
-  if (isDev) console.log(...args);
-};
+import { devLog, isDev } from "../lib/log";
 
 function summarizeMfaFactors(
   factors: Array<{
