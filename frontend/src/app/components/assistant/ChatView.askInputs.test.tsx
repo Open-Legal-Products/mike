@@ -125,6 +125,23 @@ describe("ChatView ask-inputs submission", () => {
         );
     });
 
+    it("restores the questions when the submit resolves null (swallowed transport error)", async () => {
+        // The shipped useAssistantChat.handleChat does not reject on a
+        // transport/stream failure — it catches the error, renders it inline,
+        // and resolves null. A guard that only watched for a rejection would
+        // miss the most common failure (a down backend), leaving the card
+        // hidden and the answers lost. A falsy resolution must restore them too.
+        const handleChat = vi.fn(async () => null);
+        renderChatView(handleChat);
+
+        fireEvent.click(screen.getByTestId("ask-input-popup"));
+        await waitFor(() => expect(handleChat).toHaveBeenCalledTimes(1));
+
+        await waitFor(() =>
+            expect(screen.getByTestId("ask-input-popup")).toBeInTheDocument(),
+        );
+    });
+
     it("keeps the questions hidden when the submit request succeeds", async () => {
         const handleChat = vi.fn(async () => "chat-1");
         renderChatView(handleChat);

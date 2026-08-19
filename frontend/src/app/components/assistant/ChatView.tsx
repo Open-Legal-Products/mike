@@ -804,33 +804,50 @@ export function ChatView({
                                     key={activeInput.key}
                                     event={activeInput.event}
                                     onSubmit={(response, content, files) => {
+                                        const submittedKey = activeInput.key;
                                         setHiddenAskInputKeys((prev) => {
                                             const next = new Set(prev);
-                                            next.add(activeInput.key);
+                                            next.add(submittedKey);
                                             return next;
                                         });
+                                        // Hiding the card is optimistic — it
+                                        // assumes the answers reached the
+                                        // server. If they did not, the hide is
+                                        // permanent for the session and the
+                                        // user's typed answers are lost, so put
+                                        // the questions back.
+                                        //
+                                        // handleChat resolves to the new chat
+                                        // id on success and to null on failure:
+                                        // it catches transport/stream errors,
+                                        // renders them inline, and resolves null
+                                        // rather than rejecting — so a falsy
+                                        // resolution is the failure signal for
+                                        // the common case (down backend, dropped
+                                        // stream). The .catch covers a genuine
+                                        // throw as well. A successful ask-inputs
+                                        // turn always yields a chat id (the
+                                        // chat_id event opens every stream), so
+                                        // null here never means success.
+                                        const restoreQuestions = () => {
+                                            setHiddenAskInputKeys((prev) => {
+                                                if (!prev.has(submittedKey))
+                                                    return prev;
+                                                const next = new Set(prev);
+                                                next.delete(submittedKey);
+                                                return next;
+                                            });
+                                        };
                                         void handleChat(
                                             { role: "user", content, files },
                                             {
                                                 askInputsResponse: response,
                                             },
-                                            // Hiding the card is optimistic —
-                                            // it assumes the answers reached
-                                            // the server. If the request
-                                            // rejects they did not, and the
-                                            // hide is permanent for the
-                                            // session, so the user's typed
-                                            // answers would be unrecoverable.
-                                            // Put the questions back instead.
-                                        ).catch(() => {
-                                            setHiddenAskInputKeys((prev) => {
-                                                if (!prev.has(activeInput.key))
-                                                    return prev;
-                                                const next = new Set(prev);
-                                                next.delete(activeInput.key);
-                                                return next;
-                                            });
-                                        });
+                                        )
+                                            .then((chatId) => {
+                                                if (!chatId) restoreQuestions();
+                                            })
+                                            .catch(restoreQuestions);
                                     }}
                                     onDismiss={() => {
                                         setHiddenAskInputKeys((prev) => {
