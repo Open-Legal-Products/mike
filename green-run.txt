@@ -1,0 +1,13 @@
+[WebServer] (node:49159) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+[WebServer] (Use `node --trace-deprecation ...` to show where the warning was created)
+
+Running 6 tests using 1 worker
+
+  ✓  1 [chromium] › e2e/document-markdown.spec.ts:22:5 › document_context carries heading, list, and table structure (454ms)
+  ✓  2 [chromium] › e2e/document-markdown.spec.ts:63:5 › an edit quoting the renderer's heading marker still applies as a tracked change (362ms)
+  ✓  3 [chromium] › e2e/document-markdown.spec.ts:96:5 › a citation quoting a list marker still selects the underlying text (377ms)
+  ✓  4 [webkit] › e2e/document-markdown.spec.ts:22:5 › document_context carries heading, list, and table structure (1.0s)
+  ✓  5 [webkit] › e2e/document-markdown.spec.ts:63:5 › an edit quoting the renderer's heading marker still applies as a tracked change (574ms)
+  ✓  6 [webkit] › e2e/document-markdown.spec.ts:96:5 › a citation quoting a list marker still selects the underlying text (566ms)
+
+  6 passed (17.6s)

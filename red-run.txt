@@ -1,0 +1,186 @@
+[WebServer] (node:48698) [DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+[WebServer] (Use `node --trace-deprecation ...` to show where the warning was created)
+
+Running 6 tests using 1 worker
+
+  ✘  1 [chromium] › e2e/document-markdown.spec.ts:22:5 › document_context carries heading, list, and table structure (573ms)
+  ✘  2 [chromium] › e2e/document-markdown.spec.ts:63:5 › an edit quoting the renderer's heading marker still applies as a tracked change (5.2s)
+  ✘  3 [chromium] › e2e/document-markdown.spec.ts:96:5 › a citation quoting a list marker still selects the underlying text (5.3s)
+  ✘  4 [webkit] › e2e/document-markdown.spec.ts:22:5 › document_context carries heading, list, and table structure (1.1s)
+  ✘  5 [webkit] › e2e/document-markdown.spec.ts:63:5 › an edit quoting the renderer's heading marker still applies as a tracked change (5.6s)
+  ✘  6 [webkit] › e2e/document-markdown.spec.ts:96:5 › a citation quoting a list marker still selects the underlying text (5.7s)
+
+
+  1) [chromium] › e2e/document-markdown.spec.ts:22:5 › document_context carries heading, list, and table structure 
+
+    Error: expect(received).toContain(expected) // indexOf
+
+    Expected substring: "# Definitions"
+    Received string:    "Definitions
+    Terms have the meanings below.
+    Affiliate means a controlled entity."
+
+      51 |   const body = (await requestPromise).postDataJSON();
+      52 |
+    > 53 |   expect(body.document_context).toContain("# Definitions");
+         |                                 ^
+      54 |   expect(body.document_context).toContain("Terms have the meanings below.");
+      55 |   expect(body.document_context).toContain(
+      56 |     "a. Affiliate means a controlled entity.",
+        at /private/tmp/claude-501/-Users-amalanandmuthukumaran-dev-mike/eee5b3e4-6a3a-4931-b66e-694725921bf7/scratchpad/word-md-before/word-addin/e2e/document-markdown.spec.ts:53:33
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/document-markdown-document-88764-ng-list-and-table-structure-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/document-markdown-document-88764-ng-list-and-table-structure-chromium/error-context.md
+
+  2) [chromium] › e2e/document-markdown.spec.ts:63:5 › an edit quoting the renderer's heading marker still applies as a tracked change 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 0
+
+    Call Log:
+    - Timeout 5000ms exceeded while waiting on the predicate
+
+      82 |   await expect
+      83 |     .poll(async () => (await addin.wordCalls()).trackedChanges.length)
+    > 84 |     .toBe(1);
+         |      ^
+      85 |   expect((await addin.wordCalls()).trackedChanges[0]?.original).toBe(
+      86 |     "Definitions",
+      87 |   );
+        at /private/tmp/claude-501/-Users-amalanandmuthukumaran-dev-mike/eee5b3e4-6a3a-4931-b66e-694725921bf7/scratchpad/word-md-before/word-addin/e2e/document-markdown.spec.ts:84:6
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/document-markdown-an-edit--5eb68-applies-as-a-tracked-change-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/document-markdown-an-edit--5eb68-applies-as-a-tracked-change-chromium/error-context.md
+
+  3) [chromium] › e2e/document-markdown.spec.ts:96:5 › a citation quoting a list marker still selects the underlying text 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 7
+    + Received  + 1
+
+    - Array [
+    -   Object {
+    -     "location": "Select",
+    -     "original": "Affiliate means a controlled entity.",
+    -     "text": "Affiliate means a controlled entity.",
+    -   },
+    - ]
+    + Array []
+
+    Call Log:
+    - Timeout 5000ms exceeded while waiting on the predicate
+
+      119 |   await expect
+      120 |     .poll(async () => (await addin.wordCalls()).revealedChanges)
+    > 121 |     .toEqual([
+          |      ^
+      122 |       {
+      123 |         text: "Affiliate means a controlled entity.",
+      124 |         location: "Select",
+        at /private/tmp/claude-501/-Users-amalanandmuthukumaran-dev-mike/eee5b3e4-6a3a-4931-b66e-694725921bf7/scratchpad/word-md-before/word-addin/e2e/document-markdown.spec.ts:121:6
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/document-markdown-a-citati-cb24f-selects-the-underlying-text-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/document-markdown-a-citati-cb24f-selects-the-underlying-text-chromium/error-context.md
+
+  4) [webkit] › e2e/document-markdown.spec.ts:22:5 › document_context carries heading, list, and table structure 
+
+    Error: expect(received).toContain(expected) // indexOf
+
+    Expected substring: "# Definitions"
+    Received string:    "Definitions
+    Terms have the meanings below.
+    Affiliate means a controlled entity."
+
+      51 |   const body = (await requestPromise).postDataJSON();
+      52 |
+    > 53 |   expect(body.document_context).toContain("# Definitions");
+         |                                 ^
+      54 |   expect(body.document_context).toContain("Terms have the meanings below.");
+      55 |   expect(body.document_context).toContain(
+      56 |     "a. Affiliate means a controlled entity.",
+        at /private/tmp/claude-501/-Users-amalanandmuthukumaran-dev-mike/eee5b3e4-6a3a-4931-b66e-694725921bf7/scratchpad/word-md-before/word-addin/e2e/document-markdown.spec.ts:53:33
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/document-markdown-document-88764-ng-list-and-table-structure-webkit/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/document-markdown-document-88764-ng-list-and-table-structure-webkit/error-context.md
+
+  5) [webkit] › e2e/document-markdown.spec.ts:63:5 › an edit quoting the renderer's heading marker still applies as a tracked change 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 0
+
+    Call Log:
+    - Timeout 5000ms exceeded while waiting on the predicate
+
+      82 |   await expect
+      83 |     .poll(async () => (await addin.wordCalls()).trackedChanges.length)
+    > 84 |     .toBe(1);
+         |      ^
+      85 |   expect((await addin.wordCalls()).trackedChanges[0]?.original).toBe(
+      86 |     "Definitions",
+      87 |   );
+        at /private/tmp/claude-501/-Users-amalanandmuthukumaran-dev-mike/eee5b3e4-6a3a-4931-b66e-694725921bf7/scratchpad/word-md-before/word-addin/e2e/document-markdown.spec.ts:84:6
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/document-markdown-an-edit--5eb68-applies-as-a-tracked-change-webkit/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/document-markdown-an-edit--5eb68-applies-as-a-tracked-change-webkit/error-context.md
+
+  6) [webkit] › e2e/document-markdown.spec.ts:96:5 › a citation quoting a list marker still selects the underlying text 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 7
+    + Received  + 1
+
+    - Array [
+    -   Object {
+    -     "location": "Select",
+    -     "original": "Affiliate means a controlled entity.",
+    -     "text": "Affiliate means a controlled entity.",
+    -   },
+    - ]
+    + Array []
+
+    Call Log:
+    - Timeout 5000ms exceeded while waiting on the predicate
+
+      119 |   await expect
+      120 |     .poll(async () => (await addin.wordCalls()).revealedChanges)
+    > 121 |     .toEqual([
+          |      ^
+      122 |       {
+      123 |         text: "Affiliate means a controlled entity.",
+      124 |         location: "Select",
+        at /private/tmp/claude-501/-Users-amalanandmuthukumaran-dev-mike/eee5b3e4-6a3a-4931-b66e-694725921bf7/scratchpad/word-md-before/word-addin/e2e/document-markdown.spec.ts:121:6
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/document-markdown-a-citati-cb24f-selects-the-underlying-text-webkit/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/document-markdown-a-citati-cb24f-selects-the-underlying-text-webkit/error-context.md
+
+  6 failed
+    [chromium] › e2e/document-markdown.spec.ts:22:5 › document_context carries heading, list, and table structure 
+    [chromium] › e2e/document-markdown.spec.ts:63:5 › an edit quoting the renderer's heading marker still applies as a tracked change 
+    [chromium] › e2e/document-markdown.spec.ts:96:5 › a citation quoting a list marker still selects the underlying text 
+    [webkit] › e2e/document-markdown.spec.ts:22:5 › document_context carries heading, list, and table structure 
+    [webkit] › e2e/document-markdown.spec.ts:63:5 › an edit quoting the renderer's heading marker still applies as a tracked change 
+    [webkit] › e2e/document-markdown.spec.ts:96:5 › a citation quoting a list marker still selects the underlying text 
