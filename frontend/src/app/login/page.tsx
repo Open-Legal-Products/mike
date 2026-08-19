@@ -14,6 +14,20 @@ import {
     authInputClassName,
 } from "@/app/components/auth/authStyles";
 
+// The Mac desktop shell's preload bridge. Only its local ("everything on
+// this Mac") mode answers guestCredentials with a value — in a browser the
+// bridge doesn't exist, and against a hosted server it returns null — so
+// gating the guest button on the answer keeps this page byte-identical in
+// behavior everywhere else.
+type GuestCredentials = { email: string; password: string };
+declare global {
+    interface Window {
+        mikeDesktop?: {
+            guestCredentials?: () => Promise<GuestCredentials | null>;
+        };
+    }
+}
+
 export default function LoginPage() {
     const router = useRouter();
     const { isAuthenticated, authLoading } = useAuth();
@@ -21,12 +35,28 @@ export default function LoginPage() {
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [guest, setGuest] = useState<GuestCredentials | null>(null);
 
     useEffect(() => {
         if (!authLoading && isAuthenticated) {
             router.replace("/assistant");
         }
     }, [authLoading, isAuthenticated, router]);
+
+    useEffect(() => {
+        let cancelled = false;
+        window.mikeDesktop
+            ?.guestCredentials?.()
+            .then((creds) => {
+                if (!cancelled && creds?.email && creds?.password) {
+                    setGuest(creds);
+                }
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -47,6 +77,31 @@ export default function LoginPage() {
                 error instanceof Error
                     ? error.message
                     : "An error occurred during login",
+            );
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleGuestLogin = async () => {
+        if (!guest) return;
+        setLoading(true);
+        setError(null);
+
+        try {
+            const { error } = await supabase.auth.signInWithPassword(guest);
+            if (error) {
+                // First use: the guest account doesn't exist yet. Local mode
+                // autoconfirms signups, so this returns a session directly.
+                const { error: signUpError } = await supabase.auth.signUp(guest);
+                if (signUpError) throw signUpError;
+            }
+            router.push("/assistant");
+        } catch (error: unknown) {
+            setError(
+                error instanceof Error
+                    ? error.message
+                    : "An error occurred during guest login",
             );
         } finally {
             setLoading(false);
@@ -127,6 +182,25 @@ export default function LoginPage() {
                                 {loading ? "Logging in..." : "Log in"}
                             </PillButton>
                         </div>
+                        {guest && (
+                            <>
+                                <div className="flex items-center gap-3 text-xs text-gray-400">
+                                    <div className="h-px flex-1 bg-gray-200" />
+                                    or
+                                    <div className="h-px flex-1 bg-gray-200" />
+                                </div>
+                                <PillButton
+                                    type="button"
+                                    tone="white"
+                                    size="normal"
+                                    onClick={handleGuestLogin}
+                                    disabled={loading}
+                                    className="w-full border border-gray-200 text-gray-900"
+                                >
+                                    Continue as guest
+                                </PillButton>
+                            </>
+                        )}
                         <div className="text-center text-sm text-gray-500">
                             Don&apos;t have an account?{" "}
                             <Link
