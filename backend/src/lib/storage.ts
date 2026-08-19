@@ -18,6 +18,9 @@ import {
 import * as S3Commands from "@aws-sdk/client-s3";
 import { getSignedUrl as awsGetSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { safeErrorLog } from "./safeError";
+import type { createServerSupabase } from "./supabase";
+
+type Db = ReturnType<typeof createServerSupabase>;
 
 const GetObjectCommand = (S3Commands as any).GetObjectCommand;
 
@@ -127,6 +130,52 @@ export async function deleteFile(key: string): Promise<void> {
   if (!storageEnabled) return;
   const client = getClient();
   await client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
+}
+
+/**
+ * Delete a batch of keys, ignoring blanks, duplicates, and per-key failures.
+ *
+ * Deleting rows is the operation that must succeed; orphaned bytes in R2 are
+ * recoverable waste, so every caller that drops document rows treats the file
+ * deletes as best-effort.
+ */
+export async function deleteFilesBestEffort(
+  paths: (string | null | undefined)[],
+): Promise<void> {
+  const keys = new Set<string>();
+  for (const path of paths) {
+    if (typeof path === "string" && path.length > 0) keys.add(path);
+  }
+  await Promise.all([...keys].map((key) => deleteFile(key).catch(() => {})));
+}
+
+/**
+ * Best-effort delete of every stored file (source + PDF rendition) belonging
+ * to the given documents' versions.
+ *
+ * Storage paths live on document_versions, so callers about to delete
+ * `documents` rows have to fan out here first. Returns the query error when
+ * the version lookup fails so the caller can abort before deleting rows it
+ * can no longer clean up after.
+ */
+export async function deleteVersionFilesForDocuments(
+  db: Db,
+  documentIds: string[],
+): Promise<{ message: string } | null> {
+  if (documentIds.length === 0) return null;
+  const { data: versions, error } = await db
+    .from("document_versions")
+    .select("storage_path, pdf_storage_path")
+    .in("document_id", documentIds);
+  if (error) return error;
+
+  await deleteFilesBestEffort(
+    (versions ?? []).flatMap((version) => [
+      version.storage_path as string | null | undefined,
+      version.pdf_storage_path as string | null | undefined,
+    ]),
+  );
+  return null;
 }
 
 // ---------------------------------------------------------------------------

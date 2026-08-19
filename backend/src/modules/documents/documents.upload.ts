@@ -5,6 +5,7 @@ import { storageKey, uploadFile } from "../../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../../lib/convert";
 import { enqueueConversion } from "../../lib/queue/conversionQueue";
 import { contentSha256 } from "../../lib/documentVersions";
+import { safeErrorMessage } from "../../lib/safeError";
 import {
     contentTypeForDocumentType,
     shouldConvertToPdf,
@@ -25,6 +26,10 @@ export async function createDocumentFromUpload(
         libraryKind?: "file" | "template";
         libraryFolderId?: string | null;
         userEmail?: string;
+        // Which part of the product the upload came from — recorded on the
+        // audit event so project uploads show up under the project rather
+        // than the assistant. Defaults to the assistant/library surface.
+        surface?: "project" | "assistant";
     },
     db: Db,
 ): Promise<
@@ -178,12 +183,17 @@ export async function createDocumentFromUpload(
             userEmail: params.userEmail,
             action: "document.uploaded",
             title: filename,
-            surface: "assistant",
+            surface: params.surface ?? "assistant",
+            projectId,
             documentId: (updated as { id?: string } | null)?.id ?? null,
         });
         return { ok: true, doc: responseDoc };
     } catch (e) {
         await db.from("documents").update({ status: "error" }).eq("id", doc.id);
-        return { ok: false, kind: "processing_failed", detail: String(e) };
+        return {
+            ok: false,
+            kind: "processing_failed",
+            detail: safeErrorMessage(e, "Document processing failed"),
+        };
     }
 }

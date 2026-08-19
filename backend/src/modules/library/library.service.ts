@@ -7,7 +7,7 @@
 // the thin route handlers in library.routes.ts map them onto HTTP responses.
 
 import { createServerSupabase } from "../../lib/supabase";
-import { deleteFile } from "../../lib/storage";
+import { deleteVersionFilesForDocuments } from "../../lib/storage";
 import {
   attachActiveVersionPaths,
   attachLatestVersionNumbers,
@@ -84,25 +84,8 @@ async function deleteLibraryDocumentsAndVersionFiles(
   );
   if (eligibleIds.length === 0) return { error: null, deletedIds: [] };
 
-  const { data: versions, error: versionsError } = await db
-    .from("document_versions")
-    .select("storage_path, pdf_storage_path")
-    .in("document_id", eligibleIds);
+  const versionsError = await deleteVersionFilesForDocuments(db, eligibleIds);
   if (versionsError) return { error: versionsError, deletedIds: [] };
-
-  const paths = new Set<string>();
-  for (const version of versions ?? []) {
-    if (typeof version.storage_path === "string" && version.storage_path) {
-      paths.add(version.storage_path);
-    }
-    if (
-      typeof version.pdf_storage_path === "string" &&
-      version.pdf_storage_path
-    ) {
-      paths.add(version.pdf_storage_path);
-    }
-  }
-  await Promise.all([...paths].map((path) => deleteFile(path).catch(() => {})));
 
   let deleteQuery = db
     .from("documents")
@@ -460,11 +443,16 @@ export async function updateLibraryFolder(
   }
   if ("parent_folder_id" in body) {
     if (body.parent_folder_id) {
+      // `visited` guards the walk against a pre-existing cycle among the
+      // ancestors (bad data, or a concurrent move): without it the loop
+      // never terminates and the request hangs.
+      const visited = new Set<string>();
       let cur: string | null = body.parent_folder_id;
       while (cur) {
-        if (cur === folderId) {
+        if (cur === folderId || visited.has(cur)) {
           return err(400, "Cannot move a folder into itself or a descendant");
         }
+        visited.add(cur);
         const parent = await loadLibraryFolder(db, userId, kind, cur);
         if (!parent) return err(404, "Parent folder not found");
         cur = parent.parent_folder_id ?? null;
@@ -604,17 +592,18 @@ export async function renameLibraryDocument(
       : docQuery.eq("library_kind", kind);
   const { data: doc } = await docQuery.single();
   if (!doc) return err(404, "Document not found");
+  // The name being renamed lives on the active version row, so a document
+  // without one has nothing to rename.
+  if (!doc.current_version_id) return err(404, "Document not found");
 
-  const active = doc.current_version_id
-    ? await db
-        .from("document_versions")
-        .select("filename")
-        .eq("id", doc.current_version_id)
-        .eq("document_id", documentId)
-        .single()
-    : null;
+  const active = await db
+    .from("document_versions")
+    .select("filename")
+    .eq("id", doc.current_version_id)
+    .eq("document_id", documentId)
+    .single();
   const currentName =
-    typeof active?.data?.filename === "string" && active.data.filename.trim()
+    typeof active.data?.filename === "string" && active.data.filename.trim()
       ? active.data.filename.trim()
       : "Untitled document";
   const filename = normalizeDocumentFilename(rawFilename, currentName);
@@ -635,13 +624,18 @@ export async function renameLibraryDocument(
     .single();
   if (error || !updated) return err(404, "Document not found");
 
-  if (doc.current_version_id) {
-    await db
-      .from("document_versions")
-      .update({ filename })
-      .eq("id", doc.current_version_id)
-      .eq("document_id", documentId);
-  }
+  // Read the stored name back instead of echoing the requested one — a failed
+  // version update used to be swallowed here and the response still claimed
+  // the rename had happened.
+  const { data: renamed, error: renameError } = await db
+    .from("document_versions")
+    .update({ filename })
+    .eq("id", doc.current_version_id)
+    .eq("document_id", documentId)
+    .select("filename")
+    .single();
+  if (renameError) return err(500, renameError.message);
+  if (!renamed) return err(404, "Document not found");
 
-  return ok(mapLibraryDocument({ ...updated, filename }));
+  return ok(mapLibraryDocument({ ...updated, filename: renamed.filename }));
 }

@@ -7,7 +7,7 @@
 // a single module.
 
 import { createServerSupabase } from "../../lib/supabase";
-import { deleteFile } from "../../lib/storage";
+import { deleteVersionFilesForDocuments } from "../../lib/storage";
 
 export type Db = ReturnType<typeof createServerSupabase>;
 
@@ -57,22 +57,8 @@ export async function deleteProjectDocumentsAndVersionFiles(
   documentIds: string[],
 ) {
   if (documentIds.length === 0) return null;
-  const { data: versions, error: versionsError } = await db
-    .from("document_versions")
-    .select("storage_path, pdf_storage_path")
-    .in("document_id", documentIds);
+  const versionsError = await deleteVersionFilesForDocuments(db, documentIds);
   if (versionsError) return versionsError;
-
-  const paths = new Set<string>();
-  for (const v of versions ?? []) {
-    if (typeof v.storage_path === "string" && v.storage_path.length > 0) {
-      paths.add(v.storage_path);
-    }
-    if (typeof v.pdf_storage_path === "string" && v.pdf_storage_path.length > 0) {
-      paths.add(v.pdf_storage_path);
-    }
-  }
-  await Promise.all([...paths].map((p) => deleteFile(p).catch(() => {})));
 
   const { error } = await db
     .from("documents")
@@ -170,20 +156,4 @@ export async function loadProjectFolder(
     .eq("project_id", projectId)
     .maybeSingle();
   return (data as { id: string; parent_folder_id: string | null } | null) ?? null;
-}
-
-export async function countPdfPages(buf: ArrayBuffer): Promise<number | null> {
-  try {
-    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs" as string);
-    const pdf = await (
-      pdfjsLib as unknown as {
-        getDocument: (opts: unknown) => {
-          promise: Promise<{ numPages: number }>;
-        };
-      }
-    ).getDocument({ data: new Uint8Array(buf) }).promise;
-    return pdf.numPages;
-  } catch {
-    return null;
-  }
 }

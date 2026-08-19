@@ -240,6 +240,7 @@ tabularRouter.post("/", requireAuth, async (req, res) => {
 // POST /tabular-review/prompt (must come before /:reviewId routes)
 tabularRouter.post("/prompt", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
+    const db = createServerSupabase();
     const title =
         typeof req.body.title === "string" ? req.body.title.trim() : "";
     if (!title)
@@ -283,7 +284,12 @@ tabularRouter.post("/prompt", requireAuth, async (req, res) => {
         `format handling is applied separately and must not be duplicated inside the prompt text.`;
 
     try {
-        const { title_model, api_keys } = await getUserModelSettings(userId);
+        // Hand the request's client over, as every other call site does,
+        // instead of letting the helper build its own.
+        const { title_model, api_keys } = await getUserModelSettings(
+            userId,
+            db,
+        );
         const raw = await completeText({
             model: title_model,
             systemPrompt:
@@ -583,12 +589,17 @@ tabularRouter.delete("/:reviewId", requireAuth, async (req, res) => {
     const userId = res.locals.userId as string;
     const { reviewId } = req.params;
     const db = createServerSupabase();
-    const { error } = await db
+    // Select the deleted ids back: without them a delete that matched nothing
+    // (wrong id, or someone else's review) reported 204 "deleted".
+    const { data: deleted, error } = await db
         .from("tabular_reviews")
         .delete()
         .eq("id", reviewId)
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .select("id");
     if (error) return void res.status(500).json({ detail: error.message });
+    if (!deleted || deleted.length === 0)
+        return void res.status(404).json({ detail: "Review not found" });
     res.status(204).send();
 });
 
@@ -697,13 +708,6 @@ tabularRouter.post(
             });
         }
 
-        await db
-            .from("tabular_cells")
-            .update({ status: "generating", content: null })
-            .eq("review_id", reviewId)
-            .eq("row_id", row.id)
-            .eq("column_index", column_index);
-
         // Async path: enqueue a single-cell job (deduped on
         // extract:<review>:<row>:<col>) and wait for the cell to reach a
         // terminal state, so the response keeps its synchronous JSON shape.
@@ -711,6 +715,19 @@ tabularRouter.post(
         // worker still finishes and the client catches up via the DB or the
         // GET generate/stream view.
         if (process.env.ASYNC_TABULAR_EXTRACTION === "true") {
+            // Clear the stale value before enqueuing (so the wait below cannot
+            // settle on the previous answer) but do NOT claim "generating"
+            // yet: a "generating" cell with no job in the queue is exactly
+            // what lib/maintenance/staleWork.ts flips to error, and no job
+            // exists until the enqueue returns. "pending" is invisible to that
+            // sweep, so a lost enqueue leaves a re-runnable cell instead.
+            await db
+                .from("tabular_cells")
+                .update({ status: "pending", content: null })
+                .eq("review_id", reviewId)
+                .eq("row_id", row.id)
+                .eq("column_index", column_index);
+
             try {
                 await enqueueExtraction({
                     reviewId,
@@ -734,6 +751,17 @@ tabularRouter.post(
                     .json({ detail: "Generation failed" });
             }
 
+            // The job owns the cell now, so show the spinner — but only if the
+            // cell is still the one we parked. A worker that already picked it
+            // up (or finished it) must not be rewound to "generating".
+            await db
+                .from("tabular_cells")
+                .update({ status: "generating" })
+                .eq("review_id", reviewId)
+                .eq("row_id", row.id)
+                .eq("column_index", column_index)
+                .eq("status", "pending");
+
             const terminal = await awaitCellTerminal({
                 db,
                 reviewId,
@@ -755,6 +783,16 @@ tabularRouter.post(
                     .json({ detail: "Generation failed" });
             return void res.json(terminal.content);
         }
+
+        // Sync path: this request owns the cell for its whole lifetime, so it
+        // can claim "generating" up front (the stale sweep only runs when the
+        // extraction queue is enabled).
+        await db
+            .from("tabular_cells")
+            .update({ status: "generating", content: null })
+            .eq("review_id", reviewId)
+            .eq("row_id", row.id)
+            .eq("column_index", column_index);
 
         const markdown = await loadRowDocumentText(db, row);
 
@@ -1006,13 +1044,17 @@ tabularRouter.delete(
         const { chatId } = req.params;
         const db = createServerSupabase();
         // Owner-only delete — sibling collaborators shouldn't be able to wipe
-        // each other's threads.
-        const { error } = await db
+        // each other's threads. Selecting the deleted ids back distinguishes
+        // "not yours / not there" from a real delete, which a bare 204 hid.
+        const { data: deleted, error } = await db
             .from("tabular_review_chats")
             .delete()
             .eq("id", chatId)
-            .eq("user_id", userId);
+            .eq("user_id", userId)
+            .select("id");
         if (error) return void res.status(500).json({ detail: error.message });
+        if (!deleted || deleted.length === 0)
+            return void res.status(404).json({ detail: "Chat not found" });
         res.status(204).send();
     },
 );
@@ -1029,13 +1071,17 @@ tabularRouter.patch(
         if (!title)
             return void res.status(400).json({ detail: "Title is required" });
         const db = createServerSupabase();
-        // Owner-only rename — mirrors the delete rule above.
-        const { error } = await db
+        // Owner-only rename — mirrors the delete rule above, including
+        // reporting 404 when the update matched no row.
+        const { data: renamed, error } = await db
             .from("tabular_review_chats")
             .update({ title: title.slice(0, 200) })
             .eq("id", chatId)
-            .eq("user_id", userId);
+            .eq("user_id", userId)
+            .select("id");
         if (error) return void res.status(500).json({ detail: error.message });
+        if (!renamed || renamed.length === 0)
+            return void res.status(404).json({ detail: "Chat not found" });
         res.status(204).send();
     },
 );
@@ -1151,7 +1197,12 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
         ),
     };
 
-    const { tabular_model, api_keys } = await getUserModelSettings(userId, db);
+    // One settings load for the whole request: the title generation below
+    // used to repeat this query just for `title_model`.
+    const { tabular_model, title_model, api_keys } = await getUserModelSettings(
+        userId,
+        db,
+    );
     const missingKey = missingModelApiKey(tabular_model, api_keys);
     if (missingKey) {
         return void res.status(422).json({
@@ -1260,7 +1311,6 @@ tabularRouter.post("/:reviewId/chat", requireAuth, async (req, res) => {
 
         // Generate title on first exchange
         if (chatId && isFirstExchange && !chatTitle && lastUser.content) {
-            const { title_model } = await getUserModelSettings(userId, db);
             const title = await generateChatTitle(
                 title_model,
                 lastUser.content,

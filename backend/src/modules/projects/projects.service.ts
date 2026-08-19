@@ -45,10 +45,8 @@ export {
   assignOrCopyDocument,
   renameProjectDocument,
   ensureProjectUploadAccess,
-  processProjectDocumentUpload,
   type AssignOrCopyResult,
   type RenameDocumentResult,
-  type UploadDocumentResult,
 } from "./projects.documents";
 
 export {

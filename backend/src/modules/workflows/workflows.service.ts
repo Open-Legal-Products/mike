@@ -23,9 +23,8 @@ import {
   type WorkflowScope,
 } from "../../lib/workflowsOverview";
 import {
-  ALLOWED_DOCUMENT_TYPES,
-  ALLOWED_DOCUMENT_TYPES_LABEL,
   contentTypeForDocumentType,
+  parseAllowedSuffix,
 } from "../../lib/documentTypes";
 import { contentSha256 } from "../../lib/documentVersions";
 import {
@@ -34,12 +33,9 @@ import {
   uploadFile,
   workflowReferenceKey,
 } from "../../lib/storage";
+import { devLog } from "../../lib/log";
 
 type Db = ReturnType<typeof createServerSupabase>;
-const isDev = process.env.NODE_ENV !== "production";
-const devLog = (...args: Parameters<typeof console.log>) => {
-  if (isDev) console.log(...args);
-};
 
 export type WorkflowRecord = {
   id: string;
@@ -196,7 +192,9 @@ function metadataFromWorkflowRecord(
   };
 }
 
-function withDatabaseWorkflow(workflow: WorkflowRecord) {
+// Exported so other routes that hand back a workflow (the add-on import) can
+// serialize it exactly the way GET /workflows/:id does.
+export function withDatabaseWorkflow(workflow: WorkflowRecord) {
   const {
     title: _title,
     type: _type,
@@ -294,7 +292,9 @@ function contributorFromName(name: unknown): WorkflowContributor {
   };
 }
 
-async function resolveWorkflowAccess(
+// Exported so routes outside this module (quick actions) resolve ownership and
+// shares through the same rules instead of re-implementing them.
+export async function resolveWorkflowAccess(
   db: Db,
   workflowId: string,
   userId: string,
@@ -922,12 +922,6 @@ export type ReferenceFileFailure =
   | { ok: false; kind: "storage_unconfigured" }
   | { ok: false; kind: "db_error"; detail: string };
 
-function referenceFileType(file: UploadedReferenceFile): string {
-  return file.originalname.includes(".")
-    ? file.originalname.split(".").pop()!.toLowerCase()
-    : "";
-}
-
 export async function listReferenceFiles(
   db: Db,
   params: { workflowId: string; userId: string; userEmail: string | undefined },
@@ -968,14 +962,11 @@ export async function uploadReferenceFile(
     return { ok: false, kind: "tabular_unsupported" };
   }
   if (!file) return { ok: false, kind: "file_required" };
-  const fileType = referenceFileType(file);
-  if (!ALLOWED_DOCUMENT_TYPES.has(fileType)) {
-    return {
-      ok: false,
-      kind: "unsupported_type",
-      detail: `Unsupported file type: ${fileType}. Allowed: ${ALLOWED_DOCUMENT_TYPES_LABEL}`,
-    };
+  const parsedType = parseAllowedSuffix(file.originalname);
+  if (!parsedType.ok) {
+    return { ok: false, kind: "unsupported_type", detail: parsedType.detail };
   }
+  const fileType = parsedType.suffix;
   const referenceId = crypto.randomUUID();
   const contentHash = contentSha256(file.buffer);
   const ownerId = access.workflow.user_id ?? userId;
@@ -1071,14 +1062,11 @@ export async function replaceReferenceFile(
     return { ok: false, kind: "tabular_unsupported" };
   }
   if (!file) return { ok: false, kind: "file_required" };
-  const fileType = referenceFileType(file);
-  if (!ALLOWED_DOCUMENT_TYPES.has(fileType)) {
-    return {
-      ok: false,
-      kind: "unsupported_type",
-      detail: `Unsupported file type: ${fileType}. Allowed: ${ALLOWED_DOCUMENT_TYPES_LABEL}`,
-    };
+  const parsedType = parseAllowedSuffix(file.originalname);
+  if (!parsedType.ok) {
+    return { ok: false, kind: "unsupported_type", detail: parsedType.detail };
   }
+  const fileType = parsedType.suffix;
   const { data: current } = await db
     .from("workflow_reference_documents")
     .select("id, user_id, storage_path")

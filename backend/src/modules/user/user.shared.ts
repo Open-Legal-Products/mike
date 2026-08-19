@@ -7,26 +7,36 @@
 // route/test importers see a single module.
 
 import { createServerSupabase } from "../../lib/supabase";
+import { redactSensitiveText, safeErrorMessage } from "../../lib/safeError";
 
 export type Db = ReturnType<typeof createServerSupabase>;
 
+// Every caller sends this straight to the browser as `{ ok: false, detail }`,
+// so it goes through the same redaction as the rest of the API's error text.
+// PostgREST errors are plain objects rather than Errors, so their
+// message/details/hint/code are still joined — but an unrecognised value now
+// falls back to a generic message instead of JSON.stringify()ing the whole
+// object, which could dump request context (including secrets) to the client.
 export function errorMessage(error: unknown): string {
-    if (error instanceof Error && error.message) return error.message;
-    if (error && typeof error === "object") {
+    if (error && typeof error === "object" && !(error instanceof Error)) {
         const record = error as {
             message?: unknown;
             details?: unknown;
             hint?: unknown;
             code?: unknown;
         };
-        return (
-            [record.message, record.details, record.hint, record.code]
-                .filter(
-                    (value): value is string =>
-                        typeof value === "string" && !!value,
-                )
-                .join(" ") || JSON.stringify(error)
-        );
+        const composed = [
+            record.message,
+            record.details,
+            record.hint,
+            record.code,
+        ]
+            .filter(
+                (value): value is string =>
+                    typeof value === "string" && !!value,
+            )
+            .join(" ");
+        if (composed) return redactSensitiveText(composed);
     }
-    return String(error);
+    return safeErrorMessage(error);
 }

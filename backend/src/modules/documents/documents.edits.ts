@@ -11,11 +11,7 @@ import { contentSha256, loadActiveVersion } from "../../lib/documentVersions";
 import { ensureDocAccess } from "../../lib/access";
 import { downloadFilenameForVersion, type Db } from "./documents.shared";
 import { ensureDocumentAccess } from "./documents.access";
-
-const isDev = process.env.NODE_ENV !== "production";
-const devLog = (...args: Parameters<typeof console.log>) => {
-    if (isDev) console.log(...args);
-};
+import { devLog } from "../../lib/log";
 
 // ---------------------------------------------------------------------------
 // Tracked-change ids
