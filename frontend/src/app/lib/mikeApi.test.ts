@@ -74,11 +74,9 @@ import {
     getWorkflowAddon,
     getWorkflowFilterOptions,
     getWorkflowReferenceUrl,
-    hideWorkflow,
     isMfaRequiredError,
     listChats,
     listDocumentVersions,
-    listHiddenWorkflows,
     listLibraryDocumentIds,
     listMcpConnectors,
     listProjectChats,
@@ -86,7 +84,6 @@ import {
     listProjectSummaries,
     listProjects,
     listProjectsPage,
-    listStandaloneDocuments,
     listSystemWorkflows,
     listTabularReviewIds,
     listTabularReviews,
@@ -125,7 +122,6 @@ import {
     streamProjectChat,
     streamTabularChat,
     streamTabularGeneration,
-    unhideWorkflow,
     updateMcpConnector,
     updateProject,
     updateTabularReview,
@@ -133,7 +129,6 @@ import {
     updateUserProfile,
     updateWorkflow,
     updateQuickAction,
-    deleteQuickAction,
     importWorkflowAddon,
     listQuickActions,
     replaceWorkflowReferenceFile,
@@ -518,10 +513,16 @@ describe("downloadDocumentsZip", () => {
         });
     });
 
-    it("throws a plain Error carrying the response text", async () => {
+    it("throws a MikeApiError carrying the response text", async () => {
         fetchMock.mockResolvedValue(new Response("bad ids", { status: 400 }));
 
-        await expect(downloadDocumentsZip(["x"])).rejects.toThrow("bad ids");
+        const error = await downloadDocumentsZip(["x"]).catch(
+            (e: unknown) => e,
+        );
+
+        expect(error).toBeInstanceOf(MikeApiError);
+        expect((error as MikeApiError).status).toBe(400);
+        expect((error as Error).message).toBe("bad ids");
     });
 });
 
@@ -1557,8 +1558,8 @@ describe("tabular cell operations", () => {
 
 // ---------------------------------------------------------------------------
 // Multipart uploads. These bypass apiRequest (FormData must not get a JSON
-// content type) and therefore have their own, weaker error contract: a plain
-// Error carrying the raw response text instead of MikeApiError.
+// content type) and go through apiUploadRequest instead, which keeps the same
+// MikeApiError contract so codes like `mfa_verification_required` survive.
 // ---------------------------------------------------------------------------
 
 describe("multipart upload endpoints", () => {
@@ -1579,7 +1580,7 @@ describe("multipart upload endpoints", () => {
         expect(init.headers).toEqual({ Authorization: "Bearer token-123" });
     });
 
-    it("upload failures throw a plain Error with the response text, not MikeApiError", async () => {
+    it("upload failures throw MikeApiError with the response text", async () => {
         fetchMock.mockImplementation(() =>
             Promise.resolve(new Response("file too large", { status: 413 })),
         );
@@ -1588,8 +1589,8 @@ describe("multipart upload endpoints", () => {
             (e: unknown) => e,
         );
 
-        expect(error).toBeInstanceOf(Error);
-        expect(error).not.toBeInstanceOf(MikeApiError);
+        expect(error).toBeInstanceOf(MikeApiError);
+        expect((error as MikeApiError).status).toBe(413);
         expect((error as Error).message).toBe("file too large");
 
         await expect(uploadStandaloneDocument(file)).rejects.toThrow(
@@ -1598,6 +1599,26 @@ describe("multipart upload endpoints", () => {
         await expect(uploadLibraryDocument("files", file)).rejects.toThrow(
             "file too large",
         );
+    });
+
+    it("keeps the MFA code on upload failures so the popup can open", async () => {
+        fetchMock.mockImplementation(() =>
+            Promise.resolve(
+                jsonResponse(
+                    {
+                        detail: "MFA verification required",
+                        code: "mfa_verification_required",
+                    },
+                    { status: 403 },
+                ),
+            ),
+        );
+
+        const error = await uploadStandaloneDocument(file).catch(
+            (e: unknown) => e,
+        );
+
+        expect(isMfaRequiredError(error)).toBe(true);
     });
 
     it("uploadDocumentVersion appends the filename field only when given", async () => {
@@ -1781,26 +1802,6 @@ describe("workflow endpoints", () => {
         );
     });
 
-    it("hide/unhide/list use the hidden-workflows routes with matching methods", async () => {
-        fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
-
-        await hideWorkflow("w1");
-        let { url, init } = lastFetchCall();
-        expect(url).toBe("http://localhost:3001/workflows/hidden");
-        expect(init.method).toBe("POST");
-        expect(JSON.parse(init.body as string)).toEqual({ workflow_id: "w1" });
-
-        await unhideWorkflow("w1");
-        ({ url, init } = lastFetchCall());
-        expect(url).toBe("http://localhost:3001/workflows/hidden/w1");
-        expect(init.method).toBe("DELETE");
-
-        fetchMock.mockResolvedValue(jsonResponse(["w2"]));
-        await expect(listHiddenWorkflows()).resolves.toEqual(["w2"]);
-        expect(lastFetchCall().url).toBe(
-            "http://localhost:3001/workflows/hidden",
-        );
-    });
 });
 
 // ---------------------------------------------------------------------------
@@ -2085,11 +2086,6 @@ describe("thin endpoint wrappers", () => {
         },
         // Standalone documents & versions
         {
-            name: "listStandaloneDocuments",
-            call: () => listStandaloneDocuments(),
-            url: "/single-documents",
-        },
-        {
             name: "deleteDocument",
             call: () => deleteDocument("d1"),
             url: "/single-documents/d1",
@@ -2287,12 +2283,6 @@ describe("thin endpoint wrappers", () => {
                 enabled: false,
                 sort_order: 3,
             },
-        },
-        {
-            name: "deleteQuickAction",
-            call: () => deleteQuickAction("qa1"),
-            url: "/quick-actions/qa1",
-            method: "DELETE",
         },
         {
             name: "listWorkflowAddons",

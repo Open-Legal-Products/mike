@@ -2,8 +2,10 @@
 
 import React, {
     createContext,
+    useCallback,
     useContext,
     useEffect,
+    useMemo,
     useState,
     ReactNode,
 } from "react";
@@ -69,12 +71,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
     }, []);
 
-    const signOut = async () => {
+    const signOut = useCallback(async () => {
         await supabase.auth.signOut({ scope: "local" });
         setUser(null);
-    };
+    }, []);
 
-    const updateEmail = async (email: string) => {
+    const updateEmail = useCallback(async (email: string) => {
         const redirectTo = browserAuthCallbackUrl(
             "/settings?emailChange=processed",
         );
@@ -89,20 +91,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const nextUser = toUser(data.user);
         setUser(nextUser);
         return nextUser;
-    };
+    }, []);
+
+    // A fresh object here re-renders every consumer of this context on every
+    // provider render, sign-in state change or not.
+    const value = useMemo<AuthContextType>(
+        () => ({
+            user,
+            isAuthenticated: !!user,
+            authLoading,
+            signOut,
+            updateEmail,
+        }),
+        [user, authLoading, signOut, updateEmail],
+    );
 
     return (
-        <AuthContext.Provider
-            value={{
-                user,
-                isAuthenticated: !!user,
-                authLoading,
-                signOut,
-                updateEmail,
-            }}
-        >
-            {children}
-        </AuthContext.Provider>
+        <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
     );
 }
 
