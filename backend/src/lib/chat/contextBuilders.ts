@@ -10,6 +10,7 @@ import {
   type ChatMessage,
   type AskInputsResponseRequest,
   type AskInputResponseItem,
+  MAX_ASK_INPUT_CHOICE_LENGTH,
   MAX_ASK_INPUT_TEXT_LENGTH,
   devLog,
 } from "./types";
@@ -364,7 +365,9 @@ export function parseAskInputsResponsePayload(
                 .trim()
                 .slice(
                   0,
-                  kind === "text" ? MAX_ASK_INPUT_TEXT_LENGTH : 1_000,
+                  kind === "text"
+                    ? MAX_ASK_INPUT_TEXT_LENGTH
+                    : MAX_ASK_INPUT_CHOICE_LENGTH,
                 )
             : "";
         if (!question || (!answer && !skipped)) return null;
