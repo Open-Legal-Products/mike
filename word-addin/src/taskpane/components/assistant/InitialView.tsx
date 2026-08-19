@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import quickActionsIcon from "@icons/features/quick-actions.svg";
 import { getUserProfile } from "../../api/mikeApi";
-import { MikeIcon } from "../../../shared/chat/mike-icon";
+import { MikeIcon } from "@mike/mike-icon";
 import type { QuickAction } from "../../types";
 import { useQuickActions } from "../../lib/quickActionStore";
 import { quickActionDisplayName } from "../../lib/quickActions";

@@ -59,6 +59,9 @@
       ],
       "@mike/model-toggle-ui": [
         "../frontend/src/shared/ui/ModelToggleUI.tsx"
+      ],
+      "@mike/mike-icon": [
+        "../frontend/src/app/components/chat/mike-icon.tsx"
       ]
     },
     "jsx": "react-jsx",

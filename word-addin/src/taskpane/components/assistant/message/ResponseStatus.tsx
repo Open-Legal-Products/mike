@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MikeIcon } from "../../../../shared/chat/mike-icon";
+import { MikeIcon } from "@mike/mike-icon";
 
 export type StatusState = "active" | "error" | null;
 

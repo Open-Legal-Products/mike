@@ -1,5 +1,5 @@
 import React from "react";
-import { MikeIcon } from "../../../shared/chat/mike-icon";
+import { MikeIcon } from "@mike/mike-icon";
 import { cn } from "../../../shared/lib/utils";
 
 interface WordAddinLogoProps {
