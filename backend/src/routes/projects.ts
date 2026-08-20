@@ -1178,9 +1178,9 @@ projectsRouter.post(
 
 // GET /projects/:projectId/chats — every assistant chat under this project
 // (any author with project access). Used by the project page's chat tab so
-// it doesn't have to filter the global GET /chat list — and so collaborators
-// see each other's chats inside the project even though those don't appear
-// in the global list.
+// it doesn't have to filter the global GET /chat list. Since 20260821_11 the
+// global list shows these too (its predicate matches ensureChatAccess), so
+// this endpoint is a convenience scoping, not the only way to find them.
 projectsRouter.get("/:projectId/chats", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
   const userEmail = res.locals.userEmail as string | undefined;
