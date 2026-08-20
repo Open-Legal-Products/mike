@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ModelToggle } from "./ModelToggle";
+import { ModelToggle, syntheticModelDisplayName } from "./ModelToggle";
 import type { ApiKeyState } from "@/app/lib/mikeApi";
 
 vi.mock("@/app/hooks/useOllamaModels", () => ({
@@ -16,6 +16,7 @@ function keys(configured: Partial<Record<keyof ApiKeyState, boolean>>) {
         "openrouter",
         "vercel",
         "opencode-go",
+        "synthetic",
         "courtlistener",
     ] as const;
     return Object.fromEntries(
@@ -152,5 +153,41 @@ describe("ModelToggle OpenCode Go group", () => {
         await user.click(screen.getByRole("button", { name: "Choose model" }));
 
         expect(screen.queryByText("OpenCode Go")).not.toBeInTheDocument();
+    });
+});
+
+describe("Synthetic model labels", () => {
+    it("reads both catalog id families without leaking the family prefix", () => {
+        // The generic helper treats ":" as a variant separator, so an
+        // untreated "syn:large:text" rendered as "Syn (Large:text)".
+        expect(syntheticModelDisplayName("syn:large:text")).toBe(
+            "Large (text)",
+        );
+        expect(syntheticModelDisplayName("syn:small:vision")).toBe(
+            "Small (vision)",
+        );
+        expect(syntheticModelDisplayName("hf:openai/gpt-oss-120b")).toBe(
+            "GPT OSS 120B",
+        );
+        expect(syntheticModelDisplayName("hf:moonshotai/Kimi-K3")).toBe(
+            "Kimi K3",
+        );
+    });
+
+    it("offers the user's saved Synthetic models once the key is configured", async () => {
+        const user = userEvent.setup();
+        render(
+            <ModelToggle
+                value="gemini-3-flash-preview"
+                onChange={vi.fn()}
+                apiKeys={keys({ gemini: true, synthetic: true })}
+                syntheticModels={["syn:large:text"]}
+            />,
+        );
+
+        await user.click(screen.getByRole("button", { name: "Choose model" }));
+        await user.click(await screen.findByText("Synthetic"));
+
+        expect(await screen.findByText("Large (text)")).toBeInTheDocument();
     });
 });

@@ -17,6 +17,7 @@ import {
     openRouterModelId,
     vercelModelId,
     openCodeGoModelId,
+    syntheticModelId,
 } from "../llm/models";
 
 // ---------------------------------------------------------------------------
@@ -68,6 +69,13 @@ describe("providerForModel", () => {
 
     it("maps namespaced OpenCode Go ids to the opencode-go provider", () => {
         expect(providerForModel("opencode-go/glm-5")).toBe("opencode-go");
+    });
+
+    it("maps namespaced Synthetic ids to the synthetic provider", () => {
+        expect(providerForModel("synthetic/syn:large:text")).toBe("synthetic");
+        expect(providerForModel("synthetic/hf:zai-org/GLM-5.2")).toBe(
+            "synthetic",
+        );
     });
 
     it("throws on an unknown model id", () => {
@@ -173,6 +181,27 @@ describe("resolveModel", () => {
             DEFAULT_MAIN_MODEL,
         );
         expect(resolveModel("opencode-go/a b", DEFAULT_MAIN_MODEL)).toBe(
+            DEFAULT_MAIN_MODEL,
+        );
+    });
+});
+
+describe("Synthetic model ids", () => {
+    it("accepts both catalog id families and strips only the slug", () => {
+        for (const id of [
+            "synthetic/syn:large:text",
+            "synthetic/hf:zai-org/GLM-5.2",
+            "synthetic/hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
+        ]) {
+            expect(resolveModel(id, DEFAULT_MAIN_MODEL)).toBe(id);
+        }
+        expect(syntheticModelId("synthetic/syn:large:text")).toBe(
+            "syn:large:text",
+        );
+        expect(syntheticModelId("synthetic/hf:zai-org/GLM-5.2")).toBe(
+            "hf:zai-org/GLM-5.2",
+        );
+        expect(resolveModel("synthetic/", DEFAULT_MAIN_MODEL)).toBe(
             DEFAULT_MAIN_MODEL,
         );
     });

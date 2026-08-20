@@ -13,6 +13,7 @@ import {
     modelDisplayName,
     openCodeGoModelOptions,
     openRouterModelOptions,
+    syntheticModelOptions,
     vercelModelOptions,
 } from "../app/components/assistant/ModelToggle";
 import {
@@ -25,6 +26,7 @@ import {
     modelDisplayName as addinModelDisplayName,
     openCodeGoModelOptions as addinOpenCodeGoModelOptions,
     openRouterModelOptions as addinOpenRouterModelOptions,
+    syntheticModelOptions as addinSyntheticModelOptions,
     vercelModelOptions as addinVercelModelOptions,
 } from "../../../word-addin/src/taskpane/lib/modelCatalog";
 import type { ApiKeyStatus } from "../../../word-addin/src/taskpane/api/client";
@@ -63,6 +65,8 @@ describe("word add-in catalog parity", () => {
             ...MODELS.map((model) => model.id),
             "openrouter/openai/gpt-5.4",
             "opencode-go/glm-5",
+            "synthetic/syn:large:text",
+            "synthetic/hf:zai-org/GLM-5.2",
             "ollama/llama3:8b",
             "not-a-model",
         ]) {
@@ -82,9 +86,12 @@ describe("word add-in catalog parity", () => {
             "openrouter/openrouter/auto",
             "vercel/openai/gpt-5.4",
             "opencode-go/glm-5",
+            "synthetic/syn:large:text",
+            "synthetic/hf:zai-org/GLM-5.2",
             "ollama/llama3:8b",
             "openrouter",
             "opencode-go",
+            "synthetic",
             "",
             "gpt-5.4-turbo-imaginary",
         ];
@@ -137,6 +144,17 @@ describe("word add-in catalog parity", () => {
                 (option) => option.id,
             ),
         );
+        // Synthetic ids are hand-mirrored twice AND get a bespoke label
+        // helper, so both halves are pinned here.
+        const syntheticStored = [
+            "syn:large:text",
+            "syn:small:vision",
+            "hf:zai-org/GLM-5.2",
+            "hf:openai/gpt-oss-120b",
+        ];
+        expect(addinSyntheticModelOptions(syntheticStored)).toEqual(
+            syntheticModelOptions(syntheticStored),
+        );
         expect(
             addinOpenRouterModelOptions(["openrouter/auto"])[0]?.id,
         ).toBe("openrouter/openrouter/auto");
@@ -150,12 +168,14 @@ describe("word add-in catalog parity", () => {
             "openrouter",
             "vercel",
             "opencode-go",
+            "synthetic",
         ] as const;
         const sharedIds = [
             ...MODELS.map((model) => model.id),
             "openrouter/openai/gpt-5.4",
             "vercel/openai/gpt-5.4",
             "opencode-go/glm-5",
+            "synthetic/syn:large:text",
         ];
         for (const configured of providers) {
             const addinStatus = {
@@ -165,6 +185,7 @@ describe("word add-in catalog parity", () => {
                 openrouter: false,
                 vercel: false,
                 "opencode-go": false,
+                synthetic: false,
                 courtlistener: false,
                 [configured]: true,
             } as unknown as ApiKeyStatus;

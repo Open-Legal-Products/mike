@@ -76,6 +76,7 @@ export function providerForModel(model: string): Provider {
     if (model.startsWith("openrouter/")) return "openrouter";
     if (model.startsWith("vercel/")) return "vercel";
     if (model.startsWith("opencode-go/")) return "opencode-go";
+    if (model.startsWith("synthetic/")) return "synthetic";
     if (model.startsWith("claude")) return "claude";
     if (model.startsWith("gemini")) return "gemini";
     if (model.startsWith("gpt-")) return "openai";
@@ -101,8 +102,10 @@ export function resolveModel(
             canonical.startsWith("ollama/") ||
             /^(?:openrouter|vercel)\/[^\s/]+\/[^\s]+$/.test(canonical) ||
             // OpenCode Go's catalog ids are single-segment ("glm-5"), not the
-            // vendor/model pairs OpenRouter and Vercel publish.
-            /^opencode-go\/[^\s]+$/.test(canonical))
+            // vendor/model pairs OpenRouter and Vercel publish. Synthetic's
+            // carry both a family prefix and a vendor path
+            // ("hf:zai-org/GLM-5.2", "syn:large:text").
+            /^(?:opencode-go|synthetic)\/[^\s]+$/.test(canonical))
     )
         return canonical;
     return fallback;
@@ -118,4 +121,8 @@ export function vercelModelId(model: string): string {
 
 export function openCodeGoModelId(model: string): string {
     return model.replace(/^opencode-go\//, "");
+}
+
+export function syntheticModelId(model: string): string {
+    return model.replace(/^synthetic\//, "");
 }

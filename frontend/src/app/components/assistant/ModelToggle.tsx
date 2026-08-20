@@ -102,7 +102,12 @@ export function modelDisplayName(modelId: string): string {
  * Router slugs, which double as model-id prefixes and API-key provider names.
  * Kept in sync with backend/src/lib/routerModels.ts ROUTER_SLUGS.
  */
-export const ROUTER_SLUGS = ["openrouter", "vercel", "opencode-go"] as const;
+export const ROUTER_SLUGS = [
+  "openrouter",
+  "vercel",
+  "opencode-go",
+  "synthetic",
+] as const;
 export type RouterSlug = (typeof ROUTER_SLUGS)[number];
 
 interface Props {
@@ -120,6 +125,7 @@ interface Props {
   openRouterModels?: string[];
   vercelModels?: string[];
   openCodeGoModels?: string[];
+  syntheticModels?: string[];
   compact?: boolean;
 }
 
@@ -147,6 +153,31 @@ export function openCodeGoModelOptions(models: string[]): ModelOption[] {
   }));
 }
 
+/**
+ * Synthetic ids come in two families and neither survives the generic helper:
+ * a pinned "hf:<vendor>/<model>" (the "hf:" is noise once the group header
+ * says Synthetic) and a floating alias "syn:<size>:<capability>", whose colons
+ * the generic helper reads as a variant suffix — "syn:large:text" rendered as
+ * "Syn (Large:text)". Aliases are labelled from their own segments instead.
+ */
+export function syntheticModelDisplayName(model: string): string {
+  if (model.startsWith("syn:")) {
+    const [size, ...rest] = model.slice("syn:".length).split(":");
+    if (!size) return model;
+    const name = modelDisplayName(size);
+    return rest.length ? `${name} (${rest.join(", ")})` : name;
+  }
+  return modelDisplayName(model.replace(/^hf:/, ""));
+}
+
+export function syntheticModelOptions(models: string[]): ModelOption[] {
+  return models.map((model) => ({
+    id: `synthetic/${model}`,
+    label: syntheticModelDisplayName(model),
+    group: "Synthetic",
+  }));
+}
+
 export function ModelToggle({
   value,
   onChange,
@@ -155,6 +186,7 @@ export function ModelToggle({
   openRouterModels = [],
   vercelModels = [],
   openCodeGoModels = [],
+  syntheticModels = [],
   compact = false,
 }: Props) {
   const ollamaModels = useOllamaModels();
@@ -163,6 +195,7 @@ export function ModelToggle({
     ...openRouterModelOptions(openRouterModels),
     ...vercelModelOptions(vercelModels),
     ...openCodeGoModelOptions(openCodeGoModels),
+    ...syntheticModelOptions(syntheticModels),
     ...ollamaModels.map((model) => ({
       ...model,
       label: modelDisplayName(model.id),

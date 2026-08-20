@@ -36,6 +36,11 @@ const MODEL_API_KEY_FIELDS = [
         label: "OpenCode Go API Key",
         placeholder: "sk-...",
     },
+    {
+        provider: "synthetic",
+        label: "Synthetic API Key",
+        placeholder: "syn_...",
+    },
 ] as const;
 
 export default function ByokPage() {

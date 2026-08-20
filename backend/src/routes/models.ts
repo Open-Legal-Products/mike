@@ -10,7 +10,10 @@ function catalogPrice(value: unknown): string | undefined {
     if (typeof value !== "string" && typeof value !== "number") {
         return undefined;
     }
-    const normalized = String(value).trim();
+    // Synthetic quotes per-token prices as "$0.000001"; the others send bare
+    // numbers. Strip the symbol here so every catalog reaches the client in
+    // the one shape its cost formatter can parse.
+    const normalized = String(value).trim().replace(/^\$/, "");
     const amount = Number(normalized);
     return normalized && Number.isFinite(amount) && amount >= 0
         ? normalized
@@ -279,6 +282,88 @@ modelsRouter.get("/opencode-go", requireAuth, async (_req, res) => {
                 error instanceof Error
                     ? error.message
                     : "Failed to list OpenCode Go models.",
+        });
+    }
+});
+
+// Synthetic's catalog (https://api.synthetic.new), limited to text models that
+// support tool calling because Mike supplies tools on interactive chat
+// requests. The list itself is public, but it is only exposed once the user
+// has a key — an unusable catalog is worse than no catalog.
+modelsRouter.get("/synthetic", requireAuth, async (_req, res) => {
+    const userId = res.locals.userId as string;
+    try {
+        const apiKeys = await getUserApiKeys(userId, createServerSupabase());
+        if (!apiKeys.synthetic?.trim()) {
+            return void res.status(422).json({
+                code: "missing_api_key",
+                detail: "A Synthetic API key is required to list models.",
+            });
+        }
+
+        const baseUrl = (
+            process.env.SYNTHETIC_BASE_URL?.trim() ||
+            "https://api.synthetic.new/openai/v1"
+        ).replace(/\/+$/, "");
+        const response = await fetch(`${baseUrl}/models`);
+        if (!response.ok) {
+            const detail = await response.text().catch(() => "");
+            return void res.status(502).json({
+                detail: `Synthetic model catalog request failed (${response.status})${detail ? `: ${detail}` : ""}`,
+            });
+        }
+
+        const payload = (await response.json()) as {
+            data?: Array<{
+                id?: unknown;
+                name?: unknown;
+                hugging_face_id?: unknown;
+                output_modalities?: unknown;
+                supported_features?: unknown;
+                pricing?: { prompt?: unknown; completion?: unknown };
+            }>;
+        };
+        const models = (payload.data ?? []).flatMap((model) => {
+            const outputs = Array.isArray(model.output_modalities)
+                ? model.output_modalities
+                : [];
+            const features = Array.isArray(model.supported_features)
+                ? model.supported_features
+                : [];
+            if (
+                !outputs.includes("text") ||
+                !features.includes("tools") ||
+                typeof model.id !== "string" ||
+                !model.id.trim() ||
+                /\s/.test(model.id.trim()) ||
+                model.id.trim().length > 200
+            ) {
+                return [];
+            }
+            const id = model.id.trim();
+            // `name` repeats the id for Synthetic's own aliases, so the
+            // Hugging Face id is the only field that says what actually runs
+            // behind "syn:large:text".
+            const huggingFaceId =
+                typeof model.hugging_face_id === "string"
+                    ? model.hugging_face_id.trim()
+                    : "";
+            const name = typeof model.name === "string" ? model.name.trim() : "";
+            const label =
+                name && name !== id ? name : huggingFaceId || id;
+            const pricing = catalogPricing(
+                model.pricing?.prompt,
+                model.pricing?.completion,
+            );
+            return [{ id, label, ...(pricing ? { pricing } : {}) }];
+        });
+        res.json({ models });
+    } catch (error) {
+        res.status(500).json({
+            detail:
+                error instanceof Error
+                    ? error.message
+                    : "Failed to list Synthetic models.",
         });
     }
 });

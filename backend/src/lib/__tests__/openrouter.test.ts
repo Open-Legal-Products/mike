@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
     completeOpenCodeGoText,
+    completeSyntheticText,
     completeOpenRouterText,
     completeVercelText,
     streamOpenRouter,
@@ -396,6 +397,59 @@ describe("OpenCode Go LLM adapter", () => {
             }),
         ).rejects.toThrow(
             "OpenCode Go API key is not configured. Set OPENCODE_API_KEY",
+        );
+    });
+});
+
+describe("Synthetic LLM adapter", () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+    });
+
+    it("uses the Synthetic key, endpoint, and unprefixed model ID", async () => {
+        const fetchMock = vi.fn().mockResolvedValue(
+            new Response(
+                JSON.stringify({
+                    choices: [{ message: { content: "A Synthetic title" } }],
+                }),
+                {
+                    status: 200,
+                    headers: { "Content-Type": "application/json" },
+                },
+            ),
+        );
+        vi.stubGlobal("fetch", fetchMock);
+
+        const result = await completeSyntheticText({
+            model: "synthetic/hf:zai-org/GLM-5.2",
+            user: "Title this",
+            apiKeys: { synthetic: "syn-user-key" },
+        });
+
+        expect(result).toBe("A Synthetic title");
+        const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+        expect(url).toBe("https://api.synthetic.new/openai/v1/chat/completions");
+        expect(init.headers).toMatchObject({
+            Authorization: "Bearer syn-user-key",
+        });
+        expect(init.headers).not.toHaveProperty("X-Title");
+        // Only the router slug comes off — the "hf:" family prefix and the
+        // vendor path are part of the id Synthetic expects.
+        expect(JSON.parse(String(init.body))).toMatchObject({
+            model: "hf:zai-org/GLM-5.2",
+            stream: false,
+        });
+    });
+
+    it("names Synthetic when no key is configured", async () => {
+        await expect(
+            completeSyntheticText({
+                model: "synthetic/syn:large:text",
+                user: "Title this",
+            }),
+        ).rejects.toThrow(
+            "Synthetic API key is not configured. Set SYNTHETIC_API_KEY",
         );
     });
 });

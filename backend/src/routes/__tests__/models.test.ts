@@ -323,3 +323,117 @@ describe("GET /models/opencode-go", () => {
         expect(response.body.detail).toContain("(401)");
     });
 });
+
+describe("GET /models/synthetic", () => {
+    beforeEach(() => {
+        getUserApiKeys.mockResolvedValue({ synthetic: "syn-user-key" });
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+        delete process.env.SYNTHETIC_BASE_URL;
+    });
+
+    it("requires a configured Synthetic key even though the catalog is public", async () => {
+        getUserApiKeys.mockResolvedValue({});
+        const fetchMock = vi.fn();
+        vi.stubGlobal("fetch", fetchMock);
+
+        const response = await request(app).get("/models/synthetic");
+
+        expect(response.status).toBe(422);
+        expect(response.body.code).toBe("missing_api_key");
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("keeps tool-capable text models and strips the currency symbol from prices", async () => {
+        const fetchMock = vi.fn().mockResolvedValue(
+            new Response(
+                JSON.stringify({
+                    data: [
+                        {
+                            id: "syn:large:text",
+                            name: "syn:large:text",
+                            hugging_face_id: "zai-org/GLM-5.2",
+                            output_modalities: ["text"],
+                            supported_features: ["tools", "reasoning"],
+                            pricing: {
+                                prompt: "$0.000001",
+                                completion: "$0.000003",
+                            },
+                        },
+                        {
+                            id: "hf:openai/gpt-oss-120b",
+                            name: "GPT OSS 120B",
+                            hugging_face_id: "openai/gpt-oss-120b",
+                            output_modalities: ["text"],
+                            supported_features: ["tools"],
+                        },
+                        {
+                            id: "hf:vendor/no-tools",
+                            output_modalities: ["text"],
+                            supported_features: ["json_mode"],
+                        },
+                        {
+                            id: "hf:vendor/image-only",
+                            output_modalities: ["image"],
+                            supported_features: ["tools"],
+                        },
+                    ],
+                }),
+                {
+                    status: 200,
+                    headers: { "Content-Type": "application/json" },
+                },
+            ),
+        );
+        vi.stubGlobal("fetch", fetchMock);
+
+        const response = await request(app).get("/models/synthetic");
+
+        expect(response.status).toBe(200);
+        expect(response.body.models).toEqual([
+            {
+                id: "syn:large:text",
+                // `name` just repeats the alias, so the Hugging Face id is
+                // what tells the user which model actually answers.
+                label: "zai-org/GLM-5.2",
+                pricing: { input: "0.000001", output: "0.000003" },
+            },
+            { id: "hf:openai/gpt-oss-120b", label: "GPT OSS 120B" },
+        ]);
+        expect(fetchMock).toHaveBeenCalledWith(
+            "https://api.synthetic.new/openai/v1/models",
+        );
+    });
+
+    it("honors SYNTHETIC_BASE_URL like the chat adapter", async () => {
+        process.env.SYNTHETIC_BASE_URL = "http://localhost:4343/v1/";
+        const fetchMock = vi
+            .fn()
+            .mockResolvedValue(
+                new Response(JSON.stringify({ data: [] }), { status: 200 }),
+            );
+        vi.stubGlobal("fetch", fetchMock);
+
+        const response = await request(app).get("/models/synthetic");
+
+        expect(response.status).toBe(200);
+        expect(fetchMock.mock.calls[0]?.[0]).toBe(
+            "http://localhost:4343/v1/models",
+        );
+    });
+
+    it("reports an upstream failure as a bad gateway", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn().mockResolvedValue(new Response("down", { status: 503 })),
+        );
+
+        const response = await request(app).get("/models/synthetic");
+
+        expect(response.status).toBe(502);
+        expect(response.body.detail).toContain("(503)");
+    });
+});

@@ -64,6 +64,7 @@ function mockProfile(apiKeysDegraded: boolean) {
             openRouterModels: [],
             vercelModels: [],
             openCodeGoModels: [],
+            syntheticModels: [],
             apiKeys: emptyApiKeys(),
         },
         loading: false,

@@ -13,6 +13,7 @@ import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import {
     getOpenCodeGoModels,
     getOpenRouterModels,
+    getSyntheticModels,
     getVercelModels,
     type RouterCatalogModel,
 } from "@/app/lib/mikeApi";
@@ -75,6 +76,11 @@ const ROUTER_MODEL_ID: Record<
         shape: "a model name with no spaces",
         example: "glm-5",
     },
+    synthetic: {
+        pattern: /^[^\s]+$/,
+        shape: "a model name with no spaces",
+        example: "hf:zai-org/GLM-5.2",
+    },
 };
 
 /**
@@ -122,14 +128,21 @@ export function RouterSettingsSection() {
         updateOpenRouterModels,
         updateVercelModels,
         updateOpenCodeGoModels,
+        updateSyntheticModels,
     } = useUserProfile();
     const openRouterConfigured =
         profile?.apiKeys.openrouter.configured === true;
     const vercelConfigured = profile?.apiKeys.vercel.configured === true;
     const openCodeGoConfigured =
         profile?.apiKeys["opencode-go"].configured === true;
+    const syntheticConfigured = profile?.apiKeys.synthetic.configured === true;
 
-    if (!openRouterConfigured && !vercelConfigured && !openCodeGoConfigured) {
+    if (
+        !openRouterConfigured &&
+        !vercelConfigured &&
+        !openCodeGoConfigured &&
+        !syntheticConfigured
+    ) {
         return null;
     }
 
@@ -164,6 +177,15 @@ export function RouterSettingsSection() {
                         selection={profile?.openCodeGoModels ?? []}
                         loadCatalog={getOpenCodeGoModels}
                         onSave={updateOpenCodeGoModels}
+                    />
+                )}
+                {syntheticConfigured && (
+                    <RouterModelsSetting
+                        provider="synthetic"
+                        label="Synthetic"
+                        selection={profile?.syntheticModels ?? []}
+                        loadCatalog={getSyntheticModels}
+                        onSave={updateSyntheticModels}
                     />
                 )}
             </SettingsSection>

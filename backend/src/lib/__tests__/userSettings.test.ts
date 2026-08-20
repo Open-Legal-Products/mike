@@ -46,6 +46,7 @@ beforeEach(() => {
         openrouter: ["allowed/model"],
         vercel: [],
         "opencode-go": [],
+        synthetic: [],
     });
 });
 

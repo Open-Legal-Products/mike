@@ -380,6 +380,7 @@ export interface UserProfile {
     openRouterModels: string[];
     vercelModels: string[];
     openCodeGoModels: string[];
+    syntheticModels: string[];
     apiKeyStatus: ApiKeyStatus;
 }
 
@@ -486,6 +487,7 @@ export async function updateUserProfile(payload: {
     openRouterModels?: string[];
     vercelModels?: string[];
     openCodeGoModels?: string[];
+    syntheticModels?: string[];
 }): Promise<UserProfile> {
     return apiRequest<UserProfile>("/user/profile", {
         method: "PATCH",
@@ -511,6 +513,7 @@ export type ApiKeyProvider =
     | "openrouter"
     | "vercel"
     | "opencode-go"
+    | "synthetic"
     | "courtlistener";
 export type ApiKeySource = "user" | "env" | null;
 export type ApiKeyState = Record<
@@ -570,6 +573,13 @@ export async function getVercelModels(): Promise<RouterCatalogModel[]> {
 export async function getOpenCodeGoModels(): Promise<RouterCatalogModel[]> {
     const { models } = await apiRequest<{ models: RouterCatalogModel[] }>(
         "/models/opencode-go",
+    );
+    return models;
+}
+
+export async function getSyntheticModels(): Promise<RouterCatalogModel[]> {
+    const { models } = await apiRequest<{ models: RouterCatalogModel[] }>(
+        "/models/synthetic",
     );
     return models;
 }

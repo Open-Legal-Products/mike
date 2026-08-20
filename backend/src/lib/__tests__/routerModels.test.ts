@@ -189,6 +189,9 @@ describe("router slugs", () => {
         );
         expect(routerForModelId("vercel/openai/gpt-5.4")).toBe("vercel");
         expect(routerForModelId("opencode-go/glm-5")).toBe("opencode-go");
+        expect(routerForModelId("synthetic/hf:zai-org/GLM-5.2")).toBe(
+            "synthetic",
+        );
         expect(routerForModelId("gemini-3-flash-preview")).toBeNull();
     });
 
@@ -197,6 +200,7 @@ describe("router slugs", () => {
             openrouter: ["openai/gpt-5.4"],
             vercel: [],
             "opencode-go": ["glm-5"],
+            synthetic: ["syn:large:text"],
         };
 
         expect(
@@ -213,6 +217,13 @@ describe("router slugs", () => {
         expect(isRouterModelSelected("gemini-3-flash-preview", selections)).toBe(
             true,
         );
+        // A colon-bearing Synthetic id round-trips through the slug slice.
+        expect(
+            isRouterModelSelected("synthetic/syn:large:text", selections),
+        ).toBe(true);
+        expect(
+            isRouterModelSelected("synthetic/hf:zai-org/GLM-5.2", selections),
+        ).toBe(false);
     });
 
     it("names OpenCode Go in the outside-selection error", async () => {

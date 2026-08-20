@@ -6,6 +6,7 @@ import {
   modelDisplayName,
   openCodeGoModelOptions,
   openRouterModelOptions,
+  syntheticModelOptions,
   vercelModelOptions,
   STATIC_MODELS,
   type ModelOption,
@@ -19,6 +20,7 @@ export function ModelToggle({
   openRouterModels,
   vercelModels,
   openCodeGoModels,
+  syntheticModels,
   compact = false,
 }: {
   value: string;
@@ -30,6 +32,7 @@ export function ModelToggle({
   openRouterModels: string[];
   vercelModels: string[];
   openCodeGoModels: string[];
+  syntheticModels: string[];
   compact?: boolean;
 }): React.ReactElement {
   const [ollamaModels, setOllamaModels] = useState<ModelOption[]>([]);
@@ -50,6 +53,7 @@ export function ModelToggle({
     const openRouterOptions = openRouterModelOptions(openRouterModels);
     const vercelOptions = vercelModelOptions(vercelModels);
     const openCodeGoOptions = openCodeGoModelOptions(openCodeGoModels);
+    const syntheticOptions = syntheticModelOptions(syntheticModels);
     const localOptions = ollamaModels.map((model) => ({
       ...model,
       label: modelDisplayName(model.id),
@@ -59,6 +63,7 @@ export function ModelToggle({
       ...openRouterOptions,
       ...vercelOptions,
       ...openCodeGoOptions,
+      ...syntheticOptions,
       ...localOptions,
     ].filter(
       (model) =>
@@ -70,6 +75,7 @@ export function ModelToggle({
     openRouterModels,
     vercelModels,
     openCodeGoModels,
+    syntheticModels,
   ]);
   const selected = models.find((model) => model.id === value);
 

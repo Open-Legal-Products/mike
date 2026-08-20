@@ -19,6 +19,7 @@ vi.mock("@/app/lib/mikeApi", () => ({
     getOpenRouterModels,
     getVercelModels: vi.fn().mockResolvedValue([]),
     getOpenCodeGoModels,
+    getSyntheticModels: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("@/app/contexts/UserProfileContext", () => ({
@@ -31,14 +32,17 @@ vi.mock("@/app/contexts/UserProfileContext", () => ({
                     configured: openCodeGoConfigured.value,
                     source: openCodeGoConfigured.value ? "user" : null,
                 },
+                synthetic: { configured: false, source: null },
             },
             openRouterModels: ["anthropic/claude-sonnet-4.5"],
             vercelModels: [],
             openCodeGoModels: [],
+            syntheticModels: [],
         },
         updateOpenRouterModels,
         updateVercelModels: vi.fn(),
         updateOpenCodeGoModels,
+        updateSyntheticModels: vi.fn(),
     }),
 }));
 
@@ -336,5 +340,12 @@ describe("RouterSettingsSection with OpenCode Go configured", () => {
         expect(normalizeTypedModelId("glm-5", "opencode-go")).toBe("glm-5");
         expect(normalizeTypedModelId("glm-5", "openrouter")).toBeNull();
         expect(normalizeTypedModelId("not a model", "opencode-go")).toBeNull();
+        // Synthetic ids keep their colons and vendor path verbatim.
+        expect(
+            normalizeTypedModelId("hf:zai-org/GLM-5.2", "synthetic"),
+        ).toBe("hf:zai-org/GLM-5.2");
+        expect(
+            normalizeTypedModelId("synthetic/syn:large:text", "synthetic"),
+        ).toBe("syn:large:text");
     });
 });

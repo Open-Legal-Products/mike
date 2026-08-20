@@ -54,12 +54,14 @@ export function useSelectedModel(
         openRouterModels: string[];
         vercelModels: string[];
         openCodeGoModels: string[];
+        syntheticModels: string[];
     } | null,
 ): [string, (id: string) => void] {
     const [model, setModelState] = useState<string>(DEFAULT_MODEL_ID);
     const openRouterModels = routerSelections?.openRouterModels;
     const vercelModels = routerSelections?.vercelModels;
     const openCodeGoModels = routerSelections?.openCodeGoModels;
+    const syntheticModels = routerSelections?.syntheticModels;
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration-safe localStorage read; SSR must render the default model
@@ -67,11 +69,18 @@ export function useSelectedModel(
     }, []);
 
     useEffect(() => {
-        if (!openRouterModels || !vercelModels || !openCodeGoModels) return;
+        if (
+            !openRouterModels ||
+            !vercelModels ||
+            !openCodeGoModels ||
+            !syntheticModels
+        )
+            return;
         const selections: Record<RouterSlug, string[]> = {
             openrouter: openRouterModels,
             vercel: vercelModels,
             "opencode-go": openCodeGoModels,
+            synthetic: syntheticModels,
         };
         // eslint-disable-next-line react-hooks/set-state-in-effect -- reconciles state with data that arrives asynchronously (the loaded router lists); the functional update is a no-op unless the stored selection is genuinely stale, so it cannot cascade
         setModelState((current) => {
@@ -85,7 +94,7 @@ export function useSelectedModel(
             persist(DEFAULT_MODEL_ID);
             return DEFAULT_MODEL_ID;
         });
-    }, [openRouterModels, vercelModels, openCodeGoModels]);
+    }, [openRouterModels, vercelModels, openCodeGoModels, syntheticModels]);
 
     const setModel = useCallback((id: string) => {
         const canonical = canonicalModelId(id);

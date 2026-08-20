@@ -439,6 +439,7 @@ function TRChatInput({
     openRouterModels,
     vercelModels,
     openCodeGoModels,
+    syntheticModels,
     onHeightChange,
 }: {
     isLoading: boolean;
@@ -451,6 +452,7 @@ function TRChatInput({
     openRouterModels?: string[];
     vercelModels?: string[];
     openCodeGoModels?: string[];
+    syntheticModels?: string[];
     onHeightChange: (height: number) => void;
 }) {
     const [value, setValue] = useState("");
@@ -539,6 +541,7 @@ function TRChatInput({
                         openRouterModels={openRouterModels}
                         vercelModels={vercelModels}
                         openCodeGoModels={openCodeGoModels}
+                        syntheticModels={syntheticModels}
                     />
                     <button
                         type="button"
@@ -1935,6 +1938,7 @@ export function TRChatPanel({
                 openRouterModels={profile?.openRouterModels}
                 vercelModels={profile?.vercelModels}
                 openCodeGoModels={profile?.openCodeGoModels}
+                syntheticModels={profile?.syntheticModels}
                 onHeightChange={setInputHeight}
             />
 

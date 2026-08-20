@@ -62,7 +62,7 @@ vi.mock("../../lib/userApiKeys", () => ({
     saveUserApiKey: vi.fn(),
 }));
 vi.mock("../../lib/routerModels", () => ({
-    ROUTER_SLUGS: ["openrouter", "vercel", "opencode-go"],
+    ROUTER_SLUGS: ["openrouter", "vercel", "opencode-go", "synthetic"],
     getAllUserRouterModels: (...args: unknown[]) =>
         getAllUserRouterModels(...args),
     replaceUserRouterModels: (...args: unknown[]) =>
@@ -118,6 +118,7 @@ const API_KEY_STATUS = {
     openrouter: true,
     vercel: true,
     "opencode-go": true,
+    synthetic: true,
     courtlistener: false,
     sources: {
         claude: null,
@@ -126,6 +127,7 @@ const API_KEY_STATUS = {
         openrouter: "user",
         vercel: "user",
         "opencode-go": "user",
+        synthetic: "user",
         courtlistener: null,
     },
 };
@@ -137,6 +139,7 @@ beforeEach(() => {
         openrouter: [],
         vercel: [],
         "opencode-go": [],
+        synthetic: [],
     });
     replaceUserRouterModels.mockResolvedValue(undefined);
 });
@@ -235,6 +238,25 @@ describe("PATCH /user/profile router model selections", () => {
         );
     });
 
+    it("accepts Synthetic's colon-bearing catalog ids", async () => {
+        const response = await request(app)
+            .patch("/user/profile")
+            .send({
+                syntheticModels: [
+                    "syn:large:text",
+                    "synthetic/hf:zai-org/GLM-5.2",
+                ],
+            });
+
+        expect(response.status).toBe(200);
+        expect(replaceUserRouterModels).toHaveBeenCalledWith(
+            "user-1",
+            "synthetic",
+            ["syn:large:text", "hf:zai-org/GLM-5.2"],
+            expect.anything(),
+        );
+    });
+
     it("still rejects an OpenCode Go id containing whitespace", async () => {
         const response = await request(app)
             .patch("/user/profile")
@@ -272,5 +294,14 @@ describe("normalizeRouterModels", () => {
             "glm-5",
         ]);
         expect(normalizeRouterModels(["glm-5"], "openrouter")).toEqual([]);
+    });
+
+    it("keeps Synthetic ids whole, colons and vendor path included", () => {
+        expect(
+            normalizeRouterModels(
+                ["syn:large:text", "hf:zai-org/GLM-5.2"],
+                "synthetic",
+            ),
+        ).toEqual(["syn:large:text", "hf:zai-org/GLM-5.2"]);
     });
 });

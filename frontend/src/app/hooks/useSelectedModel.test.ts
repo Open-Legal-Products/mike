@@ -40,6 +40,7 @@ describe("useSelectedModel", () => {
                 openRouterModels: ["openai/gpt-5.4"],
                 vercelModels: [],
                 openCodeGoModels: [],
+                syntheticModels: [],
             }),
         );
 
@@ -54,6 +55,7 @@ describe("useSelectedModel", () => {
                 openRouterModels: ["openai/gpt-5.4"],
                 vercelModels: [],
                 openCodeGoModels: [],
+                syntheticModels: [],
             }),
         );
 
@@ -71,6 +73,7 @@ describe("useSelectedModel", () => {
                 openRouterModels: [],
                 vercelModels: [],
                 openCodeGoModels: ["glm-5"],
+                syntheticModels: [],
             }),
         );
 
@@ -85,10 +88,26 @@ describe("useSelectedModel", () => {
                 openRouterModels: [],
                 vercelModels: [],
                 openCodeGoModels: ["glm-5"],
+                syntheticModels: [],
             }),
         );
 
         expect(result.current[0]).toBe("gemini-3-flash-preview");
+    });
+
+    it("keeps a Synthetic selection whose id contains colons", () => {
+        window.localStorage.setItem(STORAGE_KEY, "synthetic/syn:large:text");
+
+        const { result } = renderHook(() =>
+            useSelectedModel({
+                openRouterModels: [],
+                vercelModels: [],
+                openCodeGoModels: [],
+                syntheticModels: ["syn:large:text"],
+            }),
+        );
+
+        expect(result.current[0]).toBe("synthetic/syn:large:text");
     });
 
     it("leaves a router selection alone while the lists are still loading", () => {

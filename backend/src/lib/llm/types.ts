@@ -9,6 +9,7 @@ export type Provider =
     | "openrouter"
     | "vercel"
     | "opencode-go"
+    | "synthetic"
     | "ollama";
 
 export type OpenAIToolSchema = {
@@ -50,6 +51,7 @@ export type UserApiKeys = {
     openrouter?: string | null;
     vercel?: string | null;
     "opencode-go"?: string | null;
+    synthetic?: string | null;
     courtlistener?: string | null;
 };
 

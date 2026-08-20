@@ -8,6 +8,7 @@ import type {
 import {
     openCodeGoModelId,
     openRouterModelId,
+    syntheticModelId,
     vercelModelId,
 } from "./models";
 import { createRawLlmStreamRecorder, logRawLlmStream } from "./rawStreamLog";
@@ -21,24 +22,30 @@ const VERCEL_CHAT_URL =
 const OPENCODE_GO_CHAT_URL =
     process.env.OPENCODE_GO_BASE_URL?.trim().replace(/\/+$/, "") ||
     "https://opencode.ai/zen/go/v1";
+const SYNTHETIC_CHAT_URL =
+    process.env.SYNTHETIC_BASE_URL?.trim().replace(/\/+$/, "") ||
+    "https://api.synthetic.new/openai/v1";
 
-type RouterProvider = "openrouter" | "vercel" | "opencode-go";
+type RouterProvider = "openrouter" | "vercel" | "opencode-go" | "synthetic";
 
 const ROUTER_LABELS: Record<RouterProvider, string> = {
     openrouter: "OpenRouter",
     vercel: "Vercel AI Gateway",
     "opencode-go": "OpenCode Go",
+    synthetic: "Synthetic",
 };
 
 const ROUTER_BASE_URLS: Record<RouterProvider, string> = {
     openrouter: OPENROUTER_CHAT_URL,
     vercel: VERCEL_CHAT_URL,
     "opencode-go": OPENCODE_GO_CHAT_URL,
+    synthetic: SYNTHETIC_CHAT_URL,
 };
 
 function routerForModel(model: string): RouterProvider {
     if (model.startsWith("vercel/")) return "vercel";
     if (model.startsWith("opencode-go/")) return "opencode-go";
+    if (model.startsWith("synthetic/")) return "synthetic";
     return "openrouter";
 }
 
@@ -50,6 +57,7 @@ function routerLabel(provider: RouterProvider): string {
 function routerModelId(provider: RouterProvider, model: string): string {
     if (provider === "vercel") return vercelModelId(model);
     if (provider === "opencode-go") return openCodeGoModelId(model);
+    if (provider === "synthetic") return syntheticModelId(model);
     return openRouterModelId(model);
 }
 
@@ -60,10 +68,12 @@ function routerUserKey(
         openrouter?: string | null;
         vercel?: string | null;
         "opencode-go"?: string | null;
+        synthetic?: string | null;
     },
 ): string | null | undefined {
     if (provider === "vercel") return apiKeys?.vercel;
     if (provider === "opencode-go") return apiKeys?.["opencode-go"];
+    if (provider === "synthetic") return apiKeys?.synthetic;
     return apiKeys?.openrouter;
 }
 
@@ -90,6 +100,7 @@ const ROUTER_KEY_ENV_HINTS: Record<RouterProvider, string> = {
     openrouter: "OPENROUTER_API_KEY",
     vercel: "AI_GATEWAY_API_KEY",
     "opencode-go": "OPENCODE_API_KEY",
+    synthetic: "SYNTHETIC_API_KEY",
 };
 
 function envRouterKey(provider: RouterProvider): string | undefined {
@@ -101,6 +112,9 @@ function envRouterKey(provider: RouterProvider): string | undefined {
     }
     if (provider === "opencode-go") {
         return process.env.OPENCODE_API_KEY?.trim();
+    }
+    if (provider === "synthetic") {
+        return process.env.SYNTHETIC_API_KEY?.trim();
     }
     return process.env.OPENROUTER_API_KEY?.trim();
 }
@@ -464,6 +478,7 @@ export async function completeOpenRouterText(params: {
         openrouter?: string | null;
         vercel?: string | null;
         "opencode-go"?: string | null;
+        synthetic?: string | null;
     };
 }): Promise<string> {
     const provider = routerForModel(params.model);
@@ -489,3 +504,5 @@ export const streamVercel = streamOpenRouter;
 export const completeVercelText = completeOpenRouterText;
 export const streamOpenCodeGo = streamOpenRouter;
 export const completeOpenCodeGoText = completeOpenRouterText;
+export const streamSynthetic = streamOpenRouter;
+export const completeSyntheticText = completeOpenRouterText;
