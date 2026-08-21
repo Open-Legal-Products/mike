@@ -45,6 +45,21 @@ import {
 } from "./tools/documentOps";
 import { verifyCitations } from "./verifyCitations";
 
+function isDingDuffMcpTool(tool: OpenAIToolSchema): boolean {
+  const haystack = [
+    tool.function.name,
+    tool.function.description,
+    JSON.stringify(tool.function.parameters),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return (
+    haystack.includes("dingduff") ||
+    haystack.includes("ding-duff") ||
+    haystack.includes("ding duff")
+  );
+}
+
 export type AssistantEvent =
   | { type: "reasoning"; text: string }
   | AskInputsEvent
@@ -202,8 +217,10 @@ export async function runLLMStream(params: {
     projectId,
     nonce,
   } = params;
-  const researchTools = includeResearchTools ? COURTLISTENER_TOOLS : [];
   const mcpTools = await buildUserMcpTools(userId, db);
+  const hasDingDuffMcpTools = mcpTools.some(isDingDuffMcpTool);
+  const researchTools =
+    includeResearchTools && !hasDingDuffMcpTools ? COURTLISTENER_TOOLS : [];
   const conversationTools = includeAskInputs
     ? TOOLS
     : TOOLS.filter((tool) => tool.function.name !== "ask_inputs");
@@ -215,8 +232,14 @@ export async function runLLMStream(params: {
   // Extract system prompt; pass remaining turns to the adapter as
   // plain user/assistant messages.
   const rawMsgs = apiMessages as { role: string; content: string | null }[];
-  const systemPrompt =
+  let systemPrompt =
     rawMsgs[0]?.role === "system" ? (rawMsgs[0].content ?? "") : "";
+  if (hasDingDuffMcpTools) {
+    systemPrompt = `${systemPrompt}
+
+DINGDUFF MCP CASE RETRIEVAL:
+Use the available DingDuff MCP tool(s) for case retrieval, case reading, and case-specific document lookup. Do not use CourtListener for case retrieval in this turn; the built-in CourtListener tools are intentionally unavailable when DingDuff MCP tools are present.`;
+  }
   const chatMessages: LlmMessage[] = rawMsgs
     .filter((m) => m.role !== "system")
     .map((m) => ({
