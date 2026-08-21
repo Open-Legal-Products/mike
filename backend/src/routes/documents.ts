@@ -23,7 +23,8 @@ import {
   contentSha256,
   loadActiveVersion,
 } from "../lib/documentVersions";
-import { ensureDocAccess } from "../lib/access";
+import { ensureDocAccess, resolveContentOrgId } from "../lib/access";
+import { can } from "../lib/permissions";
 import { singleFileUpload } from "../lib/upload";
 import {
   ALLOWED_DOCUMENT_TYPES,
@@ -125,7 +126,7 @@ documentsRouter.get("/:documentId/display", requireAuth, async (req, res) => {
 
   const { data: doc } = await db
     .from("documents")
-    .select("id, user_id, project_id")
+    .select("id, user_id, project_id, org_id")
     .eq("id", documentId)
     .single();
   if (!doc)
@@ -187,7 +188,7 @@ documentsRouter.post("/download-zip", requireAuth, async (req, res) => {
   const db = createServerSupabase();
   const { data: rawDocs, error } = await db
     .from("documents")
-    .select("id, current_version_id, user_id, project_id")
+    .select("id, current_version_id, user_id, project_id, org_id")
     .in("id", document_ids);
 
   if (error) return void res.status(500).json({ detail: error.message });
@@ -247,7 +248,7 @@ documentsRouter.get("/:documentId/url", requireAuth, async (req, res) => {
 
   const { data: doc, error } = await db
     .from("documents")
-    .select("id, user_id, project_id")
+    .select("id, user_id, project_id, org_id")
     .eq("id", documentId)
     .single();
   if (error || !doc)
@@ -298,7 +299,7 @@ documentsRouter.get("/:documentId/docx", requireAuth, async (req, res) => {
 
   const { data: doc, error } = await db
     .from("documents")
-    .select("id, user_id, project_id")
+    .select("id, user_id, project_id, org_id")
     .eq("id", documentId)
     .single();
   if (error || !doc)
@@ -359,7 +360,7 @@ documentsRouter.get("/:documentId/versions", requireAuth, async (req, res) => {
 
   const { data: doc } = await db
     .from("documents")
-    .select("id, current_version_id, user_id, project_id")
+    .select("id, current_version_id, user_id, project_id, org_id")
     .eq("id", documentId)
     .single();
   if (!doc)
@@ -411,18 +412,18 @@ documentsRouter.post(
 
     const { data: targetDoc } = await db
       .from("documents")
-      .select("id, user_id, project_id")
+      .select("id, user_id, project_id, org_id")
       .eq("id", documentId)
       .single();
     if (!targetDoc)
       return void res.status(404).json({ detail: "Document not found" });
     const targetAccess = await ensureDocAccess(targetDoc, userId, userEmail, db);
-    if (!targetAccess.ok)
+    if (!targetAccess.ok || !can(targetAccess.projectRole, "content.edit"))
       return void res.status(404).json({ detail: "Document not found" });
 
     const { data: sourceDoc } = await db
       .from("documents")
-      .select("id, user_id, project_id")
+      .select("id, user_id, project_id, org_id")
       .eq("id", sourceDocumentId)
       .single();
     if (!sourceDoc)
@@ -596,13 +597,13 @@ documentsRouter.post(
 
     const { data: doc } = await db
       .from("documents")
-      .select("id, user_id, project_id, current_version_id")
+      .select("id, user_id, project_id, current_version_id, org_id")
       .eq("id", documentId)
       .single();
     if (!doc)
       return void res.status(404).json({ detail: "Document not found" });
     const access = await ensureDocAccess(doc, userId, userEmail, db);
-    if (!access.ok)
+    if (!access.ok || !can(access.projectRole, "content.edit"))
       return void res.status(404).json({ detail: "Document not found" });
 
     const suffix = file.originalname.includes(".")
@@ -749,13 +750,13 @@ documentsRouter.patch(
 
     const { data: doc } = await db
       .from("documents")
-      .select("id, user_id, project_id")
+      .select("id, user_id, project_id, org_id")
       .eq("id", documentId)
       .single();
     if (!doc)
       return void res.status(404).json({ detail: "Document not found" });
     const access = await ensureDocAccess(doc, userId, userEmail, db);
-    if (!access.ok)
+    if (!access.ok || !can(access.projectRole, "content.edit"))
       return void res.status(404).json({ detail: "Document not found" });
 
     const raw = req.body?.filename;
@@ -798,7 +799,7 @@ documentsRouter.put(
 
     const { data: doc } = await db
       .from("documents")
-      .select("id, user_id, project_id")
+      .select("id, user_id, project_id, org_id")
       .eq("id", documentId)
       .single();
     if (!doc)
@@ -945,7 +946,7 @@ documentsRouter.delete(
 
     const { data: doc } = await db
       .from("documents")
-      .select("id, user_id, project_id, current_version_id")
+      .select("id, user_id, project_id, current_version_id, org_id")
       .eq("id", documentId)
       .single();
     if (!doc)
@@ -1059,7 +1060,7 @@ documentsRouter.get(
 
     const { data: doc } = await db
       .from("documents")
-      .select("id, user_id, project_id")
+      .select("id, user_id, project_id, org_id")
       .eq("id", documentId)
       .single();
     if (!doc)
@@ -1122,7 +1123,7 @@ async function handleEditResolution(
     });
     const { data: doc } = await db
       .from("documents")
-      .select("current_version_id, user_id, project_id")
+      .select("current_version_id, user_id, project_id, org_id")
       .eq("id", documentId)
       .single();
     if (!doc) {
@@ -1158,14 +1159,14 @@ async function handleEditResolution(
 
   const { data: doc, error: docErr } = await db
     .from("documents")
-    .select("id, current_version_id, user_id, project_id")
+    .select("id, current_version_id, user_id, project_id, org_id")
     .eq("id", documentId)
     .single();
   devLog(`[edit-resolution] fetched doc`, { doc, docErr });
   if (!doc)
     return void res.status(404).json({ detail: "Document not found" });
   const access = await ensureDocAccess(doc, userId, userEmail, db);
-  if (!access.ok)
+  if (!access.ok || !can(access.projectRole, "content.edit"))
     return void res.status(404).json({ detail: "Document not found" });
 
   const active = await loadActiveVersion(documentId, db);
@@ -1337,12 +1338,14 @@ export async function handleDocumentUpload(
       });
 
   const content = file.buffer;
+  const orgId = await resolveContentOrgId(db, { userId, projectId });
   const { data: doc, error: insertErr } = await db
     .from("documents")
     .insert({
       project_id: projectId,
       user_id: userId,
       status: "processing",
+      org_id: orgId,
       library_kind: options.libraryKind ?? "file",
       library_folder_id: options.libraryFolderId ?? null,
     })

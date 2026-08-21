@@ -384,7 +384,13 @@ export async function buildUserAccountExport(
         userEmail
             ? selectAll(db, "tabular_reviews", (query) =>
                   query
-                      .filter("shared_with", "cs", JSON.stringify([userEmail]))
+                      .filter(
+                          "shared_with",
+                          "cs",
+                          // shared_with entries are stored lowercased; a raw
+                          // mixed-case login email would silently miss them.
+                          JSON.stringify([userEmail.trim().toLowerCase()]),
+                      )
                       .neq("user_id", userId)
                       .order("created_at", { ascending: true }),
                   "id, user_id, project_id, title, practice, created_at, updated_at",
@@ -396,6 +402,20 @@ export async function buildUserAccountExport(
                 .order("created_at", { ascending: true }),
         ),
     ]);
+
+    // Organization membership + the orgs/teams the user belongs to, for a
+    // complete GDPR-style export of their multi-tenant footprint.
+    const orgMemberships = await selectAll(db, "org_members", (query) =>
+        query.eq("user_id", userId).order("created_at", { ascending: true }),
+    );
+    const orgIds = idsFrom(orgMemberships, "org_id");
+    const [organizations, teamMemberships] = await Promise.all([
+        selectByIds(db, "organizations", "id", orgIds),
+        selectAll(db, "team_members", (query) =>
+            query.eq("user_id", userId).order("created_at", { ascending: true }),
+        ),
+    ]);
+    const teams = await selectByIds(db, "teams", "org_id", orgIds);
 
     const projectIds = idsFrom(projects);
     const projectDocuments = await selectByIds(
@@ -421,6 +441,10 @@ export async function buildUserAccountExport(
         profile,
         api_keys: apiKeys,
         router_models: routerModels,
+        organizations,
+        org_members: orgMemberships,
+        teams,
+        team_members: teamMemberships,
         projects,
         project_subfolders: folders,
         documents,
