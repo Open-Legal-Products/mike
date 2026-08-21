@@ -365,6 +365,47 @@ export async function exportTabularReviewsData(): Promise<{
     return apiBlobRequest("/user/tabular-reviews/export");
 }
 
+// --- Async (durable) exports -----------------------------------------------
+// POST schedules a backend job that builds the export off the request thread;
+// the status endpoint is polled until "done"; the download endpoint streams
+// the artifact. Unlike the legacy GET exports above, a large export can
+// neither time out the request nor die with a closed tab, and a re-click
+// while one is building dedupes onto the running job.
+
+export type UserExportType = "account" | "chats" | "tabular-reviews";
+
+export type UserExportStatus =
+    | { status: "pending" }
+    | { status: "failed" }
+    | { status: "done"; filename: string | null };
+
+export async function startUserExport(
+    type: UserExportType,
+): Promise<{ export_id: string }> {
+    return apiRequest<{ export_id: string }>("/user/exports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type }),
+    });
+}
+
+export async function getUserExportStatus(
+    exportId: string,
+): Promise<UserExportStatus> {
+    return apiRequest<UserExportStatus>(
+        `/user/exports/${encodeURIComponent(exportId)}`,
+    );
+}
+
+export async function downloadUserExport(exportId: string): Promise<{
+    blob: Blob;
+    filename: string | null;
+}> {
+    return apiBlobRequest(
+        `/user/exports/${encodeURIComponent(exportId)}/download`,
+    );
+}
+
 export interface UserProfile {
     displayName: string | null;
     organisation: string | null;
