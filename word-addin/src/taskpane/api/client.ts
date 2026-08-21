@@ -289,6 +289,8 @@ export async function streamWordChat(payload: {
   document_name: string;
   storage: "cloud" | "local";
   edit_apply_mode: "direct" | "approval";
+  /** Declares that this pane executes client_tool_call frames. */
+  client_tools?: boolean;
   signal?: AbortSignal;
 }): Promise<Response> {
   const { signal, ...body } = payload;
@@ -300,6 +302,26 @@ export async function streamWordChat(payload: {
       Accept: "text/event-stream",
       ...authHeaders,
     },
+    body: JSON.stringify(body),
+    signal,
+  });
+}
+
+/**
+ * Return channel for a client-executed tool call: posts the Office.js
+ * outcome back to the backend tool loop that is awaiting it. 404 means the
+ * call already expired (timeout or aborted stream) — callers should treat
+ * that as a no-op, not a failure.
+ */
+export async function postWordChatToolResult(payload: {
+  tool_call_id: string;
+  result: unknown;
+  signal?: AbortSignal;
+}): Promise<void> {
+  const { signal, ...body } = payload;
+  await apiRequest<void>("/word-chat/tool-result", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
     signal,
   });

@@ -89,6 +89,45 @@ export interface WordChatSubmitOptions {
   onTurnReady?: () => void;
 }
 
+/**
+ * Per-edit outcome of one apply_word_edits tool call, in request order.
+ * `index` is the position within that call's edits array; the status
+ * vocabulary is the wire contract with the backend's normalizeEditOutcomes.
+ *
+ * "proposed" is Review mode's success: the edit was validated against the
+ * live document and its card is waiting on the user's Apply click. Only
+ * "applied"/"applied-unmanaged" mean the document actually changed.
+ */
+export interface WordToolEditOutcome {
+  index: number;
+  status:
+    | "applied"
+    /** Applied as a real tracked change; the add-in lost review controls. */
+    | "applied-unmanaged"
+    /** Validated, card ready, awaiting the user's approval. */
+    | "proposed"
+    | "not-found"
+    | "ambiguous"
+    | "skipped"
+    | "error";
+  matches?: number;
+  /** Word's skip reason ("pre-existing-revisions", "unsearchable", …). */
+  reason?: string;
+  error?: string;
+}
+
+/** One edit of an apply_word_edits batch with its message-wide block index. */
+export interface WordToolEditItem {
+  /**
+   * Position in the message's edit key space (see getToolEditKey). Derived
+   * from the edit's REQUESTED index in the tool input, so the pane, the
+   * backend's persisted markers, and history restore all count the same
+   * thing even if a row was rejected client-side.
+   */
+  blockIndex: number;
+  edit: RedlineEdit;
+}
+
 export interface WordEditStreamController {
   processLiveRedlines: (
     messageId: string,
