@@ -284,7 +284,10 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      # Repo-root context: the frontend's shared types import type-only
+      # definitions from backend/src (see frontend/Dockerfile).
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://localhost:54321}
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY}

@@ -1,0 +1,17 @@
+# BuildKit per-Dockerfile ignore (context is the repo root — see Dockerfile).
+# Keep the context lean: only frontend sources + backend/src type sources.
+**/node_modules
+**/.next
+**/.open-next
+**/out
+**/dist
+**/build
+.git
+backend/dist
+backend/supabase
+word-addin
+desktop
+docs
+**/.env
+**/.env.*
+**/*.log
