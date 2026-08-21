@@ -7,7 +7,7 @@ vi.mock("../../supabase", () => ({
 const conversionGetJob = vi.fn();
 vi.mock("../../queue/conversionQueue", () => ({
     getConversionQueue: () => ({ getJob: conversionGetJob }),
-    conversionJobId: (versionId: string) => `convert:${versionId}`,
+    conversionJobId: (versionId: string) => `convert_${versionId}`,
 }));
 
 const extractionGetJob = vi.fn();
@@ -15,8 +15,8 @@ vi.mock("../../queue/extractionQueue", () => ({
     getExtractionQueue: () => ({ getJob: extractionGetJob }),
     extractionJobId: (reviewId: string, rowId: string, columnIndex?: number) =>
         columnIndex == null
-            ? `extract:${reviewId}:${rowId}`
-            : `extract:${reviewId}:${rowId}:${columnIndex}`,
+            ? `extract_${reviewId}_${rowId}`
+            : `extract_${reviewId}_${rowId}_${columnIndex}`,
 }));
 
 import {
@@ -115,7 +115,7 @@ describe("sweepStaleProcessingDocuments", () => {
     it("skips documents whose conversion job is still live (queue on)", async () => {
         process.env.ASYNC_DOCUMENT_CONVERSION = "true";
         conversionGetJob.mockImplementation(async (jobId: string) =>
-            jobId === "convert:ver-live" ? { id: jobId } : null,
+            jobId === "convert_ver-live" ? { id: jobId } : null,
         );
         const db = makeDb({
             documents: [
@@ -146,7 +146,7 @@ describe("sweepStaleGeneratingCells", () => {
     it("flips orphaned generating cells and spares those with a live job", async () => {
         process.env.ASYNC_TABULAR_EXTRACTION = "true";
         extractionGetJob.mockImplementation(async (jobId: string) =>
-            jobId === "extract:rev-1:row-live" ? { id: jobId } : null,
+            jobId === "extract_rev-1_row-live" ? { id: jobId } : null,
         );
         const db = makeDb({
             tabular_cells: [
@@ -167,7 +167,7 @@ describe("sweepStaleGeneratingCells", () => {
     it("spares a cell whose single-cell (regenerate) job is live", async () => {
         process.env.ASYNC_TABULAR_EXTRACTION = "true";
         extractionGetJob.mockImplementation(async (jobId: string) =>
-            jobId === "extract:rev-1:row-1:2" ? { id: jobId } : null,
+            jobId === "extract_rev-1_row-1_2" ? { id: jobId } : null,
         );
         const db = makeDb({
             tabular_cells: [

@@ -45,7 +45,8 @@ export function enqueueAppJobDelivery(
         "deliver",
         { dbJobId },
         {
-            jobId: `dbjob:${dbJobId}:${opts?.attempt ?? 0}`,
+            // Underscores, not ':' — see conversionJobId's note on BullMQ ids.
+            jobId: `dbjob_${dbJobId}_${opts?.attempt ?? 0}`,
             attempts: 1,
             ...(opts?.delayMs && opts.delayMs > 0
                 ? { delay: opts.delayMs }

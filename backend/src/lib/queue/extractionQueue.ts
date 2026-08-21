@@ -51,15 +51,21 @@ export function getExtractionQueue(): Queue<ExtractionJobData> {
     return queue;
 }
 
-/** Deterministic BullMQ jobId for one (review, row[, column]) extraction. */
+/**
+ * Deterministic BullMQ jobId for one (review, row[, column]) extraction
+ * (doubles as the DB-queue dedupe key). Underscore separator, NOT ':' —
+ * BullMQ reserves ':' as its Redis key separator and rejects most
+ * colon-containing custom ids (only a legacy 3-segment form is tolerated,
+ * so `extract:a:b` would work while `extract:a:b:0` throws — a trap).
+ */
 export function extractionJobId(
     reviewId: string,
     rowId: string,
     columnIndex?: number,
 ): string {
     return columnIndex == null
-        ? `extract:${reviewId}:${rowId}`
-        : `extract:${reviewId}:${rowId}:${columnIndex}`;
+        ? `extract_${reviewId}_${rowId}`
+        : `extract_${reviewId}_${rowId}_${columnIndex}`;
 }
 
 /**

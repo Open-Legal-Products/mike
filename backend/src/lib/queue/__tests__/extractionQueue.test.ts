@@ -53,15 +53,15 @@ beforeEach(() => {
 
 describe("extractionJobId", () => {
     it("is deterministic on (reviewId, rowId)", () => {
-        expect(extractionJobId("rev-1", "row-1")).toBe("extract:rev-1:row-1");
+        expect(extractionJobId("rev-1", "row-1")).toBe("extract_rev-1_row-1");
     });
 
     it("suffixes single-cell jobs so they never dedupe against full-row jobs", () => {
         expect(extractionJobId("rev-1", "row-1", 2)).toBe(
-            "extract:rev-1:row-1:2",
+            "extract_rev-1_row-1_2",
         );
         expect(extractionJobId("rev-1", "row-1", 0)).toBe(
-            "extract:rev-1:row-1:0",
+            "extract_rev-1_row-1_0",
         );
     });
 });
@@ -72,19 +72,19 @@ describe("enqueueExtraction (single-cell)", () => {
 
         const [, data, opts] = add.mock.calls[0];
         expect(data.columnIndex).toBe(1);
-        expect(opts.jobId).toBe("extract:rev-1:row-1:1");
+        expect(opts.jobId).toBe("extract_rev-1_row-1_1");
     });
 });
 
 describe("enqueueExtraction", () => {
-    it("dedupes with a deterministic jobId of extract:<reviewId>:<rowId>", () => {
+    it("dedupes with a deterministic jobId of extract_<reviewId>_<rowId>", () => {
         enqueueExtraction(DATA);
 
         expect(add).toHaveBeenCalledTimes(1);
         const [name, data, opts] = add.mock.calls[0];
         expect(name).toBe("extract");
         expect(data).toEqual(DATA);
-        expect(opts.jobId).toBe("extract:rev-1:row-1");
+        expect(opts.jobId).toBe("extract_rev-1_row-1");
     });
 
     it("retries with backoff and removes terminal jobs so re-runs can re-enqueue", () => {
@@ -115,12 +115,12 @@ describe("removeQueuedExtractionJobs", () => {
         await removeQueuedExtractionJobs("rev-1", ["row-1", "row-2"], [0, 2]);
 
         expect(getJob.mock.calls.map((c) => c[0])).toEqual([
-            "extract:rev-1:row-1",
-            "extract:rev-1:row-1:0",
-            "extract:rev-1:row-1:2",
-            "extract:rev-1:row-2",
-            "extract:rev-1:row-2:0",
-            "extract:rev-1:row-2:2",
+            "extract_rev-1_row-1",
+            "extract_rev-1_row-1_0",
+            "extract_rev-1_row-1_2",
+            "extract_rev-1_row-2",
+            "extract_rev-1_row-2_0",
+            "extract_rev-1_row-2_2",
         ]);
     });
 
@@ -194,7 +194,7 @@ describe("postgres driver routing", () => {
                 Record<string, unknown>,
             ];
             expect(input.kind).toBe("extraction.extract");
-            expect(input.dedupeKey).toBe("extract:rev-1:row-1:2");
+            expect(input.dedupeKey).toBe("extract_rev-1_row-1_2");
         } finally {
             process.env.QUEUE_DRIVER = "redis";
         }
@@ -212,9 +212,9 @@ describe("postgres driver routing", () => {
             );
             expect(rpc).toHaveBeenCalledWith("cancel_db_jobs", {
                 p_dedupe_keys: [
-                    "extract:rev-1:row-1",
-                    "extract:rev-1:row-1:0",
-                    "extract:rev-1:row-1:1",
+                    "extract_rev-1_row-1",
+                    "extract_rev-1_row-1_0",
+                    "extract_rev-1_row-1_1",
                 ],
             });
             expect(out).toEqual({ removed: 3, canceled: 0 });

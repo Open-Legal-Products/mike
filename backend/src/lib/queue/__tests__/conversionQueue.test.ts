@@ -51,19 +51,19 @@ beforeEach(() => {
 
 describe("conversionJobId", () => {
     it("is deterministic on the versionId", () => {
-        expect(conversionJobId("ver-1")).toBe("convert:ver-1");
+        expect(conversionJobId("ver-1")).toBe("convert_ver-1");
     });
 });
 
 describe("enqueueConversion", () => {
-    it("dedupes with a deterministic jobId of convert:<versionId>", () => {
+    it("dedupes with a deterministic jobId of convert_<versionId>", () => {
         enqueueConversion(DATA);
 
         expect(add).toHaveBeenCalledTimes(1);
         const [name, data, opts] = add.mock.calls[0];
         expect(name).toBe("convert");
         expect(data).toEqual(DATA);
-        expect(opts.jobId).toBe("convert:ver-1");
+        expect(opts.jobId).toBe("convert_ver-1");
     });
 
     it("retries with backoff and removes terminal jobs so re-conversions can re-enqueue", () => {
@@ -112,7 +112,7 @@ describe("enqueueConversion (postgres driver)", () => {
             expect(input.kind).toBe("conversion.convert");
             // The BullMQ jobId doubles as the DB dedupe key, so double
             // submits collapse identically on either transport.
-            expect(input.dedupeKey).toBe("convert:ver-1");
+            expect(input.dedupeKey).toBe("convert_ver-1");
             expect(input.maxAttempts).toBe(3);
         } finally {
             process.env.QUEUE_DRIVER = "redis";

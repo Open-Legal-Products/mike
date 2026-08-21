@@ -46,9 +46,15 @@ export function getConversionQueue(): Queue<ConversionJobData> {
     return queue;
 }
 
-/** Deterministic BullMQ jobId for a conversion. */
+/**
+ * Deterministic BullMQ jobId for a conversion (doubles as the DB-queue
+ * dedupe key). Underscore separator, NOT ':' — BullMQ reserves ':' as its
+ * Redis key separator and rejects most colon-containing custom ids
+ * (everything except a legacy 3-segment form kept for old repeatable jobs,
+ * which is why a colon scheme can pass one test and blow up in another).
+ */
 export function conversionJobId(versionId: string): string {
-    return `convert:${versionId}`;
+    return `convert_${versionId}`;
 }
 
 /**
