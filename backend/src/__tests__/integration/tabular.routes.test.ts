@@ -1042,4 +1042,150 @@ describe("tabular.routes", () => {
       expect(res.body).toEqual([{ id: "chat-1", title: "T", user_id: "u1" }]);
         });
     });
+
+    // ── DELETE / PATCH /tabular-review/:reviewId/chats/:chatId ────────────
+    // Both writes share one preamble: the review in the URL must exist and be
+    // accessible, and the chat must actually belong to THAT review. Without
+    // it, any chat id could be reached through any (or a nonexistent) review
+    // path — the ownership filter on the write was the only thing standing
+    // between a caller and someone else's thread.
+    describe("review-chat writes", () => {
+        const CHAT_IN_R1 = {
+            data: { id: "chat-1", review_id: "r1", user_id: "u1" },
+            error: null,
+        };
+
+        it("returns 404 when the review does not exist", async () => {
+            supabaseState.tables.tabular_reviews = { data: null, error: null };
+            supabaseState.tables.tabular_review_chats = CHAT_IN_R1;
+
+            const del = await request(app)
+                .delete("/tabular-review/r-missing/chats/chat-1")
+                .set(...AUTH);
+            expect(del.status).toBe(404);
+            expect(del.body.detail).toBe("Review not found");
+
+            const rename = await request(app)
+                .patch("/tabular-review/r-missing/chats/chat-1")
+                .set(...AUTH)
+                .send({ title: "Renamed" });
+            expect(rename.status).toBe(404);
+            expect(rename.body.detail).toBe("Review not found");
+        });
+
+        it("returns 404 when the caller has no access to the review", async () => {
+            supabaseState.tables.tabular_reviews = {
+                data: { id: "r1", user_id: "other", project_id: null },
+                error: null,
+            };
+            supabaseState.tables.tabular_review_chats = CHAT_IN_R1;
+            ensureReviewAccess.mockResolvedValue({ ok: false });
+
+            const del = await request(app)
+                .delete("/tabular-review/r1/chats/chat-1")
+                .set(...AUTH);
+            expect(del.status).toBe(404);
+            expect(del.body.detail).toBe("Review not found");
+
+            const rename = await request(app)
+                .patch("/tabular-review/r1/chats/chat-1")
+                .set(...AUTH)
+                .send({ title: "Renamed" });
+            expect(rename.status).toBe(404);
+            expect(rename.body.detail).toBe("Review not found");
+        });
+
+        it("returns 404 when the chat belongs to a different review", async () => {
+            supabaseState.tables.tabular_reviews = {
+                data: { id: "r1", user_id: "u1", project_id: null },
+                error: null,
+            };
+            supabaseState.tables.tabular_review_chats = {
+                data: { id: "chat-1", review_id: "r2" },
+                error: null,
+            };
+
+            const del = await request(app)
+                .delete("/tabular-review/r1/chats/chat-1")
+                .set(...AUTH);
+            expect(del.status).toBe(404);
+            expect(del.body.detail).toBe("Chat not found");
+
+            const rename = await request(app)
+                .patch("/tabular-review/r1/chats/chat-1")
+                .set(...AUTH)
+                .send({ title: "Renamed" });
+            expect(rename.status).toBe(404);
+            expect(rename.body.detail).toBe("Chat not found");
+        });
+
+        it("returns 404 when the chat does not exist", async () => {
+            supabaseState.tables.tabular_reviews = {
+                data: { id: "r1", user_id: "u1", project_id: null },
+                error: null,
+            };
+            supabaseState.tables.tabular_review_chats = {
+                data: null,
+                error: null,
+            };
+
+            const res = await request(app)
+                .delete("/tabular-review/r1/chats/chat-missing")
+                .set(...AUTH);
+
+            expect(res.status).toBe(404);
+            expect(res.body.detail).toBe("Chat not found");
+        });
+
+        it("returns 403 for a collaborator who is not the chat's creator", async () => {
+            // The review IS accessible (shared/org collaborator), but the
+            // chat belongs to someone else. Before the owner check lived in
+            // the gate, this returned a success-shaped 204 while the
+            // user_id-scoped write silently matched zero rows.
+            supabaseState.tables.tabular_reviews = {
+                data: { id: "r1", user_id: "other", project_id: null },
+                error: null,
+            };
+            supabaseState.tables.tabular_review_chats = {
+                data: { id: "chat-1", review_id: "r1", user_id: "other" },
+                error: null,
+            };
+
+            const rename = await request(app)
+                .patch("/tabular-review/r1/chats/chat-1")
+                .set(...AUTH)
+                .send({ title: "Renamed" });
+            expect(rename.status).toBe(403);
+            expect(rename.body.detail).toBe(
+                "Only the chat's creator can modify it",
+            );
+
+            const del = await request(app)
+                .delete("/tabular-review/r1/chats/chat-1")
+                .set(...AUTH);
+            expect(del.status).toBe(403);
+            expect(del.body.detail).toBe(
+                "Only the chat's creator can modify it",
+            );
+        });
+
+        it("returns 204 for the owner once the review and chat line up", async () => {
+            supabaseState.tables.tabular_reviews = {
+                data: { id: "r1", user_id: "u1", project_id: null },
+                error: null,
+            };
+            supabaseState.tables.tabular_review_chats = CHAT_IN_R1;
+
+            const rename = await request(app)
+                .patch("/tabular-review/r1/chats/chat-1")
+                .set(...AUTH)
+                .send({ title: "Renamed" });
+            expect(rename.status).toBe(204);
+
+            const del = await request(app)
+                .delete("/tabular-review/r1/chats/chat-1")
+                .set(...AUTH);
+            expect(del.status).toBe(204);
+        });
+    });
 });

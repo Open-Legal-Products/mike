@@ -1078,6 +1078,8 @@ create table if not exists public.chats (
   project_id uuid references public.projects(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
   title text,
+  shared_with jsonb not null default '[]'::jsonb,
+  org_id uuid references public.organizations(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
@@ -1090,8 +1092,11 @@ create index if not exists chats_user_created_idx
 create index if not exists idx_chats_project
   on public.chats(project_id);
 
+create index if not exists idx_chats_org on public.chats(org_id);
+
 create or replace function public.get_chats_overview(
   p_user_id text,
+  p_user_email text default null,
   p_limit integer default null,
   p_offset integer default 0
 )
@@ -1101,7 +1106,8 @@ returns table (
   user_id text,
   title text,
   created_at timestamptz,
-  project_name text
+  project_name text,
+  is_owner boolean
 )
 language sql
 stable
@@ -1112,20 +1118,39 @@ as $$
     c.user_id::text as user_id,
     c.title,
     c.created_at,
-    p.name as project_name
+    p.name as project_name,
+    (c.user_id::text = p_user_id) as is_owner
   from public.chats c
   left join public.projects p on p.id = c.project_id
   where c.user_id::text = p_user_id
      or (
-       p.id is not null
-       and p.user_id::text = p_user_id
+       coalesce(p_user_email, '') <> ''
+       and c.user_id::text <> p_user_id
+       and c.shared_with @> jsonb_build_array(p_user_email)
+     )
+     or (
+       c.org_id is not null
+       and c.user_id::text <> p_user_id
+       and exists (
+         select 1 from public.org_members m
+         where m.org_id = c.org_id and m.user_id::text = p_user_id
+       )
      )
      or (
        p.id is not null
-       and p.org_id is not null
-       and exists (
-         select 1 from public.org_members m
-         where m.org_id = p.org_id and m.user_id::text = p_user_id
+       and (
+         p.user_id::text = p_user_id
+         or (
+           coalesce(p_user_email, '') <> ''
+           and p.shared_with @> jsonb_build_array(p_user_email)
+         )
+         or (
+           p.org_id is not null
+           and exists (
+             select 1 from public.org_members m
+             where m.org_id = p.org_id and m.user_id::text = p_user_id
+           )
+         )
        )
      )
   order by c.created_at desc, c.id asc

@@ -29,7 +29,7 @@ import {
 import {
     getUserModelSettings,
 } from "../lib/userSettings";
-import { checkProjectAccess } from "../lib/access";
+import { checkProjectAccess, resolveContentOrgId } from "../lib/access";
 import { can } from "../lib/permissions";
 import { safeErrorLog, safeErrorMessage } from "../lib/safeError";
 import { generateAssistantChatTitle } from "../lib/chatTitle";
@@ -111,6 +111,11 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
     let chatTitle: string | null = null;
 
     if (chatId) {
+        // Binding check only: the chat must live under the project in the
+        // URL. Access itself was already derived from the project above —
+        // project chats are collaborative, so any editor may append to any
+        // chat in the project (the same verdict ensureChatAccess reaches
+        // through its project branch).
         const { data: existing } = await db
             .from("chats")
             .select("id, title, project_id")
@@ -122,9 +127,10 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
     }
 
     if (!chatId) {
+        const orgId = await resolveContentOrgId(db, { userId, projectId });
         const { data: newChat, error } = await db
             .from("chats")
-            .insert({ user_id: userId, project_id: projectId })
+            .insert({ user_id: userId, project_id: projectId, org_id: orgId })
             .select("id, title")
             .single();
         if (error || !newChat)

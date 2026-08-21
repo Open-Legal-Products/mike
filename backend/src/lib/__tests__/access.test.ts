@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     checkProjectAccess,
+    ensureChatAccess,
     ensureDocAccess,
     ensureReviewAccess,
     filterAccessibleDocumentIds,
@@ -428,5 +429,222 @@ describe("org RBAC access", () => {
                 db,
             ),
         ).resolves.toEqual(["doc-a"]);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Chats gained the reviews' sharing shape (shared_with + org_id), so
+// ensureChatAccess must derive the identical four branches — both helpers now
+// delegate to the same `ensureSharedResourceAccess`. These cases pin each
+// branch and, above all, the strongest-wins merge: adding someone to a chat's
+// share list must never demote them, and org membership must never shadow an
+// explicit share.
+// ---------------------------------------------------------------------------
+describe("ensureChatAccess", () => {
+    // alice owns org-a and proj-a inside it; dave is an org admin, carol a
+    // plain member. bob belongs to org-b only (the outsider). frank owns some
+    // of the chats but is a member of nothing.
+    const db = makeDb({
+        org_members: [
+            { org_id: "org-a", user_id: "alice", role: "owner" },
+            { org_id: "org-a", user_id: "carol", role: "member" },
+            { org_id: "org-a", user_id: "dave", role: "admin" },
+            { org_id: "org-b", user_id: "bob", role: "owner" },
+        ],
+        projects: [
+            { id: "proj-a", user_id: "alice", shared_with: [], org_id: "org-a" },
+        ],
+    });
+
+    it("grants the chat's own user the owner role", async () => {
+        await expect(
+            ensureChatAccess(
+                {
+                    user_id: "carol",
+                    project_id: null,
+                    shared_with: [],
+                    org_id: "org-a",
+                },
+                "carol",
+                "carol@example.com",
+                db,
+            ),
+        ).resolves.toMatchObject({
+            ok: true,
+            isOwner: true,
+            role: null,
+            canManage: true,
+            projectRole: "owner",
+        });
+    });
+
+    it("grants a directly shared email editor access, case-insensitively", async () => {
+        // A standalone chat (no project) is shareable through its own list.
+        await expect(
+            ensureChatAccess(
+                {
+                    user_id: "alice",
+                    project_id: null,
+                    shared_with: ["Carol@Example.COM"],
+                    org_id: null,
+                },
+                "carol",
+                " CAROL@example.com ",
+                db,
+            ),
+        ).resolves.toMatchObject({
+            ok: true,
+            isOwner: false,
+            role: null,
+            canManage: false,
+            projectRole: "editor",
+        });
+    });
+
+    it("inherits the project verdict for a chat inside a project", async () => {
+        // frank's chat lives in alice's project: everyone with standing on
+        // proj-a gets that same standing on the chat, never ownership of it.
+        const chat = {
+            user_id: "frank",
+            project_id: "proj-a",
+            shared_with: [],
+            org_id: "org-a",
+        };
+        await expect(
+            ensureChatAccess(chat, "alice", "alice@example.com", db),
+        ).resolves.toMatchObject({
+            ok: true,
+            isOwner: false,
+            projectRole: "owner",
+        });
+        await expect(
+            ensureChatAccess(chat, "dave", "dave@example.com", db),
+        ).resolves.toMatchObject({
+            ok: true,
+            role: "admin",
+            canManage: true,
+            projectRole: "manager",
+        });
+        await expect(
+            ensureChatAccess(chat, "carol", "carol@example.com", db),
+        ).resolves.toMatchObject({
+            ok: true,
+            role: "member",
+            canManage: false,
+            projectRole: "viewer",
+        });
+    });
+
+    it("grants access through the chat's own org when it has no project", async () => {
+        const chat = {
+            user_id: "alice",
+            project_id: null,
+            shared_with: [],
+            org_id: "org-a",
+        };
+        await expect(
+            ensureChatAccess(chat, "carol", "carol@example.com", db),
+        ).resolves.toMatchObject({
+            ok: true,
+            isOwner: false,
+            role: "member",
+            projectRole: "viewer",
+        });
+        await expect(
+            ensureChatAccess(chat, "dave", "dave@example.com", db),
+        ).resolves.toMatchObject({
+            ok: true,
+            isOwner: false,
+            role: "admin",
+            projectRole: "manager",
+        });
+    });
+
+    it("does not downgrade a plain org member who is also in shared_with", async () => {
+        // The regression this merge exists for: carol sees org-a content as a
+        // viewer, but the explicit share is a content-collaboration grant —
+        // the org branch must not shadow it back down to viewer.
+        await expect(
+            ensureChatAccess(
+                {
+                    user_id: "alice",
+                    project_id: null,
+                    shared_with: ["carol@example.com"],
+                    org_id: "org-a",
+                },
+                "carol",
+                "carol@example.com",
+                db,
+            ),
+        ).resolves.toMatchObject({ ok: true, projectRole: "editor" });
+    });
+
+    it("does not demote the project owner when the chat is shared with them", async () => {
+        // Mirror image: frank politely adds alice to his chat's share list.
+        // The direct share (editor) must not shadow her standing as owner of
+        // the project the chat lives in.
+        await expect(
+            ensureChatAccess(
+                {
+                    user_id: "frank",
+                    project_id: "proj-a",
+                    shared_with: ["alice@example.com"],
+                    org_id: "org-a",
+                },
+                "alice",
+                "alice@example.com",
+                db,
+            ),
+        ).resolves.toMatchObject({
+            ok: true,
+            isOwner: false,
+            projectRole: "owner",
+        });
+    });
+
+    it("denies another tenant's user and an unshared standalone chat", async () => {
+        await expect(
+            ensureChatAccess(
+                {
+                    user_id: "alice",
+                    project_id: "proj-a",
+                    shared_with: [],
+                    org_id: "org-a",
+                },
+                "bob",
+                "bob@example.com",
+                db,
+            ),
+        ).resolves.toEqual({ ok: false });
+
+        await expect(
+            ensureChatAccess(
+                {
+                    user_id: "alice",
+                    project_id: null,
+                    shared_with: [],
+                    org_id: null,
+                },
+                "carol",
+                "carol@example.com",
+                db,
+            ),
+        ).resolves.toEqual({ ok: false });
+    });
+
+    it("fails closed when the caller has no email to match a share against", async () => {
+        await expect(
+            ensureChatAccess(
+                {
+                    user_id: "alice",
+                    project_id: null,
+                    shared_with: ["carol@example.com"],
+                    org_id: null,
+                },
+                "carol",
+                null,
+                db,
+            ),
+        ).resolves.toEqual({ ok: false });
     });
 });

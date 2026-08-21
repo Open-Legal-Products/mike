@@ -88,8 +88,14 @@ vi.mock("../../lib/access", () => ({
     checkProjectAccess: (...args: unknown[]) => checkProjectAccess(...args),
     ensureDocAccess: vi.fn(async () => ({ ok: true, isOwner: true })),
     ensureReviewAccess: vi.fn(async () => ({ ok: true, isOwner: true })),
+    ensureChatAccess: vi.fn(async () => ({
+        ok: true,
+        isOwner: true,
+        projectRole: "owner",
+    })),
     filterAccessibleDocumentIds: vi.fn(async (ids: string[]) => ids),
     listAccessibleProjectIds: vi.fn(async () => []),
+    resolveContentOrgId: vi.fn(async () => null),
 }));
 
 import { app } from "../../app";

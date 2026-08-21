@@ -311,14 +311,77 @@ export async function ensureDocAccess(
 }
 
 /**
- * Same shape as `ensureDocAccess`, for tabular_reviews. A review can be
- * shared in several ways:
- *   1. Indirectly — if `project_id` is set, everyone with project access
+ * Shared derivation for resources that carry the full sharing shape
+ * (`user_id`, `project_id`, `shared_with`, `org_id`) — today tabular
+ * reviews and assistant chats. Access can arrive four ways:
+ *   1. The owner (row.user_id) always has access.
+ *   2. Directly — the row's `shared_with` is a per-row email list so
+ *      standalone rows (project_id null) can also be shared.
+ *   3. Indirectly — if `project_id` is set, everyone with project access
  *      can read/operate on it.
- *   2. Directly — `tabular_reviews.shared_with` is a per-review email list
- *      so standalone reviews (project_id null) can also be shared.
- *   3. Org — the review's `org_id` is an org the caller belongs to.
- * The owner (review.user_id) always has access.
+ *   4. Org — the row's `org_id` is an org the caller belongs to.
+ */
+async function ensureSharedResourceAccess(
+    row: {
+        user_id: string;
+        project_id: string | null;
+        shared_with?: string[] | null;
+        org_id?: string | null;
+    },
+    userId: string,
+    userEmail: string | null | undefined,
+    db: Db,
+): Promise<ResourceAccess> {
+    if (row.user_id === userId)
+        return {
+            ok: true,
+            isOwner: true,
+            role: null,
+            canManage: true,
+            projectRole: "owner",
+        };
+    const email = (userEmail ?? "").trim().toLowerCase();
+    const directShare =
+        email &&
+        Array.isArray(row.shared_with) &&
+        row.shared_with.some((e) => (e ?? "").toLowerCase() === email);
+    // Merge all branches strongest-wins. The direct share is a floor, not a
+    // ceiling: it must not shadow a stronger standing coming from the
+    // project (its owner, an org admin) — being added to a row's share list
+    // must never demote the project owner to editor.
+    const access = row.project_id
+        ? await checkProjectAccess(row.project_id, userId, userEmail, db)
+        : ({ ok: false } as const);
+    let best: ProjectRole | null = directShare ? "editor" : null;
+    let bestOrg: OrgRole | null = null;
+    // On a tie the project verdict wins so the org `role` field survives.
+    if (
+        access.ok &&
+        strongerRole(access.projectRole, best) === access.projectRole
+    ) {
+        best = access.projectRole;
+        bestOrg = access.role;
+    }
+    // Skip the row-org lookup when the project verdict already folded in
+    // this same org's membership.
+    if (row.org_id && (!access.ok || row.org_id !== access.project.org_id)) {
+        const rowRole = await getOrgRole(userId, row.org_id, db);
+        if (rowRole) {
+            const viaOrg = orgRoleToProjectRole(rowRole);
+            if (strongerRole(best, viaOrg) !== best) {
+                best = viaOrg;
+                bestOrg = rowRole;
+            }
+        }
+    }
+    if (!best) return { ok: false };
+    return resourceAccessFor(best, bestOrg);
+}
+
+/**
+ * Same shape as `ensureDocAccess`, for tabular_reviews: owner, direct
+ * `shared_with` email, project access, or review-org membership — merged
+ * strongest-wins (see `ensureSharedResourceAccess`).
  */
 export async function ensureReviewAccess(
     review: {
@@ -331,53 +394,30 @@ export async function ensureReviewAccess(
     userEmail: string | null | undefined,
     db: Db,
 ): Promise<ResourceAccess> {
-    if (review.user_id === userId)
-        return {
-            ok: true,
-            isOwner: true,
-            role: null,
-            canManage: true,
-            projectRole: "owner",
-        };
-    const email = (userEmail ?? "").trim().toLowerCase();
-    const directShare =
-        email &&
-        Array.isArray(review.shared_with) &&
-        review.shared_with.some((e) => (e ?? "").toLowerCase() === email);
-    // Merge all three branches strongest-wins. The direct review share is a
-    // floor, not a ceiling: it must not shadow a stronger standing coming
-    // from the project (its owner, an org admin) — being added to a review's
-    // share list must never demote the project owner to editor.
-    const access = review.project_id
-        ? await checkProjectAccess(review.project_id, userId, userEmail, db)
-        : ({ ok: false } as const);
-    let best: ProjectRole | null = directShare ? "editor" : null;
-    let bestOrg: OrgRole | null = null;
-    // On a tie the project verdict wins so the org `role` field survives.
-    if (
-        access.ok &&
-        strongerRole(access.projectRole, best) === access.projectRole
-    ) {
-        best = access.projectRole;
-        bestOrg = access.role;
-    }
-    // Skip the review-org lookup when the project verdict already folded in
-    // this same org's membership.
-    if (
-        review.org_id &&
-        (!access.ok || review.org_id !== access.project.org_id)
-    ) {
-        const reviewRole = await getOrgRole(userId, review.org_id, db);
-        if (reviewRole) {
-            const viaOrg = orgRoleToProjectRole(reviewRole);
-            if (strongerRole(best, viaOrg) !== best) {
-                best = viaOrg;
-                bestOrg = reviewRole;
-            }
-        }
-    }
-    if (!best) return { ok: false };
-    return resourceAccessFor(best, bestOrg);
+    return ensureSharedResourceAccess(review, userId, userEmail, db);
+}
+
+/**
+ * Same shape as `ensureReviewAccess`, for assistant chats — chats carry the
+ * identical sharing columns since 20260821_10. A project chat inherits the
+ * project verdict; a standalone chat can be shared via its own `shared_with`.
+ * Its `org_id` branch is kept for structural symmetry, but standalone chats
+ * are stamped with the owner's single-member personal org at creation, so in
+ * practice org visibility only ever flows through project membership.
+ * `get_chats_overview` mirrors this predicate — keep the two in lockstep.
+ */
+export async function ensureChatAccess(
+    chat: {
+        user_id: string;
+        project_id: string | null;
+        shared_with?: string[] | null;
+        org_id?: string | null;
+    },
+    userId: string,
+    userEmail: string | null | undefined,
+    db: Db,
+): Promise<ResourceAccess> {
+    return ensureSharedResourceAccess(chat, userId, userEmail, db);
 }
 
 /**

@@ -1364,10 +1364,12 @@ tabularRouter.get("/:reviewId/chats", requireAuth, async (req, res) => {
     const { reviewId } = req.params;
     const db = createServerSupabase();
 
-    // Verify access (owner or shared-project member).
+    // Verify access (owner, direct share, shared-project member, or org).
+    // shared_with must be selected or ensureReviewAccess's direct-share
+    // branch can never fire and review-level collaborators 404 here.
     const { data: review, error } = await db
         .from("tabular_reviews")
-        .select("id, user_id, project_id, org_id")
+        .select("id, user_id, project_id, shared_with, org_id")
         .eq("id", reviewId)
         .single();
     if (error || !review)
@@ -1387,20 +1389,71 @@ tabularRouter.get("/:reviewId/chats", requireAuth, async (req, res) => {
     res.json(chats ?? []);
 });
 
+// Review-chat writes share one preamble: the caller must be able to access
+// the review named in the URL, and the chat must actually belong to it —
+// previously these two writes checked neither, so any chat id could be hit
+// through any (or a nonexistent) review path.
+async function ensureReviewChatWriteAccess(
+    reviewId: string,
+    chatId: string,
+    userId: string,
+    userEmail: string | null | undefined,
+    db: ReturnType<typeof createServerSupabase>,
+): Promise<{ ok: true } | { ok: false; status: number; detail: string }> {
+    const { data: review } = await db
+        .from("tabular_reviews")
+        .select("id, user_id, project_id, shared_with, org_id")
+        .eq("id", reviewId)
+        .single();
+    if (!review) return { ok: false, status: 404, detail: "Review not found" };
+    const access = await ensureReviewAccess(review, userId, userEmail, db);
+    if (!access.ok)
+        return { ok: false, status: 404, detail: "Review not found" };
+    const { data: chat } = await db
+        .from("tabular_review_chats")
+        .select("id, review_id, user_id")
+        .eq("id", chatId)
+        .single();
+    if (!chat || chat.review_id !== reviewId)
+        return { ok: false, status: 404, detail: "Chat not found" };
+    // Review chats are owner-write: collaborators read each other's threads
+    // but cannot rename or delete them. Refusing here, not via the write's
+    // user_id filter alone, keeps a non-owner from getting a success-shaped
+    // 204 for an update that silently matched zero rows.
+    if (chat.user_id !== userId)
+        return {
+            ok: false,
+            status: 403,
+            detail: "Only the chat's creator can modify it",
+        };
+    return { ok: true };
+}
+
 // DELETE /tabular-review/:reviewId/chats/:chatId — delete a single chat
 tabularRouter.delete(
     "/:reviewId/chats/:chatId",
     requireAuth,
     async (req, res) => {
         const userId = res.locals.userId as string;
-        const { chatId } = req.params;
+        const userEmail = res.locals.userEmail as string | undefined;
+        const { reviewId, chatId } = req.params;
         const db = createServerSupabase();
+        const gate = await ensureReviewChatWriteAccess(
+            reviewId,
+            chatId,
+            userId,
+            userEmail,
+            db,
+        );
+        if (!gate.ok)
+            return void res.status(gate.status).json({ detail: gate.detail });
         // Owner-only delete — sibling collaborators shouldn't be able to wipe
         // each other's threads.
         const { error } = await db
             .from("tabular_review_chats")
             .delete()
             .eq("id", chatId)
+            .eq("review_id", reviewId)
             .eq("user_id", userId);
         if (error) return void res.status(500).json({ detail: error.message });
         res.status(204).send();
@@ -1413,17 +1466,28 @@ tabularRouter.patch(
     requireAuth,
     async (req, res) => {
         const userId = res.locals.userId as string;
-        const { chatId } = req.params;
+        const userEmail = res.locals.userEmail as string | undefined;
+        const { reviewId, chatId } = req.params;
         const title =
             typeof req.body?.title === "string" ? req.body.title.trim() : "";
         if (!title)
             return void res.status(400).json({ detail: "Title is required" });
         const db = createServerSupabase();
+        const gate = await ensureReviewChatWriteAccess(
+            reviewId,
+            chatId,
+            userId,
+            userEmail,
+            db,
+        );
+        if (!gate.ok)
+            return void res.status(gate.status).json({ detail: gate.detail });
         // Owner-only rename — mirrors the delete rule above.
         const { error } = await db
             .from("tabular_review_chats")
             .update({ title: title.slice(0, 200) })
             .eq("id", chatId)
+            .eq("review_id", reviewId)
             .eq("user_id", userId);
         if (error) return void res.status(500).json({ detail: error.message });
         res.status(204).send();
@@ -1442,7 +1506,7 @@ tabularRouter.get(
 
         const { data: review } = await db
             .from("tabular_reviews")
-            .select("id, user_id, project_id, org_id")
+            .select("id, user_id, project_id, shared_with, org_id")
             .eq("id", reviewId)
             .single();
         if (!review)
