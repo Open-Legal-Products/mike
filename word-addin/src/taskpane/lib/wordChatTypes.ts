@@ -135,6 +135,18 @@ export interface WordEditStreamController {
     persistent: boolean,
   ) => void;
   markIncompleteRedlines: (messageId: string, content: string) => void;
+  /**
+   * Run one apply_word_edits batch through the normal card lifecycle and
+   * report what happened, so the caller can post the truth back to the
+   * backend tool loop. Review mode validates and settles each card on
+   * "ready" (outcome "proposed"); Edit mode applies the tracked change.
+   * Returned outcomes are positional with `items`.
+   */
+  applyToolEdits: (
+    messageId: string,
+    items: WordToolEditItem[],
+    persistent: boolean,
+  ) => Promise<WordToolEditOutcome[]>;
   waitForMessageEdits: (messageId: string) => Promise<void>;
 }
 

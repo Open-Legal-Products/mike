@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { streamAssistant } from "../api/stream";
+import { streamAssistant, type WordClientToolCall } from "../api/stream";
+import { postWordChatToolResult } from "../api/mikeApi";
 import { useWordDoc } from "./useWordDoc";
 import type {
   DocumentReadActivity,
   Message as SavedMessage,
   WordAssistantEvent,
+  WordDocumentEdit,
 } from "../types";
+import type { RedlineEdit, WordEditFormat } from "../lib/redline";
+import { TOOL_EDIT_INDEX_BASE } from "../lib/wordTrackedEditKeys";
 import { saveLocalWordMessage } from "../lib/localWordChats";
 import type { WordChatStorageMode } from "../lib/wordChatSettings";
 import { notifyWordChatHistoryChanged } from "../lib/wordChatHistoryEvents";
@@ -15,6 +19,7 @@ import type {
   WordChatSubmission,
   WordChatSubmitOptions,
   WordEditStreamController,
+  WordToolEditItem,
 } from "../lib/wordChatTypes";
 import {
   appendAssistantContent,
@@ -35,6 +40,65 @@ let localMessageSequence = 0;
 function createMessageId(role: WordChatMessage["role"]): string {
   localMessageSequence += 1;
   return `${role}-${Date.now()}-${localMessageSequence}`;
+}
+
+const WORD_EDIT_FORMATS: readonly string[] = [
+  "bold",
+  "italic",
+  "underline",
+  "heading1",
+  "heading2",
+  "heading3",
+];
+
+/**
+ * Read one row of an apply_word_edits tool input. The backend validated the
+ * batch before forwarding it, so anything rejected here is a protocol
+ * mismatch between the two halves rather than a model mistake.
+ */
+function parseToolEdit(raw: unknown): RedlineEdit | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const row = raw as Record<string, unknown>;
+  if (typeof row.original !== "string" || !row.original) return null;
+  const formats = Array.isArray(row.formats)
+    ? row.formats.filter(
+        (format): format is WordEditFormat =>
+          typeof format === "string" && WORD_EDIT_FORMATS.includes(format),
+      )
+    : [];
+  if (formats.length === 0 && typeof row.replacement !== "string") return null;
+  if (row.occurrence !== undefined && row.occurrence !== "all") return null;
+  return {
+    original: row.original,
+    replacement: typeof row.replacement === "string" ? row.replacement : "",
+    ...(formats.length > 0 ? { format: formats } : {}),
+    ...(row.occurrence === "all" ? { occurrence: "all" as const } : {}),
+    ...(typeof row.reason === "string" && row.reason
+      ? { reason: row.reason }
+      : {}),
+  };
+}
+
+/** The live card row for a tool-proposed edit, before any outcome is known. */
+function toolEditRow(
+  messageId: string,
+  item: WordToolEditItem,
+  applyMode: "direct" | "approval",
+): WordDocumentEdit {
+  return {
+    // Matches the id device-only storage assigns, so a local reload resolves
+    // the same card without a round trip.
+    id: `${messageId}:edit-${item.blockIndex}`,
+    messageId,
+    blockIndex: item.blockIndex,
+    originalText: item.edit.original,
+    replacementText: item.edit.replacement,
+    formats: item.edit.format ?? [],
+    ...(item.edit.occurrence ? { occurrence: item.edit.occurrence } : {}),
+    ...(item.edit.reason ? { reason: item.edit.reason } : {}),
+    applyMode,
+    applyStatus: "proposed",
+  };
 }
 
 interface UseWordAssistantChatOptions {
@@ -212,6 +276,11 @@ export function useWordAssistantChat({
 
         let streamedContent = "";
         let assistantCitations: SavedMessage["citations"];
+        // Canonical rows for this turn's tool-proposed edits. A live turn
+        // learns an edit exists when the call is forwarded, long before the
+        // backend finalizer writes the durable row, and the card renderer
+        // reads them exactly like restored history.
+        let assistantEdits: WordDocumentEdit[] = [];
         const buildLocalAssistantMessage = (
           fallbackContent = "",
         ): SavedMessage => {
@@ -246,7 +315,7 @@ export function useWordAssistantChat({
           const eventSnapshot = assistantEvents;
           if (redlineParsePending) {
             redlineParsePending = false;
-            if (sendIsCurrent()) {
+            if (sendIsCurrent() && !clientToolsSeen) {
               editController.processLiveRedlines(
                 messageId,
                 streamedContent,
@@ -255,12 +324,14 @@ export function useWordAssistantChat({
             }
           }
           const citationSnapshot = assistantCitations;
+          const editSnapshot = assistantEdits;
           setMessages((current) =>
             current.map((message) =>
               message.id === messageId && message.role === "assistant"
                 ? {
                     ...message,
                     events: eventSnapshot,
+                    ...(editSnapshot.length > 0 ? { edits: editSnapshot } : {}),
                     ...(citationSnapshot && citationSnapshot.length > 0
                       ? { citations: citationSnapshot }
                       : {}),
@@ -280,6 +351,178 @@ export function useWordAssistantChat({
           }
           flushAssistantEvents();
         };
+        // Message-wide flat ordinal for tool-proposed edits; keys card state,
+        // persisted rows, and hidden bookmarks (see getToolEditKey). Tool
+        // calls arrive strictly sequentially — the backend awaits each result
+        // before forwarding the next.
+        let nextToolBlockIndex = TOOL_EDIT_INDEX_BASE;
+        // Once the backend forwards a tool call, this turn's edits travel as
+        // tools; any <EDITS> block still appearing in the prose is quoted
+        // text (or a misbehaving model), never the edit channel, and must not
+        // be scraped into document mutations on top of the tool applies.
+        let clientToolsSeen = false;
+        // The terminal saves must not run while a tool call is still settling
+        // its cards; runClientToolCall registers itself here and the save
+        // paths await the set.
+        const pendingClientToolCalls = new Set<Promise<void>>();
+        const awaitClientToolCalls = async (): Promise<void> => {
+          while (pendingClientToolCalls.size > 0) {
+            await Promise.all([...pendingClientToolCalls]);
+          }
+        };
+
+        const runClientToolCall = async (
+          call: WordClientToolCall,
+        ): Promise<void> => {
+          const respond = async (result: unknown): Promise<void> => {
+            // An aborted stream has no awaiting tool loop; the backend
+            // rejected its pending call when the SSE socket closed.
+            if (controller.signal.aborted) return;
+            try {
+              await postWordChatToolResult({
+                tool_call_id: call.toolCallId,
+                result,
+                signal: controller.signal,
+              });
+            } catch (error) {
+              // An expired call (backend timeout, closed stream) answers 404;
+              // the backend has moved on and silence is correct.
+              if ((error as { status?: number }).status === 404) return;
+              console.error("Failed to post Word tool result", error);
+            }
+          };
+          try {
+            // The transcript record and the document interaction must live or
+            // die together: once this send no longer owns the transcript there
+            // is nowhere to record what happened, so nothing may touch (or
+            // even read) the document either.
+            if (!sendIsCurrent()) {
+              await respond({
+                error: "The chat session changed; the tool did not run.",
+              });
+              return;
+            }
+            if (call.name === "read_active_document") {
+              await respond({ document: await readDocumentMarkdown() });
+              return;
+            }
+            if (call.name === "apply_word_edits") {
+              const rawEdits = Array.isArray(call.input.edits)
+                ? call.input.edits
+                : [];
+              const edits = rawEdits.map(parseToolEdit);
+              // All-or-nothing, mirroring the backend's validation: the
+              // backend only ever forwards fully-valid batches, so a bad row
+              // here means a protocol mismatch — refuse the whole call rather
+              // than applying a subset the two sides would count differently.
+              if (edits.length === 0 || edits.some((edit) => edit === null)) {
+                await respond({ error: "No valid edits in tool input." });
+                return;
+              }
+              // The backend assigns the ordinals because it also persists the
+              // canonical rows; taking its number keeps one authority instead
+              // of two counters that can silently drift.
+              const forwarded = call.input.block_index;
+              const firstBlockIndex =
+                typeof forwarded === "number" &&
+                Number.isSafeInteger(forwarded) &&
+                forwarded >= TOOL_EDIT_INDEX_BASE
+                  ? forwarded
+                  : nextToolBlockIndex;
+              const items: WordToolEditItem[] = (edits as RedlineEdit[]).map(
+                (edit, index) => ({
+                  blockIndex: firstBlockIndex + index,
+                  edit,
+                }),
+              );
+              nextToolBlockIndex = Math.max(
+                nextToolBlockIndex,
+                firstBlockIndex + items.length,
+              );
+              assistantEdits = [
+                ...assistantEdits,
+                ...items.map((item) =>
+                  toolEditRow(assistantMessageId, item, editApplyMode),
+                ),
+              ];
+              assistantEvents = [
+                ...completeAssistantEvents(assistantEvents),
+                ...items.map((item) => ({
+                  type: "word_edit_block" as const,
+                  blockIndex: item.blockIndex,
+                })),
+              ];
+              publishAssistantEvents();
+              const outcomes = await editController.applyToolEdits(
+                assistantMessageId,
+                items,
+                assistantMessageHasStableId,
+              );
+              if (sendIsCurrent()) {
+                // Stamp the settled outcome onto the live rows so the cards,
+                // and the summary the next turn replays to the model, say
+                // what actually happened rather than "proposed" forever.
+                const outcomeByBlockIndex = new Map(
+                  items.map((item, index) => [
+                    item.blockIndex,
+                    outcomes[index],
+                  ]),
+                );
+                assistantEdits = assistantEdits.map((row) => {
+                  const outcome = outcomeByBlockIndex.get(row.blockIndex);
+                  if (!outcome) return row;
+                  return {
+                    ...row,
+                    applyStatus:
+                      outcome.status === "applied"
+                        ? "applied"
+                        : outcome.status === "applied-unmanaged"
+                          ? "unmanaged"
+                          : outcome.status === "proposed"
+                            ? "proposed"
+                            : "failed",
+                    ...(outcome.matches !== undefined
+                      ? { matchedOccurrences: outcome.matches }
+                      : {}),
+                    ...(outcome.status === "proposed" ||
+                    outcome.status === "applied" ||
+                    outcome.status === "applied-unmanaged"
+                      ? {}
+                      : {
+                          errorCode: outcome.reason ?? outcome.status,
+                          ...(outcome.error
+                            ? { errorMessage: outcome.error }
+                            : {}),
+                        }),
+                  };
+                });
+                publishAssistantEvents();
+              }
+              await respond({
+                edits: items.map((_item, index) => {
+                  const outcome = outcomes[index];
+                  return outcome
+                    ? { ...outcome, index }
+                    : {
+                        index,
+                        status: "error" as const,
+                        error: "Word did not return an edit result.",
+                      };
+                }),
+              });
+              return;
+            }
+            await respond({ error: `Unknown client tool: ${call.name}` });
+          } catch (error) {
+            await respond({
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "The Word add-in failed to execute the tool.",
+            });
+          }
+        };
+
         try {
           if (wordChatStorage === "local" && requestChatId) {
             await saveLocalWordMessage({
@@ -348,6 +591,13 @@ export function useWordAssistantChat({
                 assistantEvents = finishAssistantReasoning(assistantEvents);
                 publishAssistantEvents();
               },
+              onClientToolCall: (call) => {
+                if (!requestIsCurrent()) return;
+                clientToolsSeen = true;
+                const job = runClientToolCall(call);
+                pendingClientToolCalls.add(job);
+                void job.finally(() => pendingClientToolCalls.delete(job));
+              },
               onCitations: (citations) => {
                 if (!requestIsCurrent()) return;
                 // Later frames supersede earlier partial ones; the final
@@ -385,19 +635,25 @@ export function useWordAssistantChat({
             throw new DOMException("The request was aborted.", "AbortError");
           }
           if (!requestIsCurrent()) return;
-          editController.processLiveRedlines(
-            assistantMessageId,
-            streamedContent,
-            assistantMessageHasStableId,
-          );
-          // A malformed block (e.g. no usable replacement or format) never
-          // seals; settle its card on "incomplete" rather than leaving the
-          // receiving spinner up forever. Already-scheduled edits are skipped
-          // by the controller, so this cannot demote an applied change.
-          editController.markIncompleteRedlines(
-            assistantMessageId,
-            streamedContent,
-          );
+          if (!clientToolsSeen) {
+            editController.processLiveRedlines(
+              assistantMessageId,
+              streamedContent,
+              assistantMessageHasStableId,
+            );
+            // A malformed block (e.g. no usable replacement or format) never
+            // seals; settle its card on "incomplete" rather than leaving the
+            // receiving spinner up forever. Already-scheduled edits are
+            // skipped by the controller, so this cannot demote an applied
+            // change.
+            editController.markIncompleteRedlines(
+              assistantMessageId,
+              streamedContent,
+            );
+          }
+          // Cover both the card lifecycles and the outcome POSTs: the saved
+          // turn must carry final per-edit statuses.
+          await awaitClientToolCalls();
           await editController.waitForMessageEdits(assistantMessageId);
           if (wordChatStorage === "local" && requestChatId) {
             await saveLocalWordMessage({
@@ -416,10 +672,13 @@ export function useWordAssistantChat({
           const sessionIsCurrent = sendIsCurrent();
           if (controller.signal.aborted) {
             if (sessionIsCurrent) {
-              editController.markIncompleteRedlines(
-                assistantMessageId,
-                streamedContent,
-              );
+              if (!clientToolsSeen) {
+                editController.markIncompleteRedlines(
+                  assistantMessageId,
+                  streamedContent,
+                );
+              }
+              await awaitClientToolCalls();
               await editController.waitForMessageEdits(assistantMessageId);
             }
             if (
@@ -440,10 +699,13 @@ export function useWordAssistantChat({
             return;
           }
           if (!requestIsCurrent()) return;
-          editController.markIncompleteRedlines(
-            assistantMessageId,
-            streamedContent,
-          );
+          if (!clientToolsSeen) {
+            editController.markIncompleteRedlines(
+              assistantMessageId,
+              streamedContent,
+            );
+          }
+          await awaitClientToolCalls();
           await editController.waitForMessageEdits(assistantMessageId);
           if (!requestIsCurrent()) return;
           const errorMessage =

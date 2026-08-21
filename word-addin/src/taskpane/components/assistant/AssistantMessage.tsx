@@ -23,6 +23,7 @@ import {
   assistantError,
   isWordContentEvent,
   isWordDocumentReadEvent,
+  isWordEditBlockEvent,
   isWordEditReferenceEvent,
   isWordReasoningEvent,
   isWordThinkingEvent,
@@ -168,8 +169,14 @@ function AssistantMessageImpl({
       status === "restoring",
   );
   const anyEditBusy = editRows.some(({ runtime }) => runtime?.busy);
+  // Holding the answer text until edits settle exists for edits embedded IN
+  // that text: a streamed <EDITS> block would otherwise render half-parsed
+  // above its own summary. Tool-proposed edits live outside the prose
+  // entirely, so keying the hold on the merged row list would blank the
+  // model's preamble for the whole time a batch is validating or applying.
+  const hasProjectedEdits = streamProjection.edits.length > 0;
   const summaryReady =
-    edits.length === 0 || (!isStreaming && !hasUnfinishedEdit);
+    !hasProjectedEdits || (!isStreaming && !hasUnfinishedEdit);
 
   const editById = React.useMemo(
     () => new Map((message.edits ?? []).map((edit) => [edit.id, edit])),
@@ -217,6 +224,13 @@ function AssistantMessageImpl({
       if (isWordEditReferenceEvent(event)) {
         const edit = editById.get(event.editId);
         if (edit) pushEdit(edit.blockIndex, `edit-ref-${event.editId}`);
+        return;
+      }
+      // A tool-proposed edit places itself by block index: the live turn
+      // knows the ordinal the moment the call is forwarded, long before the
+      // canonical row (and its id) exists.
+      if (isWordEditBlockEvent(event)) {
+        pushEdit(event.blockIndex, `edit-block-${event.blockIndex}`);
         return;
       }
       if (
@@ -363,7 +377,7 @@ function AssistantMessageImpl({
         {groups.map((group, groupIndex) => {
           if (group.kind === "prose") {
             const holdForEdit =
-              edits.length > 0 &&
+              hasProjectedEdits &&
               firstEditGroupIndex >= 0 &&
               groupIndex >= firstEditGroupIndex &&
               !summaryReady;
