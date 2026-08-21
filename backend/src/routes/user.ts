@@ -4,6 +4,9 @@ import { requireAuth, requireMfaIfEnrolled } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
 import { recordAudit } from "../lib/audit";
 import { enqueueDbJob } from "../lib/dbq/enqueue";
+import { EXPORT_TYPES, type ExportType } from "../lib/dbq/handlers";
+import type { DbJob } from "../lib/dbq/types";
+import { buildContentDisposition, downloadFile } from "../lib/storage";
 import {
     DEFAULT_TABULAR_MODEL,
     DEFAULT_TITLE_MODEL,
@@ -1360,5 +1363,127 @@ userRouter.get(
             });
             res.status(500).json({ detail });
         }
+    },
+);
+
+// ---------------------------------------------------------------------------
+// Async exports (durable): POST creates a DB-queue job that builds the
+// export off the request thread; GET polls it; the download endpoint streams
+// the finished artifact. The synchronous GET /user/*/export routes above
+// still work (curl users, older clients) — the frontend uses this flow so a
+// large export can neither time out the request nor die with a dropped tab.
+// Artifacts expire after 24 hours (the runner's retention sweep deletes the
+// file and the job row).
+
+// POST /user/exports  { type: "account" | "chats" | "tabular-reviews" }
+userRouter.post(
+    "/exports",
+    requireAuth,
+    requireMfaIfEnrolled,
+    async (req, res) => {
+        const userId = res.locals.userId as string;
+        const userEmail = res.locals.userEmail as string | undefined;
+        const type = (req.body as { type?: string } | undefined)?.type;
+        if (!type || !EXPORT_TYPES.includes(type as ExportType))
+            return void res.status(400).json({
+                detail: `type must be one of: ${EXPORT_TYPES.join(", ")}`,
+            });
+        const db = createServerSupabase();
+        try {
+            // Deduped per (user, type): double clicks and impatient retries
+            // collapse into the already-running build.
+            const out = await enqueueDbJob(db, {
+                kind: "export.build",
+                payload: { userId, userEmail: userEmail ?? null, type },
+                dedupeKey: `export:${userId}:${type}`,
+                maxAttempts: 3,
+            });
+            if (!out.id)
+                return void res
+                    .status(500)
+                    .json({ detail: "Failed to schedule export" });
+            res.status(202).json({ export_id: out.id });
+        } catch (err) {
+            const detail = errorMessage(err);
+            console.error("[user/exports] enqueue failed", {
+                userId,
+                error: detail,
+            });
+            res.status(500).json({ detail });
+        }
+    },
+);
+
+// Shared lookup: an export job is only visible to the user whose data it
+// exports. A foreign or unknown id is a 404 either way, so ids are not
+// probeable.
+async function loadOwnExportJob(
+    db: ReturnType<typeof createServerSupabase>,
+    exportId: string,
+    userId: string,
+): Promise<Pick<DbJob, "id" | "status" | "result"> | null> {
+    const { data: job } = await db
+        .from("db_jobs")
+        .select("id, kind, status, payload, result")
+        .eq("id", exportId)
+        .eq("kind", "export.build")
+        .maybeSingle();
+    if (!job || (job.payload as { userId?: string })?.userId !== userId)
+        return null;
+    return job as Pick<DbJob, "id" | "status" | "result">;
+}
+
+// GET /user/exports/:exportId — poll until status is "done", then fetch
+// GET /user/exports/:exportId/download.
+userRouter.get(
+    "/exports/:exportId",
+    requireAuth,
+    requireMfaIfEnrolled,
+    async (req, res) => {
+        const userId = res.locals.userId as string;
+        const db = createServerSupabase();
+        const row = await loadOwnExportJob(db, req.params.exportId, userId);
+        if (!row)
+            return void res.status(404).json({ detail: "Export not found" });
+        if (row.status === "done" && row.result) {
+            return void res.json({
+                status: "done",
+                filename: row.result.filename ?? null,
+            });
+        }
+        if (row.status === "failed")
+            return void res.json({ status: "failed" });
+        res.json({ status: "pending" });
+    },
+);
+
+// GET /user/exports/:exportId/download — stream the finished artifact.
+// Authenticated + ownership-checked on every request (unlike /download/:token,
+// which only serves paths backed by a document_versions row and would 404 on
+// an export artifact); artifacts expire after 24h.
+userRouter.get(
+    "/exports/:exportId/download",
+    requireAuth,
+    requireMfaIfEnrolled,
+    async (req, res) => {
+        const userId = res.locals.userId as string;
+        const db = createServerSupabase();
+        const row = await loadOwnExportJob(db, req.params.exportId, userId);
+        if (!row || row.status !== "done" || !row.result)
+            return void res.status(404).json({ detail: "Export not found" });
+        const storagePath = row.result.storage_path as string | undefined;
+        const filename =
+            (row.result.filename as string | undefined) ?? "export.json";
+        if (!storagePath)
+            return void res.status(404).json({ detail: "Export not found" });
+        const raw = await downloadFile(storagePath);
+        if (!raw)
+            return void res.status(404).json({ detail: "Export expired" });
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.setHeader(
+            "Content-Disposition",
+            buildContentDisposition("attachment", filename),
+        );
+        res.send(Buffer.from(raw));
     },
 );
