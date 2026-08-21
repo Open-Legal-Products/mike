@@ -357,6 +357,78 @@ describe("active Word document context", () => {
         expect(messages[0]?.content).not.toContain("Use at most 10 tool-use rounds");
     });
 
+    it("serves the streamed <EDITS> protocol unless the pane declares client tools", () => {
+        // The capability flag is the ONLY thing separating the two protocol
+        // generations. An old pane handed the tools prompt would silently
+        // ignore client_tool_call frames; a new pane handed the <EDITS>
+        // prompt would scrape edits it no longer applies.
+        const streamed = buildWordChatSystemPrompt(false);
+        expect(streamed).toBe(buildWordChatSystemPrompt());
+        expect(streamed).toContain("<EDITS>");
+        expect(streamed).not.toContain("apply_word_edits");
+
+        const tools = buildWordChatSystemPrompt(true);
+        expect(tools).toContain("apply_word_edits");
+        expect(tools).toContain("read_active_document");
+        expect(tools).not.toContain("emit exactly one JSON array");
+    });
+
+    it("gives both variants the same preamble and citation contract", () => {
+        // Everything that is not the edit channel must not drift between the
+        // two modes: same identity, same security rules, same citations.
+        const streamed = buildWordChatSystemPrompt(false);
+        const tools = buildWordChatSystemPrompt(true);
+        const preamble = (prompt: string) =>
+            prompt.slice(0, prompt.indexOf("- Never show or explain"));
+        const citations = (prompt: string) =>
+            prompt.slice(prompt.indexOf("ACTIVE DOCUMENT CITATIONS"));
+        expect(preamble(tools)).toBe(preamble(streamed));
+        expect(citations(tools)).toBe(citations(streamed));
+    });
+
+    it("keeps the full edit vocabulary in the client-tools variant", () => {
+        // A tool mode that could only do plain replacements would quietly
+        // drop formatting and replace-all — both first-class in <EDITS>.
+        const prompt = buildWordChatSystemPrompt(true);
+        expect(prompt).toContain("shortest passage");
+        expect(prompt).toContain("keep unrelated changes separate");
+        expect(prompt).toContain('Use "replacement":"" to delete');
+        expect(prompt).toContain('add "occurrence":"all"');
+        expect(prompt).toContain('"heading3"');
+        expect(prompt).toContain("never edit a list number");
+        expect(prompt).toContain("at most 200 characters");
+    });
+
+    it("teaches that a proposed edit is success, not a retry signal", () => {
+        // Review mode is the pane's default: the tool call VALIDATES and
+        // queues a card. A model that reads "proposed" as a failure retries
+        // forever against a document that will not change without a click.
+        const prompt = buildWordChatSystemPrompt(true);
+        expect(prompt).toContain(
+            `- "proposed" means the edit was validated against the document and is now a card awaiting the user's approval. That is the SUCCESSFUL outcome in the add-in's default Review mode: do not retry it, and do not say the document changed \u2014 say the change is ready for the user to review.`,
+        );
+    });
+
+    it("documents the result shape and the outcome vocabulary", () => {
+        // These strings are the model's only documentation of the result
+        // protocol; each one pairs with behavior in wordClientTools.ts.
+        const prompt = buildWordChatSystemPrompt(true);
+        for (const term of [
+            '{"applied", "proposed"?, "unconfirmed"?, "failed", "edits"?, "hints"?}',
+            '"unknown" (counted as "unconfirmed")',
+            '"applied-unmanaged"',
+            '"not-found"',
+            '"ambiguous"',
+            '"skip_reason":"pre-existing-revisions"',
+        ]) {
+            expect(prompt).toContain(term);
+        }
+        // read_active_document must be exempted from the once-per-response
+        // read rule appended by buildMessages, or the two instructions
+        // contradict each other.
+        expect(prompt).toContain("read_active_document is exempt");
+    });
+
     it("returns request-scoped inline text only through read_document", async () => {
         const writes: string[] = [];
         const store: DocStore = new Map([

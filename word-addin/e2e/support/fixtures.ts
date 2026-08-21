@@ -67,6 +67,16 @@ interface ChatStreamOpts {
   assistantMessageId?: string;
   /** Emit model-triggered read start/completion frames before answer content. */
   docReads?: string[];
+  /**
+   * Emit `client_tool_call` frames (backend-forwarded Word tool calls) before
+   * the answer content. The pane executes each with the Office shim and POSTs
+   * its outcome to /word-chat/tool-result — specs must mock that endpoint.
+   */
+  clientToolCalls?: {
+    toolCallId: string;
+    name: string;
+    input: Record<string, unknown>;
+  }[];
   /** Emit a final `citations` frame (the quotes behind `[n]` markers). */
   citations?: unknown[];
 }
@@ -571,6 +581,14 @@ export const test = base.extend<{ addin: Addin }>({
             body += `data: ${JSON.stringify({
               type: "doc_read",
               filename,
+            })}\n\n`;
+          }
+          for (const call of opts?.clientToolCalls ?? []) {
+            body += `data: ${JSON.stringify({
+              type: "client_tool_call",
+              tool_call_id: call.toolCallId,
+              name: call.name,
+              input: call.input,
             })}\n\n`;
           }
           for (const chunk of chunks) {

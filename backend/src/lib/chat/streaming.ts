@@ -108,7 +108,38 @@ export type AssistantEvent =
       document: SourceDocument;
     }
   | { type: "content"; text: string }
+  | {
+      /**
+       * Placement marker for one edit a client tool proposed, spliced into
+       * the event stream exactly where the tool call landed between content
+       * blocks. `persistWordDocumentEdits` upserts it into the canonical
+       * `word_document_edits` row and swaps it for a `word_edit_ref` — the
+       * same normalization the `<EDITS>` protocol's blocks go through, so
+       * both channels produce identical persisted history.
+       */
+      type: "word_edit_block";
+      block_index: number;
+      original_text: string;
+      replacement_text: string;
+      formats: string[];
+      occurrence: "all" | null;
+      reason: string | null;
+    }
   | { type: "error"; message: string };
+
+/**
+ * Tools the model can call that execute outside this process — in the Word
+ * task pane. The adapter owns forwarding the call to the client and awaiting
+ * its posted result; the loop treats the returned content exactly like a
+ * server-side tool result.
+ */
+export interface ClientToolsAdapter {
+  schemas: OpenAIToolSchema[];
+  owns: (name: string) => boolean;
+  execute: (
+    call: import("../llm").NormalizedToolCall,
+  ) => Promise<{ content: string; events: AssistantEvent[] }>;
+}
 
 export class AssistantStreamError extends Error {
   fullText: string;
@@ -162,6 +193,14 @@ export async function runLLMStream(params: {
   includeAskInputs?: boolean;
   workflowStore?: WorkflowStore;
   tabularStore?: TabularCellStore;
+  /** Tools executed by the connected client (Word add-in) instead of here. */
+  clientTools?: ClientToolsAdapter;
+  /**
+   * Tool-loop iteration budget (default 10). Surfaces whose tools are built
+   * around retry round-trips (Word client edits: propose → fail → re-read →
+   * retry) need headroom, or the loop ends before the model's summary.
+   */
+  maxIterations?: number;
   buildCitations?: (fullText: string) => unknown[];
   model?: string;
   apiKeys?: import("../llm").UserApiKeys;
@@ -195,6 +234,7 @@ export async function runLLMStream(params: {
     includeAskInputs = true,
     workflowStore,
     tabularStore,
+    clientTools,
     buildCitations,
     model,
     apiKeys,
@@ -208,9 +248,12 @@ export async function runLLMStream(params: {
     ? TOOLS
     : TOOLS.filter((tool) => tool.function.name !== "ask_inputs");
   const baseTools = [...conversationTools, ...researchTools, ...WORKFLOW_TOOLS];
-  const activeTools = extraTools?.length
-    ? [...baseTools, ...mcpTools, ...extraTools]
-    : [...baseTools, ...mcpTools];
+  const activeTools = [
+    ...baseTools,
+    ...mcpTools,
+    ...(extraTools ?? []),
+    ...(clientTools?.schemas ?? []),
+  ];
 
   // Extract system prompt; pass remaining turns to the adapter as
   // plain user/assistant messages.
@@ -379,7 +422,7 @@ export async function runLLMStream(params: {
       systemPrompt,
       messages: chatMessages,
       tools: activeTools as OpenAIToolSchema[],
-      maxIterations: 10,
+      maxIterations: params.maxIterations ?? 10,
       apiKeys,
       enableThinking: true,
       abortSignal: signal,
@@ -422,7 +465,26 @@ export async function runLLMStream(params: {
         // UI sees it before the tool results stream in.
         flushText();
 
-        const toolCalls: ToolCall[] = calls.map((c) => ({
+        // Client-executed tools (Word add-in) round-trip through the SSE
+        // stream and never enter the server dispatcher. They run before the
+        // server batch and sequentially among themselves: each call mutates
+        // or reads the live document, so order is part of their semantics.
+        const clientResultByCallId = new Map<string, string>();
+        const serverCalls = clientTools
+          ? calls.filter((c) => !clientTools.owns(c.name))
+          : calls;
+        if (clientTools) {
+          for (const call of calls) {
+            if (!clientTools.owns(call.name)) continue;
+            const { content, events: clientEvents } =
+              await clientTools.execute(call);
+            clientResultByCallId.set(call.id, content);
+            events.push(...clientEvents);
+            throwIfAborted(signal);
+          }
+        }
+
+        const toolCalls: ToolCall[] = serverCalls.map((c) => ({
           id: c.id,
           function: {
             name: c.name,
@@ -538,7 +600,7 @@ export async function runLLMStream(params: {
         // that directly — and fall back to an error result for any
         // tool_use that didn't produce one, so Claude's next request
         // has a tool_result for every tool_use it sent.
-        const resultByCallId = new Map<string, string>();
+        const resultByCallId = new Map<string, string>(clientResultByCallId);
         for (const r of toolResults) {
           const row = r as {
             tool_call_id: string;
@@ -546,12 +608,14 @@ export async function runLLMStream(params: {
           };
           resultByCallId.set(row.tool_call_id, String(row.content ?? ""));
         }
-        return toolCalls.map((c) => ({
+        // Answer every tool_use the model sent — client and server alike —
+        // in the model's original call order.
+        return calls.map((c) => ({
           tool_use_id: c.id,
           content:
             resultByCallId.get(c.id) ??
             JSON.stringify({
-              error: `Tool '${c.function.name}' is not available.`,
+              error: `Tool '${c.name}' is not available.`,
             }),
         }));
       },

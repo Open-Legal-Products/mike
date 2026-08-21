@@ -86,6 +86,8 @@ import type {
   PersistedWordEditPatch,
   UpdatePersistedWordDocumentEdit,
   WordEditStreamController,
+  WordToolEditItem,
+  WordToolEditOutcome,
   WordTrackedEditsController,
 } from "../lib/wordChatTypes";
 import type { WordEditApplyMode } from "../lib/wordChatSettings";
@@ -108,6 +110,11 @@ export function useWordTrackedEdits({
   const [editStateByKey, setEditStateByKey] = useState<
     Record<string, EditRuntimeState>
   >({});
+  // Synchronous mirror of the rendered map. A tool call must report each
+  // card's SETTLED status back to the model the instant its job resolves,
+  // and React state is not readable that soon; every write goes through
+  // commitEditState so the two can never disagree.
+  const editStateRef = useRef<Record<string, EditRuntimeState>>({});
   const mountedRef = useRef(true);
   const sessionGenerationRef = useRef(0);
   const scheduledEditKeysRef = useRef(new Set<string>());
@@ -147,21 +154,27 @@ export function useWordTrackedEdits({
     >(),
   );
 
-  const setEditRuntimeState = useCallback(
-    (key: string, patch: Partial<EditRuntimeState>): void => {
-      setEditStateByKey((current) => {
-        const previous = current[key];
-        return {
-          ...current,
-          [key]: {
-            ...previous,
-            ...patch,
-            status: patch.status ?? previous?.status ?? "receiving",
-          },
-        };
-      });
+  const commitEditState = useCallback(
+    (next: Record<string, EditRuntimeState>): void => {
+      editStateRef.current = next;
+      setEditStateByKey(next);
     },
     [],
+  );
+
+  const setEditRuntimeState = useCallback(
+    (key: string, patch: Partial<EditRuntimeState>): void => {
+      const previous = editStateRef.current[key];
+      commitEditState({
+        ...editStateRef.current,
+        [key]: {
+          ...previous,
+          ...patch,
+          status: patch.status ?? previous?.status ?? "receiving",
+        },
+      });
+    },
+    [commitEditState],
   );
 
   const updatePersistedEdit = useCallback(
@@ -252,7 +265,7 @@ export function useWordTrackedEdits({
     persistentViewEditKeysRef.current.clear();
     resolvingEditKeysRef.current.clear();
     conflictedRetryRef.current.clear();
-    setEditStateByKey({});
+    commitEditState({});
 
     const descriptors: {
       cardKey: string;
@@ -332,68 +345,125 @@ export function useWordTrackedEdits({
         continue;
       }
     }
-    setEditStateByKey(() => {
-      const next = { ...durableStates };
-      for (const { cardKey } of descriptors) {
-        next[cardKey] = { status: "restoring", busy: true };
-      }
-      for (const { cardKey } of proposedDescriptors) {
-        next[cardKey] = { status: "validating", busy: true };
-      }
-      return next;
-    });
+    const initialStates: Record<string, EditRuntimeState> = {
+      ...durableStates,
+    };
+    for (const { cardKey } of descriptors) {
+      initialStates[cardKey] = { status: "restoring", busy: true };
+    }
+    for (const { cardKey } of proposedDescriptors) {
+      initialStates[cardKey] = { status: "validating", busy: true };
+    }
+    commitEditState(initialStates);
 
     if (proposedDescriptors.length > 0) {
-      void Promise.all(
-        proposedDescriptors.map(async ({ cardKey, edit }) => ({
-          cardKey,
-          edit,
-          result: await validateTrackedEdit(edit),
-        })),
-      )
-        .then((results) => {
-          if (
-            !mountedRef.current ||
-            generation !== sessionGenerationRef.current
-          ) {
+      void (async () => {
+        // A stored "proposed" row means the pane never RECORDED an apply —
+        // but a turn that died mid-apply (a cancelled stream, a client tool
+        // call that timed out, a failed status write) leaves the tracked
+        // change in the document with the row still saying "proposed". Ask
+        // the document before believing the row: re-validating such an edit
+        // finds its own revision, reports "pre-existing-revisions", and
+        // offers "Accept & apply" — which applies it a second time.
+        const probes = await restoreTrackedEdits(
+          proposedDescriptors.map(({ cardKey, edit }) => ({
+            stableEditId: cardKey,
+            edit,
+          })),
+        );
+        if (
+          !mountedRef.current ||
+          generation !== sessionGenerationRef.current
+        ) {
+          const orphaned = probes.flatMap((probe) =>
+            probe.handle ? [probe.handle] : [],
+          );
+          if (orphaned.length > 0) await releaseTrackedEdits(orphaned);
+          return;
+        }
+        const unapplied: { cardKey: string; edit: RedlineEdit }[] = [];
+        probes.forEach((probe, probeIndex) => {
+          const descriptor = proposedDescriptors[probeIndex];
+          if (!descriptor) return;
+          const { cardKey } = descriptor;
+          if (probe.status === "restored" && probe.handle) {
+            editHandlesRef.current.set(cardKey, [probe.handle]);
+            persistentViewEditKeysRef.current.set(cardKey, cardKey);
+            setEditRuntimeState(cardKey, {
+              status: "pending",
+              busy: false,
+              error: undefined,
+            });
+            // Correct the record too, so the next reload does not repeat the
+            // probe and no other reader is told this change is unapplied.
+            void updatePersistedEdit(cardKey, { apply_status: "applied" });
             return;
           }
-          for (const { cardKey, edit, result } of results) {
-            if (result.status === "ready") {
-              readyEditsRef.current.set(cardKey, { edit, persistent: true });
-              setEditRuntimeState(cardKey, {
-                status: "ready",
-                matches: result.matches,
-                busy: false,
-                error: undefined,
-              });
-            } else {
-              setEditRuntimeState(cardKey, {
-                ...editFailureState(result),
-                matches: result.matches,
-                busy: false,
+          if (probe.status === "view-only") {
+            persistentViewEditKeysRef.current.set(cardKey, cardKey);
+            setEditRuntimeState(cardKey, {
+              status: "view-only",
+              busy: false,
+              error: undefined,
+            });
+            void updatePersistedEdit(cardKey, { apply_status: "applied" });
+            return;
+          }
+          unapplied.push(descriptor);
+        });
+        if (unapplied.length === 0) return;
+
+        const results = await Promise.all(
+          unapplied.map(async ({ cardKey, edit }) => ({
+            cardKey,
+            edit,
+            result: await validateTrackedEdit(edit),
+          })),
+        );
+        if (
+          !mountedRef.current ||
+          generation !== sessionGenerationRef.current
+        ) {
+          return;
+        }
+        for (const { cardKey, edit, result } of results) {
+          if (result.status === "ready") {
+            readyEditsRef.current.set(cardKey, { edit, persistent: true });
+            setEditRuntimeState(cardKey, {
+              status: "ready",
+              matches: result.matches,
+              busy: false,
+              error: undefined,
+            });
+          } else {
+            if (result.reason === "pre-existing-revisions") {
+              conflictedRetryRef.current.set(cardKey, {
+                edit,
+                persistent: true,
               });
             }
-          }
-        })
-        .catch((error: unknown) => {
-          if (
-            !mountedRef.current ||
-            generation !== sessionGenerationRef.current
-          ) {
-            return;
-          }
-          for (const { cardKey } of proposedDescriptors) {
             setEditRuntimeState(cardKey, {
-              status: "error",
+              ...editFailureState(result),
+              matches: result.matches,
               busy: false,
-              error:
-                error instanceof Error
-                  ? error.message
-                  : "Word couldn't check whether this change can be applied.",
             });
           }
-        });
+        }
+      })().catch((error: unknown) => {
+        if (!mountedRef.current || generation !== sessionGenerationRef.current) {
+          return;
+        }
+        for (const { cardKey } of proposedDescriptors) {
+          setEditRuntimeState(cardKey, {
+            status: "error",
+            busy: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Word couldn't check whether this change can be applied.",
+          });
+        }
+      });
     }
     if (descriptors.length === 0) return;
 
@@ -783,6 +853,104 @@ export function useWordTrackedEdits({
     [beginApplyingEdit],
   );
 
+  /**
+   * One apply_word_edits batch, run through the ordinary card lifecycle.
+   *
+   * Nothing here is special-cased for tools: Review mode validates and
+   * settles each card on "ready", Edit mode applies a tracked change, and
+   * both persist through the same PUT/PATCH rows as a streamed edit. The
+   * only addition is reading each card's settled status back out so the
+   * caller can post the truth to the awaiting model — which is the whole
+   * point of the client tool loop.
+   */
+  const applyToolEdits = useCallback(
+    async (
+      messageId: string,
+      items: WordToolEditItem[],
+      persistent: boolean,
+    ): Promise<WordToolEditOutcome[]> => {
+      const mode = applyModeRef.current;
+      const keys = items.map(({ blockIndex }) =>
+        getEditKey(messageId, blockIndex),
+      );
+      items.forEach(({ blockIndex, edit }) => {
+        if (mode === "direct") {
+          scheduleDirectEdit(messageId, blockIndex, edit, persistent);
+        } else {
+          scheduleReviewEdit(messageId, blockIndex, edit, persistent);
+        }
+      });
+      // Every scheduler registers its job synchronously, so the batch's jobs
+      // are all present by the time this reads them.
+      await Promise.all(
+        keys.flatMap((key) => {
+          const job = editApplyJobsRef.current.get(key);
+          return job ? [job] : [];
+        }),
+      );
+      return keys.map((key, index) => {
+        const state = editStateRef.current[key];
+        switch (state?.status) {
+          case "pending":
+            return { index, status: "applied", matches: state.matches };
+          case "unmanaged":
+            return {
+              index,
+              status: "applied-unmanaged",
+              matches: state.matches,
+            };
+          // Review mode's success: validated, card ready, waiting on a click.
+          case "ready":
+            return { index, status: "proposed", matches: state.matches };
+          case "ambiguous":
+            return {
+              index,
+              status: "ambiguous",
+              matches: state.matches,
+              ...(state.error ? { error: state.error } : {}),
+            };
+          case "skipped":
+            return {
+              index,
+              status: "not-found",
+              matches: state.matches,
+              ...(state.error ? { error: state.error } : {}),
+            };
+          case "unsearchable":
+            return {
+              index,
+              status: "skipped",
+              reason: "unsearchable",
+              ...(state.error ? { error: state.error } : {}),
+            };
+          case "conflicted":
+            return {
+              index,
+              status: "skipped",
+              reason: "pre-existing-revisions",
+              ...(state.error ? { error: state.error } : {}),
+            };
+          case "error":
+            return {
+              index,
+              status: "error",
+              ...(state.error ? { error: state.error } : {}),
+            };
+          default:
+            // No settled state means this send no longer owns the session, or
+            // the key was already scheduled. Either way the model must not be
+            // told the change happened.
+            return {
+              index,
+              status: "error",
+              error: "Word did not report a result for this change.",
+            };
+        }
+      });
+    },
+    [scheduleDirectEdit, scheduleReviewEdit],
+  );
+
   const waitForMessageEdits = useCallback(
     async (messageId: string): Promise<void> => {
       const prefix = `${messageId}:edit-`;
@@ -797,18 +965,16 @@ export function useWordTrackedEdits({
   const processLiveRedlines = useCallback(
     (messageId: string, content: string, persistent: boolean): void => {
       const projection = projectRedlineStream(content);
-      setEditStateByKey((current) => {
-        let changed = false;
-        const next = { ...current };
-        projection.edits.forEach((edit) => {
-          const key = getEditKey(messageId, edit.blockIndex);
-          if (!next[key]) {
-            next[key] = { status: "receiving" };
-            changed = true;
-          }
-        });
-        return changed ? next : current;
+      let changed = false;
+      const next = { ...editStateRef.current };
+      projection.edits.forEach((edit) => {
+        const key = getEditKey(messageId, edit.blockIndex);
+        if (!next[key]) {
+          next[key] = { status: "receiving" };
+          changed = true;
+        }
       });
+      if (changed) commitEditState(next);
 
       projection.edits.forEach((edit) => {
         if (!edit.sealed) return;
@@ -831,7 +997,7 @@ export function useWordTrackedEdits({
         }
       });
     },
-    [scheduleDirectEdit, scheduleReviewEdit],
+    [commitEditState, scheduleDirectEdit, scheduleReviewEdit],
   );
 
   const markIncompleteRedlines = useCallback(
@@ -1228,9 +1394,15 @@ export function useWordTrackedEdits({
     () => ({
       processLiveRedlines,
       markIncompleteRedlines,
+      applyToolEdits,
       waitForMessageEdits,
     }),
-    [markIncompleteRedlines, processLiveRedlines, waitForMessageEdits],
+    [
+      applyToolEdits,
+      markIncompleteRedlines,
+      processLiveRedlines,
+      waitForMessageEdits,
+    ],
   );
 
   return {

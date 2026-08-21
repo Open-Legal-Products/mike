@@ -14,6 +14,7 @@ import {
   devLog,
 } from "./types";
 import { buildSystemPrompt } from "./prompts";
+import { ACTIVE_WORD_DOCUMENT_LIVE_FILENAME } from "./wordPrompt";
 import { parseCitations, createCitation } from "./citations";
 import type { AssistantEvent } from "./streaming";
 import { ensureDefaultWorkflows } from "../workflowCatalog";
@@ -140,7 +141,13 @@ export async function enrichWithPriorEvents(
     } else if (ev?.type === "doc_edited") {
       lines.push(`- edit_document → ${refFor(ev.document_id, ev.filename)}`);
     } else if (ev?.type === "doc_read") {
-      lines.push(`- read_document → ${refFor(ev.document_id, ev.filename)}`);
+      // Live Word reads have no doc_id and belong to a different tool;
+      // labeling them read_document would name a handle that doesn't exist.
+      if (ev.filename === ACTIVE_WORD_DOCUMENT_LIVE_FILENAME) {
+        lines.push("- read_active_document → live document text");
+      } else {
+        lines.push(`- read_document → ${refFor(ev.document_id, ev.filename)}`);
+      }
     } else if (ev?.type === "doc_replicated") {
       // The model needs to know what each copy resolved to so it
       // can call edit_document / read_document on them. Emit one

@@ -9,3 +9,4 @@ export * from "./contextBuilders";
 export * from "./requestValidation";
 export * from "./wordPrompt";
 export * from "./routeStreaming";
+export * from "./tools/wordClientTools";

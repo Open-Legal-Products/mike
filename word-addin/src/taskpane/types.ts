@@ -89,6 +89,22 @@ export type WordEditReferenceEvent = {
   key?: string;
 };
 
+/**
+ * Placement of a tool-proposed edit card, keyed by block index rather than
+ * row id.
+ *
+ * A live turn learns an edit exists the moment the backend forwards the tool
+ * call — before the canonical row (and therefore its id) exists. The backend
+ * finalizer replaces this marker with a `word_edit_ref` in cloud history and
+ * `normalizeLocalWordEditEvents` does the same for device-only chats, so it
+ * only ever appears mid-turn.
+ */
+export type WordEditBlockEvent = {
+  type: "word_edit_block";
+  blockIndex: number;
+  key?: string;
+};
+
 export interface WordDocumentEdit {
   id: string;
   messageId: string;
@@ -128,6 +144,7 @@ export type WordAssistantEvent =
   | WordDocumentReadEvent
   | WordErrorEvent
   | WordEditReferenceEvent
+  | WordEditBlockEvent
   | WordAssistantStoredEvent;
 
 /**

@@ -5,12 +5,15 @@ import type {
   WordContentEvent,
   WordDocumentReadEvent,
   WordErrorEvent,
+  WordEditBlockEvent,
   WordEditReferenceEvent,
+  WordDocumentEdit,
   WordReasoningEvent,
   WordThinkingEvent,
 } from "../types";
 import type { WordAssistantMessage, WordChatMessage } from "./wordChatTypes";
 import { projectRedlineStream } from "./redline";
+import { isToolEditBlockIndex } from "./wordTrackedEditKeys";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -78,6 +81,14 @@ export function isWordEditReferenceEvent(
   return event.type === "word_edit_ref" && typeof event.editId === "string";
 }
 
+export function isWordEditBlockEvent(
+  event: WordAssistantEvent,
+): event is WordEditBlockEvent {
+  return (
+    event.type === "word_edit_block" && typeof event.blockIndex === "number"
+  );
+}
+
 /**
  * Adapt a web-style persisted assistant event array for the Word runtime.
  *
@@ -138,6 +149,18 @@ export function normalizeStoredAssistantEvents(
     }
     if (item.type === "error" && typeof item.message === "string") {
       return [{ ...event, type: "error", message: item.message }];
+    }
+    if (item.type === "word_edit_block") {
+      // Only reachable when a turn's finalizer could not run (a save that
+      // failed mid-stream). Keep the placement rather than dropping the card.
+      const blockIndex =
+        typeof item.blockIndex === "number"
+          ? item.blockIndex
+          : typeof item.block_index === "number"
+            ? item.block_index
+            : null;
+      if (blockIndex === null) return [event];
+      return [{ ...event, type: "word_edit_block", blockIndex }];
     }
     if (
       item.type === "word_edit_ref" &&
@@ -209,19 +232,90 @@ export function assistantContent(message: WordAssistantMessage): string {
   return assistantContentFromEvents(message.events);
 }
 
+/** Longest excerpt of an edit's text a transcript summary line may carry. */
+const TOOL_EDIT_SUMMARY_EXCERPT = 120;
+/** Most summary lines one turn contributes to the replayed transcript. */
+const TOOL_EDIT_SUMMARY_MAX_LINES = 20;
+
+function excerpt(value: string): string {
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  return collapsed.length > TOOL_EDIT_SUMMARY_EXCERPT
+    ? `${collapsed.slice(0, TOOL_EDIT_SUMMARY_EXCERPT)}…`
+    : collapsed;
+}
+
+function toolEditState(edit: WordDocumentEdit): string {
+  if (edit.resolutionStatus) return edit.resolutionStatus;
+  if (edit.applyStatus === "applied") return "applied";
+  if (edit.applyStatus === "unmanaged") return "applied (unmanaged)";
+  if (edit.applyStatus === "failed") {
+    return `not applied${edit.errorCode ? ` (${edit.errorCode})` : ""}`;
+  }
+  return "awaiting the user's review";
+}
+
+/**
+ * The model's own record of a prior turn's tool edits.
+ *
+ * Tool edits never appeared in the answer text, so replaying them as an
+ * <EDITS> block would teach the model a protocol it must not use in this
+ * mode — and would read as if it had emitted markup it never emitted. A
+ * short factual summary keeps the transcript honest about what changed, what
+ * is still waiting on the user, and what failed. It is bounded on both axes
+ * because one 50-edit turn would otherwise plant an ever-replayed block in
+ * every later request.
+ */
+function toolEditSummary(edits: WordDocumentEdit[]): string {
+  const lines = edits
+    .slice(0, TOOL_EDIT_SUMMARY_MAX_LINES)
+    .map(
+      (edit) =>
+        `- "${excerpt(edit.originalText)}" → "${excerpt(edit.replacementText)}" — ${toolEditState(edit)}`,
+    );
+  const omitted = edits.length - lines.length;
+  if (omitted > 0) lines.push(`- …and ${omitted} more`);
+  return `[Edits sent to apply_word_edits in this response:\n${lines.join("\n")}\n]`;
+}
+
 /** Rehydrate normalized edit references only for the model's private history. */
 export function assistantContentForModel(
   message: WordAssistantMessage,
 ): string {
-  const editById = new Map(
-    (message.edits ?? []).map((edit) => [edit.id, edit]),
+  const editById = new Map((message.edits ?? []).map((edit) => [edit.id, edit]));
+  const editByBlockIndex = new Map(
+    (message.edits ?? []).map((edit) => [edit.blockIndex, edit]),
   );
   const chunks: string[] = [];
   let pendingEdits: Record<string, unknown>[] = [];
+  let pendingToolEdits: WordDocumentEdit[] = [];
   const flushEdits = (): void => {
-    if (pendingEdits.length === 0) return;
-    chunks.push(`<EDITS>\n${JSON.stringify(pendingEdits)}\n</EDITS>`);
-    pendingEdits = [];
+    if (pendingEdits.length > 0) {
+      chunks.push(`<EDITS>\n${JSON.stringify(pendingEdits)}\n</EDITS>`);
+      pendingEdits = [];
+    }
+    if (pendingToolEdits.length > 0) {
+      chunks.push(toolEditSummary(pendingToolEdits));
+      pendingToolEdits = [];
+    }
+  };
+  const addEdit = (edit: WordDocumentEdit): void => {
+    // The two channels split on the block-index space, which is exactly why
+    // that space is disjoint: a tool edit replayed as <EDITS> would be a lie
+    // about how it reached the document.
+    if (isToolEditBlockIndex(edit.blockIndex)) {
+      pendingToolEdits.push(edit);
+      return;
+    }
+    pendingEdits.push({
+      type: "edit_data",
+      kind: "edit",
+      deleted_text: edit.originalText,
+      ...(edit.formats.length > 0
+        ? { formats: edit.formats }
+        : { inserted_text: edit.replacementText }),
+      ...(edit.occurrence === "all" ? { occurrence: "all" } : {}),
+      reason: edit.reason ?? "",
+    });
   };
   for (const event of message.events) {
     if (isWordContentEvent(event)) {
@@ -231,18 +325,12 @@ export function assistantContentForModel(
     }
     if (isWordEditReferenceEvent(event)) {
       const edit = editById.get(event.editId);
-      if (edit) {
-        pendingEdits.push({
-          type: "edit_data",
-          kind: "edit",
-          deleted_text: edit.originalText,
-          ...(edit.formats.length > 0
-            ? { formats: edit.formats }
-            : { inserted_text: edit.replacementText }),
-          ...(edit.occurrence === "all" ? { occurrence: "all" } : {}),
-          reason: edit.reason ?? "",
-        });
-      }
+      if (edit) addEdit(edit);
+      continue;
+    }
+    if (isWordEditBlockEvent(event)) {
+      const edit = editByBlockIndex.get(event.blockIndex);
+      if (edit) addEdit(edit);
       continue;
     }
     flushEdits();
@@ -271,6 +359,15 @@ export function normalizeLocalWordEditEvents(
   const normalized: WordAssistantEvent[] = [];
   let blockOffset = 0;
   for (const event of events) {
+    if (isWordEditBlockEvent(event)) {
+      // Local edit rows are keyed by the same deterministic id, so the
+      // reference resolves without a round trip (see createLocalWordDocumentEdit).
+      normalized.push({
+        type: "word_edit_ref",
+        editId: `${messageId}:edit-${event.blockIndex}`,
+      });
+      continue;
+    }
     if (!isWordContentEvent(event)) {
       normalized.push(event);
       continue;

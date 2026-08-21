@@ -372,3 +372,72 @@ describe("Word chat history routes", () => {
     expect(res.body.detail).toBe("Message not found");
   });
 });
+
+describe("POST /word-chat/tool-result", () => {
+  const TOOL_CALL_ID = "7f0e19cf-9be0-4b53-a1c4-2f2ffb92e611";
+
+  it("rejects a malformed tool_call_id", async () => {
+    const res = await request(app)
+      .post("/word-chat/tool-result")
+      .set(...AUTH)
+      .send({ tool_call_id: "not-a-uuid", result: {} });
+
+    expect(res.status).toBe(400);
+    expect(res.body.detail).toBe("tool_call_id must be a UUID");
+  });
+
+  it("answers 404 for an unknown or expired call id", async () => {
+    const res = await request(app)
+      .post("/word-chat/tool-result")
+      .set(...AUTH)
+      .send({ tool_call_id: TOOL_CALL_ID, result: {} });
+
+    expect(res.status).toBe(404);
+    expect(res.body.detail).toBe("Unknown or expired tool call");
+  });
+
+  it("delivers a pending call's result to the awaiting stream", async () => {
+    const { waitForClientToolResult } = await import(
+      "../../lib/chat/tools/wordClientTools"
+    );
+    const pending = waitForClientToolResult({
+      callId: TOOL_CALL_ID,
+      userId: "u1",
+    });
+
+    const res = await request(app)
+      .post("/word-chat/tool-result")
+      .set(...AUTH)
+      .send({
+        tool_call_id: TOOL_CALL_ID,
+        result: { edits: [{ index: 0, status: "proposed" }] },
+      });
+
+    expect(res.status).toBe(204);
+    await expect(pending).resolves.toEqual({
+      edits: [{ index: 0, status: "proposed" }],
+    });
+  });
+
+  it("does not deliver results across users", async () => {
+    const { waitForClientToolResult, submitClientToolResult } = await import(
+      "../../lib/chat/tools/wordClientTools"
+    );
+    const pending = waitForClientToolResult({
+      callId: TOOL_CALL_ID,
+      userId: "someone-else",
+    });
+
+    // The mocked auth middleware authenticates as u1; the pending call
+    // belongs to someone-else, so delivery must be refused as if unknown.
+    const res = await request(app)
+      .post("/word-chat/tool-result")
+      .set(...AUTH)
+      .send({ tool_call_id: TOOL_CALL_ID, result: {} });
+
+    expect(res.status).toBe(404);
+    // Settle the pending promise so the test leaves no dangling timer.
+    submitClientToolResult(TOOL_CALL_ID, "someone-else", {});
+    await pending;
+  });
+});

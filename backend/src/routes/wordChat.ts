@@ -19,10 +19,12 @@ import {
   parseOptionalDocumentContext,
   parseOptionalModel,
   createReservedAssistantMessageUpdater,
+  createWordClientToolsAdapter,
   openAssistantSse,
   reserveAssistantMessage,
   runLLMStream,
   stripTransientAssistantEvents,
+  submitClientToolResult,
   withoutEmptyAssistantReservations,
 } from "../lib/chat";
 import { getUserModelSettings } from "../lib/userSettings";
@@ -595,6 +597,33 @@ wordChatRouter.patch(
   },
 );
 
+// POST /word-chat/tool-result — the task pane's return channel for a
+// client-executed tool call. The SSE stream carries a `client_tool_call`
+// frame down to the pane; the pane executes it with Office.js and posts the
+// outcome here, which resolves the tool loop awaiting inside POST /word-chat.
+wordChatRouter.post("/tool-result", requireAuth, (req, res) => {
+  const userId = res.locals.userId as string;
+  const body =
+    req.body && typeof req.body === "object" && !Array.isArray(req.body)
+      ? (req.body as Record<string, unknown>)
+      : {};
+  if (typeof body.tool_call_id !== "string" || !isUuid(body.tool_call_id)) {
+    return void res.status(400).json({ detail: "tool_call_id must be a UUID" });
+  }
+  // `result` is opaque here; the awaiting adapter normalizes it. Delivery
+  // fails for expired, unknown, or foreign ids — all three answer the same
+  // 404 so the endpoint cannot be probed for live call ids.
+  const delivered = submitClientToolResult(
+    body.tool_call_id,
+    userId,
+    body.result,
+  );
+  if (!delivered) {
+    return void res.status(404).json({ detail: "Unknown or expired tool call" });
+  }
+  res.status(204).end();
+});
+
 // POST /word-chat — Word-specific streaming endpoint.
 wordChatRouter.post("/", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
@@ -641,6 +670,10 @@ wordChatRouter.post("/", requireAuth, async (req, res) => {
   if (!parsedEditApplyMode.ok) {
     return void res.status(400).json({ detail: parsedEditApplyMode.detail });
   }
+  // Capability flag from the task pane. Only a pane that declares it can
+  // answer client_tool_call frames; older panes keep the streamed <EDITS>
+  // protocol so they are never handed tool calls they would ignore.
+  const clientToolsEnabled = body.client_tools === true;
 
   const messages = parsedMessages.value;
   const model = parsedModel.value;
@@ -775,7 +808,7 @@ wordChatRouter.post("/", requireAuth, async (req, res) => {
   const apiMessages = buildMessages(
     enrichedMessages,
     docAvailability,
-    buildWordChatSystemPrompt(),
+    buildWordChatSystemPrompt(clientToolsEnabled),
     docIndex,
     false,
     nonce,
@@ -862,6 +895,21 @@ wordChatRouter.post("/", requireAuth, async (req, res) => {
       // chats. Legal research remains a web-assistant capability.
       includeResearchTools: false,
       includeAskInputs: false,
+      ...(clientToolsEnabled
+        ? {
+            clientTools: createWordClientToolsAdapter({
+              userId,
+              write,
+              signal: stream.signal,
+              nonce,
+            }),
+            // The edit flow is built around retry round-trips (propose →
+            // fail → read_active_document → retry), each costing one
+            // iteration; the default budget of 10 can end the loop before
+            // the model gets to write its summary.
+            maxIterations: 16,
+          }
+        : {}),
       model,
       apiKeys,
       signal: stream.signal,

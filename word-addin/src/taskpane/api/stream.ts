@@ -14,6 +14,17 @@ export interface WordChatDocumentReadEvent {
   documentId?: string;
 }
 
+/**
+ * A tool call the backend forwarded for execution inside Word. The pane runs
+ * it with Office.js and posts the outcome to /word-chat/tool-result, keyed by
+ * `toolCallId`; the backend's tool loop is blocked awaiting that post.
+ */
+export interface WordClientToolCall {
+  toolCallId: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
 export async function streamAssistant(
   params: {
     messages: {
@@ -43,6 +54,13 @@ export async function streamAssistant(
     /** Called only when the backend reports a model-triggered document read. */
     onDocumentRead?: (event: WordChatDocumentReadEvent) => void;
     /**
+     * Called when the backend forwards a client-executed tool call. The
+     * handler must eventually post a result for `toolCallId` (success or
+     * error) — the backend times the call out otherwise. Passing this handler
+     * is what advertises `client_tools` capability to the backend.
+     */
+    onClientToolCall?: (call: WordClientToolCall) => void;
+    /**
      * Streams the citation rows behind the answer's `[n]` markers. Fired per
      * citations frame; the final frame supersedes earlier partial ones.
      */
@@ -59,6 +77,9 @@ export async function streamAssistant(
     document_name: params.documentName,
     storage: params.wordChatStorage,
     edit_apply_mode: params.editApplyMode ?? "approval",
+    // Capability is advertised by the code that can actually honour it, so
+    // the flag can never drift from the implementation.
+    client_tools: !!params.onClientToolCall,
     signal: params.signal,
   });
   if (!res.ok) {
@@ -89,6 +110,21 @@ export async function streamAssistant(
         if (chatId || assistantMessageId) {
           params.onMetadata?.({ chatId, assistantMessageId });
         }
+      } else if (
+        d.type === "client_tool_call" &&
+        typeof d.tool_call_id === "string" &&
+        d.tool_call_id &&
+        typeof d.name === "string" &&
+        d.name
+      ) {
+        params.onClientToolCall?.({
+          toolCallId: d.tool_call_id,
+          name: d.name,
+          input:
+            d.input && typeof d.input === "object" && !Array.isArray(d.input)
+              ? (d.input as Record<string, unknown>)
+              : {},
+        });
       } else if (
         (d.type === "doc_read_start" || d.type === "doc_read") &&
         typeof d.filename === "string" &&
