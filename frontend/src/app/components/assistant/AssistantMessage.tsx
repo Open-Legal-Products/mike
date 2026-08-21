@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
+import { respondMcpPendingCall } from "../../lib/mikeApi";
 import type {
     AssistantEvent,
     Citation,
@@ -31,6 +32,102 @@ import {
     WorkflowAppliedBlock,
     type CourtListenerBlockItem,
 } from "./message/EventBlocks";
+
+/**
+ * Inline approve/decline prompt for an MCP tool call awaiting the user's
+ * per-call approval. Shows exactly what was proposed (tool + stored
+ * arguments); the buttons send only a decision — the payload that runs is
+ * the one the backend already stored, so what you see is what executes.
+ */
+function McpConfirmationBlock({
+    event,
+    showConnector,
+}: {
+    event: Extract<AssistantEvent, { type: "mcp_confirmation" }>;
+    showConnector?: boolean;
+}) {
+    const [busy, setBusy] = useState<"approve" | "deny" | null>(null);
+    const [localError, setLocalError] = useState<string | null>(null);
+    const resolved = event.resolved;
+
+    const respond = async (decision: "approve" | "deny") => {
+        setBusy(decision);
+        setLocalError(null);
+        try {
+            await respondMcpPendingCall(event.id, decision);
+        } catch (err) {
+            setLocalError(
+                err instanceof Error
+                    ? err.message
+                    : "Couldn't submit your decision.",
+            );
+            setBusy(null);
+        }
+    };
+
+    return (
+        <EventBlock
+            showConnector={showConnector}
+            isStreaming={!resolved && busy === null}
+            dotColor={
+                resolved === "approved"
+                    ? "green"
+                    : resolved
+                      ? "red"
+                      : "gray"
+            }
+        >
+            <div className="min-w-0">
+                <span className="font-medium">
+                    {event.connector_name
+                        ? `${event.connector_name}: ${event.tool_name}`
+                        : event.tool_name}{" "}
+                    wants to run
+                </span>
+                <pre className="mt-1 max-h-40 overflow-auto rounded-md bg-gray-100 p-2 font-mono text-[11px] leading-snug text-gray-700">
+                    {event.arguments_json}
+                </pre>
+                {resolved ? (
+                    <p
+                        className={`mt-1 text-xs font-medium ${
+                            resolved === "approved"
+                                ? "text-green-700"
+                                : "text-red-600"
+                        }`}
+                    >
+                        {resolved === "approved"
+                            ? "Approved — running"
+                            : resolved === "denied"
+                              ? "Declined"
+                              : "Expired without a decision"}
+                    </p>
+                ) : (
+                    <div className="mt-2 flex items-center gap-2">
+                        <button
+                            type="button"
+                            disabled={busy !== null}
+                            onClick={() => void respond("approve")}
+                            className="rounded-md bg-gray-900 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-50"
+                        >
+                            {busy === "approve" ? "Approving..." : "Approve"}
+                        </button>
+                        <button
+                            type="button"
+                            disabled={busy !== null}
+                            onClick={() => void respond("deny")}
+                            className="rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-50"
+                        >
+                            {busy === "deny" ? "Declining..." : "Decline"}
+                        </button>
+                    </div>
+                )}
+                {localError && (
+                    <p className="mt-1 text-xs text-red-600">{localError}</p>
+                )}
+            </div>
+        </EventBlock>
+    );
+}
 
 interface Props {
     events?: AssistantEvent[];
@@ -391,6 +488,15 @@ export function AssistantMessage({
                 >
                     <span>Thinking...</span>
                 </EventBlock>
+            );
+        }
+        if (event.type === "mcp_confirmation") {
+            return (
+                <McpConfirmationBlock
+                    key={globalIdx}
+                    event={event}
+                    showConnector={showConnector}
+                />
             );
         }
         if (event.type === "mcp_tool_call") {

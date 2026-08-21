@@ -48,6 +48,7 @@ type PendingMfaAction =
     | { type: "delete"; connectorId: string }
     | { type: "refresh"; connectorId: string }
     | { type: "connector-enabled"; connectorId: string; enabled: boolean }
+    | { type: "connector-trust"; connectorId: string; trusted: boolean }
     | {
           type: "tool-enabled";
           connectorId: string;
@@ -529,6 +530,28 @@ export default function ConnectorsPage() {
         );
     };
 
+    const handleTrustAnnotations = async (
+        connectorId: string,
+        trusted: boolean,
+    ) => {
+        await runSensitiveAction(
+            { type: "connector-trust", connectorId, trusted },
+            async () => {
+                setBusyKey(`trust:${connectorId}`);
+                try {
+                    replaceConnector(
+                        await updateMcpConnector(connectorId, {
+                            trustAnnotations: trusted,
+                        }),
+                        { preserveToolsOnEmpty: true },
+                    );
+                } finally {
+                    setBusyKey(null);
+                }
+            },
+        );
+    };
+
     const handleToolEnabled = async (
         connectorId: string,
         toolId: string,
@@ -580,6 +603,9 @@ export default function ConnectorsPage() {
         if (action.type === "delete") await handleDelete(action.connectorId);
         if (action.type === "connector-enabled") {
             await handleConnectorEnabled(action.connectorId, action.enabled);
+        }
+        if (action.type === "connector-trust") {
+            await handleTrustAnnotations(action.connectorId, action.trusted);
         }
         if (action.type === "tool-enabled") {
             await handleToolEnabled(
@@ -687,6 +713,7 @@ export default function ConnectorsPage() {
                 onRefresh={handleRefresh}
                 onDelete={handleDelete}
                 onConnectorEnabled={handleConnectorEnabled}
+                onTrustAnnotations={handleTrustAnnotations}
                 onToolEnabled={handleToolEnabled}
             />
 
@@ -791,6 +818,7 @@ function McpConnectorDetailsModal({
     onRefresh,
     onDelete,
     onConnectorEnabled,
+    onTrustAnnotations,
     onToolEnabled,
 }: {
     connector: McpConnectorSummary | null;
@@ -812,6 +840,10 @@ function McpConnectorDetailsModal({
     onConnectorEnabled: (
         connectorId: string,
         enabled: boolean,
+    ) => Promise<void>;
+    onTrustAnnotations: (
+        connectorId: string,
+        trusted: boolean,
     ) => Promise<void>;
     onToolEnabled: (
         connectorId: string,
@@ -916,6 +948,34 @@ function McpConnectorDetailsModal({
                         onShowTokenChange={onShowTokenChange}
                         onShowAdvancedChange={onShowAdvancedChange}
                     />
+                    <div className="rounded-lg border border-gray-100 bg-white/60 px-3 py-2.5">
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                            <div className="min-w-0">
+                                <p className="text-sm font-medium text-gray-800">
+                                    Trust this server&apos;s safety annotations
+                                </p>
+                                <p className="mt-0.5 text-xs text-gray-500">
+                                    Off (recommended): every tool call asks for
+                                    your approval. On: tools this server marks
+                                    read-only and closed-world run without
+                                    asking — only enable for servers you
+                                    control or have vetted, because servers
+                                    write their own annotations.
+                                </p>
+                            </div>
+                            <SettingsToggle
+                                checked={connector.trustAnnotations}
+                                disabled={busyKey === `trust:${connector.id}`}
+                                loading={busyKey === `trust:${connector.id}`}
+                                onChange={(trusted) =>
+                                    void onTrustAnnotations(
+                                        connector.id,
+                                        trusted,
+                                    )
+                                }
+                            />
+                        </div>
+                    </div>
                     <div className="flex min-h-0 flex-1 flex-col">
                         <div className="mb-2 flex items-center justify-between">
                             <h3 className="text-xs font-medium text-gray-500">
@@ -1220,9 +1280,7 @@ function ScrollableToolList({
             <div>
                 {connector.tools.map((tool) => {
                     const disabled =
-                        !onToolEnabled ||
-                        busyKey === `tool:${tool.id}` ||
-                        tool.requiresConfirmation;
+                        !onToolEnabled || busyKey === `tool:${tool.id}`;
                     const isExpanded = expandedToolId === tool.id;
                     const toolLabel = tool.title || tool.toolName;
                     return (
@@ -1278,7 +1336,8 @@ function ScrollableToolList({
                                 <div className="ml-7 mt-2 min-w-0">
                                     {tool.requiresConfirmation && (
                                         <p className="text-xs font-medium text-amber-700">
-                                            Confirmation required
+                                            Asks for your approval before each
+                                            run
                                         </p>
                                     )}
                                     {tool.description && (

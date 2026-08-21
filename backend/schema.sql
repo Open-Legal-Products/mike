@@ -305,6 +305,35 @@ create index if not exists idx_user_mcp_tool_audit_logs_user_created
 
 alter table public.user_mcp_tool_audit_logs enable row level security;
 
+-- Pending-approval ledger for MCP tool calls: the exact proposed call is
+-- stored here, shown to the user, and executed only after the user approves
+-- that specific short-lived, single-use row. Status is a one-way state
+-- machine enforced by conditional updates in the backend
+-- (see backend/migrations/20260802_01_mcp_pending_tool_calls.sql).
+create table if not exists public.user_mcp_pending_tool_calls (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  connector_id uuid not null references public.user_mcp_connectors(id) on delete cascade,
+  tool_id uuid references public.user_mcp_connector_tools(id) on delete set null,
+  tool_name text not null,
+  openai_tool_name text not null,
+  arguments jsonb not null default '{}'::jsonb,
+  status text not null default 'pending'
+    check (status in ('pending', 'approved', 'denied', 'executing', 'executed', 'failed', 'expired')),
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  decided_at timestamptz,
+  executed_at timestamptz
+);
+
+create index if not exists idx_user_mcp_pending_tool_calls_user
+  on public.user_mcp_pending_tool_calls(user_id);
+
+create index if not exists idx_user_mcp_pending_tool_calls_status
+  on public.user_mcp_pending_tool_calls(status, expires_at);
+
+alter table public.user_mcp_pending_tool_calls enable row level security;
+
 -- ---------------------------------------------------------------------------
 -- Projects and documents
 -- ---------------------------------------------------------------------------
@@ -2357,6 +2386,7 @@ revoke all on public.user_mcp_oauth_tokens from anon, authenticated;
 revoke all on public.user_mcp_oauth_states from anon, authenticated;
 revoke all on public.user_mcp_connector_tools from anon, authenticated;
 revoke all on public.user_mcp_tool_audit_logs from anon, authenticated;
+revoke all on public.user_mcp_pending_tool_calls from anon, authenticated;
 revoke all on public.courtlistener_citation_index from anon, authenticated;
 revoke all on public.courtlistener_opinion_cluster_index from anon, authenticated;
 revoke all on public.audit_events from anon, authenticated;

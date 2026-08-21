@@ -24,6 +24,7 @@ import {
     deleteUserMcpConnector,
     getUserMcpConnector,
     listUserMcpConnectors,
+    decideMcpPendingToolCall,
     McpOAuthRequiredError,
     refreshUserMcpConnectorTools,
     setUserMcpToolEnabled,
@@ -941,6 +942,9 @@ userRouter.patch(
                     ...(typeof body.enabled === "boolean"
                         ? { enabled: body.enabled }
                         : {}),
+                    ...(typeof body.trustAnnotations === "boolean"
+                        ? { trustAnnotations: body.trustAnnotations }
+                        : {}),
                     ...("bearerToken" in body
                         ? {
                               bearerToken:
@@ -1135,6 +1139,53 @@ userRouter.patch(
                 userId,
                 connectorId: req.params.connectorId,
                 toolId: req.params.toolId,
+                error: detail,
+            });
+            res.status(400).json({ detail });
+        }
+    },
+);
+
+// POST /user/mcp-pending-calls/:pendingId
+// The user's decision on an approval-gated MCP tool call proposed mid-chat.
+// The pending row already holds the exact tool + arguments; this endpoint
+// carries ONLY the decision, so a tampered request cannot change what runs.
+// decideMcpPendingToolCall enforces ownership, expiry, and single use.
+userRouter.post(
+    "/mcp-pending-calls/:pendingId",
+    requireAuth,
+    async (req, res) => {
+        const userId = res.locals.userId as string;
+        const decision = req.body?.decision;
+        if (decision !== "approve" && decision !== "deny") {
+            return void res
+                .status(400)
+                .json({ detail: 'decision must be "approve" or "deny".' });
+        }
+        const db = createServerSupabase();
+        try {
+            const outcome = await decideMcpPendingToolCall(
+                userId,
+                req.params.pendingId,
+                decision,
+                db,
+            );
+            if (outcome === "not_found") {
+                return void res
+                    .status(404)
+                    .json({ detail: "Pending tool call not found." });
+            }
+            if (outcome === "expired") {
+                return void res.status(410).json({
+                    detail: "This tool call approval has expired.",
+                });
+            }
+            res.json({ status: outcome });
+        } catch (err) {
+            const detail = errorMessage(err);
+            console.error("[user/mcp-pending-calls] decision failed", {
+                userId,
+                pendingId: req.params.pendingId,
                 error: detail,
             });
             res.status(400).json({ detail });
