@@ -166,8 +166,21 @@ export function workflowAddonSeeds(): WorkflowAddonSeed[] {
 // sync clears the latch so the next request retries.
 let catalogSyncPromise: Promise<void> | null = null;
 
-export function resetCatalogSyncForTests(): void {
+/**
+ * Drop the once-per-process latch so the next syncWorkflowAddonCatalog call
+ * does real work. The durable workflow.catalog_sync job calls this first: the
+ * job IS a deliberate re-sync request, and when the runner shares a process
+ * with the routes (WORKERS_MODE=inline) an earlier request may already have
+ * latched. Going through syncWorkflowAddonCatalog afterwards — rather than
+ * runCatalogSync directly — also re-latches, so a co-located request path
+ * still gets the warm no-op it gets today.
+ */
+export function resetCatalogSyncLatch(): void {
   catalogSyncPromise = null;
+}
+
+export function resetCatalogSyncForTests(): void {
+  resetCatalogSyncLatch();
 }
 
 export function syncWorkflowAddonCatalog(db: Db): Promise<void> {

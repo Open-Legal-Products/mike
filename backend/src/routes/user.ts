@@ -3,6 +3,15 @@ import { Router } from "express";
 import { requireAuth, requireMfaIfEnrolled } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
 import { recordAudit } from "../lib/audit";
+import { enqueueDbJob } from "../lib/dbq/enqueue";
+import {
+    EXPORT_TYPES,
+    MAX_ZIP_EXPORT_DOCUMENTS,
+    type ExportType,
+} from "../lib/dbq/handlers";
+import { AUDIT_EXPORT_LIMIT, parseQuery } from "../lib/auditExport";
+import type { DbJob } from "../lib/dbq/types";
+import { buildContentDisposition, downloadFile } from "../lib/storage";
 import {
     DEFAULT_TABULAR_MODEL,
     DEFAULT_TITLE_MODEL,
@@ -1152,10 +1161,35 @@ userRouter.delete(
         const userEmail = res.locals.userEmail as string | undefined;
         const db = createServerSupabase();
         try {
-            await deleteUserAccountData(db, userId, userEmail);
+            // Order matters, and is the REVERSE of the old inline flow:
+            // 1. Delete the auth user first. From the user's point of view
+            //    the account is now gone (no login, sessions revoked) and if
+            //    THIS fails, nothing has happened — the request is cleanly
+            //    retriable.
+            // 2. Then enqueue the data cascade as a durable job. The old
+            //    inline cascade died with the request or a restart, leaving
+            //    a half-deleted account with no owner; the job retries until
+            //    the (idempotent) cascade completes.
             const { error } = await db.auth.admin.deleteUser(userId);
             if (error)
                 return void res.status(500).json({ detail: error.message });
+            try {
+                await enqueueDbJob(db, {
+                    kind: "account.delete",
+                    payload: { userId, userEmail: userEmail ?? null },
+                    dedupeKey: `account.delete:${userId}`,
+                    maxAttempts: 20,
+                });
+            } catch (enqueueErr) {
+                // Auth user is already gone — the user cannot retry. Fall
+                // back to the old inline cascade rather than stranding the
+                // data.
+                console.error(
+                    "[user/account] cleanup enqueue failed; running inline",
+                    { userId, error: errorMessage(enqueueErr) },
+                );
+                await deleteUserAccountData(db, userId, userEmail);
+            }
             res.status(204).send();
         } catch (err) {
             const detail = errorMessage(err);
@@ -1334,5 +1368,177 @@ userRouter.get(
             });
             res.status(500).json({ detail });
         }
+    },
+);
+
+// ---------------------------------------------------------------------------
+// Async exports (durable): POST creates a DB-queue job that builds the
+// export off the request thread; GET polls it; the download endpoint streams
+// the finished artifact. The synchronous GET /user/*/export routes above
+// still work (curl users, older clients) — the frontend uses this flow so a
+// large export can neither time out the request nor die with a dropped tab.
+// Artifacts expire after 24 hours (the runner's retention sweep deletes the
+// file and the job row).
+
+// POST /user/exports  { type, params? }
+// `params` carries the inputs of the filtered exports: the History CSV's
+// filters, and the document ids of a bulk zip. They are validated here, at
+// request time, so a bad filter is a 400 instead of a job that fails minutes
+// later with nowhere to report it.
+userRouter.post(
+    "/exports",
+    requireAuth,
+    requireMfaIfEnrolled,
+    async (req, res) => {
+        const userId = res.locals.userId as string;
+        const userEmail = res.locals.userEmail as string | undefined;
+        const body = (req.body ?? {}) as {
+            type?: string;
+            params?: Record<string, unknown>;
+        };
+        const type = body.type;
+        if (!type || !EXPORT_TYPES.includes(type as ExportType))
+            return void res.status(400).json({
+                detail: `type must be one of: ${EXPORT_TYPES.join(", ")}`,
+            });
+        const params = body.params ?? {};
+
+        const payload: Record<string, unknown> = {
+            userId,
+            userEmail: userEmail ?? null,
+            type,
+        };
+        if (type === "audit-csv") {
+            // Same validation the sync GET /audit/export route applies.
+            const parsed = parseQuery(params, AUDIT_EXPORT_LIMIT);
+            if (!parsed.ok)
+                return void res.status(400).json({ detail: parsed.error });
+            payload.query = parsed.query;
+        } else if (type === "documents-zip") {
+            const ids = params.document_ids;
+            if (
+                !Array.isArray(ids) ||
+                ids.length === 0 ||
+                ids.some((id) => typeof id !== "string" || !id)
+            )
+                return void res.status(400).json({
+                    detail: "params.document_ids must be a non-empty array of document ids",
+                });
+            if (ids.length > MAX_ZIP_EXPORT_DOCUMENTS)
+                return void res.status(400).json({
+                    detail: `params.document_ids is limited to ${MAX_ZIP_EXPORT_DOCUMENTS} documents`,
+                });
+            payload.document_ids = ids;
+        }
+
+        const db = createServerSupabase();
+        try {
+            // Deduped per (user, type) for the whole-account exports: double
+            // clicks and impatient retries collapse into the already-running
+            // build. The filtered exports opt out — two requests differing
+            // only in their filters or selection are different artifacts.
+            const dedupeKey =
+                type === "audit-csv" || type === "documents-zip"
+                    ? undefined
+                    : `export:${userId}:${type}`;
+            const out = await enqueueDbJob(db, {
+                kind: "export.build",
+                payload,
+                dedupeKey,
+                maxAttempts: 3,
+            });
+            if (!out.id)
+                return void res
+                    .status(500)
+                    .json({ detail: "Failed to schedule export" });
+            res.status(202).json({ export_id: out.id });
+        } catch (err) {
+            const detail = errorMessage(err);
+            console.error("[user/exports] enqueue failed", {
+                userId,
+                error: detail,
+            });
+            res.status(500).json({ detail });
+        }
+    },
+);
+
+// Shared lookup: an export job is only visible to the user whose data it
+// exports. A foreign or unknown id is a 404 either way, so ids are not
+// probeable.
+async function loadOwnExportJob(
+    db: ReturnType<typeof createServerSupabase>,
+    exportId: string,
+    userId: string,
+): Promise<Pick<DbJob, "id" | "status" | "result"> | null> {
+    const { data: job } = await db
+        .from("db_jobs")
+        .select("id, kind, status, payload, result")
+        .eq("id", exportId)
+        .eq("kind", "export.build")
+        .maybeSingle();
+    if (!job || (job.payload as { userId?: string })?.userId !== userId)
+        return null;
+    return job as Pick<DbJob, "id" | "status" | "result">;
+}
+
+// GET /user/exports/:exportId — poll until status is "done", then fetch
+// GET /user/exports/:exportId/download.
+userRouter.get(
+    "/exports/:exportId",
+    requireAuth,
+    requireMfaIfEnrolled,
+    async (req, res) => {
+        const userId = res.locals.userId as string;
+        const db = createServerSupabase();
+        const row = await loadOwnExportJob(db, req.params.exportId, userId);
+        if (!row)
+            return void res.status(404).json({ detail: "Export not found" });
+        if (row.status === "done" && row.result) {
+            return void res.json({
+                status: "done",
+                filename: row.result.filename ?? null,
+            });
+        }
+        if (row.status === "failed")
+            return void res.json({ status: "failed" });
+        res.json({ status: "pending" });
+    },
+);
+
+// GET /user/exports/:exportId/download — stream the finished artifact.
+// Authenticated + ownership-checked on every request (unlike /download/:token,
+// which only serves paths backed by a document_versions row and would 404 on
+// an export artifact); artifacts expire after 24h.
+userRouter.get(
+    "/exports/:exportId/download",
+    requireAuth,
+    requireMfaIfEnrolled,
+    async (req, res) => {
+        const userId = res.locals.userId as string;
+        const db = createServerSupabase();
+        const row = await loadOwnExportJob(db, req.params.exportId, userId);
+        if (!row || row.status !== "done" || !row.result)
+            return void res.status(404).json({ detail: "Export not found" });
+        const storagePath = row.result.storage_path as string | undefined;
+        const filename =
+            (row.result.filename as string | undefined) ?? "export.json";
+        if (!storagePath)
+            return void res.status(404).json({ detail: "Export not found" });
+        const raw = await downloadFile(storagePath);
+        if (!raw)
+            return void res.status(404).json({ detail: "Export expired" });
+        // Artifacts are no longer all JSON (CSV, zip). The builder records the
+        // type it produced; the default covers jobs finished before it did.
+        res.setHeader(
+            "Content-Type",
+            (row.result.content_type as string | undefined) ??
+                "application/json",
+        );
+        res.setHeader(
+            "Content-Disposition",
+            buildContentDisposition("attachment", filename),
+        );
+        res.send(Buffer.from(raw));
     },
 );

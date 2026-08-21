@@ -173,6 +173,28 @@ services:
           aws --endpoint-url http://storage:9000 s3 mb s3://mike || true"
     restart: "no"
 
+  # --- Redis: backs the BullMQ job queues (conversion, extraction, fast
+  # delivery for background jobs). NEW INSTALLS get it out of the box, which
+  # is why the backend below ships with the ASYNC_* flags on. Existing
+  # deployments that upgrade in place are untouched: the flags only default
+  # on here in compose, never in code, and without Redis configured the
+  # backend falls back to its Postgres-backed queue automatically.
+  # AOF persistence is on so queued jobs survive a Redis restart.
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      # Loopback only — debugging convenience, never internet-reachable.
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
   backend:
     build: ./backend
     ports:
@@ -200,6 +222,19 @@ services:
       - R2_BUCKET_NAME=mike
       # Local Ollama running on the host. Override OLLAMA_MODEL to change the tag.
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
+      # Durable job queues: fresh compose installs run BullMQ-on-Redis for
+      # everything (conversion + extraction async, instant delivery for
+      # background jobs). Deployments without Redis fall back to the
+      # Postgres queue; these flags are compose-level so in-place upgrades
+      # of non-compose installs see no behavior change.
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - ASYNC_DOCUMENT_CONVERSION=${ASYNC_DOCUMENT_CONVERSION:-true}
+      - ASYNC_TABULAR_EXTRACTION=${ASYNC_TABULAR_EXTRACTION:-true}
+      # Background workers run in a worker_thread inside this container by
+      # default (off the HTTP event loop). To move them to their own
+      # container/machine, set WORKERS_MODE=none here and enable the
+      # `worker` service below.
+      - WORKERS_MODE=${WORKERS_MODE:-thread}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -211,11 +246,48 @@ services:
         condition: service_started
       rest:
         condition: service_started
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+
+  # --- Optional: dedicated worker process ("async computer" mode).
+  # Same image as the backend, different command: it runs ONLY the queue
+  # workers and maintenance sweeps against the same Postgres/Redis. To use:
+  # uncomment this service AND set WORKERS_MODE=none on the backend above so
+  # background work runs exactly once. Scale-out is safe by construction —
+  # BullMQ partitions per connection and the DB queue claims with
+  # FOR UPDATE SKIP LOCKED, so replicas divide jobs, never duplicate them.
+  # worker:
+  #   build: ./backend
+  #   command: ["node", "dist/worker.js"]
+  #   env_file:
+  #     - path: ./backend/.env
+  #       required: false
+  #     - path: .env
+  #       required: false
+  #   environment:
+  #     - SUPABASE_URL=http://gateway:8000
+  #     - SUPABASE_SECRET_KEY=${SUPABASE_SECRET_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU}
+  #     - R2_ENDPOINT_URL=http://storage:9000
+  #     - R2_ACCESS_KEY_ID=rustfsadmin
+  #     - R2_SECRET_ACCESS_KEY=rustfsadmin
+  #     - R2_BUCKET_NAME=mike
+  #     - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+  #     - ASYNC_DOCUMENT_CONVERSION=${ASYNC_DOCUMENT_CONVERSION:-true}
+  #     - ASYNC_TABULAR_EXTRACTION=${ASYNC_TABULAR_EXTRACTION:-true}
+  #   depends_on:
+  #     db-init:
+  #       condition: service_completed_successfully
+  #     redis:
+  #       condition: service_healthy
+  #   restart: unless-stopped
 
   frontend:
     build:
-      context: ./frontend
+      # Repo-root context: the frontend's shared types import type-only
+      # definitions from backend/src (see frontend/Dockerfile).
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://localhost:54321}
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY}
@@ -230,3 +302,4 @@ services:
 volumes:
   db_data:
   storage_data:
+  redis_data:

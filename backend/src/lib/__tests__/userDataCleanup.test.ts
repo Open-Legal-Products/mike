@@ -3,6 +3,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../storage", () => ({
     deleteFile: vi.fn(async () => {}),
     listFiles: vi.fn(async () => [] as string[]),
+    // Kept real: cleanup must delete the exact key the
+    // document.precompute_text job writes, so a fake would defeat the point
+    // of asserting on the collected paths.
+    extractedTextKey: (versionId: string) => `extracted-text/${versionId}.txt`,
 }));
 
 import { deleteFile, listFiles } from "../storage";
@@ -277,6 +281,9 @@ describe("deleteUserProjects", () => {
         expect(deletedPaths.sort()).toEqual([
             "documents/u1/d1/converted.pdf",
             "documents/u1/d1/source.pdf",
+            // The read_document text cache lives outside the per-user
+            // prefixes, so this walk is the only thing that can reach it.
+            "extracted-text/v1.txt",
         ]);
     });
 
@@ -419,6 +426,10 @@ describe("deleteUserAccountData", () => {
             "documents/u1/d1/source.pdf",
             "documents/u1/orphan.bin",
             "documents/u2/d-guest/source.docx",
+            // Version-id-keyed text caches: not under any user prefix, so
+            // account erasure would leak them without this.
+            "extracted-text/v-guest.txt",
+            "extracted-text/v1.txt",
         ]);
         expect(listFilesMock).toHaveBeenCalledWith("documents/u1/");
     });

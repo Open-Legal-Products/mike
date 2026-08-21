@@ -16,6 +16,7 @@ import { createPortal } from "react-dom";
 import { Loader2, AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
 import {
     deleteDocument,
+    getDocument,
     getDocumentUrl,
     downloadDocumentsZip,
     listDocumentVersions,
@@ -26,6 +27,7 @@ import {
     renameDocumentVersion,
     type DocumentVersion,
 } from "@/app/lib/mikeApi";
+import { runUserExport } from "@/app/lib/asyncExport";
 import type {
     Document,
     Folder as ProjectFolder,
@@ -77,6 +79,12 @@ import {
     type TableFilterOption,
     type TableSortDirection,
 } from "@/app/components/shared/TablePrimitive";
+
+// Above this many documents the zip is built by a background export job
+// instead of inside the request: a small selection zips in well under a second
+// and should download instantly, while a large one risks an out-of-memory or a
+// gateway timeout and is worth the polling round trips.
+const ASYNC_ZIP_THRESHOLD = 10;
 
 export type DocTableFolder = ProjectFolder | LibraryFolder;
 export type DocTableFolderBreadcrumb = {
@@ -728,6 +736,37 @@ export function DocTable({
         document.addEventListener("dragend", handleDragEnd);
         return () => document.removeEventListener("dragend", handleDragEnd);
     }, []);
+
+    // Poll documents stuck in deferred conversion until the backend marks
+    // them "ready"/"error" (async conversion flips status server-side)
+    useEffect(() => {
+        const converting = documents.filter(
+            (d) => d.status === "pending" || d.status === "processing",
+        );
+        if (converting.length === 0) return;
+
+        let cancelled = false;
+        const interval = window.setInterval(() => {
+            for (const doc of converting) {
+                getDocument(doc.id)
+                    .then((latest) => {
+                        if (cancelled || latest.status === doc.status) return;
+                        setDocuments((prev) =>
+                            prev.map((d) =>
+                                d.id === doc.id ? { ...d, ...latest } : d,
+                            ),
+                        );
+                    })
+                    .catch(() => {
+                        // Transient fetch failure — keep polling
+                    });
+            }
+        }, 3000);
+        return () => {
+            cancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [documents, setDocuments]);
 
     // Scroll new-folder input into view whenever it appears
     useEffect(() => {
@@ -2099,10 +2138,13 @@ export function DocTable({
             await downloadDoc(ids[0]);
             return;
         }
-        const blob = await downloadDocumentsZip(ids);
+        const { blob, filename } =
+            ids.length > ASYNC_ZIP_THRESHOLD
+                ? await runUserExport("documents-zip", { document_ids: ids })
+                : { blob: await downloadDocumentsZip(ids), filename: null };
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = "documents.zip";
+        a.download = filename ?? "documents.zip";
         a.click();
         URL.revokeObjectURL(a.href);
     }, [downloadDoc, selectedDocIds]);

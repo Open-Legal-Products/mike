@@ -482,7 +482,18 @@ describe("POST /chat — streaming endpoint", () => {
         expect(res.text).toContain(
             '"chatId":"96fdeaa1-af40-475e-9834-703004783f21"',
         );
-        expect(dbInserts).toEqual([]);
+        // No chat row, no message row: local storage means the transcript
+        // never reaches the server. The audit job below is the one permitted
+        // write — it records THAT a Word turn happened, deliberately without
+        // the prompt text (see the title it carries).
+        expect(dbInserts.map(({ table }) => table)).toEqual(["db_jobs"]);
+        const auditJob = dbInserts[0].value as {
+            kind: string;
+            payload: { base: { surface: string; title: string | null } };
+        };
+        expect(auditJob.kind).toBe("audit.chat_turn");
+        expect(auditJob.payload.base.surface).toBe("word");
+        expect(auditJob.payload.base.title).not.toContain("hello");
         expect(dbUpdates).toEqual([]);
         expect(runLLMStream).toHaveBeenCalledTimes(1);
     });

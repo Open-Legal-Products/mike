@@ -2327,6 +2327,118 @@ create index if not exists audit_events_user_created on public.audit_events (use
 create index if not exists audit_events_project_created on public.audit_events (project_id, created_at desc);
 alter table public.audit_events enable row level security;
 
+-- Durable, Postgres-backed background jobs (the "DB queue"): default-on
+-- at-least-once execution for audit trails, account deletion, storage
+-- cleanup and export generation — workloads that must be durable in every
+-- deployment, using the database every deployment already has. See the
+-- 20260821_01_db_jobs migration header for the full design notes.
+create table if not exists public.db_jobs (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null,
+  payload jsonb not null default '{}'::jsonb,
+  status text not null default 'pending'
+    check (status in ('pending', 'running', 'done', 'failed')),
+  attempts integer not null default 0,
+  max_attempts integer not null default 5 check (max_attempts >= 1),
+  run_at timestamptz not null default now(),
+  claimed_at timestamptz,
+  finished_at timestamptz,
+  last_error text,
+  dedupe_key text,
+  result jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists db_jobs_claim_idx
+  on public.db_jobs (run_at)
+  where status = 'pending';
+create index if not exists db_jobs_running_idx
+  on public.db_jobs (claimed_at)
+  where status = 'running';
+create unique index if not exists db_jobs_dedupe_live_idx
+  on public.db_jobs (dedupe_key)
+  where dedupe_key is not null and status in ('pending', 'running');
+create index if not exists db_jobs_finished_idx
+  on public.db_jobs (finished_at)
+  where status in ('done', 'failed');
+alter table public.db_jobs enable row level security;
+
+-- Atomic batch claim with built-in stale-running recovery (crash resume).
+-- FOR UPDATE SKIP LOCKED partitions work between concurrent claimers.
+create or replace function public.claim_db_jobs(
+  p_limit integer default 5,
+  p_stale_seconds integer default 600
+)
+returns setof public.db_jobs
+language sql
+as $$
+  with candidates as (
+    select id
+      from public.db_jobs
+     where (status = 'pending' and run_at <= now())
+        or (status = 'running'
+            and claimed_at < now() - make_interval(secs => p_stale_seconds))
+     order by run_at
+     limit p_limit
+       for update skip locked
+  )
+  update public.db_jobs j
+     set status = 'running',
+         claimed_at = now(),
+         attempts = j.attempts + 1
+    from candidates c
+   where j.id = c.id
+  returning j.*;
+$$;
+
+-- Claim ONE job by id — the Redis-delivery path (transactional-outbox
+-- pattern). When Redis is configured, enqueue also adds a BullMQ "delivery"
+-- job carrying this row's id so pickup is instant; the worker still claims
+-- through Postgres via this function, so a duplicate delivery (BullMQ retry,
+-- poller backstop racing the delivery) can never double-run the job: the
+-- second claimer matches zero rows. Same stale-running recovery as the batch
+-- claim.
+create or replace function public.claim_db_job(
+  p_id uuid,
+  p_stale_seconds integer default 600
+)
+returns setof public.db_jobs
+language sql
+as $$
+  update public.db_jobs j
+     set status = 'running',
+         claimed_at = now(),
+         attempts = j.attempts + 1
+   where j.id = p_id
+     and ((j.status = 'pending' and j.run_at <= now())
+       or (j.status = 'running'
+           and j.claimed_at < now() - make_interval(secs => p_stale_seconds)))
+  returning j.*;
+$$;
+
+-- Cancellation for dedupe-keyed jobs (clear-cells in Postgres-driver mode):
+-- pending jobs are deleted outright; running jobs get a persisted
+-- `canceled: true` stamped into their payload, which handlers check on each
+-- (re)claim — mirroring the BullMQ Job#updateData cancellation path.
+create or replace function public.cancel_db_jobs(p_dedupe_keys text[])
+returns integer
+language sql
+as $$
+  with deleted as (
+    delete from public.db_jobs
+     where dedupe_key = any(p_dedupe_keys)
+       and status = 'pending'
+    returning 1
+  ), marked as (
+    update public.db_jobs
+       set payload = payload || jsonb_build_object('canceled', true)
+     where dedupe_key = any(p_dedupe_keys)
+       and status = 'running'
+    returning 1
+  )
+  select coalesce((select count(*) from deleted), 0)::integer
+       + coalesce((select count(*) from marked), 0)::integer;
+$$;
+
 revoke all on public.user_profiles from anon, authenticated;
 revoke all on public.projects from anon, authenticated;
 revoke all on public.project_subfolders from anon, authenticated;
@@ -2360,7 +2472,14 @@ revoke all on public.user_mcp_tool_audit_logs from anon, authenticated;
 revoke all on public.courtlistener_citation_index from anon, authenticated;
 revoke all on public.courtlistener_opinion_cluster_index from anon, authenticated;
 revoke all on public.audit_events from anon, authenticated;
+revoke all on public.db_jobs from anon, authenticated;
 revoke all on function public.install_missing_default_workflows(text, jsonb)
+  from public, anon, authenticated;
+revoke all on function public.claim_db_jobs(integer, integer)
+  from public, anon, authenticated;
+revoke all on function public.claim_db_job(uuid, integer)
+  from public, anon, authenticated;
+revoke all on function public.cancel_db_jobs(text[])
   from public, anon, authenticated;
 revoke all on function public.replace_user_router_models(uuid, text, text[])
   from public, anon, authenticated;
@@ -2378,6 +2497,15 @@ grant execute
   to service_role;
 grant execute
   on function public.replace_user_router_models(uuid, text, text[])
+  to service_role;
+grant execute
+  on function public.claim_db_jobs(integer, integer)
+  to service_role;
+grant execute
+  on function public.claim_db_job(uuid, integer)
+  to service_role;
+grant execute
+  on function public.cancel_db_jobs(text[])
   to service_role;
 
 -- Tables created by this file are owned by the database bootstrap role. The

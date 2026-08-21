@@ -6,12 +6,15 @@ import {
   buildContentDisposition,
   downloadFile,
   deleteFile,
+  extractedTextKey,
   getSignedUrl,
   storageKey,
   uploadFile,
   versionStorageKey,
 } from "../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../lib/convert";
+import { enqueueConversion } from "../lib/queue/conversionQueue";
+import { enqueueDbJob, enqueueStorageCleanup } from "../lib/dbq/enqueue";
 import {
   extractTrackedChangeIds,
   resolveTrackedChange,
@@ -21,6 +24,7 @@ import {
   attachActiveVersionPaths,
   attachLatestVersionNumbers,
   contentSha256,
+  downloadFilenameForVersion,
   loadActiveVersion,
 } from "../lib/documentVersions";
 import { ensureDocAccess } from "../lib/access";
@@ -29,6 +33,7 @@ import {
   ALLOWED_DOCUMENT_TYPES,
   ALLOWED_DOCUMENT_TYPES_LABEL,
   contentTypeForDocumentType,
+  requiresLibreOfficeTextExtraction,
   shouldConvertToPdf,
 } from "../lib/documentTypes";
 
@@ -42,20 +47,30 @@ async function deleteDocumentAndVersionFiles(
   db: ReturnType<typeof createServerSupabase>,
   documentId: string,
 ) {
-  // Storage lives on document_versions — fan out and delete each version's
-  // bytes (source + PDF rendition) before dropping the document row.
+  // Storage lives on document_versions — collect every version's bytes
+  // (source + PDF rendition), drop the document row, then hand the object
+  // deletes to the durable storage.cleanup job. Previously each delete was
+  // fire-and-forget (`.catch(() => {})`): one storage hiccup silently leaked
+  // the files forever. Rows first, files second — if the row delete fails
+  // nothing has been touched and the document stays intact; if the process
+  // dies after it, the queued job still removes the files.
   const { data: versions } = await db
     .from("document_versions")
-    .select("storage_path, pdf_storage_path")
+    .select("id, storage_path, pdf_storage_path")
     .eq("document_id", documentId);
-  await Promise.all(
-    (versions ?? []).flatMap((v) =>
-      [v.storage_path, v.pdf_storage_path]
-        .filter((p): p is string => typeof p === "string" && p.length > 0)
-        .map((p) => deleteFile(p).catch(() => {})),
-    ),
+  const keys = (versions ?? []).flatMap((v) =>
+    // The extracted-text cache is keyed by version id and sits outside the
+    // per-user prefixes, so this is the only place that can reach it.
+    // Deleting an object that was never written is a no-op, hence no gate.
+    [
+      v.storage_path,
+      v.pdf_storage_path,
+      typeof v.id === "string" && v.id ? extractedTextKey(v.id) : null,
+    ].filter((p): p is string => typeof p === "string" && p.length > 0),
   );
-  return db.from("documents").delete().eq("id", documentId);
+  const result = await db.from("documents").delete().eq("id", documentId);
+  if (!result.error) await enqueueStorageCleanup(db, keys);
+  return result;
 }
 
 // GET /single-documents
@@ -77,6 +92,35 @@ documentsRouter.get("/", requireAuth, async (req, res) => {
   await attachLatestVersionNumbers(db, docs);
   await attachActiveVersionPaths(db, docs);
   res.json(docs);
+});
+
+// GET /single-documents/:documentId
+// One document, same shape as a list entry. Exists so the client can poll a
+// single document's status while a deferred conversion runs, instead of
+// refetching the whole collection.
+documentsRouter.get("/:documentId", requireAuth, async (req, res) => {
+  const userId = res.locals.userId as string;
+  const userEmail = res.locals.userEmail as string | undefined;
+  const { documentId } = req.params;
+  const db = createServerSupabase();
+
+  const { data: doc } = await db
+    .from("documents")
+    .select("*")
+    .eq("id", documentId)
+    .single();
+  if (!doc) return void res.status(404).json({ detail: "Document not found" });
+  const access = await ensureDocAccess(doc, userId, userEmail, db);
+  if (!access.ok)
+    return void res.status(404).json({ detail: "Document not found" });
+
+  const docs = [doc] as unknown as {
+    id: string;
+    current_version_id?: string | null;
+  }[];
+  await attachLatestVersionNumbers(db, docs);
+  await attachActiveVersionPaths(db, docs);
+  res.json(docs[0]);
 });
 
 // POST /single-documents
@@ -176,6 +220,8 @@ documentsRouter.get("/:documentId/display", requireAuth, async (req, res) => {
 });
 
 // POST /single-documents/download-zip
+// Synchronous zip, kept for small selections (instant download, no polling).
+// Large selections go through the durable "documents-zip" export job instead.
 documentsRouter.post("/download-zip", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
   const userEmail = res.locals.userEmail as string | undefined;
@@ -333,21 +379,6 @@ documentsRouter.get("/:documentId/docx", requireAuth, async (req, res) => {
   res.send(Buffer.from(raw));
 });
 
-// Produce the filename a download should present to the user. Version
-// filenames are expected to include the real extension.
-function downloadFilenameForVersion(
-  filename: string | null | undefined,
-  versionNumber: number | null,
-  edited = false,
-): string {
-  const resolved = filename?.trim() || "Untitled document.docx";
-  if (!edited || !versionNumber || versionNumber < 1) return resolved;
-  const dot = resolved.lastIndexOf(".");
-  const stem = dot > 0 ? resolved.slice(0, dot) : resolved;
-  const ext = dot > 0 ? resolved.slice(dot) : "";
-  return `${stem} [Edited V${versionNumber}]${ext}`;
-}
-
 // GET /single-documents/:documentId/versions
 // Returns every version row for the document in document order, with
 // the human-friendly version number when present.
@@ -478,6 +509,7 @@ documentsRouter.post(
     }
 
     let pdfStoragePath: string | null = null;
+    let deferConversion = false;
     if (suffix === "pdf") {
       pdfStoragePath = key;
     } else if (active.pdf_storage_path) {
@@ -492,23 +524,30 @@ documentsRouter.post(
         }
       }
     } else if (shouldConvertToPdf(suffix)) {
-      try {
-        const pdfBuf = await docxToPdf(Buffer.from(bytes));
-        const pdfKey = `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`;
-        await uploadFile(
-          pdfKey,
-          pdfBuf.buffer.slice(
-            pdfBuf.byteOffset,
-            pdfBuf.byteOffset + pdfBuf.byteLength,
-          ) as ArrayBuffer,
-          "application/pdf",
-        );
-        pdfStoragePath = pdfKey;
-      } catch (err) {
-        console.error(
-          `[versions/copy] Office→PDF conversion failed for ${filename}:`,
-          err,
-        );
+      // Only reached when the source has no rendition to copy — this is the
+      // one branch of the copy flow that pays for LibreOffice, so it's the
+      // branch the conversion queue takes over when the flag is on.
+      if (process.env.ASYNC_DOCUMENT_CONVERSION === "true") {
+        deferConversion = true;
+      } else {
+        try {
+          const pdfBuf = await docxToPdf(Buffer.from(bytes));
+          const pdfKey = `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`;
+          await uploadFile(
+            pdfKey,
+            pdfBuf.buffer.slice(
+              pdfBuf.byteOffset,
+              pdfBuf.byteOffset + pdfBuf.byteLength,
+            ) as ArrayBuffer,
+            "application/pdf",
+          );
+          pdfStoragePath = pdfKey;
+        } catch (err) {
+          console.error(
+            `[versions/copy] Office→PDF conversion failed for ${filename}:`,
+            err,
+          );
+        }
       }
     }
 
@@ -557,6 +596,18 @@ documentsRouter.post(
       return void res
         .status(500)
         .json({ detail: "Failed to update document current version." });
+    }
+
+    if (deferConversion) {
+      await enqueueConversion({
+        documentId,
+        versionId: versionRow.id as string,
+        userId,
+        storagePath: key,
+        fileType: suffix,
+        pdfKey: `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`,
+        finalizeDocumentStatus: false,
+      });
     }
 
     if (willDeleteSource) {
@@ -643,8 +694,14 @@ documentsRouter.post(
     // Render this version's bytes to PDF up front so /display can show
     // historical versions without on-demand conversion. Same logic as the
     // initial-upload pipeline; failures don't block the version row.
+    // With the job queue enabled the LibreOffice work is deferred to the
+    // conversion worker instead of blocking this request; the version row is
+    // created with pdf_storage_path null and the worker fills it in.
+    const deferConversion =
+      shouldConvertToPdf(suffix) &&
+      process.env.ASYNC_DOCUMENT_CONVERSION === "true";
     let pdfStoragePath: string | null = null;
-    if (shouldConvertToPdf(suffix)) {
+    if (!deferConversion && shouldConvertToPdf(suffix)) {
       try {
         const pdfBuf = await docxToPdf(file.buffer);
         const pdfKey = `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`;
@@ -730,6 +787,20 @@ documentsRouter.post(
       return void res
         .status(500)
         .json({ detail: "Failed to update document current version." });
+    }
+
+    if (deferConversion) {
+      // The document itself stays "ready" — only this version's rendition is
+      // pending, so the worker must not touch documents.status.
+      await enqueueConversion({
+        documentId,
+        versionId: versionRow.id as string,
+        userId,
+        storagePath: key,
+        fileType: suffix,
+        pdfKey: `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`,
+        finalizeDocumentStatus: false,
+      });
     }
 
     res.status(201).json(versionRow);
@@ -857,8 +928,15 @@ documentsRouter.put(
         .json({ detail: "Failed to upload replacement version." });
     }
 
+    // Same queue deferral as version uploads: the replacement's rendition is
+    // produced by the conversion worker when the flag is on. The old rendition
+    // is deleted below either way, so /display briefly falls back until the
+    // worker writes the new one.
+    const deferConversion =
+      shouldConvertToPdf(suffix) &&
+      process.env.ASYNC_DOCUMENT_CONVERSION === "true";
     let pdfStoragePath: string | null = null;
-    if (shouldConvertToPdf(suffix)) {
+    if (!deferConversion && shouldConvertToPdf(suffix)) {
       try {
         const pdfBuf = await docxToPdf(file.buffer);
         const pdfKey = `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`;
@@ -926,6 +1004,21 @@ documentsRouter.put(
         .filter((path): path is string => !!path)
         .map((path) => deleteFile(path).catch(() => {})),
     );
+
+    if (deferConversion) {
+      // Replace reuses the versionId, which is exactly why terminal jobs are
+      // removed from the queue immediately — this enqueue must not be deduped
+      // against a completed job for the same version.
+      await enqueueConversion({
+        documentId,
+        versionId,
+        userId,
+        storagePath: key,
+        fileType: suffix,
+        pdfKey: `converted-pdfs/${userId}/${documentId}/${versionSlug}.pdf`,
+        finalizeDocumentStatus: false,
+      });
+    }
 
     res.json(updated);
   },
@@ -1258,10 +1351,26 @@ async function handleEditResolution(
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   );
 
+  // pdf_storage_path: null — the bytes just changed, so any PDF rendition
+  // this version carried no longer matches them; a stale rendition would be
+  // served by /display and copied onto replicas by replicate_document. In
+  // practice assistant_edit versions never carry one (DOCX renders through
+  // DocxView from the raw bytes), so this is an invariant write, not a
+  // behavior change.
   await db
     .from("document_versions")
-    .update({ content_sha256: contentSha256(ab) })
+    .update({ content_sha256: contentSha256(ab), pdf_storage_path: null })
     .eq("id", doc.current_version_id);
+
+  // The extracted-text cache is keyed on the version id and this is one of
+  // only two sites that rewrite a version's bytes in place, so it is one of
+  // only two sites where that key could go stale. Resolution always writes
+  // DOCX, which is not a cached type, so this deletes nothing today — it is
+  // here so the "versions are immutable" assumption the cache rests on stays
+  // true by construction rather than by coincidence.
+  await enqueueStorageCleanup(db, [
+    extractedTextKey(doc.current_version_id as string),
+  ]);
 
   const { error: statusErr } = await db
     .from("document_edits")
@@ -1381,9 +1490,15 @@ export async function handleDocumentUpload(
     ) as ArrayBuffer;
     const pageCount = suffix === "pdf" ? await countPdfPages(rawBuf) : null;
 
+    // When the job queue is enabled, defer Office → PDF conversion to the
+    // BullMQ worker instead of blocking the upload request on LibreOffice.
+    const deferConversion =
+      shouldConvertToPdf(suffix) &&
+      process.env.ASYNC_DOCUMENT_CONVERSION === "true";
+
     // Convert Office files → PDF for display. PDFs are their own rendition.
     let pdfStoragePath: string | null = null;
-    if (shouldConvertToPdf(suffix)) {
+    if (!deferConversion && shouldConvertToPdf(suffix)) {
       try {
         const pdfBuf = await docxToPdf(content);
         const pdfKey = convertedPdfKey(userId, docId);
@@ -1435,10 +1550,45 @@ export async function handleDocumentUpload(
       .from("documents")
       .update({
         current_version_id: versionRow.id,
-        status: "ready",
+        // Deferred conversion leaves the doc "processing" until the worker
+        // produces the PDF and flips it to "ready".
+        status: deferConversion ? "processing" : "ready",
         updated_at: new Date().toISOString(),
       })
       .eq("id", docId);
+
+    if (deferConversion) {
+      await enqueueConversion({
+        documentId: docId,
+        versionId: versionRow.id,
+        userId,
+        storagePath: key,
+        fileType: suffix,
+      });
+    }
+
+    // .doc/.ppt are the only types read_document can read solely by paying
+    // for a LibreOffice conversion. Extract that text once now, in the
+    // background, so the first chat that reads this document does not pay a
+    // subprocess round trip inside its own tool call. Best-effort: a failed
+    // enqueue just means the read path converts inline and re-queues itself.
+    if (requiresLibreOfficeTextExtraction(suffix)) {
+      try {
+        await enqueueDbJob(db, {
+          kind: "document.precompute_text",
+          payload: {
+            versionId: versionRow.id,
+            storagePath: key,
+            fileType: suffix,
+            userId,
+          },
+          dedupeKey: `precompute:${versionRow.id}`,
+          maxAttempts: 3,
+        });
+      } catch (err) {
+        console.error("[upload] precompute-text enqueue failed", err);
+      }
+    }
 
     const { data: updated } = await db
       .from("documents")

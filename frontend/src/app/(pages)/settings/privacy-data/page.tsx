@@ -13,10 +13,11 @@ import {
     deleteAllChats,
     deleteAllProjects,
     deleteAllTabularReviews,
-    exportAccountData,
-    exportChatData,
-    exportTabularReviewsData,
+    downloadUserExport,
+    getUserExportStatus,
     isMfaRequiredError,
+    startUserExport,
+    type UserExportType,
 } from "@/app/lib/mikeApi";
 import { SettingsSection } from "../SettingsSection";
 
@@ -77,6 +78,36 @@ export default function PrivacyDataPage() {
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     };
 
+    // Exports run as durable backend jobs: schedule, poll until built, then
+    // download the artifact. A double click dedupes onto the running job
+    // server-side, and a build that outlives this tab can be re-downloaded by
+    // clicking the button again (the poll finds the finished job).
+    const EXPORT_POLL_MS = process.env.NODE_ENV === "test" ? 10 : 2000;
+    const EXPORT_POLL_LIMIT = 150; // ~5 minutes
+    const runAsyncExport = async (
+        type: UserExportType,
+        fallbackFilename: string,
+    ) => {
+        const { export_id } = await startUserExport(type);
+        for (let i = 0; i < EXPORT_POLL_LIMIT; i++) {
+            await new Promise((resolve) =>
+                setTimeout(resolve, EXPORT_POLL_MS),
+            );
+            const status = await getUserExportStatus(export_id);
+            if (status.status === "failed")
+                throw new Error("Export build failed");
+            if (status.status === "done") {
+                const { blob, filename } = await downloadUserExport(export_id);
+                downloadBlob(
+                    blob,
+                    filename ?? status.filename ?? fallbackFilename,
+                );
+                return;
+            }
+        }
+        throw new Error("Export timed out");
+    };
+
     const handleExportAccountData = async () => {
         devLog("[privacy-data/mfa] export account requested");
         setIsExportingAccount(true);
@@ -85,8 +116,7 @@ export default function PrivacyDataPage() {
                 setPendingMfaAction("export-account");
                 return;
             }
-            const { blob, filename } = await exportAccountData();
-            downloadBlob(blob, filename ?? "mike-account-export.json");
+            await runAsyncExport("account", "mike-account-export.json");
         } catch (error) {
             devLog("[privacy-data/mfa] export account failed", {
                 isMfaRequired: isMfaRequiredError(error),
@@ -110,8 +140,7 @@ export default function PrivacyDataPage() {
                 setPendingMfaAction("export-chats");
                 return;
             }
-            const { blob, filename } = await exportChatData();
-            downloadBlob(blob, filename ?? "mike-chat-export.json");
+            await runAsyncExport("chats", "mike-chat-export.json");
         } catch (error) {
             devLog("[privacy-data/mfa] export chats failed", {
                 isMfaRequired: isMfaRequiredError(error),
@@ -135,8 +164,10 @@ export default function PrivacyDataPage() {
                 setPendingMfaAction("export-tabular-reviews");
                 return;
             }
-            const { blob, filename } = await exportTabularReviewsData();
-            downloadBlob(blob, filename ?? "mike-tabular-reviews-export.json");
+            await runAsyncExport(
+                "tabular-reviews",
+                "mike-tabular-reviews-export.json",
+            );
         } catch (error) {
             devLog("[privacy-data/mfa] export tabular reviews failed", {
                 isMfaRequired: isMfaRequiredError(error),

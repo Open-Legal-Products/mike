@@ -101,6 +101,26 @@ export async function loadActiveVersion(
 }
 
 /**
+ * Produce the filename a download should present to the user. Version
+ * filenames are expected to include the real extension.
+ *
+ * Shared by the download routes and the "documents-zip" export job, which
+ * must name the entries in the zip exactly as the sync route does.
+ */
+export function downloadFilenameForVersion(
+    filename: string | null | undefined,
+    versionNumber: number | null,
+    edited = false,
+): string {
+    const resolved = filename?.trim() || "Untitled document.docx";
+    if (!edited || !versionNumber || versionNumber < 1) return resolved;
+    const dot = resolved.lastIndexOf(".");
+    const stem = dot > 0 ? resolved.slice(0, dot) : resolved;
+    const ext = dot > 0 ? resolved.slice(dot) : "";
+    return `${stem} [Edited V${versionNumber}]${ext}`;
+}
+
+/**
  * For a list of documents, look up the active version for each and merge
  * `storage_path` + `pdf_storage_path` onto the row. One round-trip total
  * regardless of list size. Documents with no current_version_id retain

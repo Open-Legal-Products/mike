@@ -11,11 +11,8 @@ import Link from "next/link";
 import { CalendarDays, Download, Loader2 } from "lucide-react";
 import { DayPicker, type Matcher } from "@daypicker/react";
 import dayPickerStyles from "@daypicker/react/style.module.css";
-import {
-  exportAuditHistory,
-  getAuditHistory,
-  type AuditEvent,
-} from "@/app/lib/mikeApi";
+import { getAuditHistory, type AuditEvent } from "@/app/lib/mikeApi";
+import { runUserExport } from "@/app/lib/asyncExport";
 import { PageHeader } from "@/app/components/shared/PageHeader";
 import {
   SkeletonLine,
@@ -226,18 +223,20 @@ export default function HistoryPage() {
     return () => controllerRef.current?.abort();
   }, [load]);
 
+  // The CSV is built by a background job rather than in the request: a wide
+  // filter can sweep thousands of events, and the artifact outlives the tab.
   const handleExport = async () => {
     setExporting(true);
     try {
-      const { blob, filename } = await exportAuditHistory({
+      const { blob, filename } = await runUserExport("audit-csv", {
         q: search.trim() || undefined,
         action: action || undefined,
         status: status || undefined,
         surface: surface || undefined,
         from: from || undefined,
         to: to || undefined,
-        sortBy: sort?.key,
-        sortDirection: sort?.direction,
+        sort_by: sort?.key,
+        sort_dir: sort?.direction,
       });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");

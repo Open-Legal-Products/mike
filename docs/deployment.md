@@ -119,6 +119,31 @@ npm run build --prefix frontend
 
 The repository also includes Dockerfiles for both applications.
 
+## Background jobs and Redis
+
+Mike runs durable background jobs (document conversion, tabular extraction,
+audit recording, account deletion, storage cleanup, export builds) through one
+of two interchangeable transports:
+
+- **With Redis** (`REDIS_URL` set): jobs are delivered instantly through
+  BullMQ, and tabular reviews stream live progress over Redis pub/sub. The
+  bundled Docker Compose stack ships a Redis service and enables this by
+  default for new installs.
+- **Without Redis**: the same jobs run through a Postgres-backed queue
+  (`db_jobs`, created by the schema/migrations) with a polling worker. No
+  extra infrastructure is required — an existing deployment that upgrades in
+  place keeps working with no configuration changes and no Redis. Progress
+  streaming falls back to short database polls.
+
+The transport is selected automatically; `QUEUE_DRIVER=postgres` forces the
+database queue even when `REDIS_URL` is set.
+
+By default, workers run in a worker thread inside the backend process, so no
+extra process management is needed. To run them on separate hardware, start
+`node dist/worker.js` (any number of instances — work is partitioned safely)
+and set `WORKERS_MODE=none` on the API process. The compose file contains a
+commented `worker` service demonstrating this.
+
 ## Deployment safety
 
 - Generate unique, high-entropy signing and encryption secrets.

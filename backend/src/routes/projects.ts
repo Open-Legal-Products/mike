@@ -2,6 +2,8 @@ import { Router, type Request, type Response } from "express";
 import { requireAuth, requireMfaIfEnrolled } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
 import { recordAudit } from "../lib/audit";
+import { enqueueDbJob, enqueueStorageCleanup } from "../lib/dbq/enqueue";
+import { enqueueConversion } from "../lib/queue/conversionQueue";
 import { createClient } from "@supabase/supabase-js";
 import {
   attachActiveVersionPaths,
@@ -27,6 +29,7 @@ import {
   ALLOWED_DOCUMENT_TYPES,
   ALLOWED_DOCUMENT_TYPES_LABEL,
   contentTypeForDocumentType,
+  requiresLibreOfficeTextExtraction,
   shouldConvertToPdf,
 } from "../lib/documentTypes";
 import {
@@ -83,13 +86,14 @@ async function deleteProjectDocumentsAndVersionFiles(
       paths.add(v.pdf_storage_path);
     }
   }
-  await Promise.all([...paths].map((p) => deleteFile(p).catch(() => {})));
-
   const { error } = await db
     .from("documents")
     .delete()
     .eq("project_id", projectId)
     .in("id", documentIds);
+  // Rows first, files second (durable storage.cleanup job) — previously each
+  // file delete was fire-and-forget, so one storage hiccup leaked the bytes.
+  if (!error) await enqueueStorageCleanup(db, [...paths]);
   return error ?? null;
 }
 
@@ -1448,9 +1452,16 @@ export async function handleDocumentUpload(
     ) as ArrayBuffer;
     const pageCount = suffix === "pdf" ? await countPdfPages(rawBuf) : null;
 
+    // When the job queue is enabled, defer Office → PDF conversion to the
+    // BullMQ worker instead of blocking the upload request on LibreOffice —
+    // the same deferral the single-document upload path makes.
+    const deferConversion =
+      shouldConvertToPdf(suffix) &&
+      process.env.ASYNC_DOCUMENT_CONVERSION === "true";
+
     // Convert Office files → PDF for display. PDFs are their own rendition.
     let pdfStoragePath: string | null = null;
-    if (shouldConvertToPdf(suffix)) {
+    if (!deferConversion && shouldConvertToPdf(suffix)) {
       try {
         const pdfBuf = await docxToPdf(content);
         const pdfKey = convertedPdfKey(userId, docId);
@@ -1501,10 +1512,44 @@ export async function handleDocumentUpload(
       .from("documents")
       .update({
         current_version_id: versionRow.id,
-        status: "ready",
+        // Deferred conversion leaves the doc "processing" until the worker
+        // produces the PDF and flips it to "ready".
+        status: deferConversion ? "processing" : "ready",
         updated_at: new Date().toISOString(),
       })
       .eq("id", docId);
+
+    if (deferConversion) {
+      await enqueueConversion({
+        documentId: docId,
+        versionId: versionRow.id as string,
+        userId,
+        storagePath: key,
+        fileType: suffix,
+      });
+    }
+
+    // Same precompute as the single-document upload path (documents.ts):
+    // .doc/.ppt are the only types read_document can read without an
+    // in-process parser, so their text is extracted once here rather than
+    // inside the first chat tool call. Best-effort — the read path re-queues.
+    if (requiresLibreOfficeTextExtraction(suffix)) {
+      try {
+        await enqueueDbJob(db, {
+          kind: "document.precompute_text",
+          payload: {
+            versionId: versionRow.id as string,
+            storagePath: key,
+            fileType: suffix,
+            userId,
+          },
+          dedupeKey: `precompute:${versionRow.id as string}`,
+          maxAttempts: 3,
+        });
+      } catch (err) {
+        console.error("[upload] precompute-text enqueue failed", err);
+      }
+    }
 
     const { data: updated } = await db
       .from("documents")

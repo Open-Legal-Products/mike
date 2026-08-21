@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { recordChatTurn } from "../audit";
+import { chatTurnAuditEvents, recordChatTurn } from "../audit";
 
 type Insert = Record<string, unknown>;
 
@@ -83,5 +83,33 @@ describe("recordChatTurn artifact mining", () => {
             { type: "doc_replicated", filename: "src.docx", count: 0, copies: [] },
         ]);
         expect(inserts.map((r) => r.action)).toEqual(["chat.message"]);
+    });
+});
+
+describe("chatTurnAuditEvents surface", () => {
+    it("derives assistant/project from projectId when no surface is given", () => {
+        expect(chatTurnAuditEvents(base, [])[0].surface).toBe("assistant");
+        expect(
+            chatTurnAuditEvents({ ...base, projectId: "p1" }, [])[0].surface,
+        ).toBe("project");
+    });
+
+    it("lets an explicit surface override the derivation, on every row", () => {
+        const rows = chatTurnAuditEvents({ ...base, surface: "word" }, [
+            { type: "doc_created", filename: "brief.docx", document_id: "d1" },
+        ]);
+        // Both the chat.message row and the mined artifact row must carry it,
+        // or the history feed would show a Word turn with an assistant
+        // artifact hanging off it.
+        expect(rows.map((r) => r.surface)).toEqual(["word", "word"]);
+    });
+
+    it("wins over projectId rather than being overridden by it", () => {
+        const rows = chatTurnAuditEvents(
+            { ...base, projectId: "p1", surface: "word" },
+            [],
+        );
+        expect(rows[0].surface).toBe("word");
+        expect(rows[0].projectId).toBe("p1");
     });
 });

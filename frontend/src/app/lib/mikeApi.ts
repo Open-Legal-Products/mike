@@ -365,6 +365,59 @@ export async function exportTabularReviewsData(): Promise<{
     return apiBlobRequest("/user/tabular-reviews/export");
 }
 
+// --- Async (durable) exports -----------------------------------------------
+// POST schedules a backend job that builds the export off the request thread;
+// the status endpoint is polled until "done"; the download endpoint streams
+// the artifact. Unlike the legacy GET exports above, a large export can
+// neither time out the request nor die with a closed tab, and a re-click
+// while one is building dedupes onto the running job.
+
+export type UserExportType =
+    | "account"
+    | "chats"
+    | "tabular-reviews"
+    | "audit-csv"
+    | "documents-zip";
+
+export type UserExportStatus =
+    | { status: "pending" }
+    | { status: "failed" }
+    | { status: "done"; filename: string | null };
+
+/**
+ * `params` carries the inputs of the filtered exports — the History CSV's
+ * filter values (wire names: q/action/status/surface/from/to/sort_by/sort_dir)
+ * and documents-zip's `document_ids`. The backend re-validates them and 400s
+ * on anything it would have rejected on the synchronous route.
+ */
+export async function startUserExport(
+    type: UserExportType,
+    params?: Record<string, unknown>,
+): Promise<{ export_id: string }> {
+    return apiRequest<{ export_id: string }>("/user/exports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params ? { type, params } : { type }),
+    });
+}
+
+export async function getUserExportStatus(
+    exportId: string,
+): Promise<UserExportStatus> {
+    return apiRequest<UserExportStatus>(
+        `/user/exports/${encodeURIComponent(exportId)}`,
+    );
+}
+
+export async function downloadUserExport(exportId: string): Promise<{
+    blob: Blob;
+    filename: string | null;
+}> {
+    return apiBlobRequest(
+        `/user/exports/${encodeURIComponent(exportId)}/download`,
+    );
+}
+
 export interface UserProfile {
     displayName: string | null;
     organisation: string | null;
@@ -1205,6 +1258,10 @@ export async function listStandaloneDocuments(): Promise<Document[]> {
     return apiRequest<Document[]>("/single-documents");
 }
 
+export async function getDocument(documentId: string): Promise<Document> {
+    return apiRequest<Document>(`/single-documents/${documentId}`);
+}
+
 export async function deleteDocument(documentId: string): Promise<void> {
     await apiRequest(`/single-documents/${documentId}`, { method: "DELETE" });
 }
@@ -1564,11 +1621,24 @@ export async function deleteTabularReview(reviewId: string): Promise<void> {
 
 export async function streamTabularGeneration(
     reviewId: string,
+    signal?: AbortSignal,
 ): Promise<Response> {
     const authHeaders = await getAuthHeader();
     return fetch(`${API_BASE}/tabular-review/${reviewId}/generate`, {
         method: "POST",
         headers: { ...authHeaders },
+        signal: signal ?? undefined,
+    });
+}
+
+export async function streamTabularGenerationResume(
+    reviewId: string,
+    signal?: AbortSignal,
+): Promise<Response> {
+    const authHeaders = await getAuthHeader();
+    return fetch(`${API_BASE}/tabular-review/${reviewId}/generate/stream`, {
+        headers: { ...authHeaders },
+        signal: signal ?? undefined,
     });
 }
 
@@ -1689,11 +1759,15 @@ export async function regenerateTabularCell(
     reviewId: string,
     rowId: string,
     columnIndex: number,
-): Promise<{
-    summary: string;
-    flag: "green" | "grey" | "yellow" | "red";
-    reasoning: string;
-}> {
+): Promise<
+    | {
+          summary: string;
+          flag: "green" | "grey" | "yellow" | "red";
+          reasoning: string;
+      }
+    // HTTP 202 — regeneration continues in the background
+    | { status: "generating" }
+> {
     return apiRequest(`/tabular-review/${reviewId}/regenerate-cell`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

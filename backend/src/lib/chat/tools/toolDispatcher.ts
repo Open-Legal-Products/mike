@@ -25,6 +25,7 @@ import {
 } from "../types";
 import { downloadFile, storageKey, uploadFile } from "../../storage";
 import { convertedPdfKey, docxToPdf } from "../../convert";
+import { enqueueConversion } from "../../queue/conversionQueue";
 import {
   contentTypeForDocumentType,
   shouldConvertToPdf,
@@ -1581,20 +1582,29 @@ export async function runToolCalls(
           if (!raw) {
             fail("Could not read the source document's bytes from storage.");
           } else {
+            // Only reached when the source has no rendition to copy — the one
+            // branch of replicate that pays for LibreOffice, so it's the branch
+            // the conversion queue takes over when the flag is on: copies are
+            // inserted without a rendition and a per-copy job fills it in.
+            let deferCopyConversion = false;
             if (!pdfBytes && sourceInfo.file_type.toLowerCase() === "pdf") {
               pdfBytes = raw;
             } else if (!pdfBytes && shouldConvertToPdf(sourceInfo.file_type)) {
-              try {
-                const converted = await docxToPdf(Buffer.from(raw));
-                pdfBytes = converted.buffer.slice(
-                  converted.byteOffset,
-                  converted.byteOffset + converted.byteLength,
-                ) as ArrayBuffer;
-              } catch (conversionError) {
-                devLog(
-                  `[replicate_document] Office→PDF conversion failed for ${sourceFilename}:`,
-                  conversionError,
-                );
+              if (process.env.ASYNC_DOCUMENT_CONVERSION === "true") {
+                deferCopyConversion = true;
+              } else {
+                try {
+                  const converted = await docxToPdf(Buffer.from(raw));
+                  pdfBytes = converted.buffer.slice(
+                    converted.byteOffset,
+                    converted.byteOffset + converted.byteLength,
+                  ) as ArrayBuffer;
+                } catch (conversionError) {
+                  devLog(
+                    `[replicate_document] Office→PDF conversion failed for ${sourceFilename}:`,
+                    conversionError,
+                  );
+                }
               }
             }
             // Build N filenames. With count=1 keep the
@@ -1785,6 +1795,30 @@ export async function runToolCalls(
                   const newKey = newKeys[idx];
                   const versionId = versionByDocId.get(d.id);
                   if (!versionId || !linkedDocIds.has(d.id)) continue;
+                  if (deferCopyConversion) {
+                    // Rendition rides the queue (deduped on convert:<versionId>,
+                    // retried with backoff). finalizeDocumentStatus: false —
+                    // the copy was inserted "ready" and stays usable from its
+                    // raw bytes; a rendition failure must not flip it to
+                    // "error". Enqueue failure degrades to today's
+                    // conversion-failure behavior: a copy with no rendition.
+                    try {
+                      await enqueueConversion({
+                        documentId: d.id,
+                        versionId,
+                        userId,
+                        storagePath: newKey,
+                        fileType: active?.file_type ?? sourceInfo.file_type,
+                        pdfKey: convertedPdfKey(userId, d.id),
+                        finalizeDocumentStatus: false,
+                      });
+                    } catch (enqueueError) {
+                      devLog(
+                        `[replicate_document] rendition enqueue failed for ${d.filename}:`,
+                        enqueueError,
+                      );
+                    }
+                  }
                   while (existingLabels.has(`doc-${nextLabelIdx}`))
                     nextLabelIdx++;
                   const slug = `doc-${nextLabelIdx}`;
