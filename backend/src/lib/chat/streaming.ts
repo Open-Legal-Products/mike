@@ -8,6 +8,7 @@ import { resolveRequestedModel } from "../routerModels";
 import { safeErrorMessage } from "../safeError";
 import { createServerSupabase } from "../supabase";
 import { buildUserMcpTools, type McpToolEvent } from "../mcpConnectors";
+import { buildGoogleDriveTools } from "../integrations/googleDrive";
 import type { SourceDocument } from "../sourceDocuments";
 import {
   COURTLISTENER_TOOLS,
@@ -204,13 +205,14 @@ export async function runLLMStream(params: {
   } = params;
   const researchTools = includeResearchTools ? COURTLISTENER_TOOLS : [];
   const mcpTools = await buildUserMcpTools(userId, db);
+  const googleDriveTools = await buildGoogleDriveTools(userId, db);
   const conversationTools = includeAskInputs
     ? TOOLS
     : TOOLS.filter((tool) => tool.function.name !== "ask_inputs");
   const baseTools = [...conversationTools, ...researchTools, ...WORKFLOW_TOOLS];
   const activeTools = extraTools?.length
-    ? [...baseTools, ...mcpTools, ...extraTools]
-    : [...baseTools, ...mcpTools];
+    ? [...baseTools, ...mcpTools, ...googleDriveTools, ...extraTools]
+    : [...baseTools, ...mcpTools, ...googleDriveTools];
 
   // Extract system prompt; pass remaining turns to the adapter as
   // plain user/assistant messages.

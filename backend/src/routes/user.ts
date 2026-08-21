@@ -30,6 +30,13 @@ import {
     startUserMcpConnectorOAuth,
     updateUserMcpConnector,
 } from "../lib/mcpConnectors";
+import { conciseMcpErrorMessage } from "../lib/mcp/errors";
+import {
+    completeGoogleDriveOAuth,
+    disconnectGoogleDrive,
+    getGoogleDriveStatus,
+    startGoogleDriveOAuth,
+} from "../lib/integrations/googleDrive";
 import {
     deleteAllUserChats,
     deleteAllUserTabularReviews,
@@ -1055,9 +1062,12 @@ userRouter.get("/mcp-connectors/oauth/callback", async (req, res) => {
                 ),
             );
     } catch (err) {
-        const detail = errorMessage(err);
+        // The popup renders this detail directly — keep it concise (the SDK
+        // embeds entire server response bodies, including HTML error pages,
+        // in its messages; the full text still goes to the log below).
+        const detail = conciseMcpErrorMessage(err);
         console.error("[user/mcp-connectors] oauth callback failed", {
-            error: detail,
+            error: errorMessage(err),
             stateHash: shortHash(state),
             hasCode: !!code,
             hasError: !!error,
@@ -1091,19 +1101,129 @@ userRouter.post(
             );
             res.json(connector);
         } catch (err) {
-            const detail = errorMessage(err);
+            // Full message (with any embedded response body) goes to the log;
+            // the user gets the concise diagnostic — never a raw HTML error
+            // page — plus the versioned-endpoint hint for Google URLs.
             console.error("[user/mcp-connectors] refresh failed", {
                 userId,
                 connectorId: req.params.connectorId,
-                error: detail,
+                error: errorMessage(err),
             });
             if (err instanceof McpOAuthRequiredError) {
                 return void res.status(401).json({
                     code: err.code,
-                    detail,
+                    detail: errorMessage(err),
                 });
             }
+            const serverUrl = await getUserMcpConnector(
+                userId,
+                req.params.connectorId,
+                db,
+            )
+                .then((connector) => connector?.serverUrl)
+                .catch(() => undefined);
+            res.status(400).json({
+                detail: conciseMcpErrorMessage(err, serverUrl),
+            });
+        }
+    },
+);
+
+// ---------------------------------------------------------------------------
+// Native Google Drive integration (first-party, GA Drive REST API — no MCP
+// preview program required). One connection per user; the popup pages reuse
+// the MCP OAuth popup renderer.
+// ---------------------------------------------------------------------------
+
+// GET /user/integrations/google-drive
+userRouter.get("/integrations/google-drive", requireAuth, async (_req, res) => {
+    const userId = res.locals.userId as string;
+    try {
+        res.json(await getGoogleDriveStatus(userId));
+    } catch (err) {
+        console.error("[google-drive] status failed", {
+            userId,
+            error: errorMessage(err),
+        });
+        res.status(500).json({ detail: "Failed to load Google Drive status." });
+    }
+});
+
+// POST /user/integrations/google-drive/oauth/start
+userRouter.post(
+    "/integrations/google-drive/oauth/start",
+    requireAuth,
+    requireMfaIfEnrolled,
+    async (req, res) => {
+        const userId = res.locals.userId as string;
+        try {
+            const redirectUri = `${backendPublicUrl(req)}/user/integrations/google-drive/oauth/callback`;
+            const result = await startGoogleDriveOAuth(userId, redirectUri);
+            res.json(result);
+        } catch (err) {
+            const detail = errorMessage(err);
+            console.error("[google-drive] oauth start failed", {
+                userId,
+                error: detail,
+            });
             res.status(400).json({ detail });
+        }
+    },
+);
+
+// GET /user/integrations/google-drive/oauth/callback
+userRouter.get(
+    "/integrations/google-drive/oauth/callback",
+    async (req, res) => {
+        const nonce = crypto.randomBytes(16).toString("base64");
+        const state =
+            typeof req.query.state === "string" ? req.query.state : "";
+        const code = typeof req.query.code === "string" ? req.query.code : "";
+        const error =
+            typeof req.query.error === "string" ? req.query.error : undefined;
+        try {
+            if (error) throw new Error(error);
+            if (!state || !code)
+                throw new Error("OAuth callback is missing state or code.");
+            await completeGoogleDriveOAuth(state, code);
+            res.set("Content-Security-Policy", mcpOAuthPopupCsp(nonce))
+                .type("html")
+                .send(
+                    mcpOAuthPopupHtml(
+                        { success: true, connectorId: "google-drive" },
+                        nonce,
+                    ),
+                );
+        } catch (err) {
+            const detail = errorMessage(err);
+            console.error("[google-drive] oauth callback failed", {
+                error: detail,
+                hasCode: !!code,
+            });
+            res.status(400)
+                .set("Content-Security-Policy", mcpOAuthPopupCsp(nonce))
+                .type("html")
+                .send(mcpOAuthPopupHtml({ success: false, detail }, nonce));
+        }
+    },
+);
+
+// DELETE /user/integrations/google-drive
+userRouter.delete(
+    "/integrations/google-drive",
+    requireAuth,
+    requireMfaIfEnrolled,
+    async (_req, res) => {
+        const userId = res.locals.userId as string;
+        try {
+            await disconnectGoogleDrive(userId);
+            res.status(204).end();
+        } catch (err) {
+            console.error("[google-drive] disconnect failed", {
+                userId,
+                error: errorMessage(err),
+            });
+            res.status(500).json({ detail: "Failed to disconnect Google Drive." });
         }
     },
 );

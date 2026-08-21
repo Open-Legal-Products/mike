@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
     ChevronDown,
     Eye,
@@ -25,24 +25,33 @@ import {
     needsMfaVerification,
 } from "@/app/components/popups/MfaVerificationPopup";
 import {
+    type GoogleDriveStatus,
     type McpConnectorSummary,
     MikeApiError,
     createMcpConnector,
     deleteMcpConnector,
+    disconnectGoogleDrive,
+    getGoogleDriveStatus,
     getMcpConnector,
     isMfaRequiredError,
     listMcpConnectors,
     refreshMcpConnectorTools,
     setMcpToolEnabled,
+    startGoogleDriveOAuth,
     startMcpConnectorOAuth,
     updateMcpConnector,
 } from "@/app/lib/mikeApi";
-import { settingsGlassIconButtonClassName } from "../settingsStyles";
+import {
+    settingsGlassIconButtonClassName,
+    settingsGlassPrimaryButtonClassName,
+} from "../settingsStyles";
 import { SettingsSection } from "../SettingsSection";
 import { SettingsToggle } from "../SettingsToggle";
 
 type PendingMfaAction =
     | { type: "create" }
+    | { type: "drive-connect" }
+    | { type: "drive-disconnect" }
     | { type: "save"; connectorId: string }
     | { type: "clear-token"; connectorId: string }
     | { type: "delete"; connectorId: string }
@@ -86,6 +95,19 @@ const mcpOAuthMessageOrigin = new URL(
     process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001",
 ).origin;
 
+/**
+ * Thrown to unwind the OAuth wait when the user cancels the flow or navigates
+ * away (the component unmounts) rather than because authorization genuinely
+ * failed. Callers use it to distinguish "abandoned on purpose" — which should
+ * quietly reset the UI — from a real error worth surfacing to the user.
+ */
+class McpOAuthCancelledError extends Error {
+    constructor(message = "OAuth authorization was cancelled.") {
+        super(message);
+        this.name = "McpOAuthCancelledError";
+    }
+}
+
 function parseCustomHeaders(raw: string): Record<string, string> | undefined {
     const text = raw.trim();
     if (!text) return undefined;
@@ -105,12 +127,274 @@ function parseCustomHeaders(raw: string): Record<string, string> | undefined {
 
 function isGoogleMcpConnector(connector: McpConnectorSummary) {
     try {
-        return new URL(connector.serverUrl).hostname
-            .toLowerCase()
-            .endsWith("googleapis.com");
+        const hostname = new URL(connector.serverUrl).hostname.toLowerCase();
+        return (
+            hostname === "googleapis.com" ||
+            hostname.endsWith(".googleapis.com")
+        );
     } catch {
         return false;
     }
+}
+
+/**
+ * Imperative surface the Google Drive card registers with its parent page.
+ * The page's MFA machinery needs it: when a Drive action is interrupted by
+ * an MFA challenge, the verification popup's "verified" callback must be able
+ * to re-invoke the exact action that was interrupted, and those actions live
+ * inside the card (they close over its local state).
+ */
+type GoogleDriveCardHandle = {
+    connect: () => Promise<void>;
+    disconnect: () => Promise<void>;
+};
+
+/**
+ * First-party Google Drive card. Unlike MCP connectors there is no server
+ * URL to enter and no per-tool management — one Connect click runs the
+ * backend's own OAuth flow (GA Drive REST API, no Google preview program),
+ * after which the assistant's google_drive_* tools activate automatically.
+ *
+ * Connect and Disconnect hit backend routes gated by requireMfaIfEnrolled,
+ * so both run through the page's `runSensitiveAction` wrapper — the same
+ * path every other sensitive action on this page takes — which pre-checks
+ * MFA and turns the backend's 403 `mfa_verification_required` into the
+ * verification popup instead of a dead-end error string.
+ */
+function GoogleDriveCard({
+    runSensitiveAction,
+    handleRef,
+}: {
+    runSensitiveAction: (
+        action: PendingMfaAction,
+        fn: () => Promise<void>,
+    ) => Promise<void>;
+    handleRef: { current: GoogleDriveCardHandle | null };
+}) {
+    const [status, setStatus] = useState<GoogleDriveStatus | null>(null);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const abortRef = useRef<AbortController | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        getGoogleDriveStatus()
+            .then((s) => {
+                if (!cancelled) setStatus(s);
+            })
+            .catch(() => {
+                if (!cancelled)
+                    setStatus({ connected: false, scope: null, configured: false });
+            });
+        return () => {
+            cancelled = true;
+            abortRef.current?.abort();
+        };
+    }, []);
+
+    const connect = async () => {
+        setBusy(true);
+        setError(null);
+        // Open the popup synchronously with the click so browsers don't block
+        // it, then navigate it once the backend hands us the URL.
+        const popup = window.open(
+            "about:blank",
+            "mike_google_drive_oauth",
+            "popup,width=560,height=720,menubar=no,toolbar=no,location=no,status=no",
+        );
+        try {
+            await runSensitiveAction({ type: "drive-connect" }, async () => {
+                try {
+                    const { authorizationUrl } = await startGoogleDriveOAuth();
+                    if (!popup) {
+                        window.location.assign(authorizationUrl);
+                        return;
+                    }
+                    popup.location.href = authorizationUrl;
+
+                    // Google's consent page severs window.opener (COOP), so
+                    // poll our own status endpoint as the source of truth —
+                    // same approach as the MCP connector flow.
+                    const abortController = new AbortController();
+                    abortRef.current?.abort();
+                    abortRef.current = abortController;
+                    await new Promise<void>((resolve, reject) => {
+                        let settled = false;
+                        const started = Date.now();
+                        let pollTimer = 0;
+                        const finish = (action: () => void) => {
+                            if (settled) return;
+                            settled = true;
+                            window.clearTimeout(timeout);
+                            window.clearTimeout(pollTimer);
+                            abortController.signal.removeEventListener(
+                                "abort",
+                                onAbort,
+                            );
+                            action();
+                        };
+                        const timeout = window.setTimeout(
+                            () =>
+                                finish(() =>
+                                    reject(
+                                        new Error(
+                                            "Google authorization timed out.",
+                                        ),
+                                    ),
+                                ),
+                            5 * 60 * 1000,
+                        );
+                        const runPoll = () => {
+                            void getGoogleDriveStatus()
+                                .then((s) => {
+                                    if (settled) return;
+                                    if (s.connected) {
+                                        setStatus(s);
+                                        finish(resolve);
+                                        return;
+                                    }
+                                    schedule();
+                                })
+                                .catch(() => {
+                                    if (!settled) schedule();
+                                });
+                        };
+                        const schedule = () => {
+                            const delay =
+                                Date.now() - started < 60_000 ? 1500 : 5000;
+                            pollTimer = window.setTimeout(runPoll, delay);
+                        };
+                        const onAbort = () =>
+                            finish(() =>
+                                reject(new Error("Authorization cancelled.")),
+                            );
+                        abortController.signal.addEventListener(
+                            "abort",
+                            onAbort,
+                        );
+                        schedule();
+                    });
+                } catch (e) {
+                    // An MFA challenge is not a failure of this card: rethrow
+                    // so runSensitiveAction opens the verification popup and,
+                    // once the user verifies, re-invokes connect() through the
+                    // registered handle.
+                    if (isMfaRequiredError(e)) throw e;
+                    setError(
+                        e instanceof Error
+                            ? e.message
+                            : "Failed to connect Google Drive.",
+                    );
+                }
+            });
+        } finally {
+            // Close the OAuth window on every exit path — success, failure,
+            // timeout, user cancel, and the MFA detour (where the flow never
+            // even starts). Same discipline as connectConnectorOAuth below:
+            // anything short of a finally leaks a blank popup on early exits.
+            try {
+                popup?.close();
+            } catch {
+                // COOP may block closing a severed popup; it self-closes anyway.
+            }
+            setBusy(false);
+        }
+    };
+
+    const disconnect = async () => {
+        setBusy(true);
+        setError(null);
+        try {
+            await runSensitiveAction({ type: "drive-disconnect" }, async () => {
+                try {
+                    await disconnectGoogleDrive();
+                    setStatus((s) =>
+                        s ? { ...s, connected: false, scope: null } : s,
+                    );
+                } catch (e) {
+                    // Same contract as connect(): hand MFA challenges back to
+                    // the page's machinery, keep genuine failures local.
+                    if (isMfaRequiredError(e)) throw e;
+                    setError(
+                        e instanceof Error
+                            ? e.message
+                            : "Failed to disconnect Google Drive.",
+                    );
+                }
+            });
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    // Register the actions with the parent so its MFA-verified callback can
+    // re-run the interrupted one. Re-registered every render (no dependency
+    // array) so the handle never closes over stale state.
+    useEffect(() => {
+        handleRef.current = { connect, disconnect };
+        return () => {
+            handleRef.current = null;
+        };
+    });
+
+    return (
+        <SettingsSection className="p-4">
+            <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900">
+                        Google Drive
+                    </p>
+                    <p className="mt-0.5 text-xs text-gray-500">
+                        {status?.connected
+                            ? "Connected — the assistant can search and read your Drive files (read-only)."
+                            : "Let the assistant search and read your Google Drive files (read-only)."}
+                    </p>
+                </div>
+                {status === null ? (
+                    <span className="text-xs text-gray-400">Loading…</span>
+                ) : status.connected ? (
+                    <button
+                        type="button"
+                        onClick={() => void disconnect()}
+                        disabled={busy}
+                        className="text-sm text-gray-500 transition-colors hover:text-gray-800 disabled:opacity-50"
+                    >
+                        {busy ? "Disconnecting…" : "Disconnect"}
+                    </button>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={() => void connect()}
+                        disabled={busy || !status.configured}
+                        className={`inline-flex h-9 items-center gap-1.5 text-sm ${settingsGlassPrimaryButtonClassName}`}
+                    >
+                        {busy ? "Waiting for Google…" : "Connect"}
+                    </button>
+                )}
+            </div>
+            {status !== null && !status.connected && !status.configured && (
+                <p className="mt-2 text-xs text-gray-500">
+                    Not available on this server: the administrator needs to
+                    configure a Google OAuth client (see &ldquo;Google Drive
+                    Integration&rdquo; in the README).
+                </p>
+            )}
+            {busy && !status?.connected && (
+                <button
+                    type="button"
+                    onClick={() => abortRef.current?.abort()}
+                    className="mt-2 text-xs text-gray-400 underline-offset-2 hover:underline"
+                >
+                    Cancel
+                </button>
+            )}
+            {error && (
+                <p className="mt-2 whitespace-pre-wrap text-xs text-red-600">
+                    {error}
+                </p>
+            )}
+        </SettingsSection>
+    );
 }
 
 export default function ConnectorsPage() {
@@ -147,6 +431,12 @@ export default function ConnectorsPage() {
         useState<string | null>(null);
     const [showDetailToken, setShowDetailToken] = useState(false);
     const [showDetailAdvanced, setShowDetailAdvanced] = useState(false);
+    // Which connector currently has a reconnect OAuth wait in flight (the
+    // details modal's Refresh flow). Drives the Cancel affordance next to the
+    // Refresh button, mirroring the escape hatch the add modal already has.
+    const [reconnectingConnectorId, setReconnectingConnectorId] = useState<
+        string | null
+    >(null);
 
     const selectedConnector = selectedConnectorDetails;
 
@@ -167,6 +457,27 @@ export default function ConnectorsPage() {
     useEffect(() => {
         void loadConnectors();
     }, [loadConnectors]);
+
+    // The Google Drive card registers its connect/disconnect here so
+    // handleMfaVerified can re-run whichever one an MFA challenge interrupted.
+    const googleDriveHandleRef = useRef<GoogleDriveCardHandle | null>(null);
+
+    // Holds the AbortController for an in-flight OAuth completion wait. A single
+    // flow can run at a time, so a ref (not state) is the right home: it is
+    // read/written imperatively and must never trigger a re-render.
+    const oauthAbortRef = useRef<AbortController | null>(null);
+
+    // If the user navigates away (or this page unmounts for any reason) while an
+    // OAuth popup wait is running, abort it. Without this the poll's setTimeout
+    // chain keeps firing authenticated GETs for up to five minutes and calls
+    // setState on an unmounted component. The empty dependency array makes the
+    // returned function a true unmount cleanup.
+    useEffect(() => {
+        return () => {
+            oauthAbortRef.current?.abort();
+            oauthAbortRef.current = null;
+        };
+    }, []);
 
     useEffect(() => {
         if (!selectedConnector) return;
@@ -264,7 +575,17 @@ export default function ConnectorsPage() {
     };
 
     const closeAddModal = () => {
-        if (addStep === "working" || addStep === "auth") return;
+        // "working" is a brief synchronous create with nothing to cancel, so we
+        // still block closing there. "auth" used to be blocked too, which trapped
+        // the user for the full five-minute timeout whenever the popup closed
+        // without a detectable result (COOP severs `popup.closed`, so we cannot
+        // know). Closing during "auth" now aborts the pending OAuth wait via the
+        // ref, giving the user a reliable escape hatch.
+        if (addStep === "working") return;
+        if (addStep === "auth") {
+            oauthAbortRef.current?.abort();
+            oauthAbortRef.current = null;
+        }
         setAddOpen(false);
         setAddDraft(emptyAddDraft);
         setAddStep("form");
@@ -301,20 +622,73 @@ export default function ConnectorsPage() {
         }
         popup.location.href = authorizationUrl;
 
-        await new Promise<void>((resolve, reject) => {
-            const timeout = window.setTimeout(() => {
+        // A single OAuth wait runs at a time. Register its AbortController so the
+        // Cancel affordance and the unmount cleanup can tear it down; abort any
+        // stray previous flow first.
+        const abortController = new AbortController();
+        oauthAbortRef.current?.abort();
+        oauthAbortRef.current = abortController;
+        const { signal } = abortController;
+
+        // Wait for authorization to complete. Strict identity providers (Google
+        // among them) serve their consent page with
+        // `Cross-Origin-Opener-Policy: same-origin`, which severs `window.opener`
+        // and makes `popup.closed` unreadable from here. That breaks both the
+        // callback's `postMessage` and any `popup.closed` polling, and a blocked
+        // `popup.closed` read can even report a false "closed". So we treat the
+        // backend's `oauthConnected` flag as the source of truth and poll for it,
+        // while still honouring a `postMessage` on the chance it gets through.
+        try {
+            await new Promise<void>((resolve, reject) => {
+            let settled = false;
+            const finish = (action: () => void) => {
+                if (settled) return;
+                settled = true;
                 cleanup();
-                reject(new Error("OAuth authorization timed out."));
-            }, 5 * 60 * 1000);
-            const poll = window.setInterval(() => {
-                if (popup.closed) {
-                    cleanup();
-                    reject(new Error("OAuth authorization window was closed."));
-                }
-            }, 700);
+                action();
+            };
+            const timeout = window.setTimeout(
+                () =>
+                    finish(() =>
+                        reject(new Error("OAuth authorization timed out.")),
+                    ),
+                5 * 60 * 1000,
+            );
+            // Self-rescheduling poll rather than a fixed setInterval. Two reasons:
+            // (1) we back the cadence off from 1.5s to 5s after the first minute
+            // — the happy path resolves in seconds, so a user slowly reading a
+            // consent screen shouldn't generate ~200 authenticated GETs over the
+            // five-minute window; (2) chaining the next poll only after the
+            // previous read settles guarantees we never stack requests on a slow
+            // connection.
+            const pollStarted = Date.now();
+            let pollTimer = 0;
+            const scheduleNextPoll = () => {
+                const elapsed = Date.now() - pollStarted;
+                const delay = elapsed < 60_000 ? 1500 : 5000;
+                pollTimer = window.setTimeout(runPoll, delay);
+            };
+            const runPoll = () => {
+                void getMcpConnector(connectorId)
+                    .then((connector) => {
+                        if (settled) return;
+                        if (connector.oauthConnected) {
+                            finish(resolve);
+                            return;
+                        }
+                        scheduleNextPoll();
+                    })
+                    .catch(() => {
+                        // Transient read errors shouldn't abort the wait.
+                        if (!settled) scheduleNextPoll();
+                    });
+            };
+            const onAbort = () =>
+                finish(() => reject(new McpOAuthCancelledError()));
             const cleanup = () => {
                 window.clearTimeout(timeout);
-                window.clearInterval(poll);
+                window.clearTimeout(pollTimer);
+                signal.removeEventListener("abort", onAbort);
                 window.removeEventListener("message", onMessage);
             };
             const onMessage = (event: MessageEvent<McpOAuthPopupMessage>) => {
@@ -331,19 +705,36 @@ export default function ConnectorsPage() {
                     { type: "mcp_oauth_result_ack" },
                     event.origin,
                 );
-                cleanup();
                 if (event.data.success) {
-                    resolve();
+                    finish(resolve);
                     return;
                 }
-                reject(
-                    new Error(
-                        event.data.detail || "OAuth authorization failed.",
+                finish(() =>
+                    reject(
+                        new Error(
+                            event.data.detail || "OAuth authorization failed.",
+                        ),
                     ),
                 );
             };
             window.addEventListener("message", onMessage);
-        });
+            signal.addEventListener("abort", onAbort);
+            // Everything (cleanup, onMessage, onAbort) is now defined, so it is
+            // safe to both start polling and honour an abort that may already
+            // have fired before we finished wiring up.
+            scheduleNextPoll();
+            if (signal.aborted) onAbort();
+            });
+        } finally {
+            if (oauthAbortRef.current === abortController) {
+                oauthAbortRef.current = null;
+            }
+            try {
+                popup.close();
+            } catch {
+                // COOP may block closing a severed popup; it self-closes anyway.
+            }
+        }
 
         const refreshed = await refreshMcpConnectorTools(connectorId);
         replaceConnector(refreshed);
@@ -406,6 +797,12 @@ export default function ConnectorsPage() {
                 setAddResult(refreshed);
                 setAddStep("success");
             } catch (err) {
+                // A user-initiated cancel (or navigation away) is not a failure:
+                // closeAddModal has already reset the modal, so surfacing an
+                // error would be noise. Just release the busy lock via `finally`.
+                if (err instanceof McpOAuthCancelledError) {
+                    return;
+                }
                 setAddStep("form");
                 setAddAuthMessage(null);
                 setAddError(
@@ -487,6 +884,14 @@ export default function ConnectorsPage() {
         );
     };
 
+    // Aborts a reconnect's in-flight OAuth wait. Same mechanism closeAddModal
+    // uses for the add flow: rejecting the wait with McpOAuthCancelledError,
+    // which handleRefresh treats as "abandoned on purpose", not a failure.
+    const cancelReconnectOAuth = () => {
+        oauthAbortRef.current?.abort();
+        oauthAbortRef.current = null;
+    };
+
     const handleRefresh = async (connectorId: string) => {
         await runSensitiveAction({ type: "refresh", connectorId }, async () => {
             setBusyKey(`refresh:${connectorId}`);
@@ -498,7 +903,26 @@ export default function ConnectorsPage() {
                         err instanceof MikeApiError &&
                             err.code === "oauth_required"
                     ) {
-                        await connectConnectorOAuth(connectorId);
+                        // COOP-strict providers make the consent popup's fate
+                        // unobservable, so without an explicit escape hatch a
+                        // closed popup would leave the Refresh button stuck
+                        // busy for the full five-minute timeout. Surface the
+                        // Cancel affordance while the wait runs, and treat a
+                        // user-initiated cancel as a quiet reset rather than
+                        // an error.
+                        setReconnectingConnectorId(connectorId);
+                        try {
+                            await connectConnectorOAuth(connectorId);
+                        } catch (oauthErr) {
+                            if (oauthErr instanceof McpOAuthCancelledError) {
+                                return;
+                            }
+                            throw oauthErr;
+                        } finally {
+                            setReconnectingConnectorId((current) =>
+                                current === connectorId ? null : current,
+                            );
+                        }
                         return;
                     }
                     throw err;
@@ -572,6 +996,12 @@ export default function ConnectorsPage() {
         setPendingMfaAction(null);
         if (!action) return;
         if (action.type === "create") await handleCreate();
+        if (action.type === "drive-connect") {
+            await googleDriveHandleRef.current?.connect();
+        }
+        if (action.type === "drive-disconnect") {
+            await googleDriveHandleRef.current?.disconnect();
+        }
         if (action.type === "save") await handleSaveSelectedConnector();
         if (action.type === "clear-token") {
             await handleClearBearerToken(action.connectorId);
@@ -615,6 +1045,13 @@ export default function ConnectorsPage() {
                     {error}
                 </div>
             )}
+
+            <div className="mb-3">
+                <GoogleDriveCard
+                    runSensitiveAction={runSensitiveAction}
+                    handleRef={googleDriveHandleRef}
+                />
+            </div>
 
             <div className="space-y-3">
                 {!loading &&
@@ -685,6 +1122,11 @@ export default function ConnectorsPage() {
                 onSave={handleSaveSelectedConnector}
                 onClearBearerToken={handleClearBearerToken}
                 onRefresh={handleRefresh}
+                reconnectingOAuth={
+                    !!selectedConnectorId &&
+                    reconnectingConnectorId === selectedConnectorId
+                }
+                onCancelReconnectOAuth={cancelReconnectOAuth}
                 onDelete={handleDelete}
                 onConnectorEnabled={handleConnectorEnabled}
                 onToolEnabled={handleToolEnabled}
@@ -789,6 +1231,8 @@ function McpConnectorDetailsModal({
     onSave,
     onClearBearerToken,
     onRefresh,
+    reconnectingOAuth,
+    onCancelReconnectOAuth,
     onDelete,
     onConnectorEnabled,
     onToolEnabled,
@@ -808,6 +1252,8 @@ function McpConnectorDetailsModal({
     onSave: () => Promise<void>;
     onClearBearerToken: (connectorId: string) => Promise<void>;
     onRefresh: (connectorId: string) => Promise<void>;
+    reconnectingOAuth: boolean;
+    onCancelReconnectOAuth: () => void;
     onDelete: (connectorId: string) => Promise<void>;
     onConnectorEnabled: (
         connectorId: string,
@@ -928,7 +1374,16 @@ function McpConnectorDetailsModal({
                                     ? "Tool"
                                     : "Tools"}
                             </h3>
-                            <div className="flex items-center">
+                            <div className="flex items-center gap-3">
+                                {reconnectingOAuth && (
+                                    <button
+                                        type="button"
+                                        onClick={onCancelReconnectOAuth}
+                                        className="text-xs font-medium text-gray-500 transition-colors hover:text-gray-900"
+                                    >
+                                        Cancel
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={() => void onRefresh(connector.id)}
