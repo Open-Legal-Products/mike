@@ -357,56 +357,113 @@ export function useWordTrackedEdits({
     commitEditState(initialStates);
 
     if (proposedDescriptors.length > 0) {
-      void Promise.all(
-        proposedDescriptors.map(async ({ cardKey, edit }) => ({
-          cardKey,
-          edit,
-          result: await validateTrackedEdit(edit),
-        })),
-      )
-        .then((results) => {
-          if (
-            !mountedRef.current ||
-            generation !== sessionGenerationRef.current
-          ) {
+      void (async () => {
+        // A stored "proposed" row means the pane never RECORDED an apply —
+        // but a turn that died mid-apply (a cancelled stream, a client tool
+        // call that timed out, a failed status write) leaves the tracked
+        // change in the document with the row still saying "proposed". Ask
+        // the document before believing the row: re-validating such an edit
+        // finds its own revision, reports "pre-existing-revisions", and
+        // offers "Accept & apply" — which applies it a second time.
+        const probes = await restoreTrackedEdits(
+          proposedDescriptors.map(({ cardKey, edit }) => ({
+            stableEditId: cardKey,
+            edit,
+          })),
+        );
+        if (
+          !mountedRef.current ||
+          generation !== sessionGenerationRef.current
+        ) {
+          const orphaned = probes.flatMap((probe) =>
+            probe.handle ? [probe.handle] : [],
+          );
+          if (orphaned.length > 0) await releaseTrackedEdits(orphaned);
+          return;
+        }
+        const unapplied: { cardKey: string; edit: RedlineEdit }[] = [];
+        probes.forEach((probe, probeIndex) => {
+          const descriptor = proposedDescriptors[probeIndex];
+          if (!descriptor) return;
+          const { cardKey } = descriptor;
+          if (probe.status === "restored" && probe.handle) {
+            editHandlesRef.current.set(cardKey, [probe.handle]);
+            persistentViewEditKeysRef.current.set(cardKey, cardKey);
+            setEditRuntimeState(cardKey, {
+              status: "pending",
+              busy: false,
+              error: undefined,
+            });
+            // Correct the record too, so the next reload does not repeat the
+            // probe and no other reader is told this change is unapplied.
+            void updatePersistedEdit(cardKey, { apply_status: "applied" });
             return;
           }
-          for (const { cardKey, edit, result } of results) {
-            if (result.status === "ready") {
-              readyEditsRef.current.set(cardKey, { edit, persistent: true });
-              setEditRuntimeState(cardKey, {
-                status: "ready",
-                matches: result.matches,
-                busy: false,
-                error: undefined,
-              });
-            } else {
-              setEditRuntimeState(cardKey, {
-                ...editFailureState(result),
-                matches: result.matches,
-                busy: false,
+          if (probe.status === "view-only") {
+            persistentViewEditKeysRef.current.set(cardKey, cardKey);
+            setEditRuntimeState(cardKey, {
+              status: "view-only",
+              busy: false,
+              error: undefined,
+            });
+            void updatePersistedEdit(cardKey, { apply_status: "applied" });
+            return;
+          }
+          unapplied.push(descriptor);
+        });
+        if (unapplied.length === 0) return;
+
+        const results = await Promise.all(
+          unapplied.map(async ({ cardKey, edit }) => ({
+            cardKey,
+            edit,
+            result: await validateTrackedEdit(edit),
+          })),
+        );
+        if (
+          !mountedRef.current ||
+          generation !== sessionGenerationRef.current
+        ) {
+          return;
+        }
+        for (const { cardKey, edit, result } of results) {
+          if (result.status === "ready") {
+            readyEditsRef.current.set(cardKey, { edit, persistent: true });
+            setEditRuntimeState(cardKey, {
+              status: "ready",
+              matches: result.matches,
+              busy: false,
+              error: undefined,
+            });
+          } else {
+            if (result.reason === "pre-existing-revisions") {
+              conflictedRetryRef.current.set(cardKey, {
+                edit,
+                persistent: true,
               });
             }
-          }
-        })
-        .catch((error: unknown) => {
-          if (
-            !mountedRef.current ||
-            generation !== sessionGenerationRef.current
-          ) {
-            return;
-          }
-          for (const { cardKey } of proposedDescriptors) {
             setEditRuntimeState(cardKey, {
-              status: "error",
+              ...editFailureState(result),
+              matches: result.matches,
               busy: false,
-              error:
-                error instanceof Error
-                  ? error.message
-                  : "Word couldn't check whether this change can be applied.",
             });
           }
-        });
+        }
+      })().catch((error: unknown) => {
+        if (!mountedRef.current || generation !== sessionGenerationRef.current) {
+          return;
+        }
+        for (const { cardKey } of proposedDescriptors) {
+          setEditRuntimeState(cardKey, {
+            status: "error",
+            busy: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Word couldn't check whether this change can be applied.",
+          });
+        }
+      });
     }
     if (descriptors.length === 0) return;
 

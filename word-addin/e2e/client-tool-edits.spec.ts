@@ -708,3 +708,116 @@ test("a reloaded failed tool edit still explains itself", async ({
     ),
   ).toBeVisible();
 });
+
+test("a proposed row whose change is already in the document restores as applied", async ({
+  addin,
+  page,
+}) => {
+  const chat = {
+    id: CHAT_ID,
+    project_id: null,
+    user_id: "user-1",
+    title: "Interrupted tool turn",
+    created_at: "2026-08-21T00:00:00Z",
+  };
+  const persistedEditId = "66666666-6666-4666-8666-666666666666";
+  await addin.mockApiJson("POST", TOOL_RESULT_GLOB, null, { status: 204 });
+  await addin.mockChatStream(["Fixed the supplier name."], {
+    chatId: CHAT_ID,
+    assistantMessageId: ASSISTANT_MESSAGE_ID,
+    clientToolCalls: [
+      applyEditsCall([
+        {
+          original: ORIGINAL,
+          replacement: REPLACEMENT,
+          reason: "Correct the supplier typo.",
+        },
+      ]),
+    ],
+  });
+  await addin.mockApiJson("GET", "**/word-chat?*", [chat]);
+  // The row a turn that died mid-apply leaves behind: the tracked change and
+  // its bookmark are in the document, but the status write never landed, so
+  // storage still says "proposed".
+  await addin.mockApiJson("GET", `**/word-chat/${CHAT_ID}?*`, {
+    chat,
+    messages: [
+      {
+        id: "user-interrupted",
+        chat_id: CHAT_ID,
+        role: "user",
+        content: "Fix the supplier typo",
+        created_at: "2026-08-21T00:00:00Z",
+      },
+      {
+        id: ASSISTANT_MESSAGE_ID,
+        chat_id: CHAT_ID,
+        role: "assistant",
+        content: [{ type: "word_edit_ref", edit_id: persistedEditId }],
+        edits: [
+          {
+            id: persistedEditId,
+            word_chat_message_id: ASSISTANT_MESSAGE_ID,
+            block_index: FIRST_TOOL_BLOCK_INDEX,
+            original_text: ORIGINAL,
+            replacement_text: REPLACEMENT,
+            formats: [],
+            occurrence: null,
+            reason: "Correct the supplier typo.",
+            apply_mode: "direct",
+            apply_status: "proposed",
+            resolution_status: null,
+          },
+        ],
+        created_at: "2026-08-21T00:00:01Z",
+      },
+    ],
+  });
+
+  await addin.gotoTaskpane({ documentText: ORIGINAL });
+  await addin.expectAuthedShell();
+  await chooseApplyMode(page, "Edit");
+  const toolResultPromise = page.waitForRequest(toolResultRequest);
+  await page.getByPlaceholder("How can I help?").fill("Fix the supplier typo");
+  await page.getByRole("button", { name: "Send" }).click();
+  await toolResultPromise;
+  await expect
+    .poll(async () => (await addin.wordDocument()).bookmarks.length)
+    .toBe(1);
+
+  const patches: Record<string, unknown>[] = [];
+  await page.route("**/word-chat/messages/*/edits/*?*", (route, request) => {
+    if (request.method() !== "PATCH") return route.fallback();
+    patches.push(request.postDataJSON() as Record<string, unknown>);
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: "{}",
+    });
+  });
+
+  await addin.reloadTaskpane();
+  await addin.expectAuthedShell();
+  await page.getByRole("button", { name: "Chat history" }).click();
+  await page
+    .getByRole("menu")
+    .getByRole("button", { name: /Interrupted tool turn/ })
+    .click();
+
+  // The document is the authority. Re-validating instead would find the
+  // edit's own revision, report a conflict, and offer "Accept & apply" —
+  // which writes the same change a second time.
+  await expect(
+    page.getByRole("button", { name: "Accept", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Apply", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Accept & apply" }),
+  ).toHaveCount(0);
+  // And the record is corrected so the next reload need not re-probe.
+  await expect
+    .poll(() => patches.map((patch) => patch.apply_status))
+    .toContain("applied");
+});
