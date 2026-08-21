@@ -1350,9 +1350,15 @@ async function handleEditResolution(
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   );
 
+  // pdf_storage_path: null — the bytes just changed, so any PDF rendition
+  // this version carried no longer matches them; a stale rendition would be
+  // served by /display and copied onto replicas by replicate_document. In
+  // practice assistant_edit versions never carry one (DOCX renders through
+  // DocxView from the raw bytes), so this is an invariant write, not a
+  // behavior change.
   await db
     .from("document_versions")
-    .update({ content_sha256: contentSha256(ab) })
+    .update({ content_sha256: contentSha256(ab), pdf_storage_path: null })
     .eq("id", doc.current_version_id);
 
   const { error: statusErr } = await db

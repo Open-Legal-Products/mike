@@ -4,6 +4,7 @@ import {
   uploadFile,
 } from "../../storage";
 import { convertedPdfKey, docxToPdf } from "../../convert";
+import { enqueueConversion } from "../../queue/conversionQueue";
 import { createServerSupabase } from "../../supabase";
 import {
   applyTrackedEdits,
@@ -962,8 +963,17 @@ async function persistGeneratedFile(params: {
     contentTypeForDocumentType(extension),
   );
 
+  // PPTX is the only generated type that pays for LibreOffice here (XLSX is
+  // never converted — spreadsheets are served raw). With the async flag on,
+  // the rendition rides the conversion queue instead: the document is
+  // inserted without one and a job fills it in with retries — closing the
+  // sync path's silent failure mode where a LibreOffice hiccup left the doc
+  // permanently rendition-less.
   let pdfStoragePath: string | null = null;
-  if (shouldConvertToPdf(extension)) {
+  const deferRenditionToQueue =
+    shouldConvertToPdf(extension) &&
+    process.env.ASYNC_DOCUMENT_CONVERSION === "true";
+  if (shouldConvertToPdf(extension) && !deferRenditionToQueue) {
     try {
       const pdfBuf = await docxToPdf(buffer);
       const pdfKey = convertedPdfKey(userId, docId);
@@ -1025,6 +1035,27 @@ async function persistGeneratedFile(params: {
     .from("documents")
     .update({ current_version_id: versionId })
     .eq("id", documentId);
+
+  if (deferRenditionToQueue) {
+    // Deduped on convert:<versionId>, retried with backoff.
+    // finalizeDocumentStatus: false — the document was inserted "ready" and
+    // is downloadable from its raw bytes; a rendition failure must not flip
+    // it to "error". Enqueue failure degrades to the sync path's
+    // conversion-failure behavior: a usable document with no rendition.
+    try {
+      await enqueueConversion({
+        documentId,
+        versionId,
+        userId,
+        storagePath: key,
+        fileType: extension,
+        pdfKey: convertedPdfKey(userId, documentId),
+        finalizeDocumentStatus: false,
+      });
+    } catch (err) {
+      devLog(`[generate_${extension}] rendition enqueue failed:`, err);
+    }
+  }
 
   return {
     filename,
@@ -1211,6 +1242,9 @@ export async function runEditDocument(params: {
         size_bytes: editedBytes.byteLength,
         page_count: null,
         content_sha256: contentSha256(editedBytes),
+        // The bytes just changed in place — any rendition this version
+        // carried no longer matches them (same invariant as accept/reject).
+        pdf_storage_path: null,
       })
       .eq("id", versionRowId);
   } else {
