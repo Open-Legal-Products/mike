@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
-import { deleteFile } from "../lib/storage";
+import { enqueueStorageCleanup } from "../lib/dbq/enqueue";
 import {
   attachActiveVersionPaths,
   attachLatestVersionNumbers,
@@ -130,8 +130,6 @@ async function deleteLibraryDocumentsAndVersionFiles(
       paths.add(version.pdf_storage_path);
     }
   }
-  await Promise.all([...paths].map((path) => deleteFile(path).catch(() => {})));
-
   let deleteQuery = db
     .from("documents")
     .delete()
@@ -142,6 +140,9 @@ async function deleteLibraryDocumentsAndVersionFiles(
       ? deleteQuery.or("library_kind.eq.file,library_kind.is.null")
       : deleteQuery.eq("library_kind", kind);
   const { error } = await deleteQuery.in("id", eligibleIds);
+  // Rows first, files second (durable storage.cleanup job) — previously each
+  // file delete was fire-and-forget, so one storage hiccup leaked the bytes.
+  if (!error) await enqueueStorageCleanup(db, [...paths]);
   return { error: error ?? null, deletedIds: error ? [] : eligibleIds };
 }
 

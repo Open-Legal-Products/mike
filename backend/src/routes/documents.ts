@@ -13,6 +13,7 @@ import {
 } from "../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../lib/convert";
 import { enqueueConversion } from "../lib/queue/conversionQueue";
+import { enqueueStorageCleanup } from "../lib/dbq/enqueue";
 import {
   extractTrackedChangeIds,
   resolveTrackedChange,
@@ -43,20 +44,25 @@ async function deleteDocumentAndVersionFiles(
   db: ReturnType<typeof createServerSupabase>,
   documentId: string,
 ) {
-  // Storage lives on document_versions — fan out and delete each version's
-  // bytes (source + PDF rendition) before dropping the document row.
+  // Storage lives on document_versions — collect every version's bytes
+  // (source + PDF rendition), drop the document row, then hand the object
+  // deletes to the durable storage.cleanup job. Previously each delete was
+  // fire-and-forget (`.catch(() => {})`): one storage hiccup silently leaked
+  // the files forever. Rows first, files second — if the row delete fails
+  // nothing has been touched and the document stays intact; if the process
+  // dies after it, the queued job still removes the files.
   const { data: versions } = await db
     .from("document_versions")
     .select("storage_path, pdf_storage_path")
     .eq("document_id", documentId);
-  await Promise.all(
-    (versions ?? []).flatMap((v) =>
-      [v.storage_path, v.pdf_storage_path]
-        .filter((p): p is string => typeof p === "string" && p.length > 0)
-        .map((p) => deleteFile(p).catch(() => {})),
+  const keys = (versions ?? []).flatMap((v) =>
+    [v.storage_path, v.pdf_storage_path].filter(
+      (p): p is string => typeof p === "string" && p.length > 0,
     ),
   );
-  return db.from("documents").delete().eq("id", documentId);
+  const result = await db.from("documents").delete().eq("id", documentId);
+  if (!result.error) await enqueueStorageCleanup(db, keys);
+  return result;
 }
 
 // GET /single-documents
