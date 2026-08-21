@@ -104,12 +104,21 @@ export async function extractRowColumns(args: {
         processed,
         async (columnIndex, result) => {
             received.add(columnIndex);
-            await db
+            // Guarded on status = "generating": clear-cells can reset this
+            // cell to "pending" (or delete-row can remove it) while the LLM
+            // call is in flight — in either mode. A terminal write that no
+            // longer matches its "generating" claim must be dropped, not
+            // clobber the user's reset; the announce is skipped too so a
+            // tailing stream never shows a "done" the DB doesn't hold.
+            const { data: updated } = await db
                 .from("tabular_cells")
                 .update({ content: JSON.stringify(result), status: "done" })
                 .eq("review_id", reviewId)
                 .eq("row_id", row.id)
-                .eq("column_index", columnIndex);
+                .eq("column_index", columnIndex)
+                .eq("status", "generating")
+                .select("id");
+            if (!updated || updated.length === 0) return;
             await sink.done(row.id, columnIndex, result);
         },
         apiKeys,

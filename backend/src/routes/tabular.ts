@@ -31,7 +31,10 @@ import {
     streamTabularGenerateAsync,
     streamTabularRunView,
 } from "../lib/tabular/tabular.generateStream";
-import { enqueueExtraction } from "../lib/queue/extractionQueue";
+import {
+    enqueueExtraction,
+    removeQueuedExtractionJobs,
+} from "../lib/queue/extractionQueue";
 import {
     fetchSourceDocuments,
     loadReviewRows,
@@ -871,7 +874,7 @@ tabularRouter.post("/:reviewId/clear-cells", requireAuth, async (req, res) => {
     const db = createServerSupabase();
     const { data: review, error: reviewError } = await db
         .from("tabular_reviews")
-        .select("id, user_id, project_id")
+        .select("id, user_id, project_id, columns_config")
         .eq("id", reviewId)
         .single();
     if (reviewError || !review)
@@ -879,6 +882,27 @@ tabularRouter.post("/:reviewId/clear-cells", requireAuth, async (req, res) => {
     const access = await ensureReviewAccess(review, userId, userEmail, db);
     if (!access.ok)
         return void res.status(404).json({ detail: "Review not found" });
+
+    // Async mode: cancel queued extraction for these rows BEFORE blanking the
+    // cells, so a not-yet-started job can't re-fill them moments later. Jobs
+    // already running get a persisted `canceled` marker (their next retry
+    // no-ops on it) and their in-flight terminal writes are dropped by the
+    // status = "generating" guards. Best-effort: clearing must succeed even
+    // if the queue is unreachable. Flag-gated so synchronous (no-Redis)
+    // deployments never dial Redis here.
+    if (process.env.ASYNC_TABULAR_EXTRACTION === "true") {
+        try {
+            const columnIndexes = (
+                (review.columns_config as { index: number }[] | null) ?? []
+            ).map((c) => c.index);
+            await removeQueuedExtractionJobs(reviewId, row_ids, columnIndexes);
+        } catch (err) {
+            console.error(
+                "[tabular/clear-cells] queue cancellation failed",
+                safeErrorLog(err),
+            );
+        }
+    }
 
     const { error } = await db
         .from("tabular_cells")
@@ -1032,13 +1056,19 @@ tabularRouter.post(
             api_keys,
         );
 
+        // Both terminal writes below are guarded on status = "generating":
+        // this route claimed the cell before the LLM call, and clear-cells
+        // may have reset it to "pending" while the call ran. The reset wins —
+        // a late terminal write must not clobber it. (The caller still gets
+        // its JSON answer either way; only the persisted cell differs.)
         if (!result) {
             await db
                 .from("tabular_cells")
                 .update({ status: "error" })
                 .eq("review_id", reviewId)
                 .eq("row_id", row.id)
-                .eq("column_index", column_index);
+                .eq("column_index", column_index)
+                .eq("status", "generating");
             return void res.status(500).json({ detail: "Generation failed" });
         }
 
@@ -1047,7 +1077,8 @@ tabularRouter.post(
             .update({ content: JSON.stringify(result), status: "done" })
             .eq("review_id", reviewId)
             .eq("row_id", row.id)
-            .eq("column_index", column_index);
+            .eq("column_index", column_index)
+            .eq("status", "generating");
 
         res.json(result);
     },
@@ -1150,12 +1181,20 @@ tabularRouter.post("/:reviewId/generate", requireAuth, async (req, res) => {
                 });
 
                 for (const columnIndex of missing) {
-                    await db
+                    // Guarded on status = "generating": only flip cells this
+                    // run actually claimed. clear-cells may have reset the
+                    // cell to "pending" mid-run — that reset must win over a
+                    // late terminal write (same rule as the shared core's
+                    // done-write).
+                    const { data: erred } = await db
                         .from("tabular_cells")
                         .update({ status: "error" })
                         .eq("review_id", reviewId)
                         .eq("row_id", row.id)
-                        .eq("column_index", columnIndex);
+                        .eq("column_index", columnIndex)
+                        .eq("status", "generating")
+                        .select("id");
+                    if (!erred || erred.length === 0) continue;
                     cellFrame(row.id, columnIndex, null, "error");
                 }
             }),

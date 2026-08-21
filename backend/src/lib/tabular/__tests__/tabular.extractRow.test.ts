@@ -14,8 +14,12 @@ import { extractRowColumns } from "../tabular.extractRow";
 import type { ReviewRow } from "../tabular.rows";
 
 type Call = { table: string; op: string; payload?: Record<string, unknown> };
-function makeDb() {
+// `doneWriteMatches: false` simulates the clear-cells race: the guarded
+// terminal UPDATE (… AND status = 'generating') matches zero rows because the
+// cell was reset while the LLM call was in flight.
+function makeDb(opts?: { doneWriteMatches?: boolean }) {
     const calls: Call[] = [];
+    const doneWriteMatches = opts?.doneWriteMatches ?? true;
     function from(table: string) {
         const state: Call = { table, op: "select" };
         const b: Record<string, unknown> = {
@@ -30,6 +34,13 @@ function makeDb() {
             },
             eq() {
                 return b;
+            },
+            select() {
+                calls.push({ ...state, op: `${state.op}+select` });
+                return Promise.resolve({
+                    data: doneWriteMatches ? [{ id: "cell-1" }] : [],
+                    error: null,
+                });
             },
             then(onF: (v: unknown) => unknown) {
                 calls.push({ ...state });
@@ -162,5 +173,39 @@ describe("extractRowColumns", () => {
         expect(sink.done).toHaveBeenCalledTimes(1);
         // pre-existing cells → update (not insert) to mark generating
         expect(db.calls.filter((c) => c.op === "insert")).toHaveLength(0);
+    });
+
+    it("drops the terminal write's announce when the cell was cleared mid-flight", async () => {
+        queryTabularAllColumns.mockImplementation(
+            async (_m, _f, _t, cols, onResult) => {
+                for (const c of cols) await onResult(c.index, RESULT(c.index));
+            },
+        );
+        // The guarded done-UPDATE matches nothing: clear-cells reset the
+        // cells to "pending" while the LLM call ran.
+        const db = makeDb({ doneWriteMatches: false });
+        const sink = sinkSpy();
+
+        const out = await extractRowColumns({
+            db: db as never,
+            reviewId: "rev-1",
+            row: ROW,
+            columns: COLUMNS,
+            existingByColumn: new Map([
+                [0, { id: "c0", status: "pending", content: null }],
+                [1, { id: "c1", status: "pending", content: null }],
+            ]),
+            model: "m",
+            apiKeys: {},
+            sink,
+        });
+
+        // Never announce a "done" the DB doesn't hold.
+        expect(sink.done).not.toHaveBeenCalled();
+        // The model DID return these columns, so they are received — not
+        // "missing": the sync caller must not flip the user's cleared cells
+        // to "error", and the async worker must not throw/retry over them.
+        expect([...out.received].sort()).toEqual([0, 1]);
+        expect(out.missing).toEqual([]);
     });
 });

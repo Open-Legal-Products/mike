@@ -27,6 +27,14 @@ export interface ExtractionJobData {
      * suffix so they never dedupe against a full-row job for the same row.
      */
     columnIndex?: number;
+    /**
+     * Set by clear-cells on a job it could not remove (already active).
+     * Persisted via job.updateData(), so the worker's NEXT attempt — which
+     * re-fetches job data from Redis — sees it and returns without touching
+     * any cell. (An in-flight attempt is unaffected; its terminal writes are
+     * dropped by the status = "generating" guards instead.)
+     */
+    canceled?: boolean;
 }
 
 let queue: Queue<ExtractionJobData> | null = null;
@@ -70,6 +78,64 @@ export function enqueueExtraction(data: ExtractionJobData) {
         removeOnComplete: true,
         removeOnFail: true,
     });
+}
+
+/**
+ * Best-effort cancellation of extraction work for a set of rows — the queue
+ * half of clear-cells. Deterministic jobIds make this a direct lookup: for
+ * each row we address the full-row job and every possible single-cell
+ * (regenerate) job.
+ *
+ * - waiting/delayed jobs are REMOVED — they never (re)start, so the cleared
+ *   cells stay cleared.
+ * - an active job cannot be stopped mid-run, and Job#discard() is only an
+ *   in-memory flag on the worker's OWN instance — useless from this process.
+ *   Instead the job's data is marked `canceled: true` via updateData(), which
+ *   IS persisted: the retry attempt re-fetches job data from Redis, sees the
+ *   marker in runExtractionJob, and returns without re-claiming the cleared
+ *   cells. The in-flight attempt's terminal writes are dropped by the
+ *   status = "generating" guards in the shared core.
+ *
+ * Every failure is swallowed per job: cancellation is an optimization on top
+ * of the write guards, never a correctness dependency.
+ */
+export async function removeQueuedExtractionJobs(
+    reviewId: string,
+    rowIds: string[],
+    columnIndexes: number[],
+): Promise<{ removed: number; canceled: number }> {
+    const queue = getExtractionQueue();
+    let removed = 0;
+    let canceled = 0;
+    for (const rowId of rowIds) {
+        const jobIds = [
+            extractionJobId(reviewId, rowId),
+            ...columnIndexes.map((c) => extractionJobId(reviewId, rowId, c)),
+        ];
+        for (const jobId of jobIds) {
+            try {
+                const job = await queue.getJob(jobId);
+                if (!job) continue;
+                if ((await job.getState()) === "active") {
+                    await job.updateData({ ...job.data, canceled: true });
+                    canceled++;
+                } else {
+                    try {
+                        await job.remove();
+                        removed++;
+                    } catch {
+                        // Raced the worker: the job went active between the
+                        // state check and remove(). Fall back to the marker.
+                        await job.updateData({ ...job.data, canceled: true });
+                        canceled++;
+                    }
+                }
+            } catch {
+                // Job finished/vanished mid-race — the write guards cover it.
+            }
+        }
+    }
+    return { removed, canceled };
 }
 
 export async function closeExtractionQueue(): Promise<void> {

@@ -47,6 +47,11 @@ export async function runExtractionJob(
     const { reviewId, userId, rowId, columnIndex } = data;
     const { db, publish } = deps;
 
+    // 0. Canceled by clear-cells while a previous attempt was active: the
+    //    marker is persisted into the job's data, and each retry re-fetches
+    //    that data — so this attempt must not re-claim the cleared cells.
+    if (data.canceled) return;
+
     // 1. Columns configured on the review. A single-cell job (regenerate)
     //    narrows to its one column; the cell was already flipped off "done"
     //    by the enqueuing route, so the shared core will re-extract it.
@@ -148,11 +153,18 @@ export async function markExtractionFailed(
     for (const cell of (cells ?? []) as Record<string, unknown>[]) {
         // Single-cell jobs only ever own their one column's terminal state.
         if (columnIndex != null && cell.column_index !== columnIndex) continue;
-        if (cell.status === "done" && cell.content) continue;
+        // Only flip cells this job actually claimed ("generating"). A
+        // "pending" cell here is one the user reset via clear-cells while the
+        // job was retrying — that reset must win, so it is left alone. The
+        // cost: a job that dies before ever claiming its cells (e.g. the
+        // settings lookup fails on every attempt) leaves them "pending"
+        // rather than "error" — a blank, retriable state, not a hung spinner.
+        if (cell.status !== "generating") continue;
         await db
             .from("tabular_cells")
             .update({ status: "error" })
-            .eq("id", cell.id);
+            .eq("id", cell.id)
+            .eq("status", "generating");
         await publish(reviewId, {
             type: "cell_update",
             row_id: rowId,
