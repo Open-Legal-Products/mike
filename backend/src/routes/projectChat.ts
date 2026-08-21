@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
-import { recordChatTurn } from "../lib/audit";
+import { enqueueChatTurnAudit } from "../lib/audit";
 import {
     buildProjectDocContext,
     buildMessages,
@@ -345,7 +345,7 @@ projectChatRouter.post("/", requireAuth, async (req, res) => {
             }
         }
 
-        void recordChatTurn(
+        void enqueueChatTurnAudit(
             db,
             {
                 userId,
