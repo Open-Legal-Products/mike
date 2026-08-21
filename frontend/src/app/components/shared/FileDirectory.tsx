@@ -152,10 +152,14 @@ export function FileDirectory({
         useState<DirectoryTab>(initialDirectoryTab);
 
     // Follow initialTab changes so keep-mounted parents (which never remount
-    // this component) can still steer the starting tab per open.
-    useEffect(() => {
+    // this component) can still steer the starting tab per open. State is
+    // adjusted during render instead of in an effect.
+    const [prevInitialDirectoryTab, setPrevInitialDirectoryTab] =
+        useState(initialDirectoryTab);
+    if (prevInitialDirectoryTab !== initialDirectoryTab) {
+        setPrevInitialDirectoryTab(initialDirectoryTab);
         setSelectedTab(initialDirectoryTab);
-    }, [initialDirectoryTab]);
+    }
     const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
   const [searchDocuments, setSearchDocuments] = useState<Document[] | null>(
@@ -188,19 +192,33 @@ export function FileDirectory({
     loadMoreProjectDocuments = async () => {},
     } = useDirectoryData(showTabs, initialDirectoryTab);
 
-  useEffect(() => {
-    const term = debouncedSearch.trim();
-    if (!showTabs || !term) {
-      setSearchDocuments(null);
-      setSearchProjects(null);
-      setSearchLoading(false);
-      setSearchHasMore(false);
-      return;
-    }
-    const controller = new AbortController();
-    setSearchLoading(true);
+  // Reset search results whenever the query inputs change, adjusting state
+  // during render instead of in the fetch effect below.
+  const [prevSearchKey, setPrevSearchKey] = useState({
+    debouncedSearch,
+    selectedTab,
+    showTabs,
+  });
+  if (
+    prevSearchKey.debouncedSearch !== debouncedSearch ||
+    prevSearchKey.selectedTab !== selectedTab ||
+    prevSearchKey.showTabs !== showTabs
+  ) {
+    setPrevSearchKey({ debouncedSearch, selectedTab, showTabs });
     setSearchDocuments(null);
     setSearchProjects(null);
+    if (!showTabs || !debouncedSearch.trim()) {
+      setSearchLoading(false);
+      setSearchHasMore(false);
+    } else {
+      setSearchLoading(true);
+    }
+  }
+
+  useEffect(() => {
+    const term = debouncedSearch.trim();
+    if (!showTabs || !term) return;
+    const controller = new AbortController();
     const request =
       selectedTab === "projects"
         ? searchProjectDirectory({

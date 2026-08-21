@@ -524,22 +524,37 @@ export function LibraryCollectionPage({
     fileType: null,
     sort: null,
   });
+  // tableQuery starts with no filter/sort, so at mount a server query is
+  // active only when a search is already present (e.g. kept by the layout).
+  const initialServerQueryActive = debouncedSearch.trim().length > 0;
   const [serverDocuments, setServerDocuments] = useState<Document[] | null>(
-    null,
+    initialServerQueryActive ? [] : null,
   );
-  const [serverQueryLoading, setServerQueryLoading] = useState(false);
+  const [serverQueryLoading, setServerQueryLoading] = useState(
+    initialServerQueryActive,
+  );
   const [serverQueryLoadingMore, setServerQueryLoadingMore] = useState(false);
   const [serverQueryHasMore, setServerQueryHasMore] = useState(false);
   const [serverQueryRefreshVersion, setServerQueryRefreshVersion] = useState(0);
   const serverQueryRequestRef = useRef(0);
     const loadedFolderRouteRef = useRef<string | null>(null);
     const loadFolderChildrenRef = useRef(loadFolderChildren);
-    loadFolderChildrenRef.current = loadFolderChildren;
     const folderAvailable =
         !folderId ||
         !!collection?.folders.some((folder) => folder.id === folderId);
     const folderAvailableRef = useRef(folderAvailable);
-    folderAvailableRef.current = folderAvailable;
+
+    // Keep the latest-value refs current from an effect rather than during
+    // render. Both are declared ahead of the folder-route effect below, so
+    // within a commit they are refreshed before that effect reads them —
+    // the same value the old render-time writes provided.
+    useEffect(() => {
+        loadFolderChildrenRef.current = loadFolderChildren;
+    }, [loadFolderChildren]);
+
+    useEffect(() => {
+        folderAvailableRef.current = folderAvailable;
+    }, [folderAvailable]);
 
     useEffect(() => {
         if (collection) return;
@@ -724,20 +739,49 @@ export function LibraryCollectionPage({
     !!tableQuery.fileType ||
     !!tableQuery.sort;
 
-  useEffect(() => {
-    const requestVersion = ++serverQueryRequestRef.current;
-    if (!serverQueryActive) {
+  // Reset the server-query result set whenever the query inputs change,
+  // adjusting state during render instead of in the fetch effect below.
+  const [prevServerQuery, setPrevServerQuery] = useState({
+    debouncedSearch,
+    kind,
+    serverQueryActive,
+    serverQueryRefreshVersion,
+    fileType: tableQuery.fileType,
+    sort: tableQuery.sort,
+  });
+  if (
+    prevServerQuery.debouncedSearch !== debouncedSearch ||
+    prevServerQuery.kind !== kind ||
+    prevServerQuery.serverQueryActive !== serverQueryActive ||
+    prevServerQuery.serverQueryRefreshVersion !== serverQueryRefreshVersion ||
+    prevServerQuery.fileType !== tableQuery.fileType ||
+    prevServerQuery.sort !== tableQuery.sort
+  ) {
+    setPrevServerQuery({
+      debouncedSearch,
+      kind,
+      serverQueryActive,
+      serverQueryRefreshVersion,
+      fileType: tableQuery.fileType,
+      sort: tableQuery.sort,
+    });
+    if (serverQueryActive) {
+      setServerDocuments([]);
+      setServerQueryLoading(true);
+      setServerQueryLoadingMore(false);
+    } else {
       setServerDocuments(null);
       setServerQueryLoading(false);
       setServerQueryLoadingMore(false);
       setServerQueryHasMore(false);
-      return;
     }
+  }
+
+  useEffect(() => {
+    const requestVersion = ++serverQueryRequestRef.current;
+    if (!serverQueryActive) return;
 
     const controller = new AbortController();
-    setServerDocuments([]);
-    setServerQueryLoading(true);
-    setServerQueryLoadingMore(false);
     void searchLibraryDocuments(kind, {
       limit: DOCUMENT_PAGE_SIZE,
       search: debouncedSearch.trim() || undefined,

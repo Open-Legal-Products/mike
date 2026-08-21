@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { PillButton } from "@/app/components/ui/pill-button";
@@ -27,17 +27,30 @@ interface EmailWarning {
     message: string;
 }
 
+// The confirmation redirect param never changes under us — it is read once
+// and then stripped from the URL — so the store has nothing to subscribe to.
+const subscribeToNothing = () => () => {};
+const readEmailChangeProcessed = () =>
+    new URLSearchParams(window.location.search).get("emailChange") ===
+    "processed";
+
 export default function SettingsPage() {
     const router = useRouter();
     const { user, signOut, updateEmail } = useAuth();
     const { profile, updateDisplayName, updateOrganisation } = useUserProfile();
-    const [displayName, setDisplayName] = useState("");
+    const [displayName, setDisplayName] = useState(
+        profile?.displayName ?? "",
+    );
     const [isSavingName, setIsSavingName] = useState(false);
     const [saved, setSaved] = useState(false);
-    const [organisation, setOrganisation] = useState("");
+    const [organisation, setOrganisation] = useState(
+        profile?.organisation ?? "",
+    );
     const [isSavingOrg, setIsSavingOrg] = useState(false);
     const [orgSaved, setOrgSaved] = useState(false);
-    const [email, setEmail] = useState("");
+    const [email, setEmail] = useState(
+        user?.email ? user.pendingEmail || user.email : "",
+    );
     const [isSavingEmail, setIsSavingEmail] = useState(false);
     const [emailSaved, setEmailSaved] = useState(false);
     const [emailStatus, setEmailStatus] = useState<string | null>(null);
@@ -47,36 +60,61 @@ export default function SettingsPage() {
     const [isDeleting, setIsDeleting] = useState(false);
     const [accountDeleteMfaOpen, setAccountDeleteMfaOpen] = useState(false);
 
-    useEffect(() => {
+    // Re-seed the editable fields whenever the saved profile/user values
+    // change, during render, via React's "adjusting state when props change"
+    // pattern (the initial values above cover the first render).
+    const [prevProfile, setPrevProfile] = useState(profile);
+    if (prevProfile !== profile) {
+        setPrevProfile(profile);
         if (profile?.displayName) {
             setDisplayName(profile.displayName);
         }
         if (profile?.organisation) {
             setOrganisation(profile.organisation);
         }
-    }, [profile]);
+    }
 
-    useEffect(() => {
+    const [prevUserEmails, setPrevUserEmails] = useState({
+        email: user?.email,
+        pendingEmail: user?.pendingEmail,
+    });
+    if (
+        prevUserEmails.email !== user?.email ||
+        prevUserEmails.pendingEmail !== user?.pendingEmail
+    ) {
+        setPrevUserEmails({
+            email: user?.email,
+            pendingEmail: user?.pendingEmail,
+        });
         if (user?.email) {
             setEmail(user.pendingEmail || user.email);
         }
-    }, [user?.email, user?.pendingEmail]);
+    }
 
-    useEffect(() => {
-        if (
-            new URLSearchParams(window.location.search).get("emailChange") !==
-                "processed" ||
-            !user
-        ) {
-            return;
-        }
+    // The `emailChange=processed` redirect is read through
+    // useSyncExternalStore so it is a render-time value (with a `false`
+    // server snapshot) rather than something an effect pushes into state.
+    // The banner is then adjusted during render, and the effect below only
+    // owns the URL cleanup — a genuine external-system update.
+    const emailChangeProcessed = useSyncExternalStore(
+        subscribeToNothing,
+        readEmailChangeProcessed,
+        () => false,
+    );
+    const [emailChangeApplied, setEmailChangeApplied] = useState(false);
+    if (emailChangeProcessed && user && !emailChangeApplied) {
+        setEmailChangeApplied(true);
         setEmailStatus(
             user.pendingEmail
                 ? "One confirmation was accepted. Confirm the email change from both your current and new addresses to finish."
                 : "Email updated.",
         );
+    }
+
+    useEffect(() => {
+        if (!emailChangeApplied) return;
         window.history.replaceState({}, "", "/settings");
-    }, [user]);
+    }, [emailChangeApplied]);
 
     const handleDeleteAccount = async () => {
         devLog("[account/mfa] delete account requested");

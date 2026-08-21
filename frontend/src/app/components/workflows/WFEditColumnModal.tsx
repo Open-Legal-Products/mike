@@ -40,7 +40,11 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
     const [presetsOpen, setPresetsOpen] = useState(false);
     const presetsRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
+    // Re-seed the draft when a different column is passed in — adjusted
+    // during render instead of an effect.
+    const [prevColumn, setPrevColumn] = useState(column);
+    if (column !== prevColumn) {
+        setPrevColumn(column);
         setDraft({
             name: column.name,
             prompt: column.prompt,
@@ -49,7 +53,7 @@ export function WFEditColumnModal({ column, onClose, onSave, onDelete }: Props) 
             tagInput: "",
         });
         setPresetsOpen(false);
-    }, [column]);
+    }
 
     useEffect(() => {
         if (!presetsOpen) return;

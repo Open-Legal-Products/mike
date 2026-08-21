@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import {
     MfaVerificationPopup,
@@ -36,9 +36,13 @@ export function ApiKeyField({
         "save" | "remove" | null
     >(null);
 
-    useEffect(() => {
+    // Clear the draft whenever the saved-key state flips (a save or a
+    // remove landed), adjusting state during render instead of in an effect.
+    const [prevHasSavedKey, setPrevHasSavedKey] = useState(hasSavedKey);
+    if (prevHasSavedKey !== hasSavedKey) {
+        setPrevHasSavedKey(hasSavedKey);
         setValue("");
-    }, [hasSavedKey]);
+    }
 
     const dirty = value.trim().length > 0;
 

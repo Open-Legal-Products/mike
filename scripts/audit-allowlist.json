@@ -1,0 +1,6 @@
+[
+    {
+        "ghsa": "GHSA-4cwx-7wf7-3272",
+        "reason": "undici cache-directive parsing flaw, reachable only through miniflare (wrangler's local dev simulator), which pins undici at exactly 7.28.0 — dev-machine only, never part of the deployed app. REMOVE WHEN: wrangler ships a miniflare with undici >=7.29.0 (weekly dev-dep Dependabot bump will carry it)."
+    }
+]

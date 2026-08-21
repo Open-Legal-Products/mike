@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Modal } from "../modals/Modal";
 import { ModalSelect } from "../modals/ModalSelect";
 import { FieldLabel, FormTextInput } from "../ui/form-field";
@@ -36,15 +36,25 @@ export function TabularReviewDetailsModal({
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (!open || !review) return;
-        setTitleDraft(review.title ?? "");
-        setUnderProject(Boolean(review.project_id));
-        setSelectedProjectId(review.project_id ?? "");
-        setSaving(false);
-        setSaved(false);
-        setError(null);
-    }, [open, review]);
+    // Reset the form when the modal opens or the review changes. Adjusted
+    // during render with a previous-values guard
+    // (https://react.dev/learn/you-might-not-need-an-effect) instead of an
+    // effect, so the reset lands in the same commit.
+    const [prevSync, setPrevSync] = useState<{
+        open: boolean;
+        review: TabularReview | null;
+    } | null>(null);
+    if (prevSync === null || prevSync.open !== open || prevSync.review !== review) {
+        setPrevSync({ open, review });
+        if (open && review) {
+            setTitleDraft(review.title ?? "");
+            setUnderProject(Boolean(review.project_id));
+            setSelectedProjectId(review.project_id ?? "");
+            setSaving(false);
+            setSaved(false);
+            setError(null);
+        }
+    }
 
     const trimmedTitle = titleDraft.trim();
     const nextProjectId = underProject ? selectedProjectId : null;

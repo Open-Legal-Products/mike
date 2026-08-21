@@ -45,7 +45,9 @@ const CHAT_PAGE_SIZE = 10;
 
 export function ChatHistoryProvider({ children }: { children: ReactNode }) {
     const { user } = useAuth();
-    const [chats, setChats] = useState<Chat[] | null>(null);
+    // Signed-out users have no history to load, so start on the empty list
+    // (the signed-out reset below keeps it that way after sign-out).
+    const [chats, setChats] = useState<Chat[] | null>(user ? null : []);
     const [hasMoreChats, setHasMoreChats] = useState(false);
   const [loadingMoreChats, setLoadingMoreChats] = useState(false);
   const loadingMoreChatsRef = useRef(false);
@@ -71,18 +73,38 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
         }
   }, [user]);
 
-    useEffect(() => {
+    // Clear the signed-in state the moment the user signs out, during render,
+    // via React's "adjusting state when props change" pattern — the effect
+    // below only owns the fetch and ref bookkeeping. The fetch mirrors
+    // loadChats, inlined so no setState is reachable synchronously from the
+    // effect body.
+    const [prevUser, setPrevUser] = useState(user);
+    if (prevUser !== user) {
+        setPrevUser(user);
         if (!user) {
             setChats([]);
             setHasMoreChats(false);
-      setLoadingMoreChats(false);
-      loadingMoreChatsRef.current = false;
+            setLoadingMoreChats(false);
             setCurrentChatId(null);
+        }
+    }
+
+    useEffect(() => {
+        if (!user) {
+      loadingMoreChatsRef.current = false;
             return;
         }
 
-        void loadChats();
-    }, [user, loadChats]);
+        void listChats({ limit: INITIAL_CHAT_LIMIT + 1 })
+            .then((data) => {
+        setChats(data.slice(0, INITIAL_CHAT_LIMIT));
+        setHasMoreChats(data.length > INITIAL_CHAT_LIMIT);
+            })
+            .catch(() => {
+                setChats([]);
+                setHasMoreChats(false);
+            });
+    }, [user]);
 
   const loadMoreChats = useCallback(async () => {
     if (

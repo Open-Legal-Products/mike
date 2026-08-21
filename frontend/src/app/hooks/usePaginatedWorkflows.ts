@@ -53,12 +53,18 @@ export function usePaginatedWorkflows(options: {
     } | null;
 }) {
     const [systemWorkflows, setSystemWorkflows] = useState<Workflow[]>([]);
-    const [systemLoading, setSystemLoading] = useState(true);
+    // When the system source is disabled there is nothing to load, so
+    // loading starts false (the reset block below keeps it in sync after).
+    const [systemLoading, setSystemLoading] = useState(
+        options.systemEnabled ?? true,
+    );
 
     const [dbWorkflows, setDbWorkflows] = useState<Workflow[]>([]);
-    const [dbLoading, setDbLoading] = useState(true);
+    // When the DB source is disabled there is nothing to load or page, so
+    // both start false (the reset block below keeps them in sync afterwards).
+    const [dbLoading, setDbLoading] = useState(options.dbEnabled ?? true);
     const [loadingMore, setLoadingMore] = useState(false);
-    const [hasMore, setHasMore] = useState(true);
+    const [hasMore, setHasMore] = useState(options.dbEnabled ?? true);
     const [error, setError] = useState<Error | null>(null);
     const [loadMoreError, setLoadMoreError] = useState<Error | null>(null);
     const [selectingAllRequest, setSelectingAllRequest] = useState(false);
@@ -111,14 +117,20 @@ export function usePaginatedWorkflows(options: {
             },
             [queryKey],
         );
+    // Reset the system rows the moment the source is toggled, during render,
+    // via React's "adjusting state when props change" pattern — the effect
+    // below then only owns the fetch.
+    const [prevSystemEnabled, setPrevSystemEnabled] = useState(systemEnabled);
+    if (prevSystemEnabled !== systemEnabled) {
+        setPrevSystemEnabled(systemEnabled);
+        setSystemWorkflows([]);
+        setSystemLoading(systemEnabled);
+    }
+
     // System workflows: fetched once, never re-fetched on filter change —
     // there are only 37 of them and they never grow from user data.
     useEffect(() => {
-        if (!systemEnabled) {
-            setSystemWorkflows([]);
-            setSystemLoading(false);
-            return;
-        }
+        if (!systemEnabled) return;
         let cancelled = false;
         void listSystemWorkflows()
             .then((rows) => {
@@ -137,23 +149,40 @@ export function usePaginatedWorkflows(options: {
         };
     }, [systemEnabled]);
 
+    // Reset the paged rows the moment the query changes, during render, via
+    // React's "adjusting state when props change" pattern — the effect below
+    // then only owns the fetch. The key mirrors the effect's dependencies so
+    // both fire together.
+    const resetKey = JSON.stringify([
+        type ?? null,
+        retryVersion,
+        search ?? null,
+        scope,
+        practiceFilter,
+        languageFilter,
+        jurisdictionFilter,
+        sortKey ?? null,
+        sortDirection ?? null,
+        dbEnabled,
+    ]);
+    const [prevResetKey, setPrevResetKey] = useState(resetKey);
+    if (prevResetKey !== resetKey) {
+        setPrevResetKey(resetKey);
+        setDbWorkflows([]);
+        setLoadingMore(false);
+        setError(null);
+        setLoadMoreError(null);
+        setHasMore(dbEnabled);
+        setDbLoading(dbEnabled);
+    }
+
     useEffect(() => {
         const requestVersion = ++requestVersionRef.current;
         const controller = new AbortController();
         loadMoreControllerRef.current?.abort();
         loadMoreControllerRef.current = null;
         loadingMoreRef.current = false;
-        setDbWorkflows([]);
-        setHasMore(true);
-        setLoadingMore(false);
-        setError(null);
-        setLoadMoreError(null);
-    if (!dbEnabled) {
-      setDbLoading(false);
-      setHasMore(false);
-      return;
-    }
-        setDbLoading(true);
+    if (!dbEnabled) return;
 
         void listWorkflowsPage({
             limit: PAGE_SIZE + 1,

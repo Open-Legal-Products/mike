@@ -1,6 +1,7 @@
 "use client";
 
 import {
+    useCallback,
     useEffect,
     useRef,
     useState,
@@ -187,15 +188,18 @@ export default function SecurityPage() {
         string | null
     >(null);
 
-    async function refreshMfaState() {
-        setLoading(true);
-        setStatus(null);
+    const fetchMfaState = useCallback(() => {
         traceMfa("[security/mfa] refreshing state");
-        const [factorResult, aalResult] = await Promise.all([
+        return Promise.all([
             supabase.auth.mfa.listFactors(),
             supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
         ]);
+    }, []);
 
+    const applyMfaState = useCallback(
+        ([factorResult, aalResult]: Awaited<
+            ReturnType<typeof fetchMfaState>
+        >) => {
         if (factorResult.error) {
             traceMfa("[security/mfa] list factors failed", {
                 error: factorResult.error.message,
@@ -229,12 +233,22 @@ export default function SecurityPage() {
             setNextLevel(aalResult.data.nextLevel);
         }
         setLoading(false);
+        },
+        [],
+    );
+
+    async function refreshMfaState() {
+        setLoading(true);
+        setStatus(null);
+        applyMfaState(await fetchMfaState());
     }
 
     useEffect(() => {
         traceMfa("[security/mfa] page mounted");
-        void refreshMfaState();
-    }, []);
+        // loading/status already hold their refresh values on mount, so only
+        // the fetch itself runs here; state is applied once it resolves.
+        void fetchMfaState().then(applyMfaState);
+    }, [fetchMfaState, applyMfaState]);
 
     useEffect(() => {
         traceMfa("[security/mfa] rendered state", {

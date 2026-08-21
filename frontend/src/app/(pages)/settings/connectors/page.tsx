@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
     ChevronDown,
     Eye,
@@ -150,42 +150,47 @@ export default function ConnectorsPage() {
 
     const selectedConnector = selectedConnectorDetails;
 
-    const loadConnectors = useCallback(async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            setConnectors(await listMcpConnectors());
-        } catch (err) {
-            setError(
-                err instanceof Error ? err.message : "Failed to load connectors.",
-            );
-        } finally {
-            setLoading(false);
-        }
+    useEffect(() => {
+        listMcpConnectors()
+            .then(setConnectors)
+            .catch((err) => {
+                setError(
+                    err instanceof Error
+                        ? err.message
+                        : "Failed to load connectors.",
+                );
+            })
+            .finally(() => setLoading(false));
     }, []);
 
-    useEffect(() => {
-        void loadConnectors();
-    }, [loadConnectors]);
-
-    useEffect(() => {
-        if (!selectedConnector) return;
-        setDetailDraft({
-            name: selectedConnector.name,
-            serverUrl: selectedConnector.serverUrl,
-            bearerToken: "",
-            customHeaders: "",
-            clearBearerToken: false,
-        });
-        setDetailError(null);
-        setClearedBearerTokenConnectorId(null);
-        setShowDetailToken(false);
-        setShowDetailAdvanced(false);
-    }, [
-        selectedConnector?.id,
-        selectedConnector?.name,
-        selectedConnector?.serverUrl,
-    ]);
+    // Re-seed the detail form whenever the selected connector (or its saved
+    // name/serverUrl) changes, during render, via React's "adjusting state
+    // when props change" pattern.
+    const detailResetKey = selectedConnector
+        ? JSON.stringify([
+              selectedConnector.id,
+              selectedConnector.name,
+              selectedConnector.serverUrl,
+          ])
+        : null;
+    const [prevDetailResetKey, setPrevDetailResetKey] =
+        useState(detailResetKey);
+    if (prevDetailResetKey !== detailResetKey) {
+        setPrevDetailResetKey(detailResetKey);
+        if (selectedConnector) {
+            setDetailDraft({
+                name: selectedConnector.name,
+                serverUrl: selectedConnector.serverUrl,
+                bearerToken: "",
+                customHeaders: "",
+                clearBearerToken: false,
+            });
+            setDetailError(null);
+            setClearedBearerTokenConnectorId(null);
+            setShowDetailToken(false);
+            setShowDetailAdvanced(false);
+        }
+    }
 
     const replaceConnector = (
         connector: McpConnectorSummary,

@@ -115,11 +115,14 @@ export function TRView({ reviewId, projectId }: Props) {
         string[]
     >([]);
     const searchParams = useSearchParams();
-    const initialChatParamRef = useRef<string | null>(searchParams.get("chat"));
-    const [chatOpen, setChatOpen] = useState(!!initialChatParamRef.current);
+    // Only the first render's value matters here: it feeds the useState
+    // initializers below, which ignore later values (same snapshot semantics
+    // as the ref this replaces).
+    const initialChatParam = searchParams.get("chat");
+    const [chatOpen, setChatOpen] = useState(!!initialChatParam);
     const [selectedChatId, setSelectedChatId] = useState<string | null>(
-        initialChatParamRef.current && initialChatParamRef.current !== "new"
-            ? initialChatParamRef.current
+        initialChatParam && initialChatParam !== "new"
+            ? initialChatParam
             : null,
     );
     const [highlightedCell, setHighlightedCell] = useState<{

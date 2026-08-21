@@ -85,18 +85,35 @@ export function usePaginatedTabularReviews(options: {
         [reviews, selectAllOwners, queryKey],
     );
 
-    useEffect(() => {
-        const requestVersion = ++requestVersionRef.current;
-        const controller = new AbortController();
-        loadMoreControllerRef.current?.abort();
-        loadMoreControllerRef.current = null;
-        loadingMoreRef.current = false;
+    // Reset the paged rows the moment the query changes, during render, via
+    // React's "adjusting state when props change" pattern — the effect below
+    // then only owns the fetch. The key mirrors the effect's dependencies so
+    // both fire together.
+    const resetKey = JSON.stringify([
+        projectId ?? null,
+        retryVersion,
+        search ?? null,
+        scope,
+        sortKey ?? null,
+        sortDirection ?? null,
+    ]);
+    const [prevResetKey, setPrevResetKey] = useState(resetKey);
+    if (prevResetKey !== resetKey) {
+        setPrevResetKey(resetKey);
         setReviews([]);
         setHasMore(true);
         setLoadingMore(false);
         setError(null);
         setLoadMoreError(null);
         setLoading(true);
+    }
+
+    useEffect(() => {
+        const requestVersion = ++requestVersionRef.current;
+        const controller = new AbortController();
+        loadMoreControllerRef.current?.abort();
+        loadMoreControllerRef.current = null;
+        loadingMoreRef.current = false;
 
         void listTabularReviews(projectId, {
             limit: PAGE_SIZE + 1,

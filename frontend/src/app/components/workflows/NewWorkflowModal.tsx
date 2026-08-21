@@ -232,7 +232,7 @@ export function NewWorkflowModal({
         .filter(Boolean);
     const formId = "workflow-modal-form";
 
-    const resetForm = useCallback(() => {
+    const resetFormState = useCallback(() => {
         setTitle("");
         setType("assistant");
         setLanguage(DEFAULT_LANGUAGE);
@@ -247,12 +247,26 @@ export function NewWorkflowModal({
         setImportedSkillMd("");
         setImportedSkillName(null);
         setMarkdownImportError("");
+    }, []);
+
+    const resetForm = useCallback(() => {
+        resetFormState();
         if (markdownInputRef.current) {
             markdownInputRef.current.value = "";
         }
-    }, []);
+    }, [resetFormState]);
 
-    useEffect(() => {
+    // Seed (edit) or reset (create) the form whenever the modal opens or the
+    // edited workflow changes — adjusted during render instead of an effect.
+    // Clearing the file input's DOM value is a side effect, so it stays in
+    // the effect below.
+    const [prevOpen, setPrevOpen] = useState(false);
+    const [prevEditWorkflow, setPrevEditWorkflow] = useState<
+        Workflow | undefined
+    >(undefined);
+    if (open !== prevOpen || editWorkflow !== prevEditWorkflow) {
+        setPrevOpen(open);
+        setPrevEditWorkflow(editWorkflow);
         if (open && editWorkflow) {
             setTitle(editWorkflow.metadata.title);
             setType(editWorkflow.metadata.type);
@@ -307,9 +321,15 @@ export function NewWorkflowModal({
             }
             setError("");
         } else if (open) {
-            resetForm();
+            resetFormState();
         }
-    }, [open, editWorkflow, resetForm]);
+    }
+
+    useEffect(() => {
+        if (open && !editWorkflow && markdownInputRef.current) {
+            markdownInputRef.current.value = "";
+        }
+    }, [open, editWorkflow]);
 
     useEffect(() => {
         if (isOtherLanguage) {

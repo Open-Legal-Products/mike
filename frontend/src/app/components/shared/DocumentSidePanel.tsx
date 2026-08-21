@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import {
     AlertCircle,
@@ -37,6 +37,10 @@ const MIN_DATA_COLUMN_WIDTH = 280;
 const DEFAULT_DATA_COLUMN_WIDTH = 340;
 const RESIZER_WIDTH = 0;
 const MAX_PANEL_WIDTH = 1180;
+
+// Store that never changes: used with useSyncExternalStore purely to tell
+// server renders (false) apart from client renders (true).
+const emptySubscribe = () => () => {};
 
 interface DocumentSidePanelProps {
     doc: Document | null;
@@ -93,7 +97,11 @@ export function DocumentSidePanel({
     onOwnerOnlyAction,
     onDelete,
 }: DocumentSidePanelProps) {
-    const [mounted, setMounted] = useState(false);
+    const mounted = useSyncExternalStore(
+        emptySubscribe,
+        () => true,
+        () => false,
+    );
     const [uploading, setUploading] = useState(false);
     const [uploadError, setUploadError] = useState<string | null>(null);
     const [editingName, setEditingName] = useState(false);
@@ -136,8 +144,6 @@ export function DocumentSidePanel({
         DEFAULT_DOC_COLUMN_WIDTH + RESIZER_WIDTH + DEFAULT_DATA_COLUMN_WIDTH,
     );
 
-    useEffect(() => setMounted(true), []);
-
     useEffect(() => {
         if (!mounted) return;
         function handleWindowResize() {
@@ -149,13 +155,33 @@ export function DocumentSidePanel({
         return () => window.removeEventListener("resize", handleWindowResize);
     }, [dataColumnWidth, mounted]);
 
+    // Clear the stale upload error when a different document opens,
+    // adjusting state during render instead of in the effect below.
+    const [prevUploadErrorDocId, setPrevUploadErrorDocId] = useState(doc?.id);
+    if (prevUploadErrorDocId !== doc?.id) {
+        setPrevUploadErrorDocId(doc?.id);
+        if (doc) setUploadError(null);
+    }
+
     useEffect(() => {
         if (!doc) return;
-        setUploadError(null);
         void onLoadVersions(doc.id);
     }, [doc?.id]);
 
-    useEffect(() => {
+    // Reset transient editing/replace UI whenever the document or version
+    // being shown changes, adjusting state during render instead of in an
+    // effect.
+    const [prevResetKey, setPrevResetKey] = useState({
+        docId: doc?.id,
+        versionId,
+        currentVersionId,
+    });
+    if (
+        prevResetKey.docId !== doc?.id ||
+        prevResetKey.versionId !== versionId ||
+        prevResetKey.currentVersionId !== currentVersionId
+    ) {
+        setPrevResetKey({ docId: doc?.id, versionId, currentVersionId });
         setEditingName(false);
         setNameDraft("");
         setNameError(null);
@@ -164,7 +190,7 @@ export function DocumentSidePanel({
         setReplaceFile(null);
         setReplaceConfirmOpen(false);
         setMobilePane("document");
-    }, [doc?.id, versionId, currentVersionId]);
+    }
 
     useEffect(() => {
         if (!mounted || !doc) return;

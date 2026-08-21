@@ -219,6 +219,20 @@ function documentVersionNumber(doc: Document): number | null {
     return doc.active_version_number ?? doc.latest_version_number ?? null;
 }
 
+// Builds the placeholder folder row shown while the create request is in
+// flight. Kept at module scope so the impure calls (Date.now, new Date) stay
+// out of the component body.
+function makeOptimisticFolder(name: string, parentId: string | null): DocTableFolder {
+    return {
+        id: `temp-${Date.now()}`,
+        user_id: "",
+        name,
+        parent_folder_id: parentId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+    } as DocTableFolder;
+}
+
 function ProjectTableLoadingHeader({ stickyCellBg }: { stickyCellBg: string }) {
     return (
         <TableHeaderRow className={`${stickyCellBg} pr-3`}>
@@ -593,7 +607,11 @@ export function DocTable({
         return () => onCreateFolderActionChange?.(null);
     }, [onCreateFolderActionChange, openCreateFolder]);
 
-    useEffect(() => {
+    // Reset per-scope UI state when the table switches to a different scope —
+    // adjusted during render instead of in an effect.
+    const [prevScopeKey, setPrevScopeKey] = useState(scopeKey);
+    if (prevScopeKey !== scopeKey) {
+        setPrevScopeKey(scopeKey);
         setSelectedDocIds([]);
         setSelectedFolderIds(new Set());
         setExpandedFolderIds(new Set());
@@ -603,14 +621,19 @@ export function DocTable({
         setContextMenu(null);
         setTypeFilter(null);
         setSort(null);
-    }, [scopeKey]);
+    }
 
     const foldersRef = useRef(folders);
-    foldersRef.current = folders;
     const viewedFolderIdRef = useRef(viewedFolderId);
-    viewedFolderIdRef.current = viewedFolderId;
     const onFolderViewIdChangeRef = useRef(onFolderViewIdChange);
-    onFolderViewIdChangeRef.current = onFolderViewIdChange;
+    // Keep the mirror refs fresh after every commit. Declared before the
+    // effects and callbacks below so it runs first, meaning they always read
+    // the values from the render that was just committed.
+    useEffect(() => {
+        foldersRef.current = folders;
+        viewedFolderIdRef.current = viewedFolderId;
+        onFolderViewIdChangeRef.current = onFolderViewIdChange;
+    });
 
     const updateViewedFolder = useCallback((folderId: string | null) => {
         if (viewedFolderIdRef.current === folderId) return;
@@ -619,11 +642,17 @@ export function DocTable({
         onFolderViewIdChangeRef.current?.(folderId);
     }, []);
 
-    useEffect(() => {
-        if (folderViewId === undefined) return;
-        viewedFolderIdRef.current = folderViewId;
-        setViewedFolderId(folderViewId);
-    }, [folderViewId, scopeKey]);
+    // Follow a controlled folderViewId (and re-apply it after a scope switch),
+    // adjusted during render instead of in an effect. The ref mirror above
+    // re-syncs viewedFolderIdRef once the adjusted state commits.
+    const [prevFolderViewSync, setPrevFolderViewSync] = useState<{
+        folderViewId: string | null | undefined;
+        scopeKey: string;
+    }>({ folderViewId, scopeKey });
+    if (prevFolderViewSync.folderViewId !== folderViewId || prevFolderViewSync.scopeKey !== scopeKey) {
+        setPrevFolderViewSync({ folderViewId, scopeKey });
+        if (folderViewId !== undefined) setViewedFolderId(folderViewId);
+    }
 
     const backFromFolderView = useCallback(() => {
         const currentFolderId = viewedFolderIdRef.current;
@@ -657,8 +686,7 @@ export function DocTable({
         viewedFolderId,
     ]);
 
-    const folderPathRef = useRef<DocTableFolder[]>([]);
-    const folderPathKey = useMemo(() => {
+    const folderPath = useMemo(() => {
         const path: DocTableFolder[] = [];
         let current = viewedFolderId
             ? folders.find((folder) => folder.id === viewedFolderId)
@@ -671,11 +699,20 @@ export function DocTable({
                 )
                 : undefined;
         }
-        folderPathRef.current = path;
-        return JSON.stringify(
-            path.map((folder) => [folder.id, folder.name]),
-        );
+        return path;
     }, [folders, viewedFolderId]);
+    const folderPathKey = useMemo(
+        () => JSON.stringify(folderPath.map((folder) => [folder.id, folder.name])),
+        [folderPath],
+    );
+
+    // Mirror ref refreshed after every commit, so the breadcrumb effect below
+    // keeps re-firing only on folderPathKey changes while still reading the
+    // latest path.
+    const folderPathRef = useRef<DocTableFolder[]>(folderPath);
+    useEffect(() => {
+        folderPathRef.current = folderPath;
+    });
 
     useEffect(() => {
         onFolderViewChange?.(
@@ -690,9 +727,13 @@ export function DocTable({
     const onFolderViewBackActionChangeRef = useRef(
         onFolderViewBackActionChange,
     );
-    onFolderViewBackActionChangeRef.current = onFolderViewBackActionChange;
     const onFolderViewChangeRef = useRef(onFolderViewChange);
-    onFolderViewChangeRef.current = onFolderViewChange;
+    // Mirror refs for the unmount-only cleanup below, refreshed after every
+    // commit so the cleanup notifies whichever callbacks were last rendered.
+    useEffect(() => {
+        onFolderViewBackActionChangeRef.current = onFolderViewBackActionChange;
+        onFolderViewChangeRef.current = onFolderViewChange;
+    });
 
     useEffect(
         () => () => {
@@ -785,15 +826,8 @@ export function DocTable({
 
         // Immediately hide the input and show an optimistic folder row
         setCreatingFolderIn(undefined);
-        const tempId = `temp-${Date.now()}`;
-        const optimistic = {
-            id: tempId,
-            user_id: "",
-            name,
-            parent_folder_id: parentId,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-        } as DocTableFolder;
+        const optimistic = makeOptimisticFolder(name, parentId);
+        const tempId = optimistic.id;
         setFolders((prev) => [...prev, optimistic]);
         setExpandedFolderIds((prev) => new Set([...prev, tempId]));
         if (parentId) {
@@ -1359,6 +1393,51 @@ export function DocTable({
         }
     }
 
+    // Declared ahead of the tree-rendering helpers below, which close over
+    // these values; declaring them first lets React Compiler keep the manual
+    // memoization.
+    const docs = serverDocuments ?? documents;
+    const downloadDoc = useCallback(async (docId: string) => {
+        const { url, filename } = await getDocumentUrl(docId);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+    }, []);
+    const q = serverQueryActive ? "__server_results__" : search.toLowerCase();
+    const effectiveSort = sort ?? defaultSort;
+    const filteredDocs = useMemo(() => {
+        if (serverQueryActive) return docs;
+
+        const rows = docs
+            .filter((doc) => !q || doc.filename.toLowerCase().includes(q))
+            .filter((doc) => !enableHeaderFilters || !typeFilter || documentTypeValue(doc) === typeFilter);
+
+        if (!enableHeaderFilters || !effectiveSort) return rows;
+
+        return [...rows].sort((a, b) => {
+            const multiplier = effectiveSort.direction === "asc" ? 1 : -1;
+
+            if (effectiveSort.key === "size") {
+                return ((a.size_bytes ?? 0) - (b.size_bytes ?? 0)) * multiplier;
+            }
+
+            if (effectiveSort.key === "version") {
+                return ((documentVersionNumber(a) ?? 0) - (documentVersionNumber(b) ?? 0)) * multiplier;
+            }
+
+            if (effectiveSort.key === "created") {
+                return (dateTimeValue(a.created_at) - dateTimeValue(b.created_at)) * multiplier;
+            }
+
+            if (effectiveSort.key === "updated") {
+                return (dateTimeValue(a.updated_at) - dateTimeValue(b.updated_at)) * multiplier;
+            }
+
+            return a.filename.localeCompare(b.filename) * multiplier;
+        });
+    }, [docs, effectiveSort, enableHeaderFilters, q, serverQueryActive, typeFilter]);
+
     // ── Tree rendering ────────────────────────────────────────────────────────
 
     function renderFolderInput(parentId: string | null, depth: number) {
@@ -1462,8 +1541,6 @@ export function DocTable({
         );
     }
 
-    const effectiveSort = sort ?? defaultSort;
-
     function folderTreeIds(folderId: string): Set<string> {
         const ids = new Set<string>([folderId]);
         const visit = (parentId: string) => {
@@ -1498,7 +1575,24 @@ export function DocTable({
         });
     }
 
-    useEffect(() => {
+    // Fold every document that lives under a selected folder (at any depth)
+    // into the document selection. Adjusted during render instead of in an
+    // effect; the guard below reproduces the effect's dependency list.
+    const [prevFolderSelectionKey, setPrevFolderSelectionKey] = useState({
+        documents,
+        folders,
+        selectedFolderIds,
+    });
+    if (
+        prevFolderSelectionKey.documents !== documents ||
+        prevFolderSelectionKey.folders !== folders ||
+        prevFolderSelectionKey.selectedFolderIds !== selectedFolderIds
+    ) {
+        setPrevFolderSelectionKey({ documents, folders, selectedFolderIds });
+        selectDocumentsInSelectedFolders();
+    }
+
+    function selectDocumentsInSelectedFolders() {
         if (selectedFolderIds.size === 0) return;
 
         const selectedTreeIds = new Set(selectedFolderIds);
@@ -1536,7 +1630,7 @@ export function DocTable({
             }
             return changed ? [...next] : current;
         });
-    }, [documents, folders, selectedFolderIds]);
+    }
 
     function renderLevel(parentId: string | null, depth: number) {
         const nameMultiplier =
@@ -2084,15 +2178,6 @@ export function DocTable({
 
     // ── Loading skeleton ──────────────────────────────────────────────────────
 
-    const docs = serverDocuments ?? documents;
-    const downloadDoc = useCallback(async (docId: string) => {
-        const { url, filename } = await getDocumentUrl(docId);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        a.click();
-    }, []);
-
     const handleDownloadSelectedDocs = useCallback(async () => {
         const ids = [...selectedDocIds];
         if (ids.length === 1) {
@@ -2115,11 +2200,12 @@ export function DocTable({
         await Promise.all(ids.map((id) => operations.moveDocument(id, null).catch(() => {})));
     }, [docs, operations, selectedDocIds, setDocuments]);
 
+    const userId = user?.id;
     const handleDeleteSelectedDocs = useCallback(async () => {
         const ids = [...selectedDocIds];
         const owned = ids.filter((id) => {
             const doc = documents.find((candidate) => candidate.id === id);
-            return !doc || !doc.user_id || !user?.id || doc.user_id === user.id;
+            return !doc || !doc.user_id || !userId || doc.user_id === userId;
         });
         const blocked = ids.length - owned.length;
         setConfirmDeleteAllOpen(false);
@@ -2181,7 +2267,7 @@ export function DocTable({
         if (deletedIds.length > 0 && operations.bulkDeleteDocuments) {
             await operations.refreshCollection();
         }
-    }, [documents, operations, selectedDocIds, setDocuments, setOwnerOnlyAction, user?.id]);
+    }, [documents, operations, selectedDocIds, setDocuments, setOwnerOnlyAction, userId]);
 
     const requestDeleteSelectedDocs = useCallback(async () => {
         if (selectionCameFromSelectAll) {
@@ -2193,7 +2279,6 @@ export function DocTable({
 
     const sidePanelDoc = viewingDoc ? (docs.find((doc) => doc.id === viewingDoc.id) ?? viewingDoc) : null;
     const versionUploadAccept = ".pdf,.docx,.doc,.xlsx,.xlsm,.xls,.pptx,.ppt";
-    const q = serverQueryActive ? "__server_results__" : search.toLowerCase();
     const viewedFolder = viewedFolderId
         ? folders.find((folder) => folder.id === viewedFolderId) ?? null
         : null;
@@ -2267,37 +2352,6 @@ export function DocTable({
         clearDocumentSelection();
     }
 
-    const filteredDocs = useMemo(() => {
-        if (serverQueryActive) return docs;
-
-        const rows = docs
-            .filter((doc) => !q || doc.filename.toLowerCase().includes(q))
-            .filter((doc) => !enableHeaderFilters || !typeFilter || documentTypeValue(doc) === typeFilter);
-
-        if (!enableHeaderFilters || !effectiveSort) return rows;
-
-        return [...rows].sort((a, b) => {
-            const multiplier = effectiveSort.direction === "asc" ? 1 : -1;
-
-            if (effectiveSort.key === "size") {
-                return ((a.size_bytes ?? 0) - (b.size_bytes ?? 0)) * multiplier;
-            }
-
-            if (effectiveSort.key === "version") {
-                return ((documentVersionNumber(a) ?? 0) - (documentVersionNumber(b) ?? 0)) * multiplier;
-            }
-
-            if (effectiveSort.key === "created") {
-                return (dateTimeValue(a.created_at) - dateTimeValue(b.created_at)) * multiplier;
-            }
-
-            if (effectiveSort.key === "updated") {
-                return (dateTimeValue(a.updated_at) - dateTimeValue(b.updated_at)) * multiplier;
-            }
-
-            return a.filename.localeCompare(b.filename) * multiplier;
-        });
-    }, [docs, effectiveSort, enableHeaderFilters, q, serverQueryActive, typeFilter]);
     const viewedFolderIsEmpty =
         !!viewedFolder &&
         !loadingChildFolderIds.has(viewedFolder.id) &&
@@ -2482,6 +2536,86 @@ export function DocTable({
             )}
         </div>
     ) : undefined;
+
+    // Context-menu portal. Built as a plain render-body expression (not an
+    // inline IIFE in the JSX) so the compiler can tell the on* closures are
+    // event handlers rather than render-time calls.
+    const menuDoc = contextMenu?.docId ? docs.find((doc) => doc.id === contextMenu.docId) : null;
+    const menuDocVersionNumber = menuDoc ? currentVersionNumber(menuDoc) : null;
+    const menuDocHasVersions = typeof menuDocVersionNumber === "number" && menuDocVersionNumber > 1;
+    const menuDocVersionsOpen = menuDoc ? expandedVersionDocIds.has(menuDoc.id) : false;
+    const surfaceProps: RowActionMenuSurfaceProps | null = contextMenu
+        ? {
+              className: "fixed z-[120]",
+              style: {
+                  top: contextMenu.y,
+                  left: contextMenu.x,
+              },
+              onClick: (e) => e.stopPropagation(),
+          }
+        : null;
+    const contextMenuPortal =
+        contextMenu && surfaceProps
+            ? createPortal(
+                  menuDoc ? (
+                      <RowActionMenuItems
+                          ref={contextMenuRef}
+                          surfaceProps={surfaceProps}
+                          onClose={() => setContextMenu(null)}
+                          onRename={() => {
+                              setRenameDocumentValue(menuDoc.filename);
+                              setRenamingDocumentId(menuDoc.id);
+                          }}
+                          renameLabel="Rename document"
+                          onDownload={() => downloadDoc(menuDoc.id)}
+                          onShowAllVersions={
+                              menuDocHasVersions && !menuDocVersionsOpen
+                                  ? () => void toggleVersions(menuDoc.id)
+                                  : undefined
+                          }
+                          onUploadNewVersion={() => void handleUploadNewVersion(menuDoc)}
+                          onRemoveFromFolder={
+                              menuDoc.folder_id ? () => void handleRemoveDocFromFolder(menuDoc.id) : undefined
+                          }
+                          onDelete={() => requestRemoveDoc(menuDoc)}
+                          deleteDisabled={isSharedDocument(menuDoc)}
+                      />
+                  ) : (
+                      <RowActionMenuItems
+                          ref={contextMenuRef}
+                          surfaceProps={surfaceProps}
+                          onClose={() => setContextMenu(null)}
+                          onNewSubfolder={() => {
+                              setCreatingFolderIn(contextMenu.folderId);
+                              setNewFolderName("");
+                              if (contextMenu.folderId) {
+                                  const wasExpanded = expandedFolderIds.has(contextMenu.folderId);
+                                  if (!wasExpanded) void expandFolderChildren(contextMenu.folderId);
+                                  setExpandedFolderIds((prev) => new Set([...prev, contextMenu.folderId!]));
+                              }
+                          }}
+                          newSubfolderLabel={contextMenu.showFolderActions ? "New subfolder inside" : "New subfolder"}
+                          onRename={
+                              contextMenu.showFolderActions && contextMenu.folderId
+                                  ? () => {
+                                        const f = folders.find((x) => x.id === contextMenu.folderId);
+                                        setRenameFolderValue(f?.name ?? "");
+                                        setRenamingFolderId(contextMenu.folderId!);
+                                    }
+                                  : undefined
+                          }
+                          renameLabel="Rename folder"
+                          onDelete={
+                              contextMenu.showFolderActions && contextMenu.folderId
+                                  ? () => requestDeleteFolder(contextMenu.folderId!)
+                                  : undefined
+                          }
+                          deleteLabel="Delete folder"
+                      />
+                  ),
+                  document.body,
+              )
+            : null;
 
     return (
         <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -3004,95 +3138,7 @@ export function DocTable({
                             )}
 
                             {/* Context menu */}
-                            {contextMenu &&
-                                (() => {
-                                    const menuDoc = contextMenu.docId
-                                        ? docs.find((doc) => doc.id === contextMenu.docId)
-                                        : null;
-                                    const menuDocVersionNumber = menuDoc ? currentVersionNumber(menuDoc) : null;
-                                    const menuDocHasVersions =
-                                        typeof menuDocVersionNumber === "number" && menuDocVersionNumber > 1;
-                                    const menuDocVersionsOpen = menuDoc ? expandedVersionDocIds.has(menuDoc.id) : false;
-                                    const surfaceProps: RowActionMenuSurfaceProps = {
-                                        className: "fixed z-[120]",
-                                        style: {
-                                            top: contextMenu.y,
-                                            left: contextMenu.x,
-                                        },
-                                        onClick: (e) => e.stopPropagation(),
-                                    };
-
-                                    return createPortal(
-                                        menuDoc ? (
-                                            <RowActionMenuItems
-                                                ref={contextMenuRef}
-                                                surfaceProps={surfaceProps}
-                                                onClose={() => setContextMenu(null)}
-                                                onRename={() => {
-                                                    setRenameDocumentValue(menuDoc.filename);
-                                                    setRenamingDocumentId(menuDoc.id);
-                                                }}
-                                                renameLabel="Rename document"
-                                                onDownload={() => downloadDoc(menuDoc.id)}
-                                                onShowAllVersions={
-                                                    menuDocHasVersions && !menuDocVersionsOpen
-                                                        ? () => void toggleVersions(menuDoc.id)
-                                                        : undefined
-                                                }
-                                                onUploadNewVersion={() => void handleUploadNewVersion(menuDoc)}
-                                                onRemoveFromFolder={
-                                                    menuDoc.folder_id
-                                                        ? () => void handleRemoveDocFromFolder(menuDoc.id)
-                                                        : undefined
-                                                }
-                                                onDelete={() => requestRemoveDoc(menuDoc)}
-                                                deleteDisabled={isSharedDocument(menuDoc)}
-                                            />
-                                        ) : (
-                                            <RowActionMenuItems
-                                                ref={contextMenuRef}
-                                                surfaceProps={surfaceProps}
-                                                onClose={() => setContextMenu(null)}
-                                                onNewSubfolder={() => {
-                                                    setCreatingFolderIn(contextMenu.folderId);
-                                                    setNewFolderName("");
-                                                    if (contextMenu.folderId) {
-                                                        const wasExpanded = expandedFolderIds.has(contextMenu.folderId);
-                                                        if (!wasExpanded)
-                                                            void expandFolderChildren(contextMenu.folderId);
-                                                        setExpandedFolderIds(
-                                                            (prev) => new Set([...prev, contextMenu.folderId!]),
-                                                        );
-                                                    }
-                                                }}
-                                                newSubfolderLabel={
-                                                    contextMenu.showFolderActions
-                                                        ? "New subfolder inside"
-                                                        : "New subfolder"
-                                                }
-                                                onRename={
-                                                    contextMenu.showFolderActions && contextMenu.folderId
-                                                        ? () => {
-                                                              const f = folders.find(
-                                                                  (x) => x.id === contextMenu.folderId,
-                                                              );
-                                                              setRenameFolderValue(f?.name ?? "");
-                                                              setRenamingFolderId(contextMenu.folderId!);
-                                                          }
-                                                        : undefined
-                                                }
-                                                renameLabel="Rename folder"
-                                                onDelete={
-                                                    contextMenu.showFolderActions && contextMenu.folderId
-                                                        ? () => requestDeleteFolder(contextMenu.folderId!)
-                                                        : undefined
-                                                }
-                                                deleteLabel="Delete folder"
-                                            />
-                                        ),
-                                        document.body,
-                                    );
-                                })()}
+                            {contextMenuPortal}
                         </div>
                         {/* end blue ring wrapper */}
                     </div>

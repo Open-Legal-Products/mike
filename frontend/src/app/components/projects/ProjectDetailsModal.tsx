@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Users } from "lucide-react";
 import { Modal } from "@/app/components/modals/Modal";
 import {
@@ -34,14 +34,21 @@ export function ProjectDetailsModal({
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (!open || !project) return;
-        setNameDraft(project.name);
-        setCmDraft(project.cm_number ?? "");
-        setPracticeDraft(project.practice ?? "");
-        setSaved(false);
-        setError(null);
-    }, [open, project]);
+    // Re-seed the drafts whenever the modal opens or the project changes —
+    // adjusted during render instead of an effect.
+    const [prevOpen, setPrevOpen] = useState(false);
+    const [prevProject, setPrevProject] = useState<Project | null>(null);
+    if (open !== prevOpen || project !== prevProject) {
+        setPrevOpen(open);
+        setPrevProject(project);
+        if (open && project) {
+            setNameDraft(project.name);
+            setCmDraft(project.cm_number ?? "");
+            setPracticeDraft(project.practice ?? "");
+            setSaved(false);
+            setError(null);
+        }
+    }
 
     const trimmedName = nameDraft.trim();
     const trimmedCm = cmDraft.trim();

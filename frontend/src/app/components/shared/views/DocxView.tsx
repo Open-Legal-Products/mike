@@ -218,15 +218,20 @@ export function DocxView({
     // re-render (e.g. clicking a new highlight) creates a new onReady
     // identity, triggers a full re-render, and snaps scroll back to top.
     const onReadyRef = useRef(onReady);
-    onReadyRef.current = onReady;
     const highlightEditRef = useRef(highlightEdit);
-    highlightEditRef.current = highlightEdit;
     const quotesRef = useRef(quotes);
-    quotesRef.current = quotes;
     const initialScrollTopRef = useRef(initialScrollTop ?? null);
-    initialScrollTopRef.current = initialScrollTop ?? null;
     const onScrollChangeRef = useRef(onScrollChange);
-    onScrollChangeRef.current = onScrollChange;
+    // Keep the mirror refs fresh after every commit. Declared before the
+    // effects below so it runs first, meaning they (and their async
+    // callbacks) always see the latest values.
+    useEffect(() => {
+        onReadyRef.current = onReady;
+        highlightEditRef.current = highlightEdit;
+        quotesRef.current = quotes;
+        initialScrollTopRef.current = initialScrollTop ?? null;
+        onScrollChangeRef.current = onScrollChange;
+    });
 
     // Stable key for the quote list so the re-highlight effect re-fires
     // only when the actual text/order of quotes changes.

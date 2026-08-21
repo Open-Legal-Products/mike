@@ -74,14 +74,25 @@ export function AddDocumentsModal({
     const fileInputRef = useRef<HTMLInputElement>(null);
     const wasOpenRef = useRef(false);
 
-    useEffect(() => {
-        if (open) setHasOpened(true);
-    }, [open]);
+    if (open && !hasOpened) setHasOpened(true);
+
+    // Flip the directory loading flag synchronously with the fetch key —
+    // adjusted during render so the effect below only owns the fetch. The
+    // undefined sentinel makes the first render behave like the old
+    // effect's mount run.
+    const projectDirectoryKey =
+        open && projectDocumentsOnly && projectId ? projectId : null;
+    const [prevProjectDirectoryKey, setPrevProjectDirectoryKey] = useState<
+        string | null | undefined
+    >(undefined);
+    if (projectDirectoryKey !== prevProjectDirectoryKey) {
+        setPrevProjectDirectoryKey(projectDirectoryKey);
+        if (projectDirectoryKey) setProjectDirectoryLoading(true);
+    }
 
     useEffect(() => {
         if (!open || !projectDocumentsOnly || !projectId) return;
         let cancelled = false;
-        setProjectDirectoryLoading(true);
         getProject(projectId)
             .then((project) => {
                 if (cancelled) return;
@@ -139,17 +150,12 @@ export function AddDocumentsModal({
     const externalUploadKey = (externalUploadedDocuments ?? [])
         .map((document) => document.id)
         .join("|");
-    useEffect(() => {
-        if (!externalUploadedDocuments?.length) return;
-        setExtraUploadedDocs((prev) => {
-            const next = new Map(prev.map((document) => [document.id, document]));
-            for (const document of externalUploadedDocuments) {
-                next.set(document.id, document);
-            }
-            return [...next.values()];
-        });
-        if (open) {
-            setSelectedDocuments((prev) => {
+    const [prevExternalUploadKey, setPrevExternalUploadKey] =
+        useState(externalUploadKey);
+    if (externalUploadKey !== prevExternalUploadKey) {
+        setPrevExternalUploadKey(externalUploadKey);
+        if (externalUploadedDocuments?.length) {
+            setExtraUploadedDocs((prev) => {
                 const next = new Map(
                     prev.map((document) => [document.id, document]),
                 );
@@ -158,9 +164,19 @@ export function AddDocumentsModal({
                 }
                 return [...next.values()];
             });
+            if (open) {
+                setSelectedDocuments((prev) => {
+                    const next = new Map(
+                        prev.map((document) => [document.id, document]),
+                    );
+                    for (const document of externalUploadedDocuments) {
+                        next.set(document.id, document);
+                    }
+                    return [...next.values()];
+                });
+            }
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [externalUploadKey]);
+    }
 
     if (!open && (!keepMounted || !hasOpened)) return null;
 
