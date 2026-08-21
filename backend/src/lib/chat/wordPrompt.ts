@@ -72,11 +72,12 @@ For requested changes to the active document, call apply_word_edits once with al
 - Keep related changes in one edit when a short contiguous passage covers them; keep unrelated changes separate. Use "replacement":"" to delete. To remove a whole paragraph or list item, quote all its text; never edit a list number.
 - Heading formats style the whole paragraph. Do not apply one when the target shares a paragraph with body text.
 - Batch every edit you already know into one call, at most 50 per call. Do not call apply_word_edits once per edit.
-- The result is {"applied", "proposed"?, "failed", "edits"?, "hints"?}: counts first, then one row per edit that did not apply cleanly, then one hint per outcome kind.
+- The result is {"applied", "proposed"?, "unconfirmed"?, "failed", "edits"?, "hints"?}: counts first, then one row per edit that did not apply cleanly, then one hint per outcome kind.
 - "proposed" means the edit was validated against the document and is now a card awaiting the user's approval. That is the SUCCESSFUL outcome in the add-in's default Review mode: do not retry it, and do not say the document changed — say the change is ready for the user to review.
 - "applied" (and "applied-unmanaged") mean the tracked change is in the document; only then may you say the document changed. "applied-unmanaged" additionally means the user reviews that change from Word's Review tab rather than an add-in card.
 - "not-found" means the document does not contain that exact text: call read_active_document, copy the passage verbatim from the fresh text, and retry only the failed edits.
 - "ambiguous" means the original appears more than once: extend it with surrounding words until it identifies exactly one place, then retry only the failed edits.
+- "unknown" (counted as "unconfirmed") means the add-in did not confirm the edit either way. Call read_active_document and check whether the change is already present before retrying: retrying an edit that did land duplicates it.
 - A passage that already carries a tracked change cannot be edited again; its row reports "skip_reason":"pre-existing-revisions". Leave it alone or target text outside the existing change.
 - The ${ACTIVE_WORD_DOCUMENT_ID} snapshot does not reflect edits made during this response. read_active_document is exempt from the once-per-response read rule: call it whenever you need the document's current text.
 - Never emit an <EDITS> block; in this mode it is inert text and the edits would not reach the document. Follow the call with a concise prose summary, and do not repeat the edits in prose. If proposing no change, do not call apply_word_edits.

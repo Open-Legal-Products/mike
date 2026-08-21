@@ -17,9 +17,10 @@
  */
 import { randomUUID } from "node:crypto";
 import type { NormalizedToolCall, OpenAIToolSchema } from "../../llm";
-import { spotlight } from "../contextBuilders";
+import { MAX_DOCUMENT_CONTEXT_CHARS, spotlight } from "../contextBuilders";
 import { WORD_EDIT_FORMATS } from "../wordDocumentEdits";
 import { ACTIVE_WORD_DOCUMENT_LIVE_FILENAME } from "../wordPrompt";
+import { isAbortError } from "../streaming";
 import type { AssistantEvent, ClientToolsAdapter } from "../streaming";
 
 export const APPLY_WORD_EDITS_TOOL_NAME = "apply_word_edits";
@@ -43,6 +44,13 @@ export interface WordClientEditOutcome {
     | "not-found"
     | "ambiguous"
     | "skipped"
+    /**
+     * Backend-synthesized only (never sent by the pane): the pane did not
+     * confirm in time, so the document may or may not carry the change. The
+     * model must verify with read_active_document before retrying, or a
+     * retry stacks a second tracked change over the first.
+     */
+    | "unknown"
     | "error";
   matches?: number;
   /** Word's skip reason, e.g. "pre-existing-revisions" or "unsearchable". */
@@ -177,7 +185,50 @@ export function isWordClientToolName(name: string): boolean {
 // Pending-call bridge
 // ---------------------------------------------------------------------------
 
-export const CLIENT_TOOL_RESULT_TIMEOUT_MS = 120_000;
+/**
+ * Base deadline for a client round trip. Reads and small batches finish in
+ * seconds; a large batch pays several Office.js host round trips PER edit, so
+ * apply deadlines scale with batch size (see applyTimeoutMsFor) instead of
+ * using this flat value. 60s, not 120s: a live pane answers in seconds, and
+ * every extra second holds the SSE socket and the model turn open.
+ */
+export const CLIENT_TOOL_RESULT_TIMEOUT_MS = 60_000;
+const APPLY_TIMEOUT_BASE_MS = 30_000;
+const APPLY_TIMEOUT_PER_EDIT_MS = 3_000;
+const APPLY_TIMEOUT_MAX_MS = 180_000;
+const KEEP_ALIVE_INTERVAL_MS = 15_000;
+
+export function applyTimeoutMsFor(editCount: number): number {
+  return Math.min(
+    APPLY_TIMEOUT_MAX_MS,
+    APPLY_TIMEOUT_BASE_MS + APPLY_TIMEOUT_PER_EDIT_MS * editCount,
+  );
+}
+
+/**
+ * Sentinel results the bridge itself produces. Downstream code identifies
+ * them BY OBJECT IDENTITY, never by shape: a posted body can imitate the
+ * fields but can never be reference-equal to a module-private constant, so a
+ * client cannot forge the "unknown" (unconfirmed) status these map to.
+ */
+export const CLIENT_TOOL_TIMEOUT_RESULT = {
+  error:
+    "The Word add-in did not return a result in time. The edits may or may " +
+    "not have been applied.",
+} as const;
+
+export const CLIENT_TOOL_CANCELLED_RESULT = {
+  error:
+    "The chat was cancelled before the add-in confirmed this edit. The " +
+    "edits may or may not have been applied.",
+} as const;
+
+function isUnconfirmedSentinel(result: unknown): boolean {
+  return (
+    result === CLIENT_TOOL_TIMEOUT_RESULT ||
+    result === CLIENT_TOOL_CANCELLED_RESULT
+  );
+}
 
 interface PendingClientToolCall {
   userId: string;
@@ -226,11 +277,7 @@ export function waitForClientToolResult(params: {
     signal?.addEventListener("abort", onAbort);
     timer = setTimeout(() => {
       cleanup();
-      resolve({
-        error:
-          "The Word add-in did not return a result in time. The document " +
-          "may not have been changed.",
-      });
+      resolve(CLIENT_TOOL_TIMEOUT_RESULT);
     }, timeoutMs);
     pendingClientToolCalls.set(callId, {
       userId,
@@ -290,6 +337,26 @@ export function parseWordEditsInput(
       return {
         ok: false,
         error: `edits[${index}].original must be a non-empty string`,
+      };
+    }
+    // Word's search API cannot match across paragraph breaks and treats ^ as
+    // a wildcard escape — such originals would round-trip to the pane only to
+    // come back as an unexplained skip. Fail fast with the reason instead.
+    if (/[\n\r]/.test(row.original)) {
+      return {
+        ok: false,
+        error:
+          `edits[${index}].original contains a line break. Each original ` +
+          "must be one contiguous passage within a single paragraph; split " +
+          "the change into one edit per paragraph.",
+      };
+    }
+    if (row.original.includes("^")) {
+      return {
+        ok: false,
+        error:
+          `edits[${index}].original contains "^", which Word's search ` +
+          "cannot match literally. Choose a nearby passage without it.",
       };
     }
     if (row.original.length > MAX_ORIGINAL_CHARS) {
@@ -363,6 +430,10 @@ export function parseWordEditsInput(
   return { ok: true, edits };
 }
 
+// "unknown" is deliberately absent: only this module may synthesize it, via
+// the identity-checked sentinels above. A client claiming it is
+// indistinguishable from one that simply failed to report, and is treated as
+// an error.
 const EDIT_OUTCOME_STATUSES = new Set<WordClientEditOutcome["status"]>([
   "applied",
   "applied-unmanaged",
@@ -382,6 +453,14 @@ export function normalizeEditOutcomes(
   requested: WordEditRequest[],
   clientResult: unknown,
 ): WordClientEditOutcome[] {
+  // A bridge timeout/cancel is different from a client-reported failure: the
+  // pane may have applied the edits and merely failed to confirm, so those
+  // rows become "unknown", never "error". Retrying against an unverified
+  // document is what stacks a second tracked change over the first.
+  if (isUnconfirmedSentinel(clientResult)) {
+    const error = (clientResult as { error: string }).error;
+    return requested.map((_, index) => ({ index, status: "unknown", error }));
+  }
   const record =
     clientResult &&
     typeof clientResult === "object" &&
@@ -455,8 +534,17 @@ export function editOutcomeHint(
   if (outcome.status === "ambiguous") {
     return "The original text matches more than one place. Extend it with surrounding words until it is unique.";
   }
+  if (outcome.status === "unknown") {
+    return "The add-in did not confirm this edit. Call read_active_document and check whether the change is already present before retrying — retrying an applied edit would duplicate it.";
+  }
   if (outcome.status === "applied-unmanaged") {
     return "Applied as a tracked change, but the add-in cannot offer Accept/Reject controls for it — the user reviews it in Word's Review tab.";
+  }
+  if (outcome.reason === "pre-existing-revisions") {
+    return "This passage already contains a tracked change (possibly from an earlier edit in this response). Do not re-edit it; target text outside the existing change.";
+  }
+  if (outcome.reason === "unsearchable") {
+    return "Word cannot search for this original (too long, or spans a paragraph break). Use a shorter passage within one paragraph.";
   }
   return undefined;
 }
@@ -472,19 +560,23 @@ export function buildApplyResultPayload(
 ): Record<string, unknown> {
   const applied = outcomes.filter(isAppliedOutcome).length;
   const proposed = outcomes.filter((o) => o.status === "proposed").length;
+  const unknown = outcomes.filter((o) => o.status === "unknown").length;
   const reportRows = outcomes.filter((o) => o.status !== "applied");
   const hints: Record<string, string> = {};
   for (const outcome of reportRows) {
     const hint = editOutcomeHint(outcome);
     if (!hint) continue;
-    hints[outcome.status] = hint;
+    hints[outcome.reason ?? outcome.status] = hint;
   }
   return {
     applied,
     // "proposed" is not a failure: the edit is waiting on a human, not on
-    // the model. Counting it as failed would provoke a pointless retry.
+    // the model. "unknown" is not a failure either: it needs verification,
+    // not a retry. Counting either as failed provokes a pointless — and for
+    // "unknown", document-corrupting — retry.
     ...(proposed ? { proposed } : {}),
-    failed: outcomes.length - applied - proposed,
+    ...(unknown ? { unconfirmed: unknown } : {}),
+    failed: outcomes.length - applied - proposed - unknown,
     ...(reportRows.length
       ? {
           edits: reportRows.map((outcome) => ({
@@ -534,7 +626,7 @@ export function createWordClientToolsAdapter(params: {
   write: (s: string) => void;
   signal?: AbortSignal;
   nonce?: string;
-  /** Test seam; production uses CLIENT_TOOL_RESULT_TIMEOUT_MS. */
+  /** Test seam; production scales apply deadlines via applyTimeoutMsFor. */
   timeoutMs?: number;
 }): ClientToolsAdapter {
   const { userId, write, signal, nonce, timeoutMs } = params;
@@ -546,23 +638,45 @@ export function createWordClientToolsAdapter(params: {
   const forwardCall = async (
     call: NormalizedToolCall,
     input: Record<string, unknown>,
+    callTimeoutMs: number,
   ): Promise<unknown> => {
     const bridgeId = randomUUID();
     const pending = waitForClientToolResult({
       callId: bridgeId,
       userId,
       signal,
-      timeoutMs,
+      timeoutMs: timeoutMs ?? callTimeoutMs,
     });
-    write(
-      `data: ${JSON.stringify({
-        type: "client_tool_call",
-        tool_call_id: bridgeId,
-        name: call.name,
-        input,
-      })}\n\n`,
-    );
-    return pending;
+    let keepAlive: NodeJS.Timeout | null = null;
+    try {
+      write(
+        `data: ${JSON.stringify({
+          type: "client_tool_call",
+          tool_call_id: bridgeId,
+          name: call.name,
+          input,
+        })}\n\n`,
+      );
+      // No SSE data flows while the pane executes; comment frames keep
+      // intermediaries from idling the stream out (the pane's readSSE ignores
+      // any line not starting with "data:"). On a half-open TCP peer these
+      // periodic writes are also what eventually surface the reset and fire
+      // the request's close/abort path.
+      keepAlive = setInterval(() => {
+        write(": tool-wait\n\n");
+      }, KEEP_ALIVE_INTERVAL_MS);
+      return await pending;
+    } catch (error) {
+      // Any synchronous failure after registration (a throwing SSE writer —
+      // not reachable with the current res.write, but this module must not
+      // depend on that) would otherwise leave the pending entry to settle
+      // later with no handler attached. Settle it and detach.
+      submitClientToolResult(bridgeId, userId, CLIENT_TOOL_CANCELLED_RESULT);
+      pending.catch(() => {});
+      throw error;
+    } finally {
+      if (keepAlive) clearInterval(keepAlive);
+    }
   };
 
   /**
@@ -595,10 +709,26 @@ export function createWordClientToolsAdapter(params: {
     }
     const firstBlockIndex = nextBlockIndex;
     nextBlockIndex += parsed.edits.length;
-    const clientResult = await forwardCall(call, {
-      block_index: firstBlockIndex,
-      edits: parsed.edits,
-    });
+    let clientResult: unknown;
+    try {
+      clientResult = await forwardCall(
+        call,
+        { block_index: firstBlockIndex, edits: parsed.edits },
+        applyTimeoutMsFor(parsed.edits.length),
+      );
+    } catch (error) {
+      if (!isAbortError(error)) throw error;
+      // Stream aborted while the pane was (possibly) applying. Its tracked
+      // changes may already be in the document, so the turn's event record
+      // must still carry these edits. Returning normally lets the loop push
+      // the placement markers into the partial turn before its own abort
+      // check throws; history restore then probes each edit's bookmark to
+      // find the survivors.
+      return {
+        content: JSON.stringify({ error: "The chat stream was cancelled." }),
+        events: editBlockEvents(parsed.edits, firstBlockIndex),
+      };
+    }
     const outcomes = normalizeEditOutcomes(parsed.edits, clientResult);
     return {
       content: JSON.stringify(buildApplyResultPayload(outcomes)),
@@ -615,7 +745,11 @@ export function createWordClientToolsAdapter(params: {
         filename: ACTIVE_WORD_DOCUMENT_LIVE_FILENAME,
       })}\n\n`,
     );
-    const clientResult = await forwardCall(call, {});
+    const clientResult = await forwardCall(
+      call,
+      {},
+      CLIENT_TOOL_RESULT_TIMEOUT_MS,
+    );
     const record =
       clientResult &&
       typeof clientResult === "object" &&
@@ -635,11 +769,20 @@ export function createWordClientToolsAdapter(params: {
         filename: ACTIVE_WORD_DOCUMENT_LIVE_FILENAME,
       })}\n\n`,
     );
+    // Same ceiling as the snapshot path (parseOptionalDocumentContext): the
+    // return channel must not become a way to blow the context window with an
+    // oversized — or maliciously posted — document body.
+    const truncated = record.document.length > MAX_DOCUMENT_CONTEXT_CHARS;
+    const documentText = truncated
+      ? record.document.slice(0, MAX_DOCUMENT_CONTEXT_CHARS)
+      : record.document;
     // The live body is untrusted document text, exactly like a stored
     // document's body returned by read_document — same spotlight fence.
-    const body = nonce ? spotlight(record.document, nonce) : record.document;
+    const body = nonce ? spotlight(documentText, nonce) : documentText;
     return {
-      content: body,
+      content: truncated
+        ? `${body}\n\n[Document truncated at ${MAX_DOCUMENT_CONTEXT_CHARS} characters.]`
+        : body,
       events: [
         { type: "doc_read", filename: ACTIVE_WORD_DOCUMENT_LIVE_FILENAME },
       ],

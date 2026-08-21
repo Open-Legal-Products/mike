@@ -414,7 +414,8 @@ describe("active Word document context", () => {
         // protocol; each one pairs with behavior in wordClientTools.ts.
         const prompt = buildWordChatSystemPrompt(true);
         for (const term of [
-            '{"applied", "proposed"?, "failed", "edits"?, "hints"?}',
+            '{"applied", "proposed"?, "unconfirmed"?, "failed", "edits"?, "hints"?}',
+            '"unknown" (counted as "unconfirmed")',
             '"applied-unmanaged"',
             '"not-found"',
             '"ambiguous"',

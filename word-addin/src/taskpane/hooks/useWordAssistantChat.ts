@@ -378,17 +378,27 @@ export function useWordAssistantChat({
             // An aborted stream has no awaiting tool loop; the backend
             // rejected its pending call when the SSE socket closed.
             if (controller.signal.aborted) return;
-            try {
-              await postWordChatToolResult({
-                tool_call_id: call.toolCallId,
-                result,
-                signal: controller.signal,
-              });
-            } catch (error) {
-              // An expired call (backend timeout, closed stream) answers 404;
-              // the backend has moved on and silence is correct.
-              if ((error as { status?: number }).status === 404) return;
-              console.error("Failed to post Word tool result", error);
+            for (let attempt = 0; attempt < 2; attempt += 1) {
+              try {
+                await postWordChatToolResult({
+                  tool_call_id: call.toolCallId,
+                  result,
+                  signal: controller.signal,
+                });
+                return;
+              } catch (error) {
+                // An expired call (backend timeout, closed stream) answers
+                // 404; the backend has moved on and silence is correct. Any
+                // other failure leaves the backend waiting out its whole
+                // deadline, so one quick retry is worth it before giving up.
+                if ((error as { status?: number }).status === 404) return;
+                if (attempt === 0 && !controller.signal.aborted) {
+                  await new Promise((resolve) => setTimeout(resolve, 1500));
+                  continue;
+                }
+                console.error("Failed to post Word tool result", error);
+                return;
+              }
             }
           };
           try {

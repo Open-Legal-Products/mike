@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { MAX_DOCUMENT_CONTEXT_CHARS } from "../contextBuilders";
 import {
   APPLY_WORD_EDITS_TOOL_NAME,
+  CLIENT_TOOL_TIMEOUT_RESULT,
+  applyTimeoutMsFor,
   READ_ACTIVE_DOCUMENT_TOOL_NAME,
   TOOL_EDIT_BLOCK_INDEX_BASE,
   buildApplyResultPayload,
@@ -456,5 +459,133 @@ describe("createWordClientToolsAdapter", () => {
     });
     const { content } = await execution;
     expect(JSON.parse(content)).toEqual({ error: "Office.js threw" });
+  });
+});
+
+describe("hardening: unconfirmed outcomes and unsearchable input", () => {
+  it("rejects originals Word's search can never match", () => {
+    const lineBreak = parseWordEditsInput({
+      edits: [{ original: "one\ntwo", replacement: "x", reason: "r" }],
+    });
+    expect(lineBreak.ok).toBe(false);
+    expect(lineBreak.ok === false && lineBreak.error).toMatch(/line break/);
+
+    const caret = parseWordEditsInput({
+      edits: [{ original: "a ^ b", replacement: "x", reason: "r" }],
+    });
+    expect(caret.ok).toBe(false);
+    expect(caret.ok === false && caret.error).toMatch(/cannot match literally/);
+  });
+
+  it("maps a bridge timeout to unknown, not failed", () => {
+    const requested = [{ original: "a", replacement: "b" }];
+    const outcomes = normalizeEditOutcomes(
+      requested,
+      CLIENT_TOOL_TIMEOUT_RESULT,
+    );
+    expect(outcomes).toEqual([
+      { index: 0, status: "unknown", error: CLIENT_TOOL_TIMEOUT_RESULT.error },
+    ]);
+    const payload = buildApplyResultPayload(outcomes);
+    // A timed-out apply may still have landed. Calling it "failed" is what
+    // makes the model retry and stack a second tracked change on the first.
+    expect(payload.failed).toBe(0);
+    expect(payload.unconfirmed).toBe(1);
+    expect((payload.hints as Record<string, string>).unknown).toMatch(
+      /read_active_document/,
+    );
+  });
+
+  it("refuses a client that imitates the timeout sentinel's shape", () => {
+    // Identity, not shape: a wire payload can copy the fields but can never
+    // be reference-equal to the module-private constant.
+    const forged = { ...CLIENT_TOOL_TIMEOUT_RESULT };
+    const outcomes = normalizeEditOutcomes(
+      [{ original: "a", replacement: "b" }],
+      forged,
+    );
+    expect(outcomes[0]?.status).toBe("error");
+  });
+
+  it("refuses a client row that claims unknown outright", () => {
+    const outcomes = normalizeEditOutcomes([{ original: "a", replacement: "b" }], {
+      edits: [{ index: 0, status: "unknown" }],
+    });
+    expect(outcomes[0]?.status).toBe("error");
+  });
+
+  it("scales the apply deadline with batch size and caps it", () => {
+    // Word Online pays several context.sync() host round trips PER edit; a
+    // flat deadline times out big batches into exactly the unconfirmed-retry
+    // ambiguity the timeout exists to avoid.
+    expect(applyTimeoutMsFor(1)).toBe(33_000);
+    expect(applyTimeoutMsFor(10)).toBe(60_000);
+    expect(applyTimeoutMsFor(50)).toBe(180_000);
+    expect(applyTimeoutMsFor(500)).toBe(180_000);
+  });
+
+  it("hints per skip reason rather than per row", () => {
+    const payload = buildApplyResultPayload([
+      { index: 0, status: "skipped", reason: "pre-existing-revisions" },
+      { index: 1, status: "skipped", reason: "unsearchable" },
+    ]);
+    const hints = payload.hints as Record<string, string>;
+    expect(hints["pre-existing-revisions"]).toMatch(/already contains/);
+    expect(hints.unsearchable).toMatch(/shorter passage/);
+  });
+
+  it("records the edits as cards when the stream aborts mid-apply", async () => {
+    const controller = new AbortController();
+    const adapter = createWordClientToolsAdapter({
+      userId: "u1",
+      write: () => undefined,
+      signal: controller.signal,
+    });
+    const execution = adapter.execute({
+      id: "t1",
+      name: APPLY_WORD_EDITS_TOOL_NAME,
+      input: { edits: [{ original: "a", replacement: "b", reason: "r" }] },
+    });
+    controller.abort();
+    const { content, events } = await execution;
+    // The pane may already have written tracked changes; without the card
+    // the user would have no way to find or undo them.
+    expect(JSON.parse(content)).toEqual({
+      error: "The chat stream was cancelled.",
+    });
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "word_edit_block",
+        block_index: TOOL_EDIT_BLOCK_INDEX_BASE,
+      }),
+    ]);
+  });
+
+  it("truncates an oversized live read at the snapshot ceiling", async () => {
+    const frames: Record<string, unknown>[] = [];
+    const adapter = createWordClientToolsAdapter({
+      userId: "u1",
+      write: (line) => {
+        if (!line.startsWith("data: ")) return;
+        frames.push(
+          JSON.parse(line.replace(/^data: /, "").trim()) as Record<
+            string,
+            unknown
+          >,
+        );
+      },
+    });
+    const execution = adapter.execute({
+      id: "t2",
+      name: READ_ACTIVE_DOCUMENT_TOOL_NAME,
+      input: {},
+    });
+    const frame = frames.find((f) => f.type === "client_tool_call");
+    submitClientToolResult(frame?.tool_call_id as string, "u1", {
+      document: "x".repeat(MAX_DOCUMENT_CONTEXT_CHARS + 5_000),
+    });
+    const { content } = await execution;
+    expect(content).toContain("[Document truncated at");
+    expect(content.length).toBeLessThan(MAX_DOCUMENT_CONTEXT_CHARS + 1_000);
   });
 });
