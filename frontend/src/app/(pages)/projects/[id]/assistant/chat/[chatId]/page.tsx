@@ -71,6 +71,7 @@ import {
     folderDeleteDialogReducer,
     removeDeletedDocumentTabs,
 } from "@/app/lib/folderDeleteState";
+import { can, roleFrom } from "@/app/lib/permissions";
 
 interface Props {
     params: Promise<{ id: string; chatId: string }>;
@@ -222,6 +223,9 @@ export default function ProjectAssistantChatPage({ params }: Props) {
     const [chatTitle, setChatTitle] = useState<string | null>(null);
     const [chatOwnerId, setChatOwnerId] = useState<string | null>(null);
     const [ownerOnlyAction, setOwnerOnlyAction] = useState<string | null>(null);
+    const [editorGateAction, setEditorGateAction] = useState<string | null>(
+        null,
+    );
     const [chatLoaded, setChatLoaded] = useState(false);
     const [creatingChat, setCreatingChat] = useState(false);
     const [deletingChat, setDeletingChat] = useState(false);
@@ -277,6 +281,15 @@ export default function ProjectAssistantChatPage({ params }: Props) {
     const [initialMessages] = useState<Message[]>(newChatMessages ?? []);
     const { messages, isResponseLoading, handleChat, setMessages, cancel } =
         useAssistantChat({ initialMessages, chatId, projectId });
+
+    // Server ladder: writing to a project chat needs content.edit on the
+    // project, except that the chat's own creator may always continue it.
+    // Until the project loads the gates stay open — the server enforces
+    // regardless, and flashing a disabled composer at editors on every
+    // load is worse than a viewer's send being refused once.
+    const canEditContent = !project || can(roleFrom(project), "content.edit");
+    const canSendChat =
+        canEditContent || (!!chatOwnerId && chatOwnerId === user?.id);
     const pendingInitialUserMessageRef = useRef<Message | null>(
         initialMessages.length === 1 && initialMessages[0].role === "user"
             ? initialMessages[0]
@@ -658,6 +671,10 @@ export default function ProjectAssistantChatPage({ params }: Props) {
     // ── Upload ────────────────────────────────────────────────────────────────
     async function uploadFiles(files: File[]) {
         if (!files.length) return;
+        if (!canEditContent) {
+            setEditorGateAction("upload documents to this project");
+            return;
+        }
         setUploading(true);
         try {
             const uploaded = await Promise.all(
@@ -1046,7 +1063,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                                         onClick={() =>
                                             fileInputRef.current?.click()
                                         }
-                                        disabled={uploading}
+                                        disabled={uploading || !canEditContent}
                                         title="Upload documents"
                                         className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-40"
                                     >
@@ -1414,6 +1431,7 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                                 onSubmit={handleSubmit}
                                 onCancel={cancel}
                                 isLoading={isResponseLoading}
+                                canSend={canSendChat}
                                 hideAddDocButton
                                 projectId={projectId}
                                 onDocumentClick={handleDocClick}
@@ -1441,6 +1459,12 @@ export default function ProjectAssistantChatPage({ params }: Props) {
                 open={!!ownerOnlyAction}
                 action={ownerOnlyAction ?? undefined}
                 onClose={() => setOwnerOnlyAction(null)}
+            />
+            <OwnerOnlyPopup
+                open={!!editorGateAction}
+                action={editorGateAction ?? undefined}
+                requiredRole="editor"
+                onClose={() => setEditorGateAction(null)}
             />
             <ConfirmPopup
                 open={!!pendingDeleteFolder}
