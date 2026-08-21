@@ -125,6 +125,8 @@ interface Props {
     onClose: () => void;
     initialChatId?: string | null;
     onChatIdChange?: (chatId: string | null) => void;
+    /** Sending is editor-tier server-side; false renders a read-only composer. */
+    canSend?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -440,6 +442,7 @@ function TRChatInput({
     vercelModels,
     openCodeGoModels,
     onHeightChange,
+    canSend = true,
 }: {
     isLoading: boolean;
     onSubmit: (value: string) => void;
@@ -452,6 +455,7 @@ function TRChatInput({
     vercelModels?: string[];
     openCodeGoModels?: string[];
     onHeightChange: (height: number) => void;
+    canSend?: boolean;
 }) {
     const [value, setValue] = useState("");
     const rootRef = useRef<HTMLDivElement>(null);
@@ -488,6 +492,7 @@ function TRChatInput({
     }
 
     function handleAction() {
+        if (!canSend) return;
         if (isLoading) {
             onCancel();
             return;
@@ -516,7 +521,16 @@ function TRChatInput({
                 <textarea
                     ref={textareaRef}
                     rows={1}
-                    placeholder="How can I help?"
+                    // Sending is editor-tier server-side (content.edit on
+                    // POST /chat); reading history is view-tier, so viewers
+                    // get the transcript with a disabled composer instead of
+                    // a send that always errors.
+                    disabled={!canSend}
+                    placeholder={
+                        canSend
+                            ? "How can I help?"
+                            : "Viewing only — sending needs edit access"
+                    }
                     value={value}
                     onChange={(e) => {
                         setValue(e.target.value);
@@ -543,7 +557,7 @@ function TRChatInput({
                     <button
                         type="button"
                         onClick={handleAction}
-                        disabled={!isLoading && !value.trim()}
+                        disabled={!canSend || (!isLoading && !value.trim())}
                         className={cn(
                             "relative bg-gradient-to-b from-neutral-700 to-black text-white rounded-[10px] h-7 w-7 shrink-0 flex items-center justify-center disabled:cursor-default disabled:from-neutral-600 disabled:to-black border border-white/30 active:enabled:scale-95 transition-all duration-150",
                             "shadow-[0_5px_14px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.24)]",
@@ -765,6 +779,7 @@ export function TRChatPanel({
     onClose,
     initialChatId,
     onChatIdChange,
+    canSend = true,
 }: Props) {
     const {
         profile,
@@ -1926,6 +1941,7 @@ export function TRChatPanel({
                 isLoading={isLoading}
                 onSubmit={handleSubmit}
                 onCancel={handleCancel}
+                canSend={canSend}
                 model={currentModel}
                 onModelChange={(id) =>
                     updateModelPreference("tabularModel", id)

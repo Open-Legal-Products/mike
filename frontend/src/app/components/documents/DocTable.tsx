@@ -39,6 +39,8 @@ import {
 } from "@/app/components/shared/RowActions";
 import { SubfolderSvgIcon } from "@/app/components/shared/FolderSvgIcon";
 import { useAuth } from "@/app/contexts/AuthContext";
+import type { Capability } from "@/app/lib/permissions";
+import type { OwnerGate } from "@/app/components/projects/ProjectWorkspace";
 import { WarningPopup } from "@/app/components/popups/WarningPopup";
 import { UploadOverlay } from "@/app/components/assistant/UploadOverlay";
 import { ConfirmPopup } from "@/app/components/popups/ConfirmPopup";
@@ -152,7 +154,13 @@ interface DocTableProps {
     folderViewId?: string | null;
     onFolderViewIdChange?: (folderId: string | null) => void;
     onSelectionActionsChange?: (actions: DocTableSelectionActions | null) => void;
-    onOwnerOnlyAction?: Dispatch<SetStateAction<string | null>>;
+    onOwnerOnlyAction?: Dispatch<SetStateAction<OwnerGate | null>>;
+    /**
+     * Role-based capability check for the containing collection. When
+     * omitted (library, standalone docs) every capability is allowed and
+     * only the per-document creator checks apply.
+     */
+    canDo?: (capability: Capability) => boolean;
     enableHeaderFilters?: boolean;
     // When provided, folder contents are fetched on demand as folders are
     // expanded (instead of the whole tree being loaded and auto-expanded
@@ -306,6 +314,7 @@ export function DocTable({
     onFolderViewIdChange,
     onSelectionActionsChange,
     onOwnerOnlyAction,
+    canDo,
     enableHeaderFilters = false,
     onExpandFolder,
     documentsHasMoreByLevel,
@@ -346,6 +355,21 @@ export function DocTable({
     const loadingRef = useRef(loading);
     const renderAddDocumentsModalRef = useRef(renderAddDocumentsModal);
     const setOwnerOnlyAction = useMemo(() => onOwnerOnlyAction ?? (() => {}), [onOwnerOnlyAction]);
+    // Absent canDo (library/standalone contexts) means no role model applies.
+    const allowed = useMemo(() => canDo ?? (() => true), [canDo]);
+    /** Guard: false + popup when the caller's role lacks the capability. */
+    const requireCapability = useCallback(
+        (
+            capability: Capability,
+            action: string,
+            requiredRole: "manager" | "editor",
+        ) => {
+            if (allowed(capability)) return true;
+            setOwnerOnlyAction({ action, requiredRole });
+            return false;
+        },
+        [allowed, setOwnerOnlyAction],
+    );
 
     useEffect(() => {
         loadingRef.current = loading;
@@ -354,12 +378,17 @@ export function DocTable({
 
     const openAddDocuments = useCallback(() => {
         if (loadingRef.current) return;
+        // Same capability the header Add button is gated on — this also
+        // covers the empty-state click, which calls openAddDocuments
+        // directly.
+        if (!requireCapability("content.edit", "add documents", "editor"))
+            return;
         if (renderAddDocumentsModalRef.current) {
             setAddDocsOpen(true);
             return;
         }
         documentUploadInputRef.current?.click();
-    }, []);
+    }, [requireCapability]);
 
     useEffect(() => {
         onAddDocumentsActionChange?.(openAddDocuments);
@@ -446,16 +475,38 @@ export function DocTable({
         await handleDropDocumentVersions(doc, [file]);
     }
 
+    /**
+     * Version file-replace and delete are owner-only server-side
+     * (documents.ts gates them on access.isOwner, i.e. the document's
+     * creator) — a capability check can't express that, so gate on the row
+     * itself and explain instead of letting the request 403 into a
+     * console.error.
+     */
+    function requireDocOwnerForVersions(docId: string, action: string): boolean {
+        const doc = documents.find((d) => d.id === docId);
+        if (!doc || !isSharedDocument(doc)) return true;
+        setOwnerOnlyAction({ action, requiredRole: "owner" });
+        return false;
+    }
+
     async function submitNewVersion(doc: Document, file: File, filename: string) {
+        // Same tier as the server's POST /versions guard (content.edit).
+        if (!requireCapability("content.edit", "upload a new version", "editor"))
+            return;
         try {
             await uploadDocumentVersion(doc.id, file, filename);
             await refreshDocumentVersionState(doc.id);
         } catch (e) {
             console.error("uploadDocumentVersion failed", e);
+            setDocumentUploadWarning("Version upload failed. Please try again.");
         }
     }
 
     async function replaceVersionFile(docId: string, versionId: string, file: File, filename: string) {
+        if (
+            !requireDocOwnerForVersions(docId, "replace this version's file")
+        )
+            return;
         await replaceDocumentVersionFile(docId, versionId, file, filename);
         const res = await refreshDocumentVersionState(docId);
         const replaced = res.versions.find((version) => version.id === versionId);
@@ -488,6 +539,9 @@ export function DocTable({
      * Patch a version filename and update the local cache in place.
      */
     async function handleRenameVersion(docId: string, versionId: string, filename: string | null) {
+        // Server PATCH /versions/:id guard is content.edit.
+        if (!requireCapability("content.edit", "rename versions", "editor"))
+            return;
         const previousFilename = versionsByDocId
             .get(docId)
             ?.versions.find((version) => version.id === versionId)
@@ -515,6 +569,8 @@ export function DocTable({
     }
 
     async function handleDeleteVersion(docId: string, versionId: string) {
+        if (!requireDocOwnerForVersions(docId, "delete document versions"))
+            return;
         try {
             await deleteDocumentVersion(docId, versionId);
             const res = await refreshDocumentVersionState(docId);
@@ -782,6 +838,10 @@ export function DocTable({
             setCreatingFolderIn(undefined);
             return;
         }
+        if (!requireCapability("docs.organize", "create folders", "editor")) {
+            setCreatingFolderIn(undefined);
+            return;
+        }
 
         // Immediately hide the input and show an optimistic folder row
         setCreatingFolderIn(undefined);
@@ -817,6 +877,14 @@ export function DocTable({
         const name = renameFolderValue.trim();
         setRenamingFolderId(null);
         if (!name) return;
+        if (
+            !requireCapability(
+                "structure.manage",
+                "rename folders",
+                "manager",
+            )
+        )
+            return;
         const updatedAt = new Date().toISOString();
         setFolders((prev) =>
             prev.map((folder) =>
@@ -857,6 +925,14 @@ export function DocTable({
     }
 
     function requestDeleteFolder(folderId: string) {
+        if (
+            !requireCapability(
+                "structure.manage",
+                "delete folders and their documents",
+                "manager",
+            )
+        )
+            return;
         const folder = folders.find((f) => f.id === folderId);
         if (!folder) return;
         const impact = folderDeleteImpact(folderId);
@@ -1008,6 +1084,10 @@ export function DocTable({
     }
 
     async function handleRemoveDocFromFolder(docId: string) {
+        if (
+            !requireCapability("docs.organize", "move documents", "editor")
+        )
+            return;
         setDocuments((prev) => prev.map((d) => (d.id === docId ? { ...d, folder_id: null } : d)));
         await operations.moveDocument(docId, null);
     }
@@ -1020,6 +1100,12 @@ export function DocTable({
         }
         const previous = documents.find((d) => d.id === docId);
         if (!previous || trimmed === previous.filename) {
+            setRenamingDocumentId(null);
+            return;
+        }
+        if (
+            !requireCapability("docs.organize", "rename documents", "editor")
+        ) {
             setRenamingDocumentId(null);
             return;
         }
@@ -1139,15 +1225,50 @@ export function DocTable({
 
     async function handleDropCollectionFiles(files: File[]) {
         if (files.length === 0) return;
+        // Drag-and-drop bypasses the (capability-gated) Add button, so it
+        // needs the same content.edit check: viewers get the role popup
+        // instead of a doomed upload that the backend would 403 anyway.
+        if (!requireCapability("content.edit", "add documents", "editor"))
+            return;
         const { supported, unsupported } = partitionSupportedDocumentFiles(files);
-        setDocumentUploadWarning(formatUnsupportedDocumentWarning(unsupported));
+        const unsupportedWarning = formatUnsupportedDocumentWarning(unsupported);
+        setDocumentUploadWarning(unsupportedWarning);
         if (supported.length === 0) return;
         setUploadingDroppedFilenames(supported.map((file) => file.name));
         try {
-            const uploaded = await Promise.all(supported.map((file) => operations.uploadDocument(file)));
-            handleDocsSelected(uploaded);
-        } catch (err) {
-            console.error("Document drop upload failed", err);
+            // Settle every upload so one failure doesn't discard sibling
+            // uploads that succeeded server-side — those docs exist and must
+            // land in the table, not reappear only after a reload.
+            const settled = await Promise.allSettled(
+                supported.map((file) => operations.uploadDocument(file)),
+            );
+            const uploaded = settled
+                .filter(
+                    (r): r is PromiseFulfilledResult<Document> =>
+                        r.status === "fulfilled",
+                )
+                .map((r) => r.value);
+            if (uploaded.length > 0) handleDocsSelected(uploaded);
+            const firstFailure = settled.find(
+                (r): r is PromiseRejectedResult => r.status === "rejected",
+            );
+            if (firstFailure) {
+                console.error(
+                    "Document drop upload failed",
+                    firstFailure.reason,
+                );
+                const detail = apiErrorDetail(firstFailure.reason);
+                const failureWarning = detail
+                    ? `Upload failed: ${detail}`
+                    : "Upload failed. Please try again.";
+                // Keep the unsupported-files message alongside the failure
+                // instead of overwriting one problem with the other.
+                setDocumentUploadWarning(
+                    [unsupportedWarning, failureWarning]
+                        .filter(Boolean)
+                        .join(" "),
+                );
+            }
         } finally {
             setUploadingDroppedFilenames([]);
         }
@@ -1202,6 +1323,10 @@ export function DocTable({
 
     async function handleDropDocumentVersions(doc: Document, files: File[]) {
         if (files.length === 0) return;
+        // Same tier as the server's POST /versions guard (content.edit) —
+        // without it an org viewer's drop fails into console.error only.
+        if (!requireCapability("content.edit", "upload a new version", "editor"))
+            return;
         const { supported, unsupported } = partitionSupportedDocumentFiles(files);
         setDocumentUploadWarning(formatUnsupportedDocumentWarning(unsupported));
         if (supported.length === 0) return;
@@ -1214,6 +1339,7 @@ export function DocTable({
             await refreshDocumentVersionState(doc.id);
         } catch (err) {
             console.error("Document version drop upload failed", err);
+            setDocumentUploadWarning("Version upload failed. Please try again.");
         } finally {
             setUploadingVersionDocIds((prev) => {
                 const next = new Set(prev);
@@ -1306,6 +1432,10 @@ export function DocTable({
         if (docId) {
             const doc = documents.find((d) => d.id === docId);
             if (!doc || (doc.folder_id ?? null) === targetFolderId) return;
+            if (
+                !requireCapability("docs.organize", "move documents", "editor")
+            )
+                return;
             const updatedAt = new Date().toISOString();
             setDocuments((prev) =>
                 prev.map((document) =>
@@ -1330,6 +1460,14 @@ export function DocTable({
                 ),
             );
         } else if (subFolderId && subFolderId !== targetFolderId) {
+            if (
+                !requireCapability(
+                    "structure.manage",
+                    "move folders",
+                    "manager",
+                )
+            )
+                return;
             if (targetFolderId !== null && wouldCreateCycle(subFolderId, targetFolderId)) return;
             const folder = folders.find((f) => f.id === subFolderId);
             if (!folder || (folder.parent_folder_id ?? null) === targetFolderId) return;
@@ -2108,12 +2246,16 @@ export function DocTable({
     }, [downloadDoc, selectedDocIds]);
 
     const handleRemoveSelectedFromFolder = useCallback(async () => {
+        if (
+            !requireCapability("docs.organize", "move documents", "editor")
+        )
+            return;
         const ids = selectedDocIds.filter((id) => docs.find((d) => d.id === id)?.folder_id != null);
         if (ids.length === 0) return;
         setSelectedFolderIds(new Set());
         setDocuments((prev) => prev.map((d) => (ids.includes(d.id) ? { ...d, folder_id: null } : d)));
         await Promise.all(ids.map((id) => operations.moveDocument(id, null).catch(() => {})));
-    }, [docs, operations, selectedDocIds, setDocuments]);
+    }, [docs, operations, requireCapability, selectedDocIds, setDocuments]);
 
     const handleDeleteSelectedDocs = useCallback(async () => {
         const ids = [...selectedDocIds];

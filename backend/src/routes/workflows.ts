@@ -35,6 +35,7 @@ import {
   uploadFile,
   workflowReferenceKey,
 } from "../lib/storage";
+import { getOrgRole, getPersonalOrgId } from "../lib/access";
 
 export const workflowsRouter = Router();
 
@@ -331,21 +332,33 @@ async function resolveWorkflowAccess(
   }
 
   const normalizedUserEmail = (userEmail ?? "").trim().toLowerCase();
-  if (!normalizedUserEmail) return null;
+  if (normalizedUserEmail) {
+    const { data: share } = await db
+      .from("workflow_shares")
+      .select("allow_edit")
+      .eq("workflow_id", workflowId)
+      .eq("shared_with_email", normalizedUserEmail)
+      .maybeSingle();
+    if (share)
+      return {
+        workflow: workflowRecord,
+        allowEdit: !!share.allow_edit,
+        isOwner: false,
+      };
+  }
 
-  const { data: share } = await db
-    .from("workflow_shares")
-    .select("allow_edit")
-    .eq("workflow_id", workflowId)
-    .eq("shared_with_email", normalizedUserEmail)
-    .maybeSingle();
-  if (!share) return null;
+  // Org-visibility branch: a workflow living in an org the caller belongs to is
+  // readable (allow_edit stays false; edits remain owner/share-gated). Keeps
+  // the workflow_shares mechanism intact and consistent with the updated
+  // get_workflows_overview RPC.
+  const orgId = (workflowRecord as { org_id?: string | null }).org_id ?? null;
+  if (orgId) {
+    const role = await getOrgRole(userId, orgId, db);
+    if (role)
+      return { workflow: workflowRecord, allowEdit: false, isOwner: false };
+  }
 
-  return {
-    workflow: workflowRecord,
-    allowEdit: !!share.allow_edit,
-    isOwner: false,
-  };
+  return null;
 }
 
 function toOpenSourceSubmissionSummary(
@@ -608,6 +621,7 @@ workflowsRouter.post(
         .json({ detail: "metadata.type must be 'assistant' or 'tabular'" });
 
     const db = createServerSupabase();
+    const orgId = await getPersonalOrgId(userId, db);
     devLog("[workflows/create] request", {
       userId,
       title: title.trim(),
@@ -639,6 +653,7 @@ workflowsRouter.post(
         jurisdictions:
           normalizeJurisdictions(metadata?.jurisdictions) ??
           DEFAULT_WORKFLOW_JURISDICTIONS,
+        org_id: orgId,
       })
       .select("*")
       .single();

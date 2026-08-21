@@ -4,25 +4,184 @@
  * Sharing makes the previous "scope by user_id" pattern incorrect — a doc
  * can belong to user A's project that A has shared with B's email, and B
  * must still be able to read/edit it. These helpers centralize the
- * "owner OR shared project member" check so every route uses the same
- * logic instead of re-implementing the join.
+ * "owner OR shared project member OR org member" check so every route uses
+ * the same logic instead of re-implementing the join.
  *
- * Returned `isOwner` lets callers gate operations that should stay
- * owner-only (delete, rename, member management).
+ * Access can arrive through three branches:
+ *   1. row owner  — the row's `user_id` matches the caller.
+ *   2. shared_with — the caller's email is in the row's shared_with list
+ *                    (email-based sharing, unchanged by the org feature).
+ *   3. org member — the row's `org_id` is an org the caller belongs to
+ *                   (multi-tenant RBAC).
+ *
+ * Each branch derives a ProjectRole (lib/permissions.ts) and routes gate on
+ * `can(projectRole, capability)` rather than on ad-hoc flags:
+ *   - branch (1) row owner      → "owner"
+ *   - branch (2) shared email   → "editor"  (content collaboration)
+ *   - branch (3) org owner/admin → "manager" (curate, not delete containers)
+ *   - branch (3) plain member    → "viewer"  (visibility, not ownership)
+ *
+ * When several branches match, the caller gets the STRONGEST derived role
+ * (`strongerRole` in lib/permissions.ts): a grant can only ever add standing.
+ * An explicit share on top of plain org membership yields "editor", and an
+ * org admin who also appears in shared_with keeps "manager" — adding someone
+ * to a share list must never demote them.
+ *
+ * Legacy flags are kept for compatibility and derived from the role:
+ *   - `isOwner`   — TRUE only for branch (1), the row owner.
+ *   - `canManage` — `can(projectRole, "members.manage")`.
+ *   - `role`      — the caller's org role for branch (3), else null.
  */
 
 import type { createServerSupabase } from "./supabase";
+import { can, strongerRole, type ProjectRole } from "./permissions";
+
+export { can, type Capability, type ProjectRole } from "./permissions";
 
 type Db = ReturnType<typeof createServerSupabase>;
+
+// EXTENSION POINT (RBAC): new roles added to the org_members CHECK constraint
+// should be reflected here and in `orgRoleToProjectRole`.
+export type OrgRole = "owner" | "admin" | "member";
+
+/** Roles allowed to manage an org (members, teams, settings). */
+export function roleCanManage(role: OrgRole | null | undefined): boolean {
+    return role === "owner" || role === "admin";
+}
+
+/**
+ * What standing in the tenant grants on a row the caller doesn't own:
+ * org owners/admins curate content ("manager"), plain members see it
+ * ("viewer") — the ADR's "visibility, not ownership".
+ */
+function orgRoleToProjectRole(role: OrgRole): ProjectRole {
+    return roleCanManage(role) ? "manager" : "viewer";
+}
+
+/**
+ * The caller's role in a single org, or null if they are not a member.
+ */
+export async function getOrgRole(
+    userId: string,
+    orgId: string | null | undefined,
+    db: Db,
+): Promise<OrgRole | null> {
+    if (!orgId) return null;
+    const { data } = await db
+        .from("org_members")
+        .select("role")
+        .eq("org_id", orgId)
+        .eq("user_id", userId)
+        .single();
+    const role = (data as { role?: string } | null)?.role;
+    if (role === "owner" || role === "admin" || role === "member") return role;
+    return null;
+}
+
+/**
+ * Every org id the caller belongs to. Used to scope collection reads and to
+ * validate an org_id chosen at create time.
+ */
+export async function listUserOrgIds(userId: string, db: Db): Promise<string[]> {
+    const { data } = await db
+        .from("org_members")
+        .select("org_id")
+        .eq("user_id", userId);
+    const ids = new Set<string>();
+    for (const row of (data ?? []) as { org_id?: string | null }[]) {
+        if (row.org_id) ids.add(row.org_id);
+    }
+    return [...ids];
+}
+
+/**
+ * The caller's auto-provisioned personal org id (the tenant new content lands
+ * in by default). Self-heals when missing: the signup trigger deliberately
+ * swallows errors so a provisioning hiccup can never block signup, and the
+ * backfill migration ran exactly once — a user who slipped through both
+ * would otherwise stay un-tenanted forever (all their content org_id null,
+ * GET /orgs empty). The partial unique index on (created_by) where personal
+ * makes the lazy create race-safe: the loser re-reads the winner's row.
+ */
+export async function getPersonalOrgId(
+    userId: string,
+    db: Db,
+): Promise<string | null> {
+    const { data } = await db
+        .from("organizations")
+        .select("id")
+        .eq("created_by", userId)
+        .eq("personal", true)
+        .single();
+    const existing = (data as { id?: string } | null)?.id ?? null;
+    if (existing) return existing;
+
+    const { data: profile } = await db
+        .from("user_profiles")
+        .select("email")
+        .eq("user_id", userId)
+        .single();
+    const name =
+        (profile as { email?: string | null } | null)?.email ?? "Personal";
+    const { data: created, error } = await db
+        .from("organizations")
+        .insert({ name, personal: true, created_by: userId })
+        .select("id")
+        .single();
+    if (error || !created) {
+        // Lost the create race (or insert failed): take whatever exists now.
+        const { data: raced } = await db
+            .from("organizations")
+            .select("id")
+            .eq("created_by", userId)
+            .eq("personal", true)
+            .single();
+        return (raced as { id?: string } | null)?.id ?? null;
+    }
+    const orgId = (created as { id: string }).id;
+    // Membership powers GET /orgs and the org visibility arms; content
+    // visibility for the owner never depends on it (owner arm), so a failed
+    // insert here degrades softly rather than blocking the caller.
+    await db
+        .from("org_members")
+        .insert({ org_id: orgId, user_id: userId, role: "owner" });
+    return orgId;
+}
+
+/**
+ * Choose the org_id a newly created resource should carry. Content created
+ * inside a project inherits that project's org; otherwise it lands in the
+ * caller's personal org. This keeps every row tenant-scoped without demanding
+ * an explicit org context on every write.
+ */
+export async function resolveContentOrgId(
+    db: Db,
+    params: { userId: string; projectId?: string | null },
+): Promise<string | null> {
+    if (params.projectId) {
+        const { data } = await db
+            .from("projects")
+            .select("org_id")
+            .eq("id", params.projectId)
+            .single();
+        const projectOrgId = (data as { org_id?: string | null } | null)?.org_id;
+        if (projectOrgId) return projectOrgId;
+    }
+    return getPersonalOrgId(params.userId, db);
+}
 
 export type ProjectAccess =
     | {
           ok: true;
           isOwner: boolean;
+          role: OrgRole | null;
+          canManage: boolean;
+          projectRole: ProjectRole;
           project: {
               id: string;
               user_id: string;
               shared_with: string[] | null;
+              org_id?: string | null;
           };
       }
     | { ok: false };
@@ -35,7 +194,7 @@ export async function checkProjectAccess(
 ): Promise<ProjectAccess> {
     const { data: project } = await db
         .from("projects")
-        .select("id, user_id, shared_with")
+        .select("id, user_id, shared_with, org_id")
         .eq("id", projectId)
         .single();
     if (!project) return { ok: false };
@@ -43,52 +202,122 @@ export async function checkProjectAccess(
         id: string;
         user_id: string;
         shared_with: string[] | null;
+        org_id?: string | null;
     };
     if (proj.user_id === userId) {
-        return { ok: true, isOwner: true, project: proj };
+        return {
+            ok: true,
+            isOwner: true,
+            role: null,
+            canManage: true,
+            projectRole: "owner",
+            project: proj,
+        };
     }
     const sharedWith = Array.isArray(proj.shared_with) ? proj.shared_with : [];
     const email = (userEmail ?? "").trim().toLowerCase();
-    if (
-        email &&
-        sharedWith.some((e) => (e ?? "").toLowerCase() === email)
-    ) {
-        return { ok: true, isOwner: false, project: proj };
-    }
-    return { ok: false };
+    const sharedRole: ProjectRole | null =
+        email && sharedWith.some((e) => (e ?? "").toLowerCase() === email)
+            ? "editor"
+            : null;
+    // Merge the share and org branches strongest-wins: a plain org member
+    // with an explicit share is an editor, an org admin stays a manager even
+    // if someone also added them to shared_with.
+    const role = await getOrgRole(userId, proj.org_id, db);
+    const projectRole = strongerRole(
+        sharedRole,
+        role ? orgRoleToProjectRole(role) : null,
+    );
+    if (!projectRole) return { ok: false };
+    return {
+        ok: true,
+        isOwner: false,
+        role,
+        canManage: can(projectRole, "members.manage"),
+        projectRole,
+        project: proj,
+    };
+}
+
+type ResourceAccess =
+    | {
+          ok: true;
+          isOwner: boolean;
+          role: OrgRole | null;
+          canManage: boolean;
+          projectRole: ProjectRole;
+      }
+    | { ok: false };
+
+/** Build the non-owner ResourceAccess for a derived project role. */
+function resourceAccessFor(
+    projectRole: ProjectRole,
+    role: OrgRole | null,
+): ResourceAccess {
+    return {
+        ok: true,
+        isOwner: false,
+        role,
+        canManage: can(projectRole, "members.manage"),
+        projectRole,
+    };
 }
 
 /**
  * Check whether the current user can access a document the caller has
  * already loaded (saves a round-trip vs. having the helper re-fetch).
- * Owner-of-doc passes immediately; otherwise we fall through to a
- * project-membership check via `shared_with`.
+ * Owner-of-doc passes immediately; otherwise the project verdict (which
+ * already merges its share and org branches strongest-wins) is merged with
+ * a direct org-membership check on the doc's own org_id — covering
+ * org-tagged docs outside any project and docs whose org differs from
+ * their project's. Merging means the doc-org branch can only upgrade the
+ * verdict, never downgrade it. isOwner keeps meaning "owns this row": the
+ * project owner is not the owner of a collaborator's document, but
+ * inherits the project role for capability checks.
  */
 export async function ensureDocAccess(
-    doc: { user_id: string; project_id: string | null },
+    doc: { user_id: string; project_id: string | null; org_id?: string | null },
     userId: string,
     userEmail: string | null | undefined,
     db: Db,
-): Promise<{ ok: true; isOwner: boolean } | { ok: false }> {
-    if (doc.user_id === userId) return { ok: true, isOwner: true };
-    if (!doc.project_id) return { ok: false };
-    const access = await checkProjectAccess(
-        doc.project_id,
-        userId,
-        userEmail,
-        db,
-    );
-    if (access.ok) return { ok: true, isOwner: false };
-    return { ok: false };
+): Promise<ResourceAccess> {
+    if (doc.user_id === userId)
+        return {
+            ok: true,
+            isOwner: true,
+            role: null,
+            canManage: true,
+            projectRole: "owner",
+        };
+    const access = doc.project_id
+        ? await checkProjectAccess(doc.project_id, userId, userEmail, db)
+        : ({ ok: false } as const);
+    let best: ProjectRole | null = access.ok ? access.projectRole : null;
+    let bestOrg: OrgRole | null = access.ok ? access.role : null;
+    // Skip the doc-org lookup when the project verdict already folded in
+    // this same org's membership.
+    if (doc.org_id && (!access.ok || doc.org_id !== access.project.org_id)) {
+        const docRole = await getOrgRole(userId, doc.org_id, db);
+        if (docRole) {
+            const viaDocOrg = orgRoleToProjectRole(docRole);
+            if (strongerRole(best, viaDocOrg) !== best) {
+                best = viaDocOrg;
+                bestOrg = docRole;
+            }
+        }
+    }
+    if (!best) return { ok: false };
+    return resourceAccessFor(best, bestOrg);
 }
 
 /**
  * Same shape as `ensureDocAccess`, for tabular_reviews. A review can be
- * shared in two ways:
+ * shared in several ways:
  *   1. Indirectly — if `project_id` is set, everyone with project access
  *      can read/operate on it.
  *   2. Directly — `tabular_reviews.shared_with` is a per-review email list
  *      so standalone reviews (project_id null) can also be shared.
+ *   3. Org — the review's `org_id` is an org the caller belongs to.
  * The owner (review.user_id) always has access.
  */
 export async function ensureReviewAccess(
@@ -96,27 +325,59 @@ export async function ensureReviewAccess(
         user_id: string;
         project_id: string | null;
         shared_with?: string[] | null;
+        org_id?: string | null;
     },
     userId: string,
     userEmail: string | null | undefined,
     db: Db,
-): Promise<{ ok: true; isOwner: boolean } | { ok: false }> {
-    if (review.user_id === userId) return { ok: true, isOwner: true };
-    const email = (userEmail ?? "").toLowerCase();
-    if (email && Array.isArray(review.shared_with)) {
-        if (review.shared_with.some((e) => (e ?? "").toLowerCase() === email)) {
-            return { ok: true, isOwner: false };
+): Promise<ResourceAccess> {
+    if (review.user_id === userId)
+        return {
+            ok: true,
+            isOwner: true,
+            role: null,
+            canManage: true,
+            projectRole: "owner",
+        };
+    const email = (userEmail ?? "").trim().toLowerCase();
+    const directShare =
+        email &&
+        Array.isArray(review.shared_with) &&
+        review.shared_with.some((e) => (e ?? "").toLowerCase() === email);
+    // Merge all three branches strongest-wins. The direct review share is a
+    // floor, not a ceiling: it must not shadow a stronger standing coming
+    // from the project (its owner, an org admin) — being added to a review's
+    // share list must never demote the project owner to editor.
+    const access = review.project_id
+        ? await checkProjectAccess(review.project_id, userId, userEmail, db)
+        : ({ ok: false } as const);
+    let best: ProjectRole | null = directShare ? "editor" : null;
+    let bestOrg: OrgRole | null = null;
+    // On a tie the project verdict wins so the org `role` field survives.
+    if (
+        access.ok &&
+        strongerRole(access.projectRole, best) === access.projectRole
+    ) {
+        best = access.projectRole;
+        bestOrg = access.role;
+    }
+    // Skip the review-org lookup when the project verdict already folded in
+    // this same org's membership.
+    if (
+        review.org_id &&
+        (!access.ok || review.org_id !== access.project.org_id)
+    ) {
+        const reviewRole = await getOrgRole(userId, review.org_id, db);
+        if (reviewRole) {
+            const viaOrg = orgRoleToProjectRole(reviewRole);
+            if (strongerRole(best, viaOrg) !== best) {
+                best = viaOrg;
+                bestOrg = reviewRole;
+            }
         }
     }
-    if (!review.project_id) return { ok: false };
-    const access = await checkProjectAccess(
-        review.project_id,
-        userId,
-        userEmail,
-        db,
-    );
-    if (access.ok) return { ok: true, isOwner: false };
-    return { ok: false };
+    if (!best) return { ok: false };
+    return resourceAccessFor(best, bestOrg);
 }
 
 /**
@@ -135,26 +396,29 @@ export async function filterAccessibleDocumentIds(
     if (documentIds.length === 0) return [];
     const { data: docs } = await db
         .from("documents")
-        .select("id, user_id, project_id")
+        .select("id, user_id, project_id, org_id")
         .in("id", documentIds);
     const rows = (docs ?? []) as {
         id: string;
         user_id: string;
         project_id: string | null;
+        org_id?: string | null;
     }[];
     if (rows.length === 0) return [];
 
-    const accessibleProjectIds = new Set(
-        await listAccessibleProjectIds(userId, userEmail, db),
-    );
+    const [accessibleProjectIds, userOrgIds] = await Promise.all([
+        listAccessibleProjectIds(userId, userEmail, db).then(
+            (ids) => new Set(ids),
+        ),
+        listUserOrgIds(userId, db).then((ids) => new Set(ids)),
+    ]);
     const allowed: string[] = [];
     for (const doc of rows) {
         if (doc.user_id === userId) {
             allowed.push(doc.id);
-        } else if (
-            doc.project_id &&
-            accessibleProjectIds.has(doc.project_id)
-        ) {
+        } else if (doc.org_id && userOrgIds.has(doc.org_id)) {
+            allowed.push(doc.id);
+        } else if (doc.project_id && accessibleProjectIds.has(doc.project_id)) {
             allowed.push(doc.id);
         }
     }
@@ -162,9 +426,9 @@ export async function filterAccessibleDocumentIds(
 }
 
 /**
- * Returns the set of project IDs the user can access — own projects plus
- * any project where their email is in `shared_with`. Used to scope chat
- * lists and similar collection queries.
+ * Returns the set of project IDs the user can access — own projects, any
+ * project where their email is in `shared_with`, and any project in an org they
+ * belong to. Used to scope chat lists and similar collection queries.
  */
 export async function listAccessibleProjectIds(
     userId: string,
@@ -172,22 +436,32 @@ export async function listAccessibleProjectIds(
     db: Db,
 ): Promise<string[]> {
     const normalizedEmail = userEmail?.trim().toLowerCase() ?? "";
-    const [{ data: own }, { data: shared }] = await Promise.all([
-        db.from("projects").select("id").eq("user_id", userId),
-        normalizedEmail
-            ? db
-                  .from("projects")
-                  .select("id")
-                  .filter(
-                      "shared_with",
-                      "cs",
-                      JSON.stringify([normalizedEmail]),
-                  )
-                  .neq("user_id", userId)
-            : Promise.resolve({ data: [] as { id: string }[] }),
-    ]);
+    const orgIds = await listUserOrgIds(userId, db);
+    const [{ data: own }, { data: shared }, { data: orgProjects }] =
+        await Promise.all([
+            db.from("projects").select("id").eq("user_id", userId),
+            normalizedEmail
+                ? db
+                      .from("projects")
+                      .select("id")
+                      .filter(
+                          "shared_with",
+                          "cs",
+                          JSON.stringify([normalizedEmail]),
+                      )
+                      .neq("user_id", userId)
+                : Promise.resolve({ data: [] as { id: string }[] }),
+            orgIds.length > 0
+                ? db
+                      .from("projects")
+                      .select("id")
+                      .in("org_id", orgIds)
+                      .neq("user_id", userId)
+                : Promise.resolve({ data: [] as { id: string }[] }),
+        ]);
     const ids = new Set<string>();
     for (const p of (own ?? []) as { id: string }[]) ids.add(p.id);
     for (const p of (shared ?? []) as { id: string }[]) ids.add(p.id);
+    for (const p of (orgProjects ?? []) as { id: string }[]) ids.add(p.id);
     return [...ids];
 }

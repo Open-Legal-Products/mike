@@ -44,10 +44,13 @@ import { TRWorkflowModal } from "./TRWorkflowModal";
 import { AddDocumentsModal } from "../modals/AddDocumentsModal";
 import { PeopleModal } from "../modals/PeopleModal";
 import { OwnerOnlyPopup } from "../popups/OwnerOnlyPopup";
+import { WarningPopup } from "../popups/WarningPopup";
 import { ApiKeyMissingPopup } from "../popups/ApiKeyMissingPopup";
 import { ConfirmPopup } from "../popups/ConfirmPopup";
 import { HeaderActionsMenu } from "../shared/HeaderActionsMenu";
 import { useAuth } from "@/app/contexts/AuthContext";
+import { can, roleFrom } from "@/app/lib/permissions";
+import type { OwnerGate } from "@/app/components/projects/ProjectWorkspace";
 import { useUserProfile } from "@/app/contexts/UserProfileContext";
 import {
     getModelProvider,
@@ -94,7 +97,9 @@ export function TRView({ reviewId, projectId }: Props) {
     const [deleteReviewStatus, setDeleteReviewStatus] = useState<
         "idle" | "deleting" | "deleted"
     >("idle");
-    const [ownerOnlyAction, setOwnerOnlyAction] = useState<string | null>(null);
+    const [ownerOnlyAction, setOwnerOnlyAction] = useState<OwnerGate | null>(
+        null,
+    );
     const { user } = useAuth();
     const [expandedCell, setExpandedCell] = useState<TabularCell | null>(null);
     const [expandedCellCitation, setExpandedCellCitation] = useState<
@@ -114,6 +119,9 @@ export function TRView({ reviewId, projectId }: Props) {
     const [uploadingDroppedFilenames, setUploadingDroppedFilenames] = useState<
         string[]
     >([]);
+    const [dropUploadWarning, setDropUploadWarning] = useState<string | null>(
+        null,
+    );
     const searchParams = useSearchParams();
     const initialChatParamRef = useRef<string | null>(searchParams.get("chat"));
     const [chatOpen, setChatOpen] = useState(!!initialChatParamRef.current);
@@ -164,8 +172,13 @@ export function TRView({ reviewId, projectId }: Props) {
     }, [actionsOpen]);
 
     useEffect(() => {
+        // Cancellation flag: on a rapid reviewId change the previous fetch
+        // can resolve AFTER the new one and clobber fresh state with stale
+        // data; drop its results instead.
+        let cancelled = false;
         const fetches: Promise<unknown>[] = [
             getTabularReview(reviewId).then(({ review, cells, rows, documents }) => {
+                if (cancelled) return;
                 setReview(review);
                 setCells(cells);
                 setRows(rows);
@@ -176,17 +189,28 @@ export function TRView({ reviewId, projectId }: Props) {
         if (projectId) {
             fetches.push(
                 getProject(projectId)
-                    .then(setProject)
+                    .then((loaded) => {
+                        if (!cancelled) setProject(loaded);
+                    })
                     .catch(() => {}),
             );
         } else {
             fetches.push(
                 listProjects()
-                    .then(setAvailableProjects)
-                    .catch(() => setAvailableProjects([])),
+                    .then((loaded) => {
+                        if (!cancelled) setAvailableProjects(loaded);
+                    })
+                    .catch(() => {
+                        if (!cancelled) setAvailableProjects([]);
+                    }),
             );
         }
-        Promise.all(fetches).finally(() => setLoading(false));
+        Promise.all(fetches).finally(() => {
+            if (!cancelled) setLoading(false);
+        });
+        return () => {
+            cancelled = true;
+        };
     }, [reviewId, projectId]);
 
     function getNextColumnIndex() {
@@ -195,13 +219,40 @@ export function TRView({ reviewId, projectId }: Props) {
         );
     }
 
+    // Role ladder for this review; "owner" until it loads. Column/document
+    // mutations and clearing cells are manager+ server-side; generation and
+    // chat are editor+; delete stays owner-only.
+    const reviewRole = review ? roleFrom(review) : "owner";
+    const canManageStructure = can(reviewRole, "structure.manage");
+
+    function requireStructure(action: string): boolean {
+        if (canManageStructure) return true;
+        setOwnerOnlyAction({ action, requiredRole: "manager" });
+        return false;
+    }
+
+    // Generation and review chat are editor-tier server-side; without this
+    // gate an org viewer is offered affordances that always fail with an
+    // unexplained error.
+    const canEditContent = can(reviewRole, "content.edit");
+
+    function requireContent(action: string): boolean {
+        if (canEditContent) return true;
+        setOwnerOnlyAction({ action, requiredRole: "editor" });
+        return false;
+    }
+
     async function saveColumnsConfig(nextColumns: ColumnConfig[]) {
         setSavingColumnsConfig(true);
         try {
             const updated = await updateTabularReview(reviewId, {
                 columns_config: nextColumns,
             });
-            setReview(updated);
+            // The PATCH response is the bare DB row — no access_role /
+            // is_owner — so replacing the review state with it would send
+            // roleFrom's fallback to "owner" and silently open every client
+            // gate for a manager. Merge so the detail fields survive.
+            setReview((prev) => (prev ? { ...prev, ...updated } : updated));
             setColumns(updated.columns_config || nextColumns);
         } finally {
             setSavingColumnsConfig(false);
@@ -209,6 +260,9 @@ export function TRView({ reviewId, projectId }: Props) {
     }
 
     async function handleAddDocuments(newDocs: Document[]) {
+        // Changing the review's document set is a structure edit server-side
+        // (PATCH document_ids 403s below manager) — same gate as columns.
+        if (!requireStructure("edit the document set")) return;
         const toAdd = newDocs.filter(
             (d) => !documents.some((existing) => existing.id === d.id),
         );
@@ -235,9 +289,15 @@ export function TRView({ reviewId, projectId }: Props) {
 
     async function handleDropReviewFiles(files: File[]) {
         if (files.length === 0) return;
+        // The drop path uploads first and attaches after; without this gate
+        // an editor's upload succeeds and the attach PATCH 403s, leaving an
+        // orphaned document. Mirror the DocTable drop gate, at the tier the
+        // attach actually requires.
+        if (!requireStructure("add documents to this review")) return;
         setUploadingDroppedFilenames(files.map((file) => file.name));
+        const uploaded: Document[] = [];
+        let failedNames: string[] = [];
         try {
-            const uploaded: Document[] = [];
             const documentIds = documents.map((document) => document.id);
             for (const file of files) {
                 const document = await uploadReviewDocument(reviewId, file, {
@@ -248,15 +308,31 @@ export function TRView({ reviewId, projectId }: Props) {
                 uploaded.push(document);
                 documentIds.push(document.id);
             }
-            await handleAddDocuments(uploaded);
         } catch (err) {
             console.error("Tabular review document drop upload failed", err);
+            failedNames = files.slice(uploaded.length).map((f) => f.name);
+        }
+        try {
+            // Each successful upload already attached itself server-side, so
+            // refresh even after a mid-loop failure — otherwise the attached
+            // files stay invisible until a manual reload.
+            if (uploaded.length > 0) await handleAddDocuments(uploaded);
+        } catch (err) {
+            console.error("Refreshing review documents failed", err);
         } finally {
             setUploadingDroppedFilenames([]);
+        }
+        if (failedNames.length > 0) {
+            setDropUploadWarning(
+                failedNames.length === 1
+                    ? `"${failedNames[0]}" could not be uploaded. Please try again.`
+                    : `${failedNames.length} files could not be uploaded. Please try again.`,
+            );
         }
     }
 
     async function handleRegenerateCell(rowId: string, colIndex: number) {
+        if (!requireContent("regenerate cells")) return;
         if (apiKeys && !isModelAvailable(tabularModel, apiKeys)) {
             setApiKeyModalProvider(getModelProvider(tabularModel));
             return;
@@ -309,6 +385,7 @@ export function TRView({ reviewId, projectId }: Props) {
 
     async function handleGenerate() {
         if (!review || generating) return;
+        if (!requireContent("run generation")) return;
 
         // If columns changed since last save, update the review first
         if (columns.length === 0) return;
@@ -412,6 +489,7 @@ export function TRView({ reviewId, projectId }: Props) {
     }
 
     async function handleAddColumn(newColumns: ColumnConfig[]) {
+        if (!requireStructure("add columns")) return;
         const startIndex = getNextColumnIndex();
         const normalizedColumns = newColumns.map((column, index) => ({
             ...column,
@@ -474,6 +552,7 @@ export function TRView({ reviewId, projectId }: Props) {
     }
 
     async function handleUpdateColumn(nextColumn: ColumnConfig) {
+        if (!requireStructure("edit columns")) return;
         const nextColumns = columns.map((column) =>
             column.index === nextColumn.index ? nextColumn : column,
         );
@@ -488,6 +567,7 @@ export function TRView({ reviewId, projectId }: Props) {
     }
 
     async function handleDeleteColumn(columnIndex: number) {
+        if (!requireStructure("delete columns")) return;
         const previousColumns = columns;
         const nextColumns = columns.filter(
             (column) => column.index !== columnIndex,
@@ -511,6 +591,8 @@ export function TRView({ reviewId, projectId }: Props) {
     }
 
     async function handleDeleteDocuments() {
+        // Removing documents deletes their cells — structural, manager+.
+        if (!requireStructure("remove documents from this review")) return;
         const rowIdsToDelete = [...selectedRowIds];
         if (rowIdsToDelete.length === 0) return;
         const documentIdsToDelete = new Set(
@@ -556,6 +638,7 @@ export function TRView({ reviewId, projectId }: Props) {
 
     async function clearResultsForRows(rowIds: string[]) {
         if (rowIds.length === 0) return;
+        const previousCells = cells;
         setCells((prev) =>
             prev.map((c) =>
                 rowIds.includes(c.row_id)
@@ -565,20 +648,32 @@ export function TRView({ reviewId, projectId }: Props) {
         );
         setSelectedRowIds([]);
         setActionsOpen(false);
-        await clearTabularCells(reviewId, rowIds);
+        try {
+            await clearTabularCells(reviewId, rowIds);
+        } catch (err) {
+            // Roll the optimistic clear back — otherwise the cells sit in
+            // "pending" (content already blanked) until a manual reload.
+            console.error("Failed to clear tabular cells", err);
+            setCells(previousCells);
+        }
     }
 
     async function handleClearResults() {
+        if (!requireStructure("clear results")) return;
         await clearResultsForRows([...selectedRowIds]);
     }
 
     async function handleClearAllResults() {
+        if (!requireStructure("clear results")) return;
         await clearResultsForRows(rows.map((row) => row.id));
     }
 
     function requestReviewDetails() {
-        if (review?.is_owner === false) {
-            setOwnerOnlyAction("edit tabular review details");
+        if (review && !canManageStructure) {
+            setOwnerOnlyAction({
+                action: "edit tabular review details",
+                requiredRole: "manager",
+            });
             return;
         }
         setDetailsOpen(true);
@@ -588,13 +683,23 @@ export function TRView({ reviewId, projectId }: Props) {
         title: string;
         projectId?: string | null;
     }) {
-        if (!review || review.is_owner === false) {
-            setOwnerOnlyAction("edit tabular review details");
+        if (!review || !requireStructure("edit tabular review details"))
+            return;
+        // Only send project_id when it actually changes: moving a review
+        // between projects is owner-only server-side, and sending an
+        // unchanged value would 403 a manager editing just the title.
+        const nextProjectId = values.projectId ?? null;
+        const projectChanged = nextProjectId !== (review.project_id ?? null);
+        // Moving a review between projects is owner-only server-side; gate
+        // it here so a manager changing the project selector gets an
+        // explanation instead of an unexplained failed save.
+        if (projectChanged && reviewRole !== "owner") {
+            setOwnerOnlyAction("move this review to another project");
             return;
         }
         const updated = await updateTabularReview(reviewId, {
             title: values.title,
-            project_id: values.projectId ?? null,
+            ...(projectChanged ? { project_id: nextProjectId } : {}),
         });
         setReview((prev) =>
             prev
@@ -613,7 +718,7 @@ export function TRView({ reviewId, projectId }: Props) {
     }
 
     function requestReviewDelete() {
-        if (review?.is_owner === false) {
+        if (review && !can(reviewRole, "container.delete")) {
             setOwnerOnlyAction("delete this tabular review");
             return;
         }
@@ -641,10 +746,7 @@ export function TRView({ reviewId, projectId }: Props) {
     }
 
     function requestWorkflow() {
-        if (review?.is_owner === false) {
-            setOwnerOnlyAction("apply a workflow");
-            return;
-        }
+        if (!requireStructure("apply a workflow")) return;
         setWorkflowModalOpen(true);
     }
 
@@ -819,7 +921,18 @@ export function TRView({ reviewId, projectId }: Props) {
                         {
                             actions: [
                                 {
-                                    onClick: () => setAddDocsOpen(true),
+                                    onClick: () => {
+                                        // Same pre-modal gate as openNewReview:
+                                        // stop non-managers before the modal,
+                                        // not after a doomed submit.
+                                        if (
+                                            !requireStructure(
+                                                "edit the document set",
+                                            )
+                                        )
+                                            return;
+                                        setAddDocsOpen(true);
+                                    },
                                     disabled: loading || savingColumnsConfig,
                                     title: "Add documents",
                                     icon: <Upload className="h-4 w-4" />,
@@ -1039,7 +1152,15 @@ export function TRView({ reviewId, projectId }: Props) {
                                 onUpdateColumn={handleUpdateColumn}
                                 onDeleteColumn={handleDeleteColumn}
                                 onAddColumn={() => setAddColOpen(true)}
-                                onAddDocuments={() => setAddDocsOpen(true)}
+                                onAddDocuments={() => {
+                                    if (
+                                        !requireStructure(
+                                            "edit the document set",
+                                        )
+                                    )
+                                        return;
+                                    setAddDocsOpen(true);
+                                }}
                             />
                         </div>
                     </div>
@@ -1055,6 +1176,7 @@ export function TRView({ reviewId, projectId }: Props) {
                             }}
                             initialChatId={selectedChatId}
                             onChatIdChange={setSelectedChatId}
+                            canSend={canEditContent}
                         />
                     )}
                 </div>
@@ -1174,7 +1296,7 @@ export function TRView({ reviewId, projectId }: Props) {
                 open={detailsOpen}
                 review={review}
                 projects={project ? [project] : availableProjects}
-                canEdit={review?.is_owner !== false}
+                canEdit={canManageStructure}
                 lockProject={Boolean(projectId)}
                 onClose={() => setDetailsOpen(false)}
                 onSave={handleDetailsSave}
@@ -1191,10 +1313,11 @@ export function TRView({ reviewId, projectId }: Props) {
                     review?.title || "Untitled Review",
                     "People",
                 ]}
-                // Only the review owner may modify the member list. PeopleModal
-                // hides the add/remove controls when this prop is undefined.
+                // Managers and the owner may modify the member list.
+                // PeopleModal hides the add/remove controls when this prop
+                // is undefined.
                 onSharedWithChange={
-                    review?.is_owner === false
+                    !can(reviewRole, "members.manage")
                         ? undefined
                         : async (next) => {
                               const updated = await updateTabularReview(
@@ -1262,8 +1385,23 @@ export function TRView({ reviewId, projectId }: Props) {
 
             <OwnerOnlyPopup
                 open={!!ownerOnlyAction}
-                action={ownerOnlyAction ?? undefined}
+                action={
+                    typeof ownerOnlyAction === "string"
+                        ? ownerOnlyAction
+                        : ownerOnlyAction?.action
+                }
+                requiredRole={
+                    typeof ownerOnlyAction === "string"
+                        ? "owner"
+                        : ownerOnlyAction?.requiredRole
+                }
                 onClose={() => setOwnerOnlyAction(null)}
+            />
+
+            <WarningPopup
+                open={dropUploadWarning !== null}
+                onClose={() => setDropUploadWarning(null)}
+                message={dropUploadWarning}
             />
 
             <ApiKeyMissingPopup
