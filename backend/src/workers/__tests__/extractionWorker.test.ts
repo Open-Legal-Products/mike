@@ -48,7 +48,9 @@ function makeDb(responses: Record<string, { select?: unknown }>) {
             (responses[table]?.select as { data: unknown }) ?? { data: null };
         const b: Record<string, unknown> = {
             select() {
-                state.op = "select";
+                // update(...).select("id") keeps op "update" so the call is
+                // recorded as the write it is; a leading select() is a read.
+                if (state.op !== "update") state.op = "select";
                 return b;
             },
             update(payload: Record<string, unknown>) {
@@ -75,7 +77,9 @@ function makeDb(responses: Record<string, { select?: unknown }>) {
                 const value =
                     state.op === "select"
                         ? resolveRead()
-                        : { data: null, error: null };
+                        : // Guarded updates read back the matched rows; report
+                          // one match so terminal writes proceed by default.
+                          { data: [{ id: "updated" }], error: null };
                 return Promise.resolve(value).then(onF, onR);
             },
         };
@@ -262,6 +266,25 @@ describe("runExtractionJob", () => {
         ).toBe(true);
     });
 
+    it("returns early on a canceled job without touching the DB (clear-cells won)", async () => {
+        const publish = vi.fn(async () => {});
+        const db = makeDb({
+            tabular_reviews: { select: { data: { columns_config: COLUMNS } } },
+            tabular_cells: { select: { data: [] } },
+        });
+
+        // clear-cells marked the job canceled while a prior attempt was
+        // active; this retry re-fetched the data and must be a no-op.
+        await runExtractionJob(
+            { ...DATA, canceled: true },
+            { db: db as never, publish },
+        );
+
+        expect(db.calls).toHaveLength(0);
+        expect(queryTabularAllColumns).not.toHaveBeenCalled();
+        expect(publish).not.toHaveBeenCalled();
+    });
+
     it("returns early when the review has no columns", async () => {
         const publish = vi.fn(async () => {});
         const db = makeDb({
@@ -343,6 +366,36 @@ describe("markExtractionFailed", () => {
         };
         expect(frame.row_id).toBe("row-1");
         expect(frame.column_index).toBe(0);
+    });
+
+    it("leaves cells the job no longer owns (cleared to pending) untouched", async () => {
+        const publish = vi.fn(async () => {});
+        const db = makeDb({
+            tabular_cells: {
+                select: {
+                    data: [
+                        // Cleared by the user via clear-cells while the job
+                        // was retrying: the reset must win — no error write,
+                        // no error frame.
+                        { id: "c0", column_index: 0, status: "pending", content: null },
+                        // Still claimed by this job: flips to error as before.
+                        { id: "c1", column_index: 1, status: "generating", content: null },
+                    ],
+                },
+            },
+        });
+
+        await markExtractionFailed(DATA, { db: db as never, publish });
+
+        const errorUpdates = db.calls.filter(
+            (c) => c.op === "update" && c.payload?.status === "error",
+        );
+        expect(errorUpdates).toHaveLength(1);
+        expect(errorUpdates[0].filters.id).toBe("c1");
+        expect(publish).toHaveBeenCalledTimes(1);
+        expect(
+            (publish.mock.calls[0][1] as { column_index: number }).column_index,
+        ).toBe(1);
     });
 });
 
