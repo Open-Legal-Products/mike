@@ -85,6 +85,16 @@ const MAX_REPLACEMENT_CHARS = 10_000;
 const MAX_REASON_CHARS = 500;
 const MAX_CLIENT_ERROR_CHARS = 500;
 
+/**
+ * Per-turn guardrails, enforced per adapter instance (= one chat request).
+ * A wedged pane must not burn 16 iterations x full deadline while holding the
+ * SSE socket and paying for model calls, and repeated live reads must not
+ * re-inject a 200k-char document into the context on every retry.
+ */
+const MAX_CONSECUTIVE_TIMEOUTS = 2;
+const CLIENT_CALL_BUDGET = 12;
+const MAX_LIVE_READS_PER_TURN = 3;
+
 export const WORD_CLIENT_TOOLS: OpenAIToolSchema[] = [
   {
     type: "function",
@@ -94,7 +104,8 @@ export const WORD_CLIENT_TOOLS: OpenAIToolSchema[] = [
         "Propose tracked-change edits to the active Word document open in " +
         "the user's Microsoft Word. Each edit replaces one exact contiguous " +
         "passage; an empty replacement deletes the passage. Send at most " +
-        `${MAX_EDITS_PER_CALL} edits per call; split larger sets across ` +
+        `${MAX_EDITS_PER_CALL} edits per call (a hard limit; larger batches ` +
+        "are rejected outright) and split larger sets across " +
         "calls. The add-in returns counts plus a row for each edit that did " +
         "not succeed: not-found means the original text does not appear " +
         "verbatim, ambiguous means it appears more than once. Fix the " +
@@ -105,6 +116,10 @@ export const WORD_CLIENT_TOOLS: OpenAIToolSchema[] = [
         properties: {
           edits: {
             type: "array",
+            // minItems/maxItems are advisory only — provider schema
+            // allowlists (Gemini's, for one) strip them — so the batch limit
+            // also travels in the tool description above, which is the only
+            // load-bearing signal, and is enforced in parseWordEditsInput.
             minItems: 1,
             maxItems: MAX_EDITS_PER_CALL,
             items: {
@@ -112,6 +127,7 @@ export const WORD_CLIENT_TOOLS: OpenAIToolSchema[] = [
               properties: {
                 original: {
                   type: "string",
+                  maxLength: MAX_ORIGINAL_CHARS,
                   description:
                     "Exact text copied character-for-character from one " +
                     "contiguous passage in a single paragraph of the active " +
@@ -121,6 +137,7 @@ export const WORD_CLIENT_TOOLS: OpenAIToolSchema[] = [
                 },
                 replacement: {
                   type: "string",
+                  maxLength: MAX_REPLACEMENT_CHARS,
                   description:
                     "Text to put in its place. Empty string deletes the " +
                     "passage. Send exactly one of replacement or formats.",
@@ -144,6 +161,7 @@ export const WORD_CLIENT_TOOLS: OpenAIToolSchema[] = [
                 },
                 reason: {
                   type: "string",
+                  maxLength: MAX_REASON_CHARS,
                   description:
                     "One concise, user-facing sentence explaining the change.",
                 },
@@ -471,12 +489,23 @@ export function normalizeEditOutcomes(
     const error = record.error.slice(0, MAX_CLIENT_ERROR_CHARS);
     return requested.map((_, index) => ({ index, status: "error", error }));
   }
-  const rows = Array.isArray(record.edits) ? record.edits : [];
+  // The posted array is untrusted: bound the scan so a pathological body
+  // cannot balloon into millions of map entries, and ignore out-of-range
+  // indices outright.
+  const rows = (Array.isArray(record.edits) ? record.edits : []).slice(
+    0,
+    MAX_EDITS_PER_CALL,
+  );
   const byIndex = new Map<number, Record<string, unknown>>();
   for (const raw of rows) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
     const row = raw as Record<string, unknown>;
-    if (typeof row.index === "number" && Number.isInteger(row.index)) {
+    if (
+      typeof row.index === "number" &&
+      Number.isInteger(row.index) &&
+      row.index >= 0 &&
+      row.index < requested.length
+    ) {
       byIndex.set(row.index, row);
     }
   }
@@ -635,6 +664,12 @@ export function createWordClientToolsAdapter(params: {
   // chat request, and the pane counts the same way from the same base.
   let nextBlockIndex = TOOL_EDIT_BLOCK_INDEX_BASE;
 
+  // Per-turn guard state (one adapter = one chat request).
+  let consecutiveTimeouts = 0;
+  let clientCallsUsed = 0;
+  let liveReadsUsed = 0;
+  let lastLiveReadText: string | null = null;
+
   const forwardCall = async (
     call: NormalizedToolCall,
     input: Record<string, unknown>,
@@ -665,7 +700,13 @@ export function createWordClientToolsAdapter(params: {
       keepAlive = setInterval(() => {
         write(": tool-wait\n\n");
       }, KEEP_ALIVE_INTERVAL_MS);
-      return await pending;
+      const result = await pending;
+      if (result === CLIENT_TOOL_TIMEOUT_RESULT) {
+        consecutiveTimeouts += 1;
+      } else {
+        consecutiveTimeouts = 0;
+      }
+      return result;
     } catch (error) {
       // Any synchronous failure after registration (a throwing SSE writer —
       // not reachable with the current res.write, but this module must not
@@ -739,6 +780,17 @@ export function createWordClientToolsAdapter(params: {
   const executeReadActiveDocument = async (
     call: NormalizedToolCall,
   ): Promise<{ content: string; events: AssistantEvent[] }> => {
+    if (liveReadsUsed >= MAX_LIVE_READS_PER_TURN) {
+      return {
+        content: JSON.stringify({
+          error:
+            `Already read the live document ${MAX_LIVE_READS_PER_TURN} times ` +
+            "in this response. Work from the text of the last read.",
+        }),
+        events: [],
+      };
+    }
+    liveReadsUsed += 1;
     write(
       `data: ${JSON.stringify({
         type: "doc_read_start",
@@ -769,6 +821,23 @@ export function createWordClientToolsAdapter(params: {
         filename: ACTIVE_WORD_DOCUMENT_LIVE_FILENAME,
       })}\n\n`,
     );
+    const readEvent: AssistantEvent = {
+      type: "doc_read",
+      filename: ACTIVE_WORD_DOCUMENT_LIVE_FILENAME,
+    };
+    // An identical re-read carries no information; every repeated 200k-char
+    // body would otherwise ride along in the message list for the rest of the
+    // turn's iterations.
+    if (record.document === lastLiveReadText) {
+      return {
+        content: JSON.stringify({
+          unchanged: true,
+          note: "The live document text is identical to your previous read. Work from that text.",
+        }),
+        events: [readEvent],
+      };
+    }
+    lastLiveReadText = record.document;
     // Same ceiling as the snapshot path (parseOptionalDocumentContext): the
     // return channel must not become a way to blow the context window with an
     // oversized — or maliciously posted — document body.
@@ -783,9 +852,7 @@ export function createWordClientToolsAdapter(params: {
       content: truncated
         ? `${body}\n\n[Document truncated at ${MAX_DOCUMENT_CONTEXT_CHARS} characters.]`
         : body,
-      events: [
-        { type: "doc_read", filename: ACTIVE_WORD_DOCUMENT_LIVE_FILENAME },
-      ],
+      events: [readEvent],
     };
   };
 
@@ -793,6 +860,33 @@ export function createWordClientToolsAdapter(params: {
     schemas: WORD_CLIENT_TOOLS,
     owns: isWordClientToolName,
     execute: async (call) => {
+      // A pane that stopped answering will not start again mid-turn; keep
+      // forwarding and the turn burns iterations x deadline while holding the
+      // SSE socket and paying for model calls that go nowhere.
+      if (consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
+        return {
+          content: JSON.stringify({
+            error:
+              "The Word add-in is not responding. Stop calling Word tools " +
+              "and tell the user what happened and what remains unverified.",
+          }),
+          events: [],
+        };
+      }
+      clientCallsUsed += 1;
+      if (clientCallsUsed > CLIENT_CALL_BUDGET) {
+        // Stop before the provider loop's iteration ceiling does: the loop
+        // truncates silently (the model never sees the last tool result),
+        // whereas this error still reaches the model in time to summarize.
+        return {
+          content: JSON.stringify({
+            error:
+              "The Word tool budget for this response is exhausted. Do not " +
+              "call Word tools again; summarize the work completed so far.",
+          }),
+          events: [],
+        };
+      }
       if (call.name === APPLY_WORD_EDITS_TOOL_NAME) {
         return executeApplyEdits(call);
       }

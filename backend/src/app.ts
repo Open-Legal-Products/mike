@@ -47,22 +47,36 @@ function makeLimiter(options: {
   windowMs: number;
   max: number;
   message?: string;
+  skip?: (req: express.Request) => boolean;
 }) {
   return rateLimit({
     windowMs: options.windowMs,
     max: options.max,
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => req.method === "OPTIONS",
+    skip: (req) => req.method === "OPTIONS" || options.skip?.(req) === true,
     message: {
       detail: options.message ?? "Too many requests. Please try again later.",
     },
   });
 }
 
+// The Word tool-result return channel gets its own lane: an edit-heavy turn
+// makes one POST per forwarded tool call, and letting those drain the shared
+// 300-request budget (per office NAT egress IP) turns a 429 into a full
+// tool-deadline stall per call inside a held SSE stream.
+const TOOL_RESULT_PATH = "/word-chat/tool-result";
+
 const generalLimiter = makeLimiter({
   windowMs: minutes(envInt("RATE_LIMIT_GENERAL_WINDOW_MINUTES", 15)),
   max: envInt("RATE_LIMIT_GENERAL_MAX", 300),
+  skip: (req) => req.path === TOOL_RESULT_PATH,
+});
+
+const toolResultLimiter = makeLimiter({
+  windowMs: minutes(envInt("RATE_LIMIT_TOOL_RESULT_WINDOW_MINUTES", 15)),
+  max: envInt("RATE_LIMIT_TOOL_RESULT_MAX", 2000),
+  message: "Too many tool results. Please try again later.",
 });
 
 const chatLimiter = makeLimiter({
@@ -155,6 +169,13 @@ app.use(generalLimiter);
 
 app.post("/chat", chatLimiter);
 app.post("/word-chat", chatLimiter);
+// Own limiter lane plus a tight body cap: the largest legitimate payload is
+// one live document read, which the backend truncates at 200k characters
+// anyway — 2mb leaves headroom for UTF-8 and JSON escaping while keeping the
+// global 50mb ceiling out of reach of this endpoint. This parser runs before
+// the global one; body-parser skips a request whose body is already parsed,
+// so the smaller limit wins for this path.
+app.post(TOOL_RESULT_PATH, toolResultLimiter, express.json({ limit: "2mb" }));
 app.post("/projects/:projectId/chat", chatLimiter);
 app.post("/tabular-review/:reviewId/chat", chatLimiter);
 app.post("/tabular-review/:reviewId/generate", chatLimiter);

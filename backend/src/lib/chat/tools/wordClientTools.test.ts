@@ -589,3 +589,117 @@ describe("hardening: unconfirmed outcomes and unsearchable input", () => {
     expect(content.length).toBeLessThan(MAX_DOCUMENT_CONTEXT_CHARS + 1_000);
   });
 });
+
+describe("per-turn cost guards", () => {
+  function silentAdapter() {
+    const frames: Record<string, unknown>[] = [];
+    const adapter = createWordClientToolsAdapter({
+      userId: "u1",
+      write: (line) => {
+        if (!line.startsWith("data: ")) return;
+        frames.push(
+          JSON.parse(line.replace(/^data: /, "").trim()) as Record<
+            string,
+            unknown
+          >,
+        );
+      },
+      // Time every forwarded call out immediately.
+      timeoutMs: 1,
+    });
+    return { adapter, frames };
+  }
+
+  it("stops forwarding after two consecutive timeouts", async () => {
+    const { adapter, frames } = silentAdapter();
+    const call = {
+      id: "t",
+      name: APPLY_WORD_EDITS_TOOL_NAME,
+      input: { edits: [{ original: "a", replacement: "b", reason: "r" }] },
+    };
+    await adapter.execute(call);
+    await adapter.execute(call);
+    const forwardedAfterTwo = frames.filter(
+      (frame) => frame.type === "client_tool_call",
+    ).length;
+
+    const third = await adapter.execute(call);
+    // A wedged pane will not wake up mid-turn; every further call is a held
+    // SSE socket plus a paid model round trip that goes nowhere.
+    expect(JSON.parse(third.content).error).toMatch(/not responding/);
+    expect(
+      frames.filter((frame) => frame.type === "client_tool_call").length,
+    ).toBe(forwardedAfterTwo);
+  });
+
+  it("caps live reads per turn and skips an unchanged re-read", async () => {
+    const frames: Record<string, unknown>[] = [];
+    const adapter = createWordClientToolsAdapter({
+      userId: "u1",
+      write: (line) => {
+        if (!line.startsWith("data: ")) return;
+        frames.push(
+          JSON.parse(line.replace(/^data: /, "").trim()) as Record<
+            string,
+            unknown
+          >,
+        );
+      },
+    });
+    const read = async (document: string): Promise<string> => {
+      const execution = adapter.execute({
+        id: "r",
+        name: READ_ACTIVE_DOCUMENT_TOOL_NAME,
+        input: {},
+      });
+      const frame = [...frames]
+        .reverse()
+        .find((f) => f.type === "client_tool_call");
+      submitClientToolResult(frame?.tool_call_id as string, "u1", { document });
+      return (await execution).content;
+    };
+
+    expect(await read("Body one")).toContain("Body one");
+    // A byte-identical re-read is pure context amplification.
+    const repeat = JSON.parse(await read("Body one")) as {
+      unchanged?: boolean;
+    };
+    expect(repeat.unchanged).toBe(true);
+    expect(await read("Body two")).toContain("Body two");
+    const fourth = await adapter.execute({
+      id: "r4",
+      name: READ_ACTIVE_DOCUMENT_TOOL_NAME,
+      input: {},
+    });
+    expect(JSON.parse(fourth.content).error).toMatch(/Already read/);
+  });
+
+  it("exhausts a per-turn call budget before the provider loop truncates", async () => {
+    const adapter = createWordClientToolsAdapter({
+      userId: "u1",
+      write: () => undefined,
+    });
+    const call = {
+      id: "t",
+      name: "some_other_tool",
+      input: {},
+    };
+    // The budget counts every owned-tool invocation, whatever it is.
+    for (let index = 0; index < 12; index += 1) {
+      const result = await adapter.execute(call);
+      expect(JSON.parse(result.content).error).toMatch(/is not available/);
+    }
+    const overBudget = await adapter.execute(call);
+    expect(JSON.parse(overBudget.content).error).toMatch(/budget/);
+  });
+
+  it("ignores posted rows whose index is outside the request", async () => {
+    const outcomes = normalizeEditOutcomes([{ original: "a", replacement: "b" }], {
+      edits: [
+        { index: 5, status: "applied" },
+        { index: -1, status: "applied" },
+      ],
+    });
+    expect(outcomes[0]?.status).toBe("error");
+  });
+});
