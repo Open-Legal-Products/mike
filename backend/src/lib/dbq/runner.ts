@@ -10,12 +10,21 @@
 
 import { createServerSupabase } from "../supabase";
 import { deleteFile } from "../storage";
+import { enqueueAppJobDelivery } from "../queue/appJobsQueue";
+import { redisEnabled } from "./driver";
 import type { Db, DbJob, DbJobHandlers } from "./types";
 
-const POLL_MS = (() => {
+/**
+ * Poll cadence depends on the driver: with Redis configured, BullMQ delivers
+ * jobs instantly and the poller is only a BACKSTOP for lost deliveries, so
+ * it idles at 60s; without Redis the poller IS the delivery mechanism and
+ * runs every 5s. DB_JOBS_POLL_MS overrides either.
+ */
+function pollMs(): number {
     const raw = Number(process.env.DB_JOBS_POLL_MS);
-    return Number.isFinite(raw) && raw >= 250 ? raw : 5_000;
-})();
+    if (Number.isFinite(raw) && raw >= 250) return raw;
+    return redisEnabled() ? 60_000 : 5_000;
+}
 const CLAIM_BATCH = 5;
 /** A "running" job whose claim is older than this is presumed crashed. */
 const STALE_SECONDS = 600;
@@ -33,6 +42,16 @@ export function retryDelayMs(attempts: number): number {
     const base = 30_000 * Math.pow(3, Math.max(0, attempts - 1));
     return Math.min(base, 30 * 60 * 1000);
 }
+
+/**
+ * Domain cleanup to run when a kind's job fails PERMANENTLY (attempts
+ * exhausted). The generic state machine only flips the db_jobs row to
+ * "failed" — kinds whose failure must also flip domain state (a document to
+ * "error", a row's cells to "error") register a hook here. Hook errors are
+ * contained: the row still lands in "failed" for inspection.
+ */
+export type DbJobFailureHook = (db: Db, job: DbJob) => Promise<void>;
+export const DB_JOB_FAILURE_HOOKS: Record<string, DbJobFailureHook> = {};
 
 /**
  * Run one claimed job through its handler and persist the outcome:
@@ -76,6 +95,7 @@ export async function processClaimedJob(
         const message =
             err instanceof Error ? err.message : String(err ?? "unknown");
         const spent = job.attempts >= job.max_attempts;
+        const delayMs = retryDelayMs(job.attempts);
         await db
             .from("db_jobs")
             .update(
@@ -87,13 +107,42 @@ export async function processClaimedJob(
                       }
                     : {
                           status: "pending",
-                          run_at: new Date(
-                              Date.now() + retryDelayMs(job.attempts),
-                          ).toISOString(),
+                          run_at: new Date(Date.now() + delayMs).toISOString(),
                           last_error: message,
                       },
             )
             .eq("id", job.id);
+        if (spent) {
+            const hook = DB_JOB_FAILURE_HOOKS[job.kind];
+            if (hook) {
+                try {
+                    await hook(db, job);
+                } catch (hookErr) {
+                    console.error("[dbq] failure hook crashed", {
+                        id: job.id,
+                        kind: job.kind,
+                        hookErr,
+                    });
+                }
+            }
+        } else if (redisEnabled()) {
+            // Redeliver the retry at its backoff time so it doesn't wait for
+            // the (slow, backstop-cadence) poller. Best-effort — the poller
+            // covers a failed redelivery.
+            try {
+                await enqueueAppJobDelivery(job.id, {
+                    delayMs,
+                    attempt: job.attempts,
+                });
+            } catch (redeliverErr) {
+                console.error(
+                    "[dbq] retry redelivery failed; poll backstop will run it:",
+                    redeliverErr instanceof Error
+                        ? redeliverErr.message
+                        : redeliverErr,
+                );
+            }
+        }
         console.error(
             spent
                 ? "[dbq] job permanently failed"
@@ -215,7 +264,7 @@ export function startDbJobRunner(handlers: DbJobHandlers): void {
                 inFlight = null;
             });
     };
-    pollTimer = setInterval(tick, POLL_MS);
+    pollTimer = setInterval(tick, pollMs());
     pollTimer.unref();
     // First tick shortly after boot so work queued before a restart resumes
     // without waiting a full interval.
@@ -229,7 +278,9 @@ export function startDbJobRunner(handlers: DbJobHandlers): void {
     sweepTimer.unref();
     setTimeout(sweep, 60_000).unref();
 
-    console.log(`[dbq] runner started (poll ${POLL_MS}ms)`);
+    console.log(
+        `[dbq] runner started (poll ${pollMs()}ms, driver ${redisEnabled() ? "redis" : "postgres"})`,
+    );
 }
 
 /** Stop polling and wait for the in-flight tick to finish (shutdown path). */

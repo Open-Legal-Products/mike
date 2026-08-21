@@ -17,6 +17,7 @@
 import IORedis from "ioredis";
 import type { Response } from "express";
 import { REDIS_URL } from "../queue/connection";
+import { redisEnabled } from "../dbq/driver";
 import { startSseHeartbeat } from "../sseHeartbeat";
 import { enqueueExtraction } from "../queue/extractionQueue";
 import {
@@ -152,7 +153,7 @@ async function tailTabularRun(args: {
     // Only when the async flag is on: the GET view is also reachable in
     // synchronous (no-Redis) deployments, where dialing Redis would hang the
     // stream — there the DB-poll backstop below does all the resolving.
-    if (process.env.ASYNC_TABULAR_EXTRACTION === "true") {
+    if (process.env.ASYNC_TABULAR_EXTRACTION === "true" && redisEnabled()) {
         try {
             sub = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
             await sub.subscribe(runProgressChannel(reviewId));
@@ -280,7 +281,7 @@ export async function awaitCellTerminal(args: {
                 else if (cell.status === "error") settle({ status: "error" });
             };
 
-            if (process.env.ASYNC_TABULAR_EXTRACTION === "true") {
+            if (process.env.ASYNC_TABULAR_EXTRACTION === "true" && redisEnabled()) {
                 try {
                     sub = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
                     void sub

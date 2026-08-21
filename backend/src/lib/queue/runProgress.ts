@@ -1,4 +1,5 @@
 import { getRedisConnection } from "./connection";
+import { redisEnabled } from "../dbq/driver";
 
 /**
  * Redis pub/sub bridge between the extraction worker and the SSE request that a
@@ -34,6 +35,10 @@ export async function publishCellUpdate(
     reviewId: string,
     update: CellUpdate,
 ): Promise<void> {
+    // Postgres driver: no pub/sub channel exists — the tailing views resolve
+    // every cell through their DB-poll backstops, so silently skipping the
+    // publish is correct, and dialing Redis here would hang no-Redis deploys.
+    if (!redisEnabled()) return;
     try {
         await getRedisConnection().publish(
             runProgressChannel(reviewId),

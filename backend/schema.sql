@@ -2390,6 +2390,55 @@ as $$
   returning j.*;
 $$;
 
+-- Claim ONE job by id — the Redis-delivery path (transactional-outbox
+-- pattern). When Redis is configured, enqueue also adds a BullMQ "delivery"
+-- job carrying this row's id so pickup is instant; the worker still claims
+-- through Postgres via this function, so a duplicate delivery (BullMQ retry,
+-- poller backstop racing the delivery) can never double-run the job: the
+-- second claimer matches zero rows. Same stale-running recovery as the batch
+-- claim.
+create or replace function public.claim_db_job(
+  p_id uuid,
+  p_stale_seconds integer default 600
+)
+returns setof public.db_jobs
+language sql
+as $$
+  update public.db_jobs j
+     set status = 'running',
+         claimed_at = now(),
+         attempts = j.attempts + 1
+   where j.id = p_id
+     and ((j.status = 'pending' and j.run_at <= now())
+       or (j.status = 'running'
+           and j.claimed_at < now() - make_interval(secs => p_stale_seconds)))
+  returning j.*;
+$$;
+
+-- Cancellation for dedupe-keyed jobs (clear-cells in Postgres-driver mode):
+-- pending jobs are deleted outright; running jobs get a persisted
+-- `canceled: true` stamped into their payload, which handlers check on each
+-- (re)claim — mirroring the BullMQ Job#updateData cancellation path.
+create or replace function public.cancel_db_jobs(p_dedupe_keys text[])
+returns integer
+language sql
+as $$
+  with deleted as (
+    delete from public.db_jobs
+     where dedupe_key = any(p_dedupe_keys)
+       and status = 'pending'
+    returning 1
+  ), marked as (
+    update public.db_jobs
+       set payload = payload || jsonb_build_object('canceled', true)
+     where dedupe_key = any(p_dedupe_keys)
+       and status = 'running'
+    returning 1
+  )
+  select coalesce((select count(*) from deleted), 0)::integer
+       + coalesce((select count(*) from marked), 0)::integer;
+$$;
+
 revoke all on public.user_profiles from anon, authenticated;
 revoke all on public.projects from anon, authenticated;
 revoke all on public.project_subfolders from anon, authenticated;
@@ -2428,6 +2477,10 @@ revoke all on function public.install_missing_default_workflows(text, jsonb)
   from public, anon, authenticated;
 revoke all on function public.claim_db_jobs(integer, integer)
   from public, anon, authenticated;
+revoke all on function public.claim_db_job(uuid, integer)
+  from public, anon, authenticated;
+revoke all on function public.cancel_db_jobs(text[])
+  from public, anon, authenticated;
 revoke all on function public.replace_user_router_models(uuid, text, text[])
   from public, anon, authenticated;
 
@@ -2447,6 +2500,12 @@ grant execute
   to service_role;
 grant execute
   on function public.claim_db_jobs(integer, integer)
+  to service_role;
+grant execute
+  on function public.claim_db_job(uuid, integer)
+  to service_role;
+grant execute
+  on function public.cancel_db_jobs(text[])
   to service_role;
 
 -- Tables created by this file are owned by the database bootstrap role. The

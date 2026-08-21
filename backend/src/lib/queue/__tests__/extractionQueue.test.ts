@@ -1,4 +1,24 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
+
+// These suites pin the REDIS driver's BullMQ semantics; the Postgres-driver
+// routing (same identities, DB queue transport) is pinned separately below.
+process.env.QUEUE_DRIVER = "redis";
+afterAll(() => {
+    delete process.env.QUEUE_DRIVER;
+});
+
+const enqueueDbJob = vi.fn(async () => ({ id: "dbjob-1", deduped: false }));
+vi.mock("../../dbq/enqueue", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("../../dbq/enqueue")>();
+    return {
+        ...actual,
+        enqueueDbJob: (...a: unknown[]) => enqueueDbJob(...a),
+    };
+});
+const rpc = vi.fn(async () => ({ data: 0, error: null }));
+vi.mock("../../supabase", () => ({
+    createServerSupabase: () => ({ rpc: (...a: unknown[]) => rpc(...a) }),
+}));
 
 vi.mock("../connection", () => ({
     getRedisConnection: () => ({}),
@@ -160,5 +180,48 @@ describe("removeQueuedExtractionJobs", () => {
             removeQueuedExtractionJobs("rev-1", ["row-1"], [0, 1]),
         ).resolves.toEqual({ removed: 0, canceled: 0 });
         expect(getJob).toHaveBeenCalledTimes(3);
+    });
+});
+
+describe("postgres driver routing", () => {
+    it("enqueues to the DB queue with the jobId as dedupe key", async () => {
+        process.env.QUEUE_DRIVER = "postgres";
+        try {
+            enqueueDbJob.mockClear();
+            await enqueueExtraction({ ...DATA, columnIndex: 2 });
+            const [, input] = enqueueDbJob.mock.calls[0] as [
+                unknown,
+                Record<string, unknown>,
+            ];
+            expect(input.kind).toBe("extraction.extract");
+            expect(input.dedupeKey).toBe("extract:rev-1:row-1:2");
+        } finally {
+            process.env.QUEUE_DRIVER = "redis";
+        }
+    });
+
+    it("clear-cells cancellation goes through the cancel_db_jobs RPC", async () => {
+        process.env.QUEUE_DRIVER = "postgres";
+        try {
+            rpc.mockClear();
+            rpc.mockResolvedValueOnce({ data: 3, error: null });
+            const out = await removeQueuedExtractionJobs(
+                "rev-1",
+                ["row-1"],
+                [0, 1],
+            );
+            expect(rpc).toHaveBeenCalledWith("cancel_db_jobs", {
+                p_dedupe_keys: [
+                    "extract:rev-1:row-1",
+                    "extract:rev-1:row-1:0",
+                    "extract:rev-1:row-1:1",
+                ],
+            });
+            expect(out).toEqual({ removed: 3, canceled: 0 });
+            // BullMQ must never be touched in this mode.
+            expect(getJob).not.toHaveBeenCalled();
+        } finally {
+            process.env.QUEUE_DRIVER = "redis";
+        }
     });
 });

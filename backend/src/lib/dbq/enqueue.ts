@@ -1,4 +1,6 @@
 import { deleteFile } from "../storage";
+import { enqueueAppJobDelivery } from "../queue/appJobsQueue";
+import { redisEnabled } from "./driver";
 import type { Db } from "./types";
 
 export interface EnqueueDbJobInput {
@@ -62,7 +64,45 @@ export async function enqueueDbJob(
         }
         throw new Error(`[dbq] enqueue ${input.kind} failed: ${error.message}`);
     }
+
+    // Outbox delivery: the row above is the durable record; when Redis is
+    // configured, also hand its id to BullMQ so a worker picks it up in
+    // milliseconds instead of at the next poll. Best-effort by design — a
+    // failed delivery just means the poll backstop runs the job instead.
+    if (redisEnabled()) {
+        try {
+            const delayMs = input.runAt
+                ? new Date(input.runAt).getTime() - Date.now()
+                : 0;
+            await enqueueAppJobDelivery(data.id as string, { delayMs });
+        } catch (err) {
+            console.error(
+                "[dbq] redis delivery failed; poll backstop will run the job:",
+                err instanceof Error ? err.message : err,
+            );
+        }
+    }
     return { id: data.id as string, deduped: false };
+}
+
+/**
+ * Liveness probe by dedupe key: does a pending/running job exist? The
+ * stale-work reaper uses this in Postgres-driver mode exactly like it uses
+ * Queue#getJob in Redis mode — job existence is the ownership signal for a
+ * transient domain status.
+ */
+export async function liveDbJobExists(
+    db: Db,
+    dedupeKey: string,
+): Promise<boolean> {
+    const { data } = await db
+        .from("db_jobs")
+        .select("id")
+        .eq("dedupe_key", dedupeKey)
+        .in("status", ["pending", "running"])
+        .limit(1)
+        .maybeSingle();
+    return !!data;
 }
 
 /**

@@ -21,6 +21,8 @@
 import { createServerSupabase } from "../supabase";
 import { getConversionQueue, conversionJobId } from "../queue/conversionQueue";
 import { getExtractionQueue, extractionJobId } from "../queue/extractionQueue";
+import { redisEnabled } from "../dbq/driver";
+import { liveDbJobExists } from "../dbq/enqueue";
 
 type Db = ReturnType<typeof createServerSupabase>;
 
@@ -57,12 +59,14 @@ export async function sweepStaleProcessingDocuments(
     }[]) {
         if (queueOn && doc.current_version_id) {
             // A job that still exists (waiting/active/delayed) owns this
-            // document; terminal jobs are removed immediately, so existence
-            // is the liveness signal.
-            const job = await getConversionQueue().getJob(
-                conversionJobId(doc.current_version_id),
-            );
-            if (job) continue;
+            // document; terminal jobs are removed immediately (BullMQ) or
+            // freed from the dedupe index (DB queue), so existence is the
+            // liveness signal on either driver.
+            const jobId = conversionJobId(doc.current_version_id);
+            const live = redisEnabled()
+                ? !!(await getConversionQueue().getJob(jobId))
+                : await liveDbJobExists(db, jobId);
+            if (live) continue;
         }
         const { error: updateErr } = await db
             .from("documents")
@@ -104,7 +108,13 @@ export async function sweepStaleGeneratingCells(
         return 0;
     }
 
-    const queue = getExtractionQueue();
+    const useRedis = redisEnabled();
+    const jobLive = (jobId: string) =>
+        useRedis
+            ? getExtractionQueue()
+                  .getJob(jobId)
+                  .then((j) => !!j)
+            : liveDbJobExists(db, jobId);
     // One liveness lookup per (review, row) — full-row jobs cover every cell
     // of their row; single-cell jobs are checked individually.
     const rowJobLive = new Map<string, boolean>();
@@ -117,16 +127,22 @@ export async function sweepStaleGeneratingCells(
     }[]) {
         const rowKey = `${cell.review_id}:${cell.row_id}`;
         if (!rowJobLive.has(rowKey)) {
-            const rowJob = await queue.getJob(
-                extractionJobId(cell.review_id, cell.row_id),
+            rowJobLive.set(
+                rowKey,
+                await jobLive(extractionJobId(cell.review_id, cell.row_id)),
             );
-            rowJobLive.set(rowKey, !!rowJob);
         }
         if (rowJobLive.get(rowKey)) continue;
-        const cellJob = await queue.getJob(
-            extractionJobId(cell.review_id, cell.row_id, cell.column_index),
-        );
-        if (cellJob) continue;
+        if (
+            await jobLive(
+                extractionJobId(
+                    cell.review_id,
+                    cell.row_id,
+                    cell.column_index,
+                ),
+            )
+        )
+            continue;
 
         const { error: updateErr } = await db
             .from("tabular_cells")

@@ -6,8 +6,14 @@ import {
     createExtractionWorker,
     stopExtractionWorker,
 } from "./extractionWorker";
+import {
+    createAppJobsWorker,
+    stopAppJobsWorker,
+} from "./appJobsWorker";
 import { closeConversionQueue } from "../lib/queue/conversionQueue";
 import { closeExtractionQueue } from "../lib/queue/extractionQueue";
+import { closeAppJobsQueue } from "../lib/queue/appJobsQueue";
+import { redisEnabled } from "../lib/dbq/driver";
 
 /**
  * One background queue's lifecycle, described declaratively. `startWorkers()` /
@@ -36,16 +42,28 @@ export interface WorkerDescriptor {
 export const WORKER_REGISTRY: WorkerDescriptor[] = [
     {
         name: "document-conversion",
-        enabled: () => process.env.ASYNC_DOCUMENT_CONVERSION === "true",
+        enabled: () =>
+            process.env.ASYNC_DOCUMENT_CONVERSION === "true" && redisEnabled(),
         create: createConversionWorker,
         stop: stopConversionWorker,
         closeQueue: closeConversionQueue,
     },
     {
         name: "tabular-extraction",
-        enabled: () => process.env.ASYNC_TABULAR_EXTRACTION === "true",
+        enabled: () =>
+            process.env.ASYNC_TABULAR_EXTRACTION === "true" && redisEnabled(),
         create: createExtractionWorker,
         stop: stopExtractionWorker,
         closeQueue: closeExtractionQueue,
+    },
+    {
+        // Fast delivery for the DB-backed registry jobs (outbox pattern) —
+        // only meaningful when Redis is configured; the DB poller carries
+        // those jobs otherwise.
+        name: "app-jobs",
+        enabled: redisEnabled,
+        create: () => void createAppJobsWorker(),
+        stop: stopAppJobsWorker,
+        closeQueue: closeAppJobsQueue,
     },
 ];

@@ -1,5 +1,8 @@
 import { Queue } from "bullmq";
 import { getRedisConnection } from "./connection";
+import { redisEnabled } from "../dbq/driver";
+import { enqueueDbJob } from "../dbq/enqueue";
+import { createServerSupabase } from "../supabase";
 
 /** BullMQ queue that runs DOCX/DOC → PDF conversion off the request thread. */
 export const CONVERSION_QUEUE = "document-conversion";
@@ -60,7 +63,18 @@ export function conversionJobId(versionId: string): string {
  * duplicate. Durable state lives in document_versions/documents, not in the
  * job record.
  */
-export function enqueueConversion(data: ConversionJobData) {
+export async function enqueueConversion(data: ConversionJobData) {
+    // Postgres driver (no Redis anywhere): the same job rides the DB queue —
+    // identical dedupe identity (the jobId doubles as the dedupe key),
+    // identical retry budget, same handler body (runConversionJob).
+    if (!redisEnabled()) {
+        return enqueueDbJob(createServerSupabase(), {
+            kind: "conversion.convert",
+            payload: data as unknown as Record<string, unknown>,
+            dedupeKey: conversionJobId(data.versionId),
+            maxAttempts: 3,
+        });
+    }
     return getConversionQueue().add("convert", data, {
         jobId: conversionJobId(data.versionId),
         attempts: 3,

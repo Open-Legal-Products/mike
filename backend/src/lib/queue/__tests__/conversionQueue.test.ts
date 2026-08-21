@@ -1,4 +1,24 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
+
+// These suites pin the REDIS driver's BullMQ semantics; the Postgres-driver
+// routing (same identities, DB queue transport) is pinned separately below.
+process.env.QUEUE_DRIVER = "redis";
+afterAll(() => {
+    delete process.env.QUEUE_DRIVER;
+});
+
+const enqueueDbJob = vi.fn(async () => ({ id: "dbjob-1", deduped: false }));
+vi.mock("../../dbq/enqueue", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("../../dbq/enqueue")>();
+    return {
+        ...actual,
+        enqueueDbJob: (...a: unknown[]) => enqueueDbJob(...a),
+    };
+});
+const rpc = vi.fn(async () => ({ data: 0, error: null }));
+vi.mock("../../supabase", () => ({
+    createServerSupabase: () => ({ rpc: (...a: unknown[]) => rpc(...a) }),
+}));
 
 vi.mock("../connection", () => ({
     getRedisConnection: () => ({}),
@@ -69,5 +89,33 @@ describe("enqueueConversion", () => {
         const data = add.mock.calls[0][1];
         expect(data.pdfKey).toBe("converted-pdfs/user-1/doc-1/slug.pdf");
         expect(data.finalizeDocumentStatus).toBe(false);
+    });
+});
+
+describe("enqueueConversion (postgres driver)", () => {
+    it("routes to the DB queue with the same dedupe identity and retry budget", async () => {
+        process.env.QUEUE_DRIVER = "postgres";
+        try {
+            enqueueDbJob.mockClear();
+            await enqueueConversion({
+                documentId: "doc-1",
+                versionId: "ver-1",
+                userId: "user-1",
+                storagePath: "documents/user-1/doc-1/source.docx",
+                fileType: "docx",
+            });
+            expect(enqueueDbJob).toHaveBeenCalledTimes(1);
+            const [, input] = enqueueDbJob.mock.calls[0] as [
+                unknown,
+                Record<string, unknown>,
+            ];
+            expect(input.kind).toBe("conversion.convert");
+            // The BullMQ jobId doubles as the DB dedupe key, so double
+            // submits collapse identically on either transport.
+            expect(input.dedupeKey).toBe("convert:ver-1");
+            expect(input.maxAttempts).toBe(3);
+        } finally {
+            process.env.QUEUE_DRIVER = "redis";
+        }
     });
 });
