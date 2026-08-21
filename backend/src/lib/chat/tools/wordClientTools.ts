@@ -15,8 +15,12 @@
  * the same process that is streaming the chat. That matches how the rest of
  * the streaming state (SSE socket, abort signal) already works.
  */
-import type { OpenAIToolSchema } from "../../llm";
+import { randomUUID } from "node:crypto";
+import type { NormalizedToolCall, OpenAIToolSchema } from "../../llm";
+import { spotlight } from "../contextBuilders";
 import { WORD_EDIT_FORMATS } from "../wordDocumentEdits";
+import { ACTIVE_WORD_DOCUMENT_LIVE_FILENAME } from "../wordPrompt";
+import type { AssistantEvent, ClientToolsAdapter } from "../streaming";
 
 export const APPLY_WORD_EDITS_TOOL_NAME = "apply_word_edits";
 export const READ_ACTIVE_DOCUMENT_TOOL_NAME = "read_active_document";
@@ -498,5 +502,166 @@ export function buildApplyResultPayload(
         }
       : {}),
     ...(Object.keys(hints).length ? { hints } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Adapter
+// ---------------------------------------------------------------------------
+
+/**
+ * First block_index a tool-proposed edit may claim.
+ *
+ * Prose `<EDITS>` blocks number from 0 upward within a message. Tool edits
+ * start high so the two channels can never collide on one
+ * (message_id, block_index) row even if a model emits both in one turn — and
+ * the pane derives its card keys and hidden bookmark ids from the same
+ * offset, so both sides must count identically by construction (see
+ * word-addin/src/taskpane/lib/wordTrackedEditKeys.ts).
+ *
+ * It stays well under the routes' 10_000 block_index ceiling, which is what
+ * makes tool edits storable through the same PUT/PATCH endpoints.
+ */
+export const TOOL_EDIT_BLOCK_INDEX_BASE = 1_000;
+
+/**
+ * Build the runLLMStream adapter for one Word-chat request. `write` is the
+ * request's SSE writer; every forwarded call gets a fresh bridge id so
+ * concurrent chats (even for the same user) can never cross wires.
+ */
+export function createWordClientToolsAdapter(params: {
+  userId: string;
+  write: (s: string) => void;
+  signal?: AbortSignal;
+  nonce?: string;
+  /** Test seam; production uses CLIENT_TOOL_RESULT_TIMEOUT_MS. */
+  timeoutMs?: number;
+}): ClientToolsAdapter {
+  const { userId, write, signal, nonce, timeoutMs } = params;
+
+  // Message-wide flat ordinal for this turn's tool edits. One adapter is one
+  // chat request, and the pane counts the same way from the same base.
+  let nextBlockIndex = TOOL_EDIT_BLOCK_INDEX_BASE;
+
+  const forwardCall = async (
+    call: NormalizedToolCall,
+    input: Record<string, unknown>,
+  ): Promise<unknown> => {
+    const bridgeId = randomUUID();
+    const pending = waitForClientToolResult({
+      callId: bridgeId,
+      userId,
+      signal,
+      timeoutMs,
+    });
+    write(
+      `data: ${JSON.stringify({
+        type: "client_tool_call",
+        tool_call_id: bridgeId,
+        name: call.name,
+        input,
+      })}\n\n`,
+    );
+    return pending;
+  };
+
+  /**
+   * One placement marker per requested edit, in request order, carrying the
+   * canonical row's fields. Emitted for FAILED edits too: a card that says
+   * "couldn't find this text" is the user's only record that the model tried.
+   */
+  const editBlockEvents = (
+    edits: WordEditRequest[],
+    firstBlockIndex: number,
+  ): AssistantEvent[] =>
+    edits.map((edit, offset) => ({
+      type: "word_edit_block",
+      block_index: firstBlockIndex + offset,
+      original_text: edit.original,
+      replacement_text: edit.replacement,
+      formats: edit.formats ?? [],
+      occurrence: edit.occurrence ?? null,
+      reason: edit.reason ?? null,
+    }));
+
+  const executeApplyEdits = async (
+    call: NormalizedToolCall,
+  ): Promise<{ content: string; events: AssistantEvent[] }> => {
+    const parsed = parseWordEditsInput(call.input);
+    if (!parsed.ok) {
+      // Nothing was forwarded, so the ordinal counter must not advance —
+      // the pane never saw this call and will not have counted it either.
+      return { content: JSON.stringify({ error: parsed.error }), events: [] };
+    }
+    const firstBlockIndex = nextBlockIndex;
+    nextBlockIndex += parsed.edits.length;
+    const clientResult = await forwardCall(call, {
+      block_index: firstBlockIndex,
+      edits: parsed.edits,
+    });
+    const outcomes = normalizeEditOutcomes(parsed.edits, clientResult);
+    return {
+      content: JSON.stringify(buildApplyResultPayload(outcomes)),
+      events: editBlockEvents(parsed.edits, firstBlockIndex),
+    };
+  };
+
+  const executeReadActiveDocument = async (
+    call: NormalizedToolCall,
+  ): Promise<{ content: string; events: AssistantEvent[] }> => {
+    write(
+      `data: ${JSON.stringify({
+        type: "doc_read_start",
+        filename: ACTIVE_WORD_DOCUMENT_LIVE_FILENAME,
+      })}\n\n`,
+    );
+    const clientResult = await forwardCall(call, {});
+    const record =
+      clientResult &&
+      typeof clientResult === "object" &&
+      !Array.isArray(clientResult)
+        ? (clientResult as Record<string, unknown>)
+        : {};
+    if (typeof record.document !== "string") {
+      const error =
+        typeof record.error === "string" && record.error
+          ? record.error.slice(0, MAX_CLIENT_ERROR_CHARS)
+          : "The Word add-in could not read the document.";
+      return { content: JSON.stringify({ error }), events: [] };
+    }
+    write(
+      `data: ${JSON.stringify({
+        type: "doc_read",
+        filename: ACTIVE_WORD_DOCUMENT_LIVE_FILENAME,
+      })}\n\n`,
+    );
+    // The live body is untrusted document text, exactly like a stored
+    // document's body returned by read_document — same spotlight fence.
+    const body = nonce ? spotlight(record.document, nonce) : record.document;
+    return {
+      content: body,
+      events: [
+        { type: "doc_read", filename: ACTIVE_WORD_DOCUMENT_LIVE_FILENAME },
+      ],
+    };
+  };
+
+  return {
+    schemas: WORD_CLIENT_TOOLS,
+    owns: isWordClientToolName,
+    execute: async (call) => {
+      if (call.name === APPLY_WORD_EDITS_TOOL_NAME) {
+        return executeApplyEdits(call);
+      }
+      if (call.name === READ_ACTIVE_DOCUMENT_TOOL_NAME) {
+        return executeReadActiveDocument(call);
+      }
+      return {
+        content: JSON.stringify({
+          error: `Tool '${call.name}' is not available.`,
+        }),
+        events: [],
+      };
+    },
   };
 }

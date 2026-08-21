@@ -101,8 +101,54 @@ function parseJsonEdit(
 }
 
 /**
+ * Read one `word_edit_block` placement marker — the tool channel's answer to
+ * a parsed `<EDITS>` row. The backend adapter already validated the model's
+ * input, so this only re-checks what the DB column demands.
+ */
+function parseToolEditBlock(
+  event: Record<string, unknown>,
+): ParsedWordDocumentEdit | null {
+  const blockIndex = event.block_index;
+  if (
+    typeof blockIndex !== "number" ||
+    !Number.isSafeInteger(blockIndex) ||
+    blockIndex < 0
+  ) {
+    return null;
+  }
+  const originalText =
+    typeof event.original_text === "string" ? event.original_text : "";
+  if (!originalText.trim() || originalText.length > 200) return null;
+  const replacementText =
+    typeof event.replacement_text === "string" ? event.replacement_text : "";
+  const formats = Array.isArray(event.formats)
+    ? event.formats.filter(
+        (format): format is string =>
+          typeof format === "string" && WORD_EDIT_FORMATS.has(format),
+      )
+    : [];
+  return {
+    blockIndex,
+    originalText,
+    replacementText,
+    formats: [...new Set(formats)],
+    occurrence: event.occurrence === "all" ? "all" : null,
+    reason:
+      typeof event.reason === "string" && event.reason.trim()
+        ? event.reason.trim()
+        : null,
+  };
+}
+
+/**
  * Split completed Word edit protocol out of assistant content while retaining
  * the exact event position at which every edit appeared.
+ *
+ * Two channels feed this: `<EDITS>` blocks embedded in content text, and
+ * `word_edit_block` events the client-tool adapter splices in where a tool
+ * call landed. Both leave the same `{kind:"edit"}` part behind, so the
+ * normalized history a chat replays is identical whichever channel produced
+ * it.
  */
 export function projectWordDocumentEditEvents(events: unknown[]): {
   parts: ContentPart[];
@@ -111,6 +157,7 @@ export function projectWordDocumentEditEvents(events: unknown[]): {
   const parts: ContentPart[] = [];
   const edits: ParsedWordDocumentEdit[] = [];
   const seenOriginals = new Set<string>();
+  const seenBlockIndexes = new Set<number>();
   let blockIndex = 0;
 
   for (const candidate of events) {
@@ -122,6 +169,21 @@ export function projectWordDocumentEditEvents(events: unknown[]): {
       continue;
     }
     const event = candidate as Record<string, unknown>;
+    if (event.type === "word_edit_block") {
+      const parsed = parseToolEditBlock(event);
+      // A duplicate ordinal would upsert two different edits onto one row;
+      // drop the later marker rather than let the card lie.
+      if (parsed && !seenBlockIndexes.has(parsed.blockIndex)) {
+        seenBlockIndexes.add(parsed.blockIndex);
+        edits.push(parsed);
+        parts.push({
+          kind: "edit",
+          blockIndex: parsed.blockIndex,
+          sourceEvent: event,
+        });
+      }
+      continue;
+    }
     if (event.type !== "content" || typeof event.text !== "string") {
       parts.push({ kind: "content", sourceEvent: event });
       continue;
@@ -145,8 +207,13 @@ export function projectWordDocumentEditEvents(events: unknown[]): {
       if (Array.isArray(rows)) {
         for (const row of rows) {
           const parsed = parseJsonEdit(row, blockIndex);
-          if (parsed && !seenOriginals.has(parsed.originalText)) {
+          if (
+            parsed &&
+            !seenOriginals.has(parsed.originalText) &&
+            !seenBlockIndexes.has(blockIndex)
+          ) {
             seenOriginals.add(parsed.originalText);
+            seenBlockIndexes.add(blockIndex);
             edits.push(parsed);
             parts.push({ kind: "edit", blockIndex, sourceEvent: event });
           }

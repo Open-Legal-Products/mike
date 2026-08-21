@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   APPLY_WORD_EDITS_TOOL_NAME,
   READ_ACTIVE_DOCUMENT_TOOL_NAME,
+  TOOL_EDIT_BLOCK_INDEX_BASE,
   buildApplyResultPayload,
+  createWordClientToolsAdapter,
   isWordClientToolName,
   normalizeEditOutcomes,
   parseWordEditsInput,
@@ -253,5 +255,206 @@ describe("buildApplyResultPayload", () => {
     const rows = payload.edits as Record<string, unknown>[];
     expect(rows[0]).toMatchObject({ skip_reason: "pre-existing-revisions" });
     expect(rows[0]).not.toHaveProperty("reason");
+  });
+});
+
+function collectSse(): {
+  frames: Record<string, unknown>[];
+  write: (s: string) => void;
+} {
+  const frames: Record<string, unknown>[] = [];
+  return {
+    frames,
+    write: (s: string) => {
+      const data = s.replace(/^data: /, "").trim();
+      frames.push(JSON.parse(data) as Record<string, unknown>);
+    },
+  };
+}
+
+function lastToolCallFrame(
+  frames: Record<string, unknown>[],
+): Record<string, unknown> {
+  const frame = [...frames].reverse().find((f) => f.type === "client_tool_call");
+  if (!frame) throw new Error("no client_tool_call frame emitted");
+  return frame;
+}
+
+describe("createWordClientToolsAdapter", () => {
+  it("rejects invalid apply_word_edits input without a client round trip", async () => {
+    const { frames, write } = collectSse();
+    const adapter = createWordClientToolsAdapter({ userId: "u1", write });
+    const { content, events } = await adapter.execute({
+      id: "t1",
+      name: APPLY_WORD_EDITS_TOOL_NAME,
+      input: { edits: [] },
+    });
+    expect(JSON.parse(content)).toEqual({
+      error: "edits must be a non-empty array",
+    });
+    expect(events).toEqual([]);
+    expect(frames).toEqual([]);
+  });
+
+  it("forwards apply_word_edits over SSE and reports per-edit outcomes", async () => {
+    const { frames, write } = collectSse();
+    const adapter = createWordClientToolsAdapter({ userId: "u1", write });
+    const execution = adapter.execute({
+      id: "t1",
+      name: APPLY_WORD_EDITS_TOOL_NAME,
+      input: {
+        edits: [
+          { original: "teh", replacement: "the", reason: "Fix typo" },
+          { original: "missing text", replacement: "", reason: "Delete" },
+        ],
+      },
+    });
+    // The frame is written synchronously when execute() starts awaiting.
+    const frame = lastToolCallFrame(frames);
+    expect(frame.name).toBe(APPLY_WORD_EDITS_TOOL_NAME);
+    const input = frame.input as {
+      block_index: number;
+      edits: { original: string }[];
+    };
+    expect(input.edits).toHaveLength(2);
+    // The pane keys its cards off this ordinal; both sides count from the
+    // same base so their (message_id, block_index) rows converge.
+    expect(input.block_index).toBe(TOOL_EDIT_BLOCK_INDEX_BASE);
+
+    submitClientToolResult(frame.tool_call_id as string, "u1", {
+      edits: [
+        { index: 0, status: "proposed", matches: 1 },
+        { index: 1, status: "not-found", matches: 0 },
+      ],
+    });
+    const { content, events } = await execution;
+    const parsed = JSON.parse(content) as {
+      applied: number;
+      proposed: number;
+      failed: number;
+      edits: { status: string }[];
+      hints: Record<string, string>;
+    };
+    expect(parsed.applied).toBe(0);
+    expect(parsed.proposed).toBe(1);
+    expect(parsed.failed).toBe(1);
+    expect(parsed.hints["not-found"]).toMatch(/Re-read the document/);
+    // A placement marker per REQUESTED edit, failures included: the card is
+    // the user's only record that the model tried.
+    expect(events).toEqual([
+      {
+        type: "word_edit_block",
+        block_index: TOOL_EDIT_BLOCK_INDEX_BASE,
+        original_text: "teh",
+        replacement_text: "the",
+        formats: [],
+        occurrence: null,
+        reason: "Fix typo",
+      },
+      {
+        type: "word_edit_block",
+        block_index: TOOL_EDIT_BLOCK_INDEX_BASE + 1,
+        original_text: "missing text",
+        replacement_text: "",
+        formats: [],
+        occurrence: null,
+        reason: "Delete",
+      },
+    ]);
+  });
+
+  it("continues the ordinal count across sequential calls, and not across rejected ones", async () => {
+    const { frames, write } = collectSse();
+    const adapter = createWordClientToolsAdapter({ userId: "u1", write });
+
+    const first = adapter.execute({
+      id: "t1",
+      name: APPLY_WORD_EDITS_TOOL_NAME,
+      input: {
+        edits: [
+          { original: "a", replacement: "b", reason: "r" },
+          { original: "c", replacement: "d", reason: "r" },
+        ],
+      },
+    });
+    submitClientToolResult(lastToolCallFrame(frames).tool_call_id as string, "u1", {
+      edits: [
+        { index: 0, status: "proposed" },
+        { index: 1, status: "proposed" },
+      ],
+    });
+    await first;
+
+    // A batch the schema rejects never reaches the pane, so it must not
+    // consume ordinals the pane will never have counted.
+    await adapter.execute({
+      id: "t2",
+      name: APPLY_WORD_EDITS_TOOL_NAME,
+      input: { edits: [{ original: "", replacement: "x", reason: "r" }] },
+    });
+
+    const second = adapter.execute({
+      id: "t3",
+      name: APPLY_WORD_EDITS_TOOL_NAME,
+      input: { edits: [{ original: "e", replacement: "f", reason: "r" }] },
+    });
+    const frame = lastToolCallFrame(frames);
+    expect((frame.input as { block_index: number }).block_index).toBe(
+      TOOL_EDIT_BLOCK_INDEX_BASE + 2,
+    );
+    submitClientToolResult(frame.tool_call_id as string, "u1", {
+      edits: [{ index: 0, status: "proposed" }],
+    });
+    const { events } = await second;
+    expect(events).toEqual([
+      expect.objectContaining({
+        block_index: TOOL_EDIT_BLOCK_INDEX_BASE + 2,
+      }),
+    ]);
+  });
+
+  it("round-trips read_active_document with read lifecycle frames", async () => {
+    const { frames, write } = collectSse();
+    const adapter = createWordClientToolsAdapter({
+      userId: "u1",
+      write,
+      nonce: "test-nonce",
+    });
+    const execution = adapter.execute({
+      id: "t2",
+      name: READ_ACTIVE_DOCUMENT_TOOL_NAME,
+      input: {},
+    });
+    expect(frames[0]).toMatchObject({ type: "doc_read_start" });
+    const frame = lastToolCallFrame(frames);
+    submitClientToolResult(frame.tool_call_id as string, "u1", {
+      document: "Fresh body text",
+    });
+    const { content, events } = await execution;
+    // The live body is untrusted input and must arrive spotlight-fenced.
+    expect(content).toContain("Fresh body text");
+    expect(content).toContain("test-nonce");
+    // A label of its own: sharing the snapshot's filename would merge the
+    // two reads into one activity row.
+    expect(events).toEqual([
+      { type: "doc_read", filename: "Active Word document (live)" },
+    ]);
+    expect(frames.some((f) => f.type === "doc_read")).toBe(true);
+  });
+
+  it("surfaces a client read failure as an error result", async () => {
+    const { frames, write } = collectSse();
+    const adapter = createWordClientToolsAdapter({ userId: "u1", write });
+    const execution = adapter.execute({
+      id: "t3",
+      name: READ_ACTIVE_DOCUMENT_TOOL_NAME,
+      input: {},
+    });
+    const frame = lastToolCallFrame(frames);
+    submitClientToolResult(frame.tool_call_id as string, "u1", {
+      error: "Office.js threw",
+    });
+    const { content } = await execution;
+    expect(JSON.parse(content)).toEqual({ error: "Office.js threw" });
   });
 });
