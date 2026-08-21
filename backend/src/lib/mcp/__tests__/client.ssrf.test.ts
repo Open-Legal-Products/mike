@@ -142,4 +142,85 @@ describe("guardedFetch", () => {
         };
         expect(nextInit.dispatcher).toBe(init.dispatcher);
     });
+
+    it("follows redirects hop by hop, re-validating each target", async () => {
+        resolvesTo("93.184.216.34");
+        const fetchSpy = vi
+            .spyOn(globalThis, "fetch")
+            .mockResolvedValueOnce(
+                new Response(null, {
+                    status: 302,
+                    headers: { location: "/metadata/.well-known/oauth-protected-resource" },
+                }),
+            )
+            .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+
+        const res = await guardedFetch(
+            "https://public.example.com/.well-known/oauth-protected-resource",
+        );
+        expect(res.status).toBe(200);
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+        expect(String(fetchSpy.mock.calls[1][0])).toBe(
+            "https://public.example.com/metadata/.well-known/oauth-protected-resource",
+        );
+    });
+
+    it("refuses to follow a redirect to a blocked address", async () => {
+        lookupMock
+            .mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }])
+            .mockResolvedValueOnce([{ address: "10.0.0.5", family: 4 }]);
+        const fetchSpy = vi
+            .spyOn(globalThis, "fetch")
+            .mockResolvedValueOnce(
+                new Response(null, {
+                    status: 302,
+                    headers: { location: "https://evil.example.com/" },
+                }),
+            );
+
+        await expect(
+            guardedFetch("https://public.example.com/"),
+        ).rejects.toThrow(/blocked network address/);
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("strips credentials when a redirect crosses origins", async () => {
+        resolvesTo("93.184.216.34");
+        const fetchSpy = vi
+            .spyOn(globalThis, "fetch")
+            .mockResolvedValueOnce(
+                new Response(null, {
+                    status: 302,
+                    headers: { location: "https://other.example.com/meta" },
+                }),
+            )
+            .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+
+        await guardedFetch("https://public.example.com/", {
+            headers: { authorization: "Bearer secret" },
+        });
+        const secondInit = fetchSpy.mock.calls[1][1] as RequestInit;
+        expect(new Headers(secondInit.headers).get("authorization")).toBeNull();
+    });
+
+    it("converts a redirected POST to GET and drops the body", async () => {
+        resolvesTo("93.184.216.34");
+        const fetchSpy = vi
+            .spyOn(globalThis, "fetch")
+            .mockResolvedValueOnce(
+                new Response(null, {
+                    status: 303,
+                    headers: { location: "/done" },
+                }),
+            )
+            .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+
+        await guardedFetch("https://public.example.com/register", {
+            method: "POST",
+            body: "{}",
+        });
+        const secondInit = fetchSpy.mock.calls[1][1] as RequestInit;
+        expect(secondInit.method).toBe("GET");
+        expect(secondInit.body).toBeUndefined();
+    });
 });

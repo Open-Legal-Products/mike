@@ -228,7 +228,13 @@ export function toConnectorSummary(
 // Private/reserved IP classification lives in lib/privateIp.ts so every
 // guarded egress check reuses the exact same ranges.
 
-export async function validateRemoteMcpUrl(rawUrl: string): Promise<string> {
+type ValidatedTarget = {
+    url: string;
+    hostname: string;
+    addresses: { address: string; family: number }[];
+};
+
+async function resolveValidatedTarget(rawUrl: string): Promise<ValidatedTarget> {
     let url: URL;
     try {
         url = new URL(rawUrl);
@@ -260,14 +266,19 @@ export async function validateRemoteMcpUrl(rawUrl: string): Promise<string> {
             ? hostname.slice(1, -1)
             : hostname;
     const literalFamily = net.isIP(literalHost);
-    const addresses = literalFamily
-        ? [{ address: literalHost }]
+    const addresses: { address: string; family: number }[] = literalFamily
+        ? [{ address: literalHost, family: literalFamily }]
         : await dns.lookup(hostname, { all: true, verbatim: true });
     if (!addresses.length || addresses.some(({ address }) => isBlockedIp(address))) {
         throw new Error("MCP server URL resolves to a blocked network address.");
     }
 
-    return url.toString();
+    return { url: url.toString(), hostname, addresses };
+}
+
+export async function validateRemoteMcpUrl(rawUrl: string): Promise<string> {
+    const target = await resolveValidatedTarget(rawUrl);
+    return target.url;
 }
 
 export function headersForAuth(config: McpConnectorAuthConfig) {
@@ -329,64 +340,101 @@ export function authConfigPatch(config: McpConnectorAuthConfig): Record<string, 
     });
 }
 
-// A shared undici dispatcher whose DNS lookup runs the private-IP guard at the
-// moment a socket is opened and returns ONLY validated addresses. Because
-// undici connects to exactly what this lookup yields, the address we validate is
-// the address we connect to — there is no second, unguarded resolution for an
-// attacker to race (DNS-rebinding / TOCTOU). Reusing the dispatcher also lets
-// undici pool validated HTTPS connections instead of leaving a new Agent and
-// keep-alive socket behind for every MCP request.
-const guardedAgent = new Agent({
-    connect: {
-        lookup: (hostname, _options, callback) => {
-            dns.lookup(hostname, { all: true, verbatim: true })
-                .then((addresses) => {
-                    if (
-                        !addresses.length ||
-                        addresses.some(({ address }) => isBlockedIp(address))
-                    ) {
-                        callback(
-                            new Error(
-                                "MCP server URL resolves to a blocked network address.",
-                            ),
-                            [],
-                        );
-                        return;
-                    }
-                    callback(null, addresses);
-                })
-                .catch((err: unknown) =>
+// Cache one dispatcher per validated hostname+address set. Pinning the
+// pre-validated DNS answers closes the DNS-rebinding window between
+// validateRemoteMcpUrl and the actual connection (which would otherwise
+// re-resolve the hostname).
+const dispatcherCache = new Map<string, Agent>();
+
+function pinnedDispatcher(target: ValidatedTarget): Agent {
+    const key = `${target.hostname}|${target.addresses
+        .map((entry) => `${entry.address}:${entry.family}`)
+        .sort()
+        .join(",")}`;
+    const cached = dispatcherCache.get(key);
+    if (cached) return cached;
+    const agent = new Agent({
+        connect: {
+            lookup: (_hostname, options, callback) => {
+                if (options?.all) {
                     callback(
-                        err instanceof Error ? err : new Error(String(err)),
-                        [],
-                    ),
-                );
+                        null,
+                        target.addresses.map((entry) => ({
+                            address: entry.address,
+                            family: entry.family,
+                        })),
+                    );
+                } else {
+                    const first = target.addresses[0];
+                    callback(null, first.address, first.family);
+                }
+            },
         },
-    },
-});
+    });
+    dispatcherCache.set(key, agent);
+    return agent;
+}
 
 // The single guarded egress helper for every outbound MCP request (connector
 // transport, OAuth discovery/registration/refresh). It rejects non-HTTPS,
 // credentialed, metadata-host and private-IP-literal URLs up front, pins the
-// connection to a connect-time-validated address, and refuses to auto-follow
-// redirects (`redirect: "manual"`) so a 3xx to an internal host cannot smuggle
-// egress past the guard.
+// connection to the addresses that were just validated (so there is no second,
+// unguarded resolution for an attacker to race — DNS rebinding / TOCTOU), and
+// never lets undici auto-follow redirects (`redirect: "manual"`): each 3xx hop
+// is re-validated by this loop before it is followed. Caching the dispatcher
+// also lets undici pool validated HTTPS connections instead of leaving a new
+// Agent and keep-alive socket behind for every MCP request.
 export async function guardedFetch(
     input: Parameters<typeof fetch>[0],
     init?: Parameters<typeof fetch>[1],
 ) {
-    const url =
-        typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.toString()
-              : input.url;
-    await validateRemoteMcpUrl(url);
-    return fetch(input, {
-        ...init,
-        redirect: "manual",
-        dispatcher: guardedAgent,
-    } as RequestInit);
+    let currentInput = input;
+    let currentInit = init;
+
+    for (let redirectCount = 0; ; redirectCount++) {
+        const url =
+            typeof currentInput === "string"
+                ? currentInput
+                : currentInput instanceof URL
+                  ? currentInput.toString()
+                  : currentInput.url;
+        const target = await resolveValidatedTarget(url);
+        const dispatcher = pinnedDispatcher(target);
+        const response = await fetch(currentInput, {
+            ...currentInit,
+            redirect: "manual",
+            dispatcher,
+        } as Parameters<typeof fetch>[1]);
+
+        const isRedirect = [301, 302, 303, 307, 308].includes(response.status);
+        if (!isRedirect || redirectCount >= 5) return response;
+
+        const location = response.headers.get("location");
+        if (!location) return response;
+        const nextUrl = new URL(location, url).toString();
+
+        // Mirror the fetch spec: credentials must not follow the request to
+        // a different origin, or a redirecting server could exfiltrate the
+        // caller's Authorization header to a host of its choosing.
+        if (new URL(nextUrl).origin !== new URL(url).origin && currentInit?.headers) {
+            const headers = new Headers(currentInit.headers as HeadersInit);
+            headers.delete("authorization");
+            headers.delete("proxy-authorization");
+            headers.delete("cookie");
+            currentInit = { ...currentInit, headers };
+        }
+
+        const method = currentInit?.method?.toUpperCase() ?? "GET";
+        if (
+            response.status === 303 ||
+            ((response.status === 301 || response.status === 302) &&
+                method === "POST")
+        ) {
+            const { body: _body, ...rest } = currentInit ?? {};
+            currentInit = { ...rest, method: "GET" };
+        }
+        currentInput = nextUrl;
+    }
 }
 
 export function base64Url(buffer: Buffer) {

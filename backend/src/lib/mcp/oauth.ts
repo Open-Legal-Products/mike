@@ -4,8 +4,10 @@ import {
     type OAuthClientProvider,
 } from "@modelcontextprotocol/sdk/client/auth.js";
 import type {
+    AuthorizationServerMetadata,
     OAuthClientInformationMixed,
     OAuthClientMetadata,
+    OAuthProtectedResourceMetadata,
     OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { createServerSupabase } from "../supabase";
@@ -46,8 +48,9 @@ function parseWwwAuthenticate(value: string | null): string | null {
 
 async function fetchJson(url: string, init?: RequestInit) {
     // Route through the shared guarded egress helper so this call gets the same
-    // HTTPS-only / private-IP / connect-time-pinned / no-redirect protections as
-    // the connector transport (closes the raw-fetch SSRF gap in OAuth discovery).
+    // HTTPS-only / private-IP / pinned-address / revalidated-redirect protections
+    // as the connector transport (closes the raw-fetch SSRF gap in OAuth
+    // discovery).
     const response = await guardedFetch(url, init);
     if (!response.ok) {
         throw new Error(`Failed to fetch OAuth metadata (${response.status}).`);
@@ -167,6 +170,37 @@ export async function discoverOAuthMetadata(serverUrl: string): Promise<OAuthMet
                   (scope): scope is string => typeof scope === "string",
               )
             : undefined,
+    };
+}
+
+// Full discovery state for the MCP SDK's OAuthClientProvider.discoveryState
+// hook. The SDK's own discovery does not follow redirects, which breaks
+// servers (like DingDuff) that 302 their well-known metadata to a path-scoped
+// issuer; Mike's fetch follows redirects, so we hand the SDK the results.
+export async function discoverOAuthServerState(serverUrl: string): Promise<{
+    authorizationServerUrl: string;
+    authorizationServerMetadata: AuthorizationServerMetadata;
+    resourceMetadata: OAuthProtectedResourceMetadata;
+    resourceMetadataUrl: string;
+}> {
+    const metadataUrl = await discoverProtectedResourceMetadataUrl(serverUrl);
+    const resourceMetadata = await fetchJson(metadataUrl);
+    const authServers = resourceMetadata.authorization_servers;
+    const authorizationServer =
+        Array.isArray(authServers) && typeof authServers[0] === "string"
+            ? authServers[0]
+            : null;
+    if (!authorizationServer) {
+        throw new Error("MCP server did not advertise an OAuth authorization server.");
+    }
+    const authMetadata = await fetchAuthorizationServerMetadata(authorizationServer);
+    return {
+        authorizationServerUrl: authorizationServer,
+        authorizationServerMetadata:
+            authMetadata as unknown as AuthorizationServerMetadata,
+        resourceMetadata:
+            resourceMetadata as unknown as OAuthProtectedResourceMetadata,
+        resourceMetadataUrl: metadataUrl,
     };
 }
 
@@ -411,6 +445,27 @@ export class DbMcpOAuthProvider implements OAuthClientProvider {
 
     state() {
         return this.stateToken;
+    }
+
+    private discoveryStateCache?: {
+        authorizationServerUrl: string;
+        authorizationServerMetadata: AuthorizationServerMetadata;
+        resourceMetadata: OAuthProtectedResourceMetadata;
+        resourceMetadataUrl: string;
+    } | null;
+
+    async discoveryState() {
+        if (this.discoveryStateCache !== undefined) {
+            return this.discoveryStateCache ?? undefined;
+        }
+        try {
+            this.discoveryStateCache = await discoverOAuthServerState(
+                this.connector.server_url,
+            );
+        } catch {
+            this.discoveryStateCache = null;
+        }
+        return this.discoveryStateCache ?? undefined;
     }
 
     async clientInformation(): Promise<OAuthClientInformationMixed | undefined> {
