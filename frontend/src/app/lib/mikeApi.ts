@@ -115,6 +115,36 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
     return (await response.json()) as T;
 }
 
+/**
+ * Multipart sibling of apiRequest. FormData bodies must not carry an explicit
+ * Content-Type (the browser has to set the multipart boundary itself), so these
+ * requests cannot reuse apiRequest — but they must still fail with MikeApiError
+ * so callers can recognise codes like `mfa_verification_required`.
+ */
+async function apiUploadRequest<T>(
+    path: string,
+    form: FormData,
+    init?: RequestInit,
+): Promise<T> {
+    const authHeaders = await getAuthHeader();
+    const { headers: initHeaders, ...restInit } = init ?? {};
+    const response = await fetch(`${API_BASE}${path}`, {
+        method: "POST",
+        ...restInit,
+        headers: {
+            ...authHeaders,
+            ...(initHeaders as Record<string, string> | undefined),
+        },
+        body: form,
+    });
+
+    if (!response.ok) {
+        throw await toApiError(response, path);
+    }
+
+    return (await response.json()) as T;
+}
+
 async function apiBlobRequest(path: string): Promise<{
     blob: Blob;
     filename: string | null;
@@ -236,7 +266,7 @@ export async function listProjectSummaries(pagination?: {
     });
 }
 
-export interface ProjectDirectoryLevel {
+interface ProjectDirectoryLevel {
     documents: Document[];
     folders: Folder[];
     documentsHasMore: boolean;
@@ -512,7 +542,7 @@ export type ApiKeyProvider =
     | "vercel"
     | "opencode-go"
     | "courtlistener";
-export type ApiKeySource = "user" | "env" | null;
+type ApiKeySource = "user" | "env" | null;
 export type ApiKeyState = Record<
     ApiKeyProvider,
     {
@@ -585,7 +615,7 @@ export async function saveApiKey(
     });
 }
 
-export interface McpToolSummary {
+interface McpToolSummary {
     id: string;
     toolName: string;
     openaiToolName: string;
@@ -832,12 +862,12 @@ export interface LibraryCollection {
     documentsHasMore: boolean;
 }
 
-export interface LibraryPagination {
+interface LibraryPagination {
     limit?: number;
     offset?: number;
 }
 
-export interface LibrarySearchParams extends LibraryPagination {
+interface LibrarySearchParams extends LibraryPagination {
     search?: string;
     fileType?: string;
     sortKey?: "name" | "type" | "size" | "version" | "created" | "updated";
@@ -845,7 +875,7 @@ export interface LibrarySearchParams extends LibraryPagination {
     signal?: AbortSignal;
 }
 
-export interface LibrarySearchResults {
+interface LibrarySearchResults {
     documents: Document[];
     documentsHasMore: boolean;
 }
@@ -964,16 +994,9 @@ export async function uploadLibraryDocument(
     kind: LibraryKind,
     file: File,
 ): Promise<Document> {
-    const authHeaders = await getAuthHeader();
     const form = new FormData();
     form.append("file", file);
-    const response = await fetch(`${API_BASE}/library/${kind}/documents`, {
-        method: "POST",
-        headers: { ...authHeaders },
-        body: form,
-    });
-    if (!response.ok) throw new Error(await response.text());
-    return response.json() as Promise<Document>;
+    return apiUploadRequest<Document>(`/library/${kind}/documents`, form);
 }
 
 export async function createLibraryFolder(
@@ -1086,20 +1109,13 @@ export async function uploadDocumentVersion(
     file: File,
     filename?: string,
 ): Promise<DocumentVersion> {
-    const authHeaders = await getAuthHeader();
     const form = new FormData();
     form.append("file", file);
     if (filename) form.append("filename", filename);
-    const response = await fetch(
-        `${API_BASE}/single-documents/${documentId}/versions`,
-        {
-            method: "POST",
-            headers: { ...authHeaders },
-            body: form,
-        },
+    return apiUploadRequest<DocumentVersion>(
+        `/single-documents/${documentId}/versions`,
+        form,
     );
-    if (!response.ok) throw new Error(await response.text());
-    return response.json() as Promise<DocumentVersion>;
 }
 
 export async function replaceDocumentVersionFile(
@@ -1108,20 +1124,14 @@ export async function replaceDocumentVersionFile(
     file: File,
     filename?: string,
 ): Promise<DocumentVersion> {
-    const authHeaders = await getAuthHeader();
     const form = new FormData();
     form.append("file", file);
     if (filename) form.append("filename", filename);
-    const response = await fetch(
-        `${API_BASE}/single-documents/${documentId}/versions/${versionId}/file`,
-        {
-            method: "PUT",
-            headers: { ...authHeaders },
-            body: form,
-        },
+    return apiUploadRequest<DocumentVersion>(
+        `/single-documents/${documentId}/versions/${versionId}/file`,
+        form,
+        { method: "PUT" },
     );
-    if (!response.ok) throw new Error(await response.text());
-    return response.json() as Promise<DocumentVersion>;
 }
 
 export async function copyDocumentVersionFromDocument(
@@ -1173,43 +1183,29 @@ export async function uploadProjectDocument(
     projectId: string,
     file: File,
 ): Promise<Document> {
-    const authHeaders = await getAuthHeader();
     const form = new FormData();
     form.append("file", file);
-    const response = await fetch(
-        `${API_BASE}/projects/${projectId}/documents`,
-        {
-            method: "POST",
-            headers: { ...authHeaders },
-            body: form,
-        },
+    return apiUploadRequest<Document>(
+        `/projects/${projectId}/documents`,
+        form,
     );
-    if (!response.ok) throw new Error(await response.text());
-    return response.json() as Promise<Document>;
 }
 
 export async function uploadStandaloneDocument(file: File): Promise<Document> {
-    const authHeaders = await getAuthHeader();
     const form = new FormData();
     form.append("file", file);
-    const response = await fetch(`${API_BASE}/single-documents`, {
-        method: "POST",
-        headers: { ...authHeaders },
-        body: form,
-    });
-    if (!response.ok) throw new Error(await response.text());
-    return response.json() as Promise<Document>;
+    return apiUploadRequest<Document>("/single-documents", form);
 }
 
-export async function listStandaloneDocuments(): Promise<Document[]> {
-    return apiRequest<Document[]>("/single-documents");
+export async function getDocument(documentId: string): Promise<Document> {
+    return apiRequest<Document>(`/single-documents/${documentId}`);
 }
 
 export async function deleteDocument(documentId: string): Promise<void> {
     await apiRequest(`/single-documents/${documentId}`, { method: "DELETE" });
 }
 
-export interface DocumentEditResolution {
+interface DocumentEditResolution {
     ok: boolean;
     already_resolved?: boolean;
     status?: "accepted" | "rejected";
@@ -1251,8 +1247,7 @@ export async function downloadDocumentsZip(
         body: JSON.stringify({ document_ids: documentIds }),
     });
     if (!response.ok) {
-        const detail = await response.text();
-        throw new Error(detail || `API error: ${response.status}`);
+        throw await toApiError(response, "/single-documents/download-zip");
     }
     return response.blob();
 }
@@ -1564,11 +1559,24 @@ export async function deleteTabularReview(reviewId: string): Promise<void> {
 
 export async function streamTabularGeneration(
     reviewId: string,
+    signal?: AbortSignal,
 ): Promise<Response> {
     const authHeaders = await getAuthHeader();
     return fetch(`${API_BASE}/tabular-review/${reviewId}/generate`, {
         method: "POST",
         headers: { ...authHeaders },
+        signal: signal ?? undefined,
+    });
+}
+
+export async function streamTabularGenerationResume(
+    reviewId: string,
+    signal?: AbortSignal,
+): Promise<Response> {
+    const authHeaders = await getAuthHeader();
+    return fetch(`${API_BASE}/tabular-review/${reviewId}/generate/stream`, {
+        headers: { ...authHeaders },
+        signal: signal ?? undefined,
     });
 }
 
@@ -1612,7 +1620,7 @@ interface RawTRMessage {
     created_at: string;
 }
 
-export interface TRDisplayMessage {
+interface TRDisplayMessage {
     role: "user" | "assistant";
     content: string;
     events?: AssistantEvent[];
@@ -1689,11 +1697,15 @@ export async function regenerateTabularCell(
     reviewId: string,
     rowId: string,
     columnIndex: number,
-): Promise<{
-    summary: string;
-    flag: "green" | "grey" | "yellow" | "red";
-    reasoning: string;
-}> {
+): Promise<
+    | {
+          summary: string;
+          flag: "green" | "grey" | "yellow" | "red";
+          reasoning: string;
+      }
+    // HTTP 202 — regeneration continues in the background
+    | { status: "generating" }
+> {
     return apiRequest(`/tabular-review/${reviewId}/regenerate-cell`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1893,22 +1905,6 @@ export async function openSourceWorkflow(
     );
 }
 
-export async function listHiddenWorkflows(): Promise<string[]> {
-    return apiRequest<string[]>("/workflows/hidden");
-}
-
-export async function hideWorkflow(workflowId: string): Promise<void> {
-    await apiRequest("/workflows/hidden", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workflow_id: workflowId }),
-    });
-}
-
-export async function unhideWorkflow(workflowId: string): Promise<void> {
-    await apiRequest(`/workflows/hidden/${workflowId}`, { method: "DELETE" });
-}
-
 export async function shareWorkflow(
     workflowId: string,
     payload: { emails: string[]; allow_edit: boolean },
@@ -1984,10 +1980,6 @@ export async function updateQuickAction(
     });
 }
 
-export async function deleteQuickAction(quickActionId: string): Promise<void> {
-    await apiRequest(`/quick-actions/${quickActionId}`, { method: "DELETE" });
-}
-
 export async function listWorkflowAddons(): Promise<WorkflowAddon[]> {
     return apiRequest<WorkflowAddon[]>("/workflow-addons");
 }
@@ -2016,16 +2008,12 @@ export async function uploadWorkflowReferenceFile(
     workflowId: string,
     file: File,
 ): Promise<WorkflowReferenceDocument> {
-    const authHeaders = await getAuthHeader();
     const form = new FormData();
     form.append("file", file);
-    const response = await fetch(
-        `${API_BASE}/workflows/${workflowId}/reference-files`,
-        { method: "POST", headers: { ...authHeaders }, body: form },
+    return apiUploadRequest<WorkflowReferenceDocument>(
+        `/workflows/${workflowId}/reference-files`,
+        form,
     );
-    if (!response.ok)
-        throw await toApiError(response, "/workflows/reference-files");
-    return response.json() as Promise<WorkflowReferenceDocument>;
 }
 
 export async function replaceWorkflowReferenceFile(
@@ -2033,17 +2021,13 @@ export async function replaceWorkflowReferenceFile(
     referenceId: string,
     file: File,
 ): Promise<WorkflowReferenceDocument> {
-    const authHeaders = await getAuthHeader();
     const form = new FormData();
     form.append("file", file);
-    const path = `/workflows/${workflowId}/reference-files/${referenceId}`;
-    const response = await fetch(`${API_BASE}${path}`, {
-        method: "PUT",
-        headers: { ...authHeaders },
-        body: form,
-    });
-    if (!response.ok) throw await toApiError(response, path);
-    return response.json() as Promise<WorkflowReferenceDocument>;
+    return apiUploadRequest<WorkflowReferenceDocument>(
+        `/workflows/${workflowId}/reference-files/${referenceId}`,
+        form,
+        { method: "PUT" },
+    );
 }
 
 export async function getWorkflowReferenceUrl(

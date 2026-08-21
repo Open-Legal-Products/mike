@@ -254,87 +254,93 @@ export async function streamOpenAI(
       let buffer = "";
       let sawReasoning = false;
 
-      while (true) {
-        throwIfAborted(params.abortSignal);
-        const { done, value } = await reader.read();
-        if (done) break;
+      // Release the reader on every exit from the loop — abort, stream
+      // failure, or normal completion — so the undici socket is not leaked.
+      try {
+        while (true) {
+          throwIfAborted(params.abortSignal);
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        const decoded = decoder.decode(value, { stream: true });
-        logRawLlmStream({
-          provider: "openai",
-          model,
-          iteration: iter,
-          label: "sse_chunk",
-          payload: decoded,
-        });
-        rawStreamRecorder?.record({
-          iteration: iter,
-          label: "sse_chunk",
-          payload: decoded,
-        });
-        buffer += decoded;
-        const extracted = extractSseJson(buffer);
-        buffer = extracted.rest;
-
-        for (const event of extracted.events as ResponseStreamEvent[]) {
+          const decoded = decoder.decode(value, { stream: true });
           logRawLlmStream({
             provider: "openai",
             model,
             iteration: iter,
-            label: "sse_event",
-            payload: event,
+            label: "sse_chunk",
+            payload: decoded,
           });
           rawStreamRecorder?.record({
             iteration: iter,
-            label: "sse_event",
-            payload: event,
+            label: "sse_chunk",
+            payload: decoded,
           });
+          buffer += decoded;
+          const extracted = extractSseJson(buffer);
+          buffer = extracted.rest;
 
-          const failureMessage = openAIStreamFailureMessage(event);
-          if (failureMessage) {
-            throw new Error(failureMessage);
-          }
+          for (const event of extracted.events as ResponseStreamEvent[]) {
+            logRawLlmStream({
+              provider: "openai",
+              model,
+              iteration: iter,
+              label: "sse_event",
+              payload: event,
+            });
+            rawStreamRecorder?.record({
+              iteration: iter,
+              label: "sse_event",
+              payload: event,
+            });
 
-          if (event.response?.id) {
-            previousResponseId = event.response.id;
-          }
+            const failureMessage = openAIStreamFailureMessage(event);
+            if (failureMessage) {
+              throw new Error(failureMessage);
+            }
 
-          if (
-            event.type === "response.reasoning_summary_text.delta" &&
-            typeof event.delta === "string"
-          ) {
-            sawReasoning = true;
-            callbacks.onReasoningDelta?.(event.delta);
-          }
+            if (event.response?.id) {
+              previousResponseId = event.response.id;
+            }
 
-          if (
-            event.type === "response.output_text.delta" &&
-            typeof event.delta === "string"
-          ) {
-            fullText += event.delta;
-            callbacks.onContentDelta?.(event.delta);
-          }
+            if (
+              event.type === "response.reasoning_summary_text.delta" &&
+              typeof event.delta === "string"
+            ) {
+              sawReasoning = true;
+              callbacks.onReasoningDelta?.(event.delta);
+            }
 
-          if (
-            event.type === "response.output_item.added" &&
-            event.item?.type === "function_call"
-          ) {
-            const call = parseFunctionCall(event.item);
-            startedToolCallIds.add(call.id);
-            callbacks.onToolCallStart?.(call);
-          }
+            if (
+              event.type === "response.output_text.delta" &&
+              typeof event.delta === "string"
+            ) {
+              fullText += event.delta;
+              callbacks.onContentDelta?.(event.delta);
+            }
 
-          if (
-            event.type === "response.output_item.done" &&
-            event.item?.type === "function_call"
-          ) {
-            const call = parseFunctionCall(event.item);
-            if (!startedToolCallIds.has(call.id)) {
+            if (
+              event.type === "response.output_item.added" &&
+              event.item?.type === "function_call"
+            ) {
+              const call = parseFunctionCall(event.item);
+              startedToolCallIds.add(call.id);
               callbacks.onToolCallStart?.(call);
             }
-            toolCalls.push(call);
+
+            if (
+              event.type === "response.output_item.done" &&
+              event.item?.type === "function_call"
+            ) {
+              const call = parseFunctionCall(event.item);
+              if (!startedToolCallIds.has(call.id)) {
+                callbacks.onToolCallStart?.(call);
+              }
+              toolCalls.push(call);
+            }
           }
         }
+      } finally {
+        await reader.cancel().catch(() => {});
       }
 
       if (sawReasoning) callbacks.onReasoningBlockEnd?.();

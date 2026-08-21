@@ -27,6 +27,7 @@ import {
     listProjects,
     regenerateTabularCell,
     streamTabularGeneration,
+    streamTabularGenerationResume,
     updateTabularReview,
     uploadReviewDocument,
 } from "@/app/lib/mikeApi";
@@ -60,6 +61,7 @@ import type { TRTableHandle } from "./TRTable";
 import { TRChatPanel } from "./TRChatPanel";
 import { TabularReviewDetailsModal } from "./TabularReviewDetailsModal";
 import { exportTabularReviewToExcel } from "./exportToExcel";
+import { readSseFrames } from "@/app/lib/sse";
 import { useSidebar } from "@/app/contexts/SidebarContext";
 import { PageHeader } from "../shared/PageHeader";
 import { TableToolbar } from "../shared/TableToolbar";
@@ -130,6 +132,8 @@ export function TRView({ reviewId, projectId }: Props) {
         useState<ModelProvider | null>(null);
     const actionsRef = useRef<HTMLDivElement>(null);
     const tableRef = useRef<TRTableHandle>(null);
+    const generationAbortRef = useRef<AbortController | null>(null);
+    const resumeStreamOpenRef = useRef(false);
     const router = useRouter();
     const { profile, apiKeysDegraded } = useUserProfile();
     // Unknown key state fails open; the submit gates below already skip when
@@ -163,6 +167,11 @@ export function TRView({ reviewId, projectId }: Props) {
             document.removeEventListener("mousedown", handleClickOutside);
     }, [actionsOpen]);
 
+    // Abort any in-flight generation/resume stream on unmount
+    useEffect(() => {
+        return () => generationAbortRef.current?.abort();
+    }, []);
+
     useEffect(() => {
         const fetches: Promise<unknown>[] = [
             getTabularReview(reviewId).then(({ review, cells, rows, documents }) => {
@@ -171,6 +180,13 @@ export function TRView({ reviewId, projectId }: Props) {
                 setRows(rows);
                 setDocuments(documents);
                 setColumns(review.columns_config || []);
+                // A run may still be executing server-side (e.g. after a
+                // refresh) — reattach to it via the resumable stream.
+                if (cells.some((c) => c.status === "generating")) {
+                    resumeGenerationStream().catch((err) =>
+                        console.error("Generation resume failed", err),
+                    );
+                }
             }),
         ];
         if (projectId) {
@@ -280,6 +296,15 @@ export function TRView({ reviewId, projectId }: Props) {
                 rowId,
                 colIndex,
             );
+            if ("status" in result) {
+                // HTTP 202 — the work continues in the background. Leave the
+                // cell "generating" and pick up the terminal state from the
+                // resumable stream.
+                resumeGenerationStream().catch((err) =>
+                    console.error("Generation resume failed", err),
+                );
+                return;
+            }
             setCells((prev) =>
                 prev.map((c) =>
                     c.row_id === rowId && c.column_index === colIndex
@@ -307,6 +332,63 @@ export function TRView({ reviewId, projectId }: Props) {
         }
     }
 
+    function getGenerationSignal(): AbortSignal {
+        if (!generationAbortRef.current) {
+            generationAbortRef.current = new AbortController();
+        }
+        return generationAbortRef.current.signal;
+    }
+
+    // Reads an SSE response and applies cell_update frames until [DONE]
+    async function consumeGenerationStream(response: Response) {
+        for await (const frame of readSseFrames(response, {
+            signal: generationAbortRef.current?.signal,
+        })) {
+            try {
+                const data = frame as Record<string, unknown>;
+                if (data.type === "cell_update") {
+                    setCells((prev) =>
+                        prev.map((c) =>
+                            c.row_id === data.row_id &&
+                            c.column_index === data.column_index
+                                ? {
+                                      ...c,
+                                      content: data.content as TabularCell["content"],
+                                      status: data.status as TabularCell["status"],
+                                  }
+                                : c,
+                        ),
+                    );
+                }
+            } catch (err) {
+                console.warn(
+                    "[TabularReviewView] failed to apply cell_update:",
+                    frame,
+                    err,
+                );
+            }
+        }
+    }
+
+    // Reattaches to a run still executing server-side via the reconnectable
+    // SSE view. Guarded so only one resume stream is open at a time.
+    async function resumeGenerationStream() {
+        if (resumeStreamOpenRef.current) return;
+        resumeStreamOpenRef.current = true;
+        try {
+            const response = await streamTabularGenerationResume(
+                reviewId,
+                getGenerationSignal(),
+            );
+            if (!response.ok) {
+                throw new Error(`Resume failed: ${response.status}`);
+            }
+            await consumeGenerationStream(response);
+        } finally {
+            resumeStreamOpenRef.current = false;
+        }
+    }
+
     async function handleGenerate() {
         if (!review || generating) return;
 
@@ -321,7 +403,10 @@ export function TRView({ reviewId, projectId }: Props) {
         setGenerating(true);
 
         try {
-            const response = await streamTabularGeneration(reviewId);
+            const response = await streamTabularGeneration(
+                reviewId,
+                getGenerationSignal(),
+            );
             if (!response.ok) {
                 const payload = await response.json().catch(() => null);
                 const provider =
@@ -370,39 +455,16 @@ export function TRView({ reviewId, projectId }: Props) {
                 ),
             );
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = "";
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split("\n");
-                buffer = lines.pop() ?? "";
-
-                for (const line of lines) {
-                    if (!line.startsWith("data:")) continue;
-                    const dataStr = line.slice(5).trim();
-                    if (dataStr === "[DONE]") break;
-                    try {
-                        const data = JSON.parse(dataStr);
-                        if (data.type === "cell_update") {
-                            setCells((prev) =>
-                                prev.map((c) =>
-                                    c.row_id === data.row_id &&
-                                    c.column_index === data.column_index
-                                        ? {
-                                              ...c,
-                                              content: data.content,
-                                              status: data.status,
-                                          }
-                                        : c,
-                                ),
-                            );
-                        }
-                    } catch {}
-                }
+            try {
+                await consumeGenerationStream(response);
+            } catch (streamErr) {
+                // Stream dropped mid-generate — the run keeps executing
+                // server-side, so try one reconnect before giving up.
+                console.error(
+                    "Generation stream interrupted, reconnecting",
+                    streamErr,
+                );
+                await resumeGenerationStream();
             }
         } catch (err) {
             console.error("Generation failed", err);

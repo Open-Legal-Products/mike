@@ -55,6 +55,13 @@ export function PdfView({
     const quoteListRef = useRef<QuoteEntry[]>([]);
     const zoomRef = useRef(1.0);
     const currentPageRef = useRef(1);
+    // renderPDF wipes the container and rebuilds renderedPagesRef across many
+    // awaits, and several call sites can fire it again mid-flight (rapid zoom
+    // is the easy repro). Every run takes a generation number and bails at each
+    // await once a newer run has started, so two passes can't interleave their
+    // appends into the same container/ref.
+    const renderGenRef = useRef(0);
+    const renderTaskRef = useRef<import("pdfjs-dist").RenderTask | null>(null);
 
     const quoteList: QuoteEntry[] = useMemo(() => {
         if (quotes?.length)
@@ -212,9 +219,15 @@ export function PdfView({
             scrollToPage?: number,
         ) => {
             if (!containerRef.current) return;
+            const gen = ++renderGenRef.current;
+            // Stop the in-flight page of any older run so it rejects with
+            // RenderingCancelledException instead of racing us to the canvas.
+            renderTaskRef.current?.cancel();
+            renderTaskRef.current = null;
             containerRef.current.innerHTML = "";
             renderedPagesRef.current = [];
             const lib = await getPdfJs();
+            if (gen !== renderGenRef.current) return;
             lib.TextLayer.cleanup();
 
             setNumPages(doc.numPages);
@@ -233,6 +246,7 @@ export function PdfView({
 
             const panelW = containerRef.current.clientWidth;
             const firstPage = await doc.getPage(1);
+            if (gen !== renderGenRef.current) return;
             const naturalWidth = firstPage.getViewport({ scale: 1 }).width;
             const baseScale = Math.max(
                 0.5,
@@ -242,6 +256,7 @@ export function PdfView({
 
             for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
                 const page = await doc.getPage(pageNum);
+                if (gen !== renderGenRef.current) return;
                 const viewport = page.getViewport({ scale });
 
                 const wrapper = document.createElement("div");
@@ -261,9 +276,11 @@ export function PdfView({
                 if (!ctx) continue;
 
                 const task = page.render({ canvasContext: ctx, viewport });
+                renderTaskRef.current = task;
                 try {
                     await task.promise;
                 } catch (e: unknown) {
+                    if (gen !== renderGenRef.current) return;
                     if (
                         (e as { name?: string })?.name !==
                         "RenderingCancelledException"
@@ -271,7 +288,11 @@ export function PdfView({
                         console.error("PDF render error", e);
                     }
                     continue;
+                } finally {
+                    if (renderTaskRef.current === task)
+                        renderTaskRef.current = null;
                 }
+                if (gen !== renderGenRef.current) return;
 
                 const textLayerDiv = document.createElement("div");
                 textLayerDiv.className = "pdf-text-layer";
@@ -289,6 +310,7 @@ export function PdfView({
                     viewport,
                 });
                 await textLayer.render();
+                if (gen !== renderGenRef.current) return;
                 const textDivs = textLayer.textDivs;
 
                 renderedPagesRef.current.push({
@@ -304,6 +326,7 @@ export function PdfView({
             let targetPage: number | null = null;
             if (list.length) {
                 targetPage = await applyHighlights(list);
+                if (gen !== renderGenRef.current) return;
                 if (targetPage === null) {
                     // Fallback: scroll to the first entry's page hint, even without a highlight
                     const hint = list.find((e) => e.page)?.page ?? null;

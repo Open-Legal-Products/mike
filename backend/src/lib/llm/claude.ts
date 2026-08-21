@@ -32,7 +32,15 @@ export type AnthropicMessagesAdapterConfig = {
 };
 
 function claudeApiKey(override?: string | null): string {
-  const key = override?.trim() || process.env.ANTHROPIC_API_KEY?.trim() || "";
+  // CLAUDE_API_KEY is accepted as an alias for ANTHROPIC_API_KEY. Keep this in
+  // sync with envApiKey("claude") in lib/userApiKeys.ts — that helper decides
+  // whether Settings reports the key as configured, so a deployment that only
+  // sets CLAUDE_API_KEY would otherwise show a green key and then throw here.
+  const key =
+    override?.trim() ||
+    process.env.ANTHROPIC_API_KEY?.trim() ||
+    process.env.CLAUDE_API_KEY?.trim() ||
+    "";
   if (!key) {
     throw new Error(
       "Anthropic API key is not configured. Set ANTHROPIC_API_KEY or add a user Anthropic key.",

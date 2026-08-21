@@ -42,6 +42,7 @@ import {
     type ModelProvider,
 } from "@/app/lib/modelAvailability";
 import type { ApiKeyState } from "@/app/lib/mikeApi";
+import { readSseFrames } from "@/app/lib/sse";
 import {
     APP_SURFACE_ACTIVE_CLASS,
     APP_SURFACE_HOVER_CLASS,
@@ -829,6 +830,10 @@ export function TRChatPanel({
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const latestUserMessageRef = useRef<HTMLDivElement>(null);
     const abortRef = useRef<AbortController | null>(null);
+    // Bumped whenever the message list stops belonging to the running stream
+    // (new chat, loaded chat, new submit, unmount). The stream loop checks it
+    // before writing, so an orphaned stream can't repaint someone else's chat.
+    const streamGenerationRef = useRef(0);
     const historyRef = useRef<HTMLDivElement>(null);
     const hasScrolledRef = useRef(false);
 
@@ -940,6 +945,19 @@ export function TRChatPanel({
             dripIntervalRef.current = null;
         }
     }
+
+    // Detach whatever is still streaming from the message list: stop the
+    // reader, stop the 16ms drip timer, and retire the generation so the
+    // in-flight loop stops writing into a list it no longer owns.
+    function cancelActiveStream() {
+        streamGenerationRef.current += 1;
+        stopDrip();
+        abortRef.current?.abort();
+    }
+
+    // This panel is conditionally mounted, so without a cleanup the drip
+    // interval and the open reader survive it.
+    useEffect(() => cancelActiveStream, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     function updateLastContentEvent(
         prev: TRMessage[],
@@ -1089,6 +1107,7 @@ export function TRChatPanel({
     // ---- chat actions ----
 
     function handleNewChat() {
+        cancelActiveStream();
         setCurrentChatId(null);
         setCurrentChatTitle(null);
         setMessages([]);
@@ -1122,6 +1141,7 @@ export function TRChatPanel({
     }
 
     async function handleLoadChat(chatId: string) {
+        cancelActiveStream();
         const chat = chats.find((c) => c.id === chatId);
         setCurrentChatId(chatId);
         setCurrentChatTitle(chat?.title ?? null);
@@ -1180,7 +1200,8 @@ export function TRChatPanel({
             }
         }, 50);
 
-        stopDrip();
+        cancelActiveStream();
+        const gen = streamGenerationRef.current;
         dripTargetRef.current = "";
         dripDisplayLenRef.current = 0;
         eventsRef.current = [];
@@ -1196,27 +1217,15 @@ export function TRChatPanel({
                 controller.signal,
                 { reviewTitle, projectName },
             );
-            if (!response.body) throw new Error("No response body");
+            for await (const frame of readSseFrames(response, {
+                signal: controller.signal,
+            })) {
+                // Another chat owns the message list now — stop writing.
+                if (streamGenerationRef.current !== gen) break;
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = "";
+                const data = frame as Record<string, unknown>;
 
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split("\n");
-                buffer = lines.pop() ?? "";
-
-                for (const line of lines) {
-                    if (!line.startsWith("data:")) continue;
-                    const dataStr = line.slice(5).trim();
-                    if (dataStr === "[DONE]") continue;
-
-                    try {
-                        const data = JSON.parse(dataStr);
-
+                try {
                         if (data.type === "chat_id") {
                             const newId = data.chatId as string;
                             setCurrentChatId(newId);
@@ -1703,11 +1712,12 @@ export function TRChatPanel({
                             });
                             continue;
                         }
-                    } catch {
-                        /* skip malformed */
-                    }
+                } catch (err) {
+                    console.warn("[TRChatPanel] failed to handle SSE event:", data, err);
                 }
             }
+
+            if (streamGenerationRef.current !== gen) return;
 
             flushDrip();
             clearStreamingPlaceholders();
@@ -1723,6 +1733,10 @@ export function TRChatPanel({
                 return updated;
             });
         } catch (err: unknown) {
+            // Superseded stream: the list it would repaint is someone
+            // else's now (including the abort fired on unmount).
+            if (streamGenerationRef.current !== gen) return;
+
             const isAbort = err instanceof Error && err.name === "AbortError";
             stopDrip();
             clearStreamingPlaceholders();
@@ -1760,7 +1774,7 @@ export function TRChatPanel({
             });
         } finally {
             setIsLoading(false);
-            abortRef.current = null;
+            if (abortRef.current === controller) abortRef.current = null;
         }
     }
 

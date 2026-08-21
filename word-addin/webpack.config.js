@@ -7,6 +7,17 @@ const webpack = require("webpack");
 const frontendSharedUi = (filename) =>
   path.resolve(__dirname, "..", "frontend", "src", "shared", "ui", filename);
 
+const frontendComponent = (...segments) =>
+  path.resolve(
+    __dirname,
+    "..",
+    "frontend",
+    "src",
+    "app",
+    "components",
+    ...segments,
+  );
+
 module.exports = async (_env, options) => {
   const isDev = options.mode !== "production";
 
@@ -160,6 +171,9 @@ module.exports = async (_env, options) => {
         "@mike/dropdown-ui": frontendSharedUi("DropdownUI.tsx"),
         "@mike/citation-pill-ui": frontendSharedUi("CitationPillUI.tsx"),
         "@mike/model-toggle-ui": frontendSharedUi("ModelToggleUI.tsx"),
+        // The web app's Mike glyph, imported directly: it renders inline SVG
+        // from React alone, so there is nothing app-specific to fork.
+        "@mike/mike-icon": frontendComponent("chat", "mike-icon.tsx"),
       },
     },
     module: {
@@ -212,7 +226,11 @@ module.exports = async (_env, options) => {
         REACT_APP_SUPABASE_ANON_KEY: isDev
           ? process.env.REACT_APP_SUPABASE_ANON_KEY || ""
           : undefined,
-        REACT_APP_DEFAULT_MODEL: "gemini-3-flash-preview",
+        // Deployment override only. Leaving it empty makes DEFAULT_MODEL_ID in
+        // src/taskpane/lib/modelCatalog.ts the single source of the default
+        // model — this config file cannot import that TypeScript constant, so
+        // repeating its value here would be a second copy that silently drifts.
+        REACT_APP_DEFAULT_MODEL: process.env.REACT_APP_DEFAULT_MODEL || "",
         // The Mike web app origin — the task pane links here (e.g. the
         // account/api-keys page); it never fetches from it.
         REACT_APP_WEB_APP_URL: isDev
