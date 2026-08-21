@@ -3,6 +3,7 @@ import { Router } from "express";
 import { requireAuth, requireMfaIfEnrolled } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
 import { recordAudit } from "../lib/audit";
+import { enqueueDbJob } from "../lib/dbq/enqueue";
 import {
     DEFAULT_TABULAR_MODEL,
     DEFAULT_TITLE_MODEL,
@@ -1152,10 +1153,35 @@ userRouter.delete(
         const userEmail = res.locals.userEmail as string | undefined;
         const db = createServerSupabase();
         try {
-            await deleteUserAccountData(db, userId, userEmail);
+            // Order matters, and is the REVERSE of the old inline flow:
+            // 1. Delete the auth user first. From the user's point of view
+            //    the account is now gone (no login, sessions revoked) and if
+            //    THIS fails, nothing has happened — the request is cleanly
+            //    retriable.
+            // 2. Then enqueue the data cascade as a durable job. The old
+            //    inline cascade died with the request or a restart, leaving
+            //    a half-deleted account with no owner; the job retries until
+            //    the (idempotent) cascade completes.
             const { error } = await db.auth.admin.deleteUser(userId);
             if (error)
                 return void res.status(500).json({ detail: error.message });
+            try {
+                await enqueueDbJob(db, {
+                    kind: "account.delete",
+                    payload: { userId, userEmail: userEmail ?? null },
+                    dedupeKey: `account.delete:${userId}`,
+                    maxAttempts: 20,
+                });
+            } catch (enqueueErr) {
+                // Auth user is already gone — the user cannot retry. Fall
+                // back to the old inline cascade rather than stranding the
+                // data.
+                console.error(
+                    "[user/account] cleanup enqueue failed; running inline",
+                    { userId, error: errorMessage(enqueueErr) },
+                );
+                await deleteUserAccountData(db, userId, userEmail);
+            }
             res.status(204).send();
         } catch (err) {
             const detail = errorMessage(err);

@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { requireAuth, requireMfaIfEnrolled } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
 import { recordAudit } from "../lib/audit";
+import { enqueueStorageCleanup } from "../lib/dbq/enqueue";
 import { enqueueConversion } from "../lib/queue/conversionQueue";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -84,13 +85,14 @@ async function deleteProjectDocumentsAndVersionFiles(
       paths.add(v.pdf_storage_path);
     }
   }
-  await Promise.all([...paths].map((p) => deleteFile(p).catch(() => {})));
-
   const { error } = await db
     .from("documents")
     .delete()
     .eq("project_id", projectId)
     .in("id", documentIds);
+  // Rows first, files second (durable storage.cleanup job) — previously each
+  // file delete was fire-and-forget, so one storage hiccup leaked the bytes.
+  if (!error) await enqueueStorageCleanup(db, [...paths]);
   return error ?? null;
 }
 
