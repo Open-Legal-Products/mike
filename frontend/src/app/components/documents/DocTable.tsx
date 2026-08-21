@@ -16,6 +16,7 @@ import { createPortal } from "react-dom";
 import { Loader2, AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
 import {
     deleteDocument,
+    getDocument,
     getDocumentUrl,
     downloadDocumentsZip,
     listDocumentVersions,
@@ -728,6 +729,37 @@ export function DocTable({
         document.addEventListener("dragend", handleDragEnd);
         return () => document.removeEventListener("dragend", handleDragEnd);
     }, []);
+
+    // Poll documents stuck in deferred conversion until the backend marks
+    // them "ready"/"error" (async conversion flips status server-side)
+    useEffect(() => {
+        const converting = documents.filter(
+            (d) => d.status === "pending" || d.status === "processing",
+        );
+        if (converting.length === 0) return;
+
+        let cancelled = false;
+        const interval = window.setInterval(() => {
+            for (const doc of converting) {
+                getDocument(doc.id)
+                    .then((latest) => {
+                        if (cancelled || latest.status === doc.status) return;
+                        setDocuments((prev) =>
+                            prev.map((d) =>
+                                d.id === doc.id ? { ...d, ...latest } : d,
+                            ),
+                        );
+                    })
+                    .catch(() => {
+                        // Transient fetch failure — keep polling
+                    });
+            }
+        }, 3000);
+        return () => {
+            cancelled = true;
+            window.clearInterval(interval);
+        };
+    }, [documents, setDocuments]);
 
     // Scroll new-folder input into view whenever it appears
     useEffect(() => {
