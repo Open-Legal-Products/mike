@@ -1,11 +1,8 @@
+import { Worker as ThreadWorker } from "node:worker_threads";
+import path from "node:path";
 import { app } from "./app";
 import { manifestPublicKey } from "./lib/manifestSigning";
-import { runStaleWorkSweep } from "./lib/maintenance/staleWork";
-import { anyWorkerEnabled, startWorkers, stopWorkers } from "./workers";
-import { startDbJobRunner, stopDbJobRunner } from "./lib/dbq/runner";
-import { DB_JOB_HANDLERS } from "./lib/dbq/handlers";
-import { createServerSupabase } from "./lib/supabase";
-import { syncWorkflowAddonCatalog } from "./lib/workflowCatalog";
+import { startAllWorkers, stopAllWorkers } from "./workerRuntime";
 
 const PORT = process.env.PORT ?? 3001;
 
@@ -23,52 +20,87 @@ try {
   process.exit(1);
 }
 
-const server = app.listen(PORT, () => {
-  console.log(`Mike backend running on port ${PORT}`);
-  // Start in-process job-queue workers only when at least one async queue is
-  // enabled, so the default (synchronous) deployment needs no Redis.
-  if (anyWorkerEnabled()) {
-    startWorkers();
-  }
-  // The DB queue (audit fan-out, account deletion, storage cleanup, export
-  // builds) runs by default in every deployment — it needs only Postgres,
-  // which every deployment already has. DB_JOBS_ENABLED=false is the
-  // operational escape hatch.
-  startDbJobRunner(DB_JOB_HANDLERS);
-  // Warm the workflow add-on catalog at boot instead of making the first
-  // GET /workflow-addons after a deploy pay for the whole reference-file
-  // sync inside its request (the lazy latch stays as the fallback).
-  void syncWorkflowAddonCatalog(createServerSupabase()).catch((err) =>
-    console.error("[workflow-catalog] boot sync failed", err),
+/**
+ * Where background work runs, relative to this API process:
+ *   "thread" (default) — a worker_thread in this process: queue workers and
+ *            maintenance run off the main event loop, so a CPU-heavy job can
+ *            never starve HTTP requests, with zero deployment changes.
+ *   "inline" — on the main thread (the historical behavior; escape hatch,
+ *            e.g. if a platform disallows worker_threads).
+ *   "none"  — not here at all: a standalone worker process (src/worker.ts)
+ *            runs them — a separate container or machine on the same
+ *            Postgres/Redis.
+ */
+const WORKERS_MODE = (() => {
+  const raw = process.env.WORKERS_MODE;
+  return raw === "inline" || raw === "none" ? raw : "thread";
+})();
+
+let workerThread: ThreadWorker | null = null;
+let shuttingDown = false;
+
+function spawnWorkerThread(): void {
+  // In dev (tsx) this file is .ts and the thread entry must be too, loaded
+  // through tsx's CJS require hook; in prod both are compiled .js in dist.
+  const isTs = __filename.endsWith(".ts");
+  const entry = path.join(
+    __dirname,
+    isTs ? "workerThread.ts" : "workerThread.js",
   );
+  workerThread = new ThreadWorker(entry, {
+    execArgv: isTs ? ["--require", "tsx/cjs"] : [],
+  });
+  workerThread.on("error", (err) => {
+    console.error("[worker-thread] error", err);
+  });
+  workerThread.on("exit", (code) => {
+    workerThread = null;
+    if (shuttingDown || code === 0) return;
+    // A crashed worker thread must not silently kill all background
+    // processing — respawn after a short pause. Durable state (db_jobs,
+    // Redis) means nothing is lost across the gap.
+    console.error(
+      `[worker-thread] exited with code ${code}; respawning in 5s`,
+    );
+    setTimeout(spawnWorkerThread, 5_000).unref();
+  });
+}
+
+const server = app.listen(PORT, () => {
+  console.log(
+    `Mike backend running on port ${PORT} (workers: ${WORKERS_MODE})`,
+  );
+  if (WORKERS_MODE === "thread") {
+    spawnWorkerThread();
+  } else if (WORKERS_MODE === "inline") {
+    startAllWorkers();
+  }
+  // WORKERS_MODE === "none": a standalone worker process owns background
+  // work (node dist/worker.js).
 });
 
-// Stale-work reaper: a crash between "status = processing/generating" and the
-// finalizing write strands rows in a transient state forever — nothing else
-// owns them. Sweep shortly after boot (crash recovery) and on an interval.
-// The sweep itself only dials Redis when an ASYNC_* flag is on.
-const SWEEP_INTERVAL_MS = (() => {
-  const raw = Number(process.env.STALE_SWEEP_INTERVAL_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : 10 * 60 * 1000;
-})();
-const runSweep = () =>
-  void runStaleWorkSweep()
-    .then(({ documents, cells }) => {
-      if (documents || cells)
-        console.warn("[stale-sweep] flipped", { documents, cells });
-    })
-    .catch((err) => console.error("[stale-sweep] failed", err));
-const initialSweep = setTimeout(runSweep, 30_000);
-initialSweep.unref();
-const sweepTimer = setInterval(runSweep, SWEEP_INTERVAL_MS);
-sweepTimer.unref();
-
 // Graceful shutdown: on SIGTERM/SIGINT (orchestrator rollout, Ctrl-C), stop
-// accepting new connections, let in-flight requests/streams drain, close the
-// job-queue workers + Redis, then exit 0. Without this the orchestrator's
-// grace period elapses and SIGKILL drops in-flight streams and leaves queue
-// state dirty. A hard timeout guards against a connection that never drains.
-let shuttingDown = false;
+// accepting new connections, let in-flight requests/streams drain, stop the
+// background workers wherever they run, then exit 0. A hard timeout guards
+// against a connection or job that never drains.
+async function stopBackgroundWork(): Promise<void> {
+  if (WORKERS_MODE === "inline") {
+    await stopAllWorkers();
+    return;
+  }
+  const thread = workerThread;
+  if (!thread) return;
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(() => resolve(), 10_000);
+    timeout.unref();
+    thread.once("exit", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+    thread.postMessage("shutdown");
+  });
+}
+
 async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -82,8 +114,7 @@ async function shutdown(signal: string) {
     await new Promise<void>((resolve, reject) =>
       server.close((err) => (err ? reject(err) : resolve())),
     );
-    await stopWorkers();
-    await stopDbJobRunner();
+    await stopBackgroundWork();
     console.log("Shutdown complete");
     process.exit(0);
   } catch (err) {
