@@ -1051,7 +1051,7 @@ describe("tabular.routes", () => {
     // between a caller and someone else's thread.
     describe("review-chat writes", () => {
         const CHAT_IN_R1 = {
-            data: { id: "chat-1", review_id: "r1" },
+            data: { id: "chat-1", review_id: "r1", user_id: "u1" },
             error: null,
         };
 
@@ -1135,6 +1135,38 @@ describe("tabular.routes", () => {
 
             expect(res.status).toBe(404);
             expect(res.body.detail).toBe("Chat not found");
+        });
+
+        it("returns 403 for a collaborator who is not the chat's creator", async () => {
+            // The review IS accessible (shared/org collaborator), but the
+            // chat belongs to someone else. Before the owner check lived in
+            // the gate, this returned a success-shaped 204 while the
+            // user_id-scoped write silently matched zero rows.
+            supabaseState.tables.tabular_reviews = {
+                data: { id: "r1", user_id: "other", project_id: null },
+                error: null,
+            };
+            supabaseState.tables.tabular_review_chats = {
+                data: { id: "chat-1", review_id: "r1", user_id: "other" },
+                error: null,
+            };
+
+            const rename = await request(app)
+                .patch("/tabular-review/r1/chats/chat-1")
+                .set(...AUTH)
+                .send({ title: "Renamed" });
+            expect(rename.status).toBe(403);
+            expect(rename.body.detail).toBe(
+                "Only the chat's creator can modify it",
+            );
+
+            const del = await request(app)
+                .delete("/tabular-review/r1/chats/chat-1")
+                .set(...AUTH);
+            expect(del.status).toBe(403);
+            expect(del.body.detail).toBe(
+                "Only the chat's creator can modify it",
+            );
         });
 
         it("returns 204 for the owner once the review and chat line up", async () => {

@@ -1411,11 +1411,21 @@ async function ensureReviewChatWriteAccess(
         return { ok: false, status: 404, detail: "Review not found" };
     const { data: chat } = await db
         .from("tabular_review_chats")
-        .select("id, review_id")
+        .select("id, review_id, user_id")
         .eq("id", chatId)
         .single();
     if (!chat || chat.review_id !== reviewId)
         return { ok: false, status: 404, detail: "Chat not found" };
+    // Review chats are owner-write: collaborators read each other's threads
+    // but cannot rename or delete them. Refusing here, not via the write's
+    // user_id filter alone, keeps a non-owner from getting a success-shaped
+    // 204 for an update that silently matched zero rows.
+    if (chat.user_id !== userId)
+        return {
+            ok: false,
+            status: 403,
+            detail: "Only the chat's creator can modify it",
+        };
     return { ok: true };
 }
 
