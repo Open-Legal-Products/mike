@@ -4,7 +4,12 @@ import { requireAuth, requireMfaIfEnrolled } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
 import { recordAudit } from "../lib/audit";
 import { enqueueDbJob } from "../lib/dbq/enqueue";
-import { EXPORT_TYPES, type ExportType } from "../lib/dbq/handlers";
+import {
+    EXPORT_TYPES,
+    MAX_ZIP_EXPORT_DOCUMENTS,
+    type ExportType,
+} from "../lib/dbq/handlers";
+import { AUDIT_EXPORT_LIMIT, parseQuery } from "../lib/auditExport";
 import type { DbJob } from "../lib/dbq/types";
 import { buildContentDisposition, downloadFile } from "../lib/storage";
 import {
@@ -1375,7 +1380,11 @@ userRouter.get(
 // Artifacts expire after 24 hours (the runner's retention sweep deletes the
 // file and the job row).
 
-// POST /user/exports  { type: "account" | "chats" | "tabular-reviews" }
+// POST /user/exports  { type, params? }
+// `params` carries the inputs of the filtered exports: the History CSV's
+// filters, and the document ids of a bulk zip. They are validated here, at
+// request time, so a bad filter is a 400 instead of a job that fails minutes
+// later with nowhere to report it.
 userRouter.post(
     "/exports",
     requireAuth,
@@ -1383,19 +1392,59 @@ userRouter.post(
     async (req, res) => {
         const userId = res.locals.userId as string;
         const userEmail = res.locals.userEmail as string | undefined;
-        const type = (req.body as { type?: string } | undefined)?.type;
+        const body = (req.body ?? {}) as {
+            type?: string;
+            params?: Record<string, unknown>;
+        };
+        const type = body.type;
         if (!type || !EXPORT_TYPES.includes(type as ExportType))
             return void res.status(400).json({
                 detail: `type must be one of: ${EXPORT_TYPES.join(", ")}`,
             });
+        const params = body.params ?? {};
+
+        const payload: Record<string, unknown> = {
+            userId,
+            userEmail: userEmail ?? null,
+            type,
+        };
+        if (type === "audit-csv") {
+            // Same validation the sync GET /audit/export route applies.
+            const parsed = parseQuery(params, AUDIT_EXPORT_LIMIT);
+            if (!parsed.ok)
+                return void res.status(400).json({ detail: parsed.error });
+            payload.query = parsed.query;
+        } else if (type === "documents-zip") {
+            const ids = params.document_ids;
+            if (
+                !Array.isArray(ids) ||
+                ids.length === 0 ||
+                ids.some((id) => typeof id !== "string" || !id)
+            )
+                return void res.status(400).json({
+                    detail: "params.document_ids must be a non-empty array of document ids",
+                });
+            if (ids.length > MAX_ZIP_EXPORT_DOCUMENTS)
+                return void res.status(400).json({
+                    detail: `params.document_ids is limited to ${MAX_ZIP_EXPORT_DOCUMENTS} documents`,
+                });
+            payload.document_ids = ids;
+        }
+
         const db = createServerSupabase();
         try {
-            // Deduped per (user, type): double clicks and impatient retries
-            // collapse into the already-running build.
+            // Deduped per (user, type) for the whole-account exports: double
+            // clicks and impatient retries collapse into the already-running
+            // build. The filtered exports opt out — two requests differing
+            // only in their filters or selection are different artifacts.
+            const dedupeKey =
+                type === "audit-csv" || type === "documents-zip"
+                    ? undefined
+                    : `export:${userId}:${type}`;
             const out = await enqueueDbJob(db, {
                 kind: "export.build",
-                payload: { userId, userEmail: userEmail ?? null, type },
-                dedupeKey: `export:${userId}:${type}`,
+                payload,
+                dedupeKey,
                 maxAttempts: 3,
             });
             if (!out.id)
@@ -1479,7 +1528,13 @@ userRouter.get(
         const raw = await downloadFile(storagePath);
         if (!raw)
             return void res.status(404).json({ detail: "Export expired" });
-        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        // Artifacts are no longer all JSON (CSV, zip). The builder records the
+        // type it produced; the default covers jobs finished before it did.
+        res.setHeader(
+            "Content-Type",
+            (row.result.content_type as string | undefined) ??
+                "application/json",
+        );
         res.setHeader(
             "Content-Disposition",
             buildContentDisposition("attachment", filename),

@@ -32,9 +32,28 @@ import {
 
 export class McpOAuthRequiredError extends Error {
     code = "oauth_required";
-    constructor(message = "OAuth authorization is required for this MCP server.") {
+    /**
+     * Whether re-running the same refresh could ever succeed. False only when
+     * the authorization server had a transport-level or 5xx/429 hiccup; true
+     * (the default, and every pre-existing throw site) when the grant itself
+     * is dead — invalid_grant, invalid_client, a revoked or absent refresh
+     * token — and nothing short of the user reconnecting will fix it.
+     *
+     * Nothing on the request path reads this: it exists so the background
+     * mcp.refresh_token job can tell "retry me" from "stop retrying", instead
+     * of burning its whole attempt budget replaying a rejected grant.
+     */
+    readonly permanent: boolean;
+    /** The RFC 6749 `error` code from the token endpoint, when it sent one. */
+    readonly oauthErrorCode: string | null;
+    constructor(
+        message = "OAuth authorization is required for this MCP server.",
+        options: { permanent?: boolean; oauthErrorCode?: string | null } = {},
+    ) {
         super(message);
         this.name = "McpOAuthRequiredError";
+        this.permanent = options.permanent ?? true;
+        this.oauthErrorCode = options.oauthErrorCode ?? null;
     }
 }
 
@@ -310,7 +329,36 @@ async function storeOAuthToken(
     if (connectorError) throw connectorError;
 }
 
-async function refreshOAuthAccessToken(row: OAuthTokenRow, db: Db) {
+/**
+ * Pull the RFC 6749 `error` code out of a token-endpoint error response. The
+ * spec puts it in a JSON body ({"error":"invalid_grant"}); anything else is
+ * treated as "no code", and the HTTP status decides on its own.
+ */
+function oauthErrorCodeFrom(body: string): string | null {
+    try {
+        const parsed = JSON.parse(body) as Record<string, unknown>;
+        return typeof parsed.error === "string" ? parsed.error : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Codes that mean the grant is gone for good. `invalid_grant` is the one the
+ * spec reserves for an expired/revoked/rejected refresh token, and the rest
+ * describe a client registration that no longer works — replaying the request
+ * gets the identical rejection every time.
+ */
+const PERMANENT_OAUTH_ERROR_CODES = new Set([
+    "invalid_grant",
+    "invalid_client",
+    "unauthorized_client",
+    "invalid_request",
+    "invalid_scope",
+    "unsupported_grant_type",
+]);
+
+export async function refreshOAuthAccessToken(row: OAuthTokenRow, db: Db) {
     const refreshToken = decryptString(
         row.encrypted_refresh_token,
         row.refresh_token_iv,
@@ -340,7 +388,20 @@ async function refreshOAuthAccessToken(row: OAuthTokenRow, db: Db) {
         body,
     });
     if (!response.ok) {
-        throw new McpOAuthRequiredError("OAuth token refresh failed. Please reconnect.");
+        // Same error class and same user-facing message as before — only the
+        // retryability metadata is new. A 5xx/429 is the authorization server
+        // having a bad minute, so the background refresh job may try again;
+        // any other status (or an explicit invalid_grant-family code) means
+        // the grant is dead and retrying just replays the rejection.
+        const detail = await response.text().catch(() => "");
+        const oauthErrorCode = oauthErrorCodeFrom(detail);
+        const transient =
+            (response.status >= 500 || response.status === 429) &&
+            !(oauthErrorCode && PERMANENT_OAUTH_ERROR_CODES.has(oauthErrorCode));
+        throw new McpOAuthRequiredError(
+            "OAuth token refresh failed. Please reconnect.",
+            { permanent: !transient, oauthErrorCode },
+        );
     }
     const token = (await response.json()) as Record<string, unknown>;
     await storeOAuthToken(

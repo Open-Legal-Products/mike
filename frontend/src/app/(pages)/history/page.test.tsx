@@ -2,15 +2,21 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  exportAuditHistory,
+  downloadUserExport,
   getAuditHistory,
+  getUserExportStatus,
+  startUserExport,
   type AuditEvent,
 } from "@/app/lib/mikeApi";
 import HistoryPage from "./page";
 
+// The CSV now comes from the durable export job, so the page drives the
+// start/poll/download wrappers instead of one blob request.
 vi.mock("@/app/lib/mikeApi", () => ({
   getAuditHistory: vi.fn(),
-  exportAuditHistory: vi.fn(),
+  startUserExport: vi.fn(),
+  getUserExportStatus: vi.fn(),
+  downloadUserExport: vi.fn(),
 }));
 
 const EVENT: AuditEvent = {
@@ -31,7 +37,9 @@ const EVENT: AuditEvent = {
 };
 
 const mockedGetAuditHistory = vi.mocked(getAuditHistory);
-const mockedExportAuditHistory = vi.mocked(exportAuditHistory);
+const mockedStartUserExport = vi.mocked(startUserExport);
+const mockedGetUserExportStatus = vi.mocked(getUserExportStatus);
+const mockedDownloadUserExport = vi.mocked(downloadUserExport);
 
 function expectedDefaultDateRange() {
   const to = new Date();
@@ -67,7 +75,12 @@ describe("HistoryPage", () => {
       page: 1,
       pageSize: 50,
     });
-    mockedExportAuditHistory.mockResolvedValue({
+    mockedStartUserExport.mockResolvedValue({ export_id: "export-1" });
+    mockedGetUserExportStatus.mockResolvedValue({
+      status: "done",
+      filename: "history-export.csv",
+    });
+    mockedDownloadUserExport.mockResolvedValue({
       blob: new Blob(["history"]),
       filename: "history.csv",
     });
@@ -255,15 +268,57 @@ describe("HistoryPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Export history" }));
     await waitFor(() =>
-      expect(mockedExportAuditHistory).toHaveBeenCalledWith(
+      expect(mockedStartUserExport).toHaveBeenCalledWith(
+        "audit-csv",
         expect.objectContaining({
           from: selectedFrom,
           to: selectedTo,
         }),
       ),
     );
+    await waitFor(() =>
+      expect(mockedDownloadUserExport).toHaveBeenCalledWith("export-1"),
+    );
     expect(URL.createObjectURL).toHaveBeenCalled();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:history");
+  });
+
+  it("polls the export job until it finishes before downloading", async () => {
+    const user = userEvent.setup();
+    mockedGetUserExportStatus
+      .mockResolvedValueOnce({ status: "pending" })
+      .mockResolvedValueOnce({
+        status: "done",
+        filename: "history-export.csv",
+      });
+
+    render(<HistoryPage />);
+    await screen.findByText("Alex Lawyer");
+    await user.click(screen.getByRole("button", { name: "Export history" }));
+
+    await waitFor(() =>
+      expect(mockedGetUserExportStatus).toHaveBeenCalledTimes(2),
+    );
+    expect(mockedDownloadUserExport).toHaveBeenCalledWith("export-1");
+  });
+
+  it("alerts and stops when the export job fails", async () => {
+    const user = userEvent.setup();
+    const alerted = vi
+      .spyOn(window, "alert")
+      .mockImplementation(() => undefined);
+    mockedGetUserExportStatus.mockResolvedValue({ status: "failed" });
+
+    render(<HistoryPage />);
+    await screen.findByText("Alex Lawyer");
+    await user.click(screen.getByRole("button", { name: "Export history" }));
+
+    await waitFor(() => expect(alerted).toHaveBeenCalledWith("Export failed."));
+    expect(mockedDownloadUserExport).not.toHaveBeenCalled();
+    // The button returns to its idle state instead of spinning forever.
+    expect(
+      screen.getByRole("button", { name: "Export history" }),
+    ).toBeEnabled();
   });
 
   it("shows the history clock in the empty table placeholder", async () => {

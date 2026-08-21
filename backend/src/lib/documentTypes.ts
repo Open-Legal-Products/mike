@@ -38,6 +38,21 @@ export function shouldConvertToPdf(fileType: string | null | undefined) {
   );
 }
 
+/**
+ * The types whose text can only be read by round-tripping the file through
+ * LibreOffice. Every other allowed type has an in-process reader — docx via
+ * the tracked-changes extractor (mammoth as fallback), pptx via officeText,
+ * spreadsheets via SheetJS, pdf via pdfjs — so .doc and .ppt are the only
+ * ones read_document pays a subprocess conversion for, and therefore the only
+ * ones worth precomputing and caching.
+ */
+export function requiresLibreOfficeTextExtraction(
+  fileType: string | null | undefined,
+) {
+  const normalized = (fileType ?? "").toLowerCase();
+  return normalized === "doc" || normalized === "ppt";
+}
+
 export function contentTypeForDocumentType(fileType: string | null | undefined) {
   switch ((fileType ?? "").toLowerCase()) {
     case "pdf":

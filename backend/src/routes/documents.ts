@@ -6,6 +6,7 @@ import {
   buildContentDisposition,
   downloadFile,
   deleteFile,
+  extractedTextKey,
   getSignedUrl,
   storageKey,
   uploadFile,
@@ -13,7 +14,7 @@ import {
 } from "../lib/storage";
 import { docxToPdf, convertedPdfKey } from "../lib/convert";
 import { enqueueConversion } from "../lib/queue/conversionQueue";
-import { enqueueStorageCleanup } from "../lib/dbq/enqueue";
+import { enqueueDbJob, enqueueStorageCleanup } from "../lib/dbq/enqueue";
 import {
   extractTrackedChangeIds,
   resolveTrackedChange,
@@ -23,6 +24,7 @@ import {
   attachActiveVersionPaths,
   attachLatestVersionNumbers,
   contentSha256,
+  downloadFilenameForVersion,
   loadActiveVersion,
 } from "../lib/documentVersions";
 import { ensureDocAccess } from "../lib/access";
@@ -31,6 +33,7 @@ import {
   ALLOWED_DOCUMENT_TYPES,
   ALLOWED_DOCUMENT_TYPES_LABEL,
   contentTypeForDocumentType,
+  requiresLibreOfficeTextExtraction,
   shouldConvertToPdf,
 } from "../lib/documentTypes";
 
@@ -53,12 +56,17 @@ async function deleteDocumentAndVersionFiles(
   // dies after it, the queued job still removes the files.
   const { data: versions } = await db
     .from("document_versions")
-    .select("storage_path, pdf_storage_path")
+    .select("id, storage_path, pdf_storage_path")
     .eq("document_id", documentId);
   const keys = (versions ?? []).flatMap((v) =>
-    [v.storage_path, v.pdf_storage_path].filter(
-      (p): p is string => typeof p === "string" && p.length > 0,
-    ),
+    // The extracted-text cache is keyed by version id and sits outside the
+    // per-user prefixes, so this is the only place that can reach it.
+    // Deleting an object that was never written is a no-op, hence no gate.
+    [
+      v.storage_path,
+      v.pdf_storage_path,
+      typeof v.id === "string" && v.id ? extractedTextKey(v.id) : null,
+    ].filter((p): p is string => typeof p === "string" && p.length > 0),
   );
   const result = await db.from("documents").delete().eq("id", documentId);
   if (!result.error) await enqueueStorageCleanup(db, keys);
@@ -212,6 +220,8 @@ documentsRouter.get("/:documentId/display", requireAuth, async (req, res) => {
 });
 
 // POST /single-documents/download-zip
+// Synchronous zip, kept for small selections (instant download, no polling).
+// Large selections go through the durable "documents-zip" export job instead.
 documentsRouter.post("/download-zip", requireAuth, async (req, res) => {
   const userId = res.locals.userId as string;
   const userEmail = res.locals.userEmail as string | undefined;
@@ -368,21 +378,6 @@ documentsRouter.get("/:documentId/docx", requireAuth, async (req, res) => {
   );
   res.send(Buffer.from(raw));
 });
-
-// Produce the filename a download should present to the user. Version
-// filenames are expected to include the real extension.
-function downloadFilenameForVersion(
-  filename: string | null | undefined,
-  versionNumber: number | null,
-  edited = false,
-): string {
-  const resolved = filename?.trim() || "Untitled document.docx";
-  if (!edited || !versionNumber || versionNumber < 1) return resolved;
-  const dot = resolved.lastIndexOf(".");
-  const stem = dot > 0 ? resolved.slice(0, dot) : resolved;
-  const ext = dot > 0 ? resolved.slice(dot) : "";
-  return `${stem} [Edited V${versionNumber}]${ext}`;
-}
 
 // GET /single-documents/:documentId/versions
 // Returns every version row for the document in document order, with
@@ -1367,6 +1362,16 @@ async function handleEditResolution(
     .update({ content_sha256: contentSha256(ab), pdf_storage_path: null })
     .eq("id", doc.current_version_id);
 
+  // The extracted-text cache is keyed on the version id and this is one of
+  // only two sites that rewrite a version's bytes in place, so it is one of
+  // only two sites where that key could go stale. Resolution always writes
+  // DOCX, which is not a cached type, so this deletes nothing today — it is
+  // here so the "versions are immutable" assumption the cache rests on stays
+  // true by construction rather than by coincidence.
+  await enqueueStorageCleanup(db, [
+    extractedTextKey(doc.current_version_id as string),
+  ]);
+
   const { error: statusErr } = await db
     .from("document_edits")
     .update({
@@ -1560,6 +1565,29 @@ export async function handleDocumentUpload(
         storagePath: key,
         fileType: suffix,
       });
+    }
+
+    // .doc/.ppt are the only types read_document can read solely by paying
+    // for a LibreOffice conversion. Extract that text once now, in the
+    // background, so the first chat that reads this document does not pay a
+    // subprocess round trip inside its own tool call. Best-effort: a failed
+    // enqueue just means the read path converts inline and re-queues itself.
+    if (requiresLibreOfficeTextExtraction(suffix)) {
+      try {
+        await enqueueDbJob(db, {
+          kind: "document.precompute_text",
+          payload: {
+            versionId: versionRow.id,
+            storagePath: key,
+            fileType: suffix,
+            userId,
+          },
+          dedupeKey: `precompute:${versionRow.id}`,
+          maxAttempts: 3,
+        });
+      } catch (err) {
+        console.error("[upload] precompute-text enqueue failed", err);
+      }
     }
 
     const { data: updated } = await db

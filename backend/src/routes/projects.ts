@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { requireAuth, requireMfaIfEnrolled } from "../middleware/auth";
 import { createServerSupabase } from "../lib/supabase";
 import { recordAudit } from "../lib/audit";
-import { enqueueStorageCleanup } from "../lib/dbq/enqueue";
+import { enqueueDbJob, enqueueStorageCleanup } from "../lib/dbq/enqueue";
 import { enqueueConversion } from "../lib/queue/conversionQueue";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -29,6 +29,7 @@ import {
   ALLOWED_DOCUMENT_TYPES,
   ALLOWED_DOCUMENT_TYPES_LABEL,
   contentTypeForDocumentType,
+  requiresLibreOfficeTextExtraction,
   shouldConvertToPdf,
 } from "../lib/documentTypes";
 import {
@@ -1526,6 +1527,28 @@ export async function handleDocumentUpload(
         storagePath: key,
         fileType: suffix,
       });
+    }
+
+    // Same precompute as the single-document upload path (documents.ts):
+    // .doc/.ppt are the only types read_document can read without an
+    // in-process parser, so their text is extracted once here rather than
+    // inside the first chat tool call. Best-effort — the read path re-queues.
+    if (requiresLibreOfficeTextExtraction(suffix)) {
+      try {
+        await enqueueDbJob(db, {
+          kind: "document.precompute_text",
+          payload: {
+            versionId: versionRow.id as string,
+            storagePath: key,
+            fileType: suffix,
+            userId,
+          },
+          dedupeKey: `precompute:${versionRow.id as string}`,
+          maxAttempts: 3,
+        });
+      } catch (err) {
+        console.error("[upload] precompute-text enqueue failed", err);
+      }
     }
 
     const { data: updated } = await db

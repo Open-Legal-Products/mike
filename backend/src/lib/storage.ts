@@ -237,6 +237,16 @@ export function workflowReferenceKey(
   return `workflow-references/${userId}/${workflowId}/${referenceId}/${contentHash}${storageExtension(filename, ".bin")}`;
 }
 
+/**
+ * Cache slot for a document version's extracted plain text (see the
+ * document.precompute_text job). Keyed by version id alone: versions are
+ * immutable apart from two in-place rewrite sites, both of which invalidate
+ * this key, so the version id fully identifies the bytes the text came from.
+ */
+export function extractedTextKey(versionId: string): string {
+  return `extracted-text/${versionId}.txt`;
+}
+
 function storageExtension(filename: string, fallback: string): string {
   const lastDot = filename.lastIndexOf(".");
   if (lastDot < 0) return fallback;

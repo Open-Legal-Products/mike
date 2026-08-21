@@ -84,6 +84,14 @@ export type ChatTurnAuditBase = {
   model?: string | null;
   status?: AuditStatus;
   flags?: Record<string, unknown>;
+  /**
+   * Explicit surface, overriding the projectId-derived default below. Turns
+   * that come from neither the web assistant nor a project — the Word add-in,
+   * whose chats live in word_chats and carry no chats/projects row — set this
+   * so their rows stay distinguishable in the history feed. Unset everywhere
+   * else, which keeps the derived behavior exactly as it was.
+   */
+  surface?: string | null;
 };
 
 /**
@@ -96,7 +104,7 @@ export function chatTurnAuditEvents(
   base: ChatTurnAuditBase,
   events: unknown[] | null | undefined,
 ): AuditEventInput[] {
-  const surface = base.projectId ? "project" : "assistant";
+  const surface = base.surface ?? (base.projectId ? "project" : "assistant");
   const rows: AuditEventInput[] = [
     {
       userId: base.userId,

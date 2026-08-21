@@ -27,13 +27,55 @@ vi.mock("../../userDataExport", async (importOriginal) => {
     };
 });
 
+const buildAuditCsv = vi.fn(
+    async (..._a: unknown[]) => "created_at,user\n2026-01-01,a@b.test",
+);
+vi.mock("../../auditExport", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("../../auditExport")>();
+    return {
+        ...actual,
+        buildAuditCsv: (...a: unknown[]) => buildAuditCsv(...a),
+    };
+});
+
+const ACTIVE_VERSION = {
+    id: "v1",
+    storage_path: "docs/d1/v1.docx",
+    pdf_storage_path: null,
+    version_number: 2,
+    filename: "brief.docx",
+    source: "assistant_edit",
+    file_type: "docx",
+    size_bytes: 3,
+    page_count: null,
+};
+
+const ensureDocAccess = vi.fn(async (..._a: unknown[]) => ({ ok: true }));
+vi.mock("../../access", () => ({
+    ensureDocAccess: (...a: unknown[]) => ensureDocAccess(...a),
+}));
+
+const loadActiveVersion = vi.fn(
+    async (..._a: unknown[]) => ACTIVE_VERSION as typeof ACTIVE_VERSION | null,
+);
+vi.mock("../../documentVersions", async (importOriginal) => {
+    const actual =
+        await importOriginal<typeof import("../../documentVersions")>();
+    return {
+        ...actual,
+        loadActiveVersion: (...a: unknown[]) => loadActiveVersion(...a),
+    };
+});
+
 const uploadFile = vi.fn(async () => {});
 const deleteFile = vi.fn(async () => {});
 const listFiles = vi.fn(async () => [] as string[]);
+const downloadFile = vi.fn(async (..._a: unknown[]) => new Uint8Array([1, 2, 3]));
 vi.mock("../../storage", () => ({
     uploadFile: (...a: unknown[]) => uploadFile(...a),
     deleteFile: (...a: unknown[]) => deleteFile(...a),
     listFiles: (...a: unknown[]) => listFiles(...a),
+    downloadFile: (...a: unknown[]) => downloadFile(...a),
 }));
 
 import {
@@ -41,6 +83,7 @@ import {
     handleAccountDelete,
     handleStorageCleanup,
     handleExportBuild,
+    MAX_ZIP_EXPORT_DOCUMENTS,
 } from "../handlers";
 import type { DbJob } from "../types";
 
@@ -84,6 +127,10 @@ function makeDb(selectData: unknown[] = []) {
                 state.filters[`neq:${c}`] = v;
                 return b;
             },
+            in(c: string, v: unknown) {
+                state.filters[`in:${c}`] = v;
+                return b;
+            },
             filter(c: string, _op: string, v: unknown) {
                 state.filters[c] = v;
                 return b;
@@ -109,6 +156,12 @@ beforeEach(() => {
     uploadFile.mockReset().mockResolvedValue(undefined);
     deleteFile.mockReset().mockResolvedValue(undefined);
     listFiles.mockReset().mockResolvedValue([]);
+    downloadFile.mockReset().mockResolvedValue(new Uint8Array([1, 2, 3]));
+    buildAuditCsv
+        .mockReset()
+        .mockResolvedValue("created_at,user\n2026-01-01,a@b.test");
+    ensureDocAccess.mockReset().mockResolvedValue({ ok: true });
+    loadActiveVersion.mockReset().mockResolvedValue(ACTIVE_VERSION);
 });
 
 describe("handleChatTurnAudit", () => {
@@ -229,5 +282,103 @@ describe("handleExportBuild", () => {
                 JOB("export.build", { userId: "u1", type: "everything" }),
             ),
         ).rejects.toThrow(/malformed payload/);
+    });
+
+    it("builds the history CSV from the job's stored filters", async () => {
+        const query = { sortBy: "created_at", sortDirection: "desc", page: 3, limit: 2000 };
+        const out = await handleExportBuild(
+            makeDb() as never,
+            JOB("export.build", {
+                userId: "u1",
+                userEmail: "u@x.test",
+                type: "audit-csv",
+                query,
+            }),
+        );
+        expect(buildAuditCsv).toHaveBeenCalledWith(
+            expect.anything(),
+            "u1",
+            "u@x.test",
+            query,
+        );
+        const [path, , contentType] = uploadFile.mock.calls[0];
+        expect(path).toBe("exports/u1/job-1-history-export.csv");
+        expect(contentType).toMatch(/^text\/csv/);
+        expect(out.filename).toBe("history-export.csv");
+        expect(out.content_type).toMatch(/^text\/csv/);
+        // The sync /audit/export route records no audit row; nor does this.
+        expect(recordAudit).not.toHaveBeenCalled();
+    });
+
+    it("rejects an audit-csv job with no validated query", async () => {
+        await expect(
+            handleExportBuild(
+                makeDb() as never,
+                JOB("export.build", { userId: "u1", type: "audit-csv" }),
+            ),
+        ).rejects.toThrow(/malformed payload/);
+    });
+
+    it("re-verifies access at build time and skips docs the user lost", async () => {
+        const db = makeDb([
+            { id: "d1", user_id: "u1", project_id: null },
+            { id: "d2", user_id: "someone-else", project_id: "p1" },
+        ]);
+        ensureDocAccess.mockImplementation(
+            async (doc: unknown) =>
+                ({ ok: (doc as { id: string }).id === "d1" }) as { ok: boolean },
+        );
+
+        const out = await handleExportBuild(
+            db as never,
+            JOB("export.build", {
+                userId: "u1",
+                userEmail: "u@x.test",
+                type: "documents-zip",
+                document_ids: ["d1", "d2"],
+            }),
+        );
+
+        expect(ensureDocAccess).toHaveBeenCalledTimes(2);
+        expect(loadActiveVersion.mock.calls.map((c) => c[0])).toEqual(["d1"]);
+        const [path, , contentType] = uploadFile.mock.calls[0];
+        expect(path).toBe("exports/u1/job-1-documents.zip");
+        expect(contentType).toBe("application/zip");
+        expect(out.filename).toBe("documents.zip");
+        expect(out.content_type).toBe("application/zip");
+    });
+
+    it("fails a documents-zip job whose documents are all inaccessible", async () => {
+        ensureDocAccess.mockResolvedValue({ ok: false });
+        await expect(
+            handleExportBuild(
+                makeDb([{ id: "d1", user_id: "u2", project_id: null }]) as never,
+                JOB("export.build", {
+                    userId: "u1",
+                    type: "documents-zip",
+                    document_ids: ["d1"],
+                }),
+            ),
+        ).rejects.toThrow(/no accessible documents/);
+    });
+
+    it("rejects empty and oversized documents-zip selections", async () => {
+        for (const document_ids of [
+            [],
+            Array.from({ length: MAX_ZIP_EXPORT_DOCUMENTS + 1 }, (_, i) => `d${i}`),
+            ["d1", 42],
+        ]) {
+            await expect(
+                handleExportBuild(
+                    makeDb() as never,
+                    JOB("export.build", {
+                        userId: "u1",
+                        type: "documents-zip",
+                        document_ids,
+                    }),
+                ),
+            ).rejects.toThrow(/malformed payload/);
+        }
+        expect(uploadFile).not.toHaveBeenCalled();
     });
 });

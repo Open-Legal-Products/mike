@@ -1,10 +1,12 @@
 import {
   downloadFile,
+  extractedTextKey,
   generatedDocKey,
   uploadFile,
 } from "../../storage";
 import { convertedPdfKey, docxToPdf } from "../../convert";
 import { enqueueConversion } from "../../queue/conversionQueue";
+import { enqueueDbJob, enqueueStorageCleanup } from "../../dbq/enqueue";
 import { createServerSupabase } from "../../supabase";
 import {
   applyTrackedEdits,
@@ -28,6 +30,7 @@ import {
   isPresentationDocumentType,
   isSpreadsheetDocumentType,
   isWordDocumentType,
+  requiresLibreOfficeTextExtraction,
   shouldConvertToPdf,
 } from "../../documentTypes";
 import { extractPresentationText } from "../../officeText";
@@ -87,6 +90,24 @@ export async function extractPdfText(buf: ArrayBuffer): Promise<string> {
   } catch {
     return "";
   }
+}
+
+/**
+ * The text read_document derives for the legacy Office types (.doc/.ppt):
+ * LibreOffice → PDF → pdfjs. Exported so the document.precompute_text job
+ * produces byte-identical text to the inline read path — a cache that can
+ * drift from what it caches is worse than no cache.
+ */
+export async function extractLegacyOfficeText(
+  raw: ArrayBuffer,
+): Promise<string> {
+  const pdfBuf = await docxToPdf(Buffer.from(raw));
+  return extractPdfText(
+    pdfBuf.buffer.slice(
+      pdfBuf.byteOffset,
+      pdfBuf.byteOffset + pdfBuf.byteLength,
+    ) as ArrayBuffer,
+  );
 }
 
 export async function generateDocx(
@@ -1247,6 +1268,11 @@ export async function runEditDocument(params: {
         pdf_storage_path: null,
       })
       .eq("id", versionRowId);
+    // Same invariant for the extracted-text cache. In practice this rewrite
+    // always produces DOCX, which is not a cached type, so this is a
+    // no-op-shaped safety net rather than a live invalidation — but it is the
+    // one place a cached key could ever go stale, so it must not be missing.
+    await enqueueStorageCleanup(db, [extractedTextKey(versionRowId)]);
   } else {
     const versionId = crypto.randomUUID().replace(/-/g, "");
     newPath = `documents/${userId}/${documentId}/edits/${versionId}.docx`;
@@ -1620,19 +1646,42 @@ export async function readDocumentContent(
       isPresentationDocumentType(fileType) ||
       isWordDocumentType(fileType)
     ) {
-      devLog(
-        `[read_document] legacy Office file_type="${fileType}" for filename="${docInfo.filename}", converting to pdf for text extraction`,
-      );
-      const pdfBuf = await docxToPdf(Buffer.from(raw));
-      text = await extractPdfText(
-        pdfBuf.buffer.slice(
-          pdfBuf.byteOffset,
-          pdfBuf.byteOffset + pdfBuf.byteLength,
-        ) as ArrayBuffer,
-      );
-      devLog(
-        `[read_document] legacy Office PDF extraction length=${text.length} for filename="${docInfo.filename}"`,
-      );
+      // This branch is the only one that shells out to LibreOffice — every
+      // other type has an in-process reader above — so it is the only one
+      // worth caching. The cached object is written by the
+      // document.precompute_text job, keyed on the immutable version id.
+      const cacheKey =
+        versionId && requiresLibreOfficeTextExtraction(fileType)
+          ? extractedTextKey(versionId)
+          : null;
+      const cached = cacheKey ? await downloadFile(cacheKey) : null;
+      if (cached) {
+        text = Buffer.from(cached).toString("utf8");
+        devLog(
+          `[read_document] legacy Office text served from cache key="${cacheKey}" length=${text.length} for filename="${docInfo.filename}"`,
+        );
+      } else {
+        devLog(
+          `[read_document] legacy Office file_type="${fileType}" for filename="${docInfo.filename}", converting to pdf for text extraction`,
+        );
+        text = await extractLegacyOfficeText(raw);
+        devLog(
+          `[read_document] legacy Office PDF extraction length=${text.length} for filename="${docInfo.filename}"`,
+        );
+        // Warm the cache for the next read of this version. Fire-and-forget
+        // and deduped: several tool calls in one turn queue one job, and a
+        // failure here must never affect the text we just produced.
+        if (cacheKey && db) {
+          void enqueueDbJob(db, {
+            kind: "document.precompute_text",
+            payload: { versionId, storagePath: sourcePath, fileType },
+            dedupeKey: `precompute:${versionId}`,
+            maxAttempts: 3,
+          }).catch((err) =>
+            devLog(`[read_document] precompute enqueue failed`, err),
+          );
+        }
+      }
     } else {
       devLog(
         `[read_document] unknown file_type="${docInfo.file_type}" for filename="${docInfo.filename}", trying mammoth`,

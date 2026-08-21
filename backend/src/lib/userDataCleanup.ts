@@ -1,5 +1,5 @@
 import { createServerSupabase } from "./supabase";
-import { deleteFile, listFiles } from "./storage";
+import { deleteFile, extractedTextKey, listFiles } from "./storage";
 import { enqueueStorageCleanup } from "./dbq/enqueue";
 
 type Db = ReturnType<typeof createServerSupabase>;
@@ -86,11 +86,18 @@ async function collectDocumentVersionPaths(
     for (const batch of chunks(documentIds)) {
         const { data, error } = await db
             .from("document_versions")
-            .select("storage_path, pdf_storage_path")
+            .select("id, storage_path, pdf_storage_path")
             .in("document_id", batch);
         await throwIfError(error, "Failed to load document storage paths");
 
         for (const version of data ?? []) {
+            // The extracted-text cache is keyed by version id and lives
+            // outside the per-user storage prefixes, so nothing else would
+            // ever enumerate it. Deleting an object that was never written is
+            // a no-op, so this is unconditional rather than type-gated.
+            if (typeof version.id === "string" && version.id.length > 0) {
+                paths.add(extractedTextKey(version.id));
+            }
             if (
                 typeof version.storage_path === "string" &&
                 version.storage_path.length > 0

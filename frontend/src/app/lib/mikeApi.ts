@@ -372,20 +372,32 @@ export async function exportTabularReviewsData(): Promise<{
 // neither time out the request nor die with a closed tab, and a re-click
 // while one is building dedupes onto the running job.
 
-export type UserExportType = "account" | "chats" | "tabular-reviews";
+export type UserExportType =
+    | "account"
+    | "chats"
+    | "tabular-reviews"
+    | "audit-csv"
+    | "documents-zip";
 
 export type UserExportStatus =
     | { status: "pending" }
     | { status: "failed" }
     | { status: "done"; filename: string | null };
 
+/**
+ * `params` carries the inputs of the filtered exports — the History CSV's
+ * filter values (wire names: q/action/status/surface/from/to/sort_by/sort_dir)
+ * and documents-zip's `document_ids`. The backend re-validates them and 400s
+ * on anything it would have rejected on the synchronous route.
+ */
 export async function startUserExport(
     type: UserExportType,
+    params?: Record<string, unknown>,
 ): Promise<{ export_id: string }> {
     return apiRequest<{ export_id: string }>("/user/exports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type }),
+        body: JSON.stringify(params ? { type, params } : { type }),
     });
 }
 
