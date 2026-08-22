@@ -218,6 +218,7 @@ function profileRow(overrides: Record<string, unknown> = {}) {
         mfa_on_login: false,
         legal_research_us: true,
         quick_actions_visible: true,
+        dark_mode: false,
         ...overrides,
     };
 }
@@ -412,6 +413,34 @@ describe("user.routes", () => {
 
             expect(res.status).toBe(500);
             expect(res.body.detail).toBe("Something went wrong. Please try again.");
+        });
+    });
+
+    // ── PATCH /user/profile (appearance preference) ───────────────────────
+    describe("PATCH /user/profile appearance", () => {
+        it("persists and returns the dark mode preference", async () => {
+            supabaseState.tables.user_profiles = {
+                data: profileRow({ dark_mode: true }),
+                error: null,
+            };
+
+            const res = await request(app)
+                .patch("/user/profile")
+                .set(...AUTH)
+                .send({ darkMode: true });
+
+            expect(res.status).toBe(200);
+            expect(res.body.darkMode).toBe(true);
+        });
+
+        it("rejects a non-boolean darkMode", async () => {
+            const res = await request(app)
+                .patch("/user/profile")
+                .set(...AUTH)
+                .send({ darkMode: "yes" });
+
+            expect(res.status).toBe(400);
+            expect(res.body.detail).toMatch(/darkMode must be a boolean/);
         });
     });
 

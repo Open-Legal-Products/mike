@@ -49,6 +49,7 @@ create table if not exists public.user_profiles (
   mfa_on_login boolean not null default false,
   legal_research_us boolean not null default true,
   quick_actions_visible boolean not null default true,
+  dark_mode boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

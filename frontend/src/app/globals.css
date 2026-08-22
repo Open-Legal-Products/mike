@@ -108,6 +108,12 @@
 }
 
 .dark {
+    color-scheme: dark;
+    --app-background: #0b0f14;
+    --app-surface: #131922;
+    --app-surface-hover: #19212c;
+    --app-surface-active: #222c38;
+    --app-floating: #171e28;
     --background: oklch(0.145 0 0);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.205 0 0);
@@ -140,6 +146,125 @@
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
 }
+
+/* Most of Mike predates semantic color tokens and uses Tailwind's neutral
+   palette directly. These mappings make those existing surfaces participate
+   in the user-selected dark theme without requiring page-by-page forks. */
+.dark .white-liquid-glass {
+    border-color: rgba(148, 163, 184, 0.18);
+    background: rgba(19, 25, 34, 0.82);
+    box-shadow:
+        0 -1px 6px rgba(0, 0, 0, 0.18),
+        0 4px 12px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.dark .bg-white,
+.dark .bg-white\/86,
+.dark .bg-white\/80,
+.dark .bg-white\/78,
+.dark .bg-white\/75,
+.dark .bg-white\/72,
+.dark .bg-white\/70,
+.dark .bg-white\/65,
+.dark .bg-white\/60,
+.dark .bg-white\/58,
+.dark .bg-white\/55,
+.dark .bg-white\/50,
+.dark .bg-white\/45,
+.dark .bg-white\/38,
+.dark .bg-white\/35,
+.dark .bg-white\/30,
+.dark .bg-white\/25,
+.dark .bg-white\/20,
+.dark .bg-white\/10 {
+    background-color: rgba(19, 25, 34, 0.9);
+}
+
+.dark .bg-gray-50,
+.dark .bg-gray-50\/95,
+.dark .bg-gray-50\/80 {
+    background-color: #0f141c;
+}
+.dark .bg-gray-100,
+.dark .bg-gray-100\/70 { background-color: #19212c; }
+.dark .bg-gray-200,
+.dark .bg-gray-200\/80,
+.dark .bg-gray-200\/70 { background-color: #253142; }
+.dark .bg-gray-300 { background-color: #364152; }
+.dark .bg-gray-400 { background-color: #4b5563; }
+
+.dark .text-black,
+.dark .text-gray-950,
+.dark .text-gray-900 { color: #f3f4f6; }
+.dark .text-gray-800 { color: #e5e7eb; }
+.dark .text-gray-700 { color: #d1d5db; }
+.dark .text-gray-600 { color: #b6c0cf; }
+.dark .text-gray-500 { color: #9ca3af; }
+.dark .text-gray-400 { color: #7f8a99; }
+.dark .text-gray-300 { color: #6b7280; }
+.dark .text-gray-200 { color: #4b5563; }
+
+.dark .border-gray-50,
+.dark .border-gray-100,
+.dark .divide-gray-100 > :not(:last-child) { border-color: #202936; }
+.dark .border-gray-200,
+.dark .divide-gray-200 > :not(:last-child) { border-color: #2b3645; }
+.dark .border-gray-300,
+.dark .divide-gray-300 > :not(:last-child) { border-color: #3a4657; }
+.dark .border-gray-400 { border-color: #4b5563; }
+.dark .border-white,
+.dark .border-white\/90,
+.dark .border-white\/80,
+.dark .border-white\/70,
+.dark .border-white\/65,
+.dark .border-white\/60,
+.dark .border-white\/40,
+.dark .border-white\/30,
+.dark .border-white\/20 { border-color: rgba(148, 163, 184, 0.2); }
+.dark .ring-white\/70 { --tw-ring-color: rgba(148, 163, 184, 0.2); }
+
+.dark .hover\:bg-white:hover,
+.dark .hover\:bg-gray-50:hover { background-color: #19212c; }
+.dark .hover\:bg-gray-100:hover { background-color: #222c38; }
+.dark .hover\:bg-gray-200:hover { background-color: #2b3747; }
+.dark .hover\:text-gray-950:hover,
+.dark .hover\:text-gray-900:hover { color: #ffffff; }
+.dark .hover\:text-gray-700:hover { color: #e5e7eb; }
+.dark .focus\:bg-gray-50:focus,
+.dark .focus\:bg-gray-100:focus { background-color: #222c38; }
+
+.dark input,
+.dark textarea,
+.dark select {
+    color-scheme: dark;
+}
+.dark input::placeholder,
+.dark textarea::placeholder { color: #6b7280; }
+.dark [role="switch"] .bg-white { background-color: #f3f4f6; }
+
+.dark .bg-red-50,
+.dark .bg-red-100 { background-color: rgba(127, 29, 29, 0.28); }
+.dark .border-red-200 { border-color: rgba(248, 113, 113, 0.35); }
+.dark .text-red-600,
+.dark .text-red-700 { color: #fca5a5; }
+.dark .bg-amber-50,
+.dark .bg-amber-100 { background-color: rgba(120, 53, 15, 0.3); }
+.dark .border-amber-200 { border-color: rgba(251, 191, 36, 0.35); }
+.dark .text-amber-700,
+.dark .text-amber-800,
+.dark .text-amber-900 { color: #fcd34d; }
+.dark .bg-green-50,
+.dark .bg-green-100,
+.dark .bg-emerald-50 { background-color: rgba(6, 78, 59, 0.32); }
+.dark .border-green-200,
+.dark .border-emerald-200 { border-color: rgba(52, 211, 153, 0.32); }
+.dark .text-green-700,
+.dark .text-green-800,
+.dark .text-emerald-700 { color: #6ee7b7; }
+.dark .bg-blue-50,
+.dark .bg-blue-100 { background-color: rgba(3, 73, 130, 0.3); }
+.dark .border-blue-200 { border-color: rgba(56, 189, 248, 0.3); }
 
 @layer base {
     * {
