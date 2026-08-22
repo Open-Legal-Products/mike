@@ -126,6 +126,11 @@ chatRouter.post("/create", requireAuth, async (req, res) => {
         return void res.status(400).json({ detail: parsedProjectId.detail });
     }
     const projectId = parsedProjectId.value.projectId;
+    const externalRef =
+        typeof req.body?.external_ref === "string" &&
+        req.body.external_ref.trim().length > 0
+            ? req.body.external_ref.trim().slice(0, 200)
+            : null;
     const db = createServerSupabase();
     const projectAccess = await validateAccessibleProjectId(
         projectId,
@@ -138,9 +143,25 @@ chatRouter.post("/create", requireAuth, async (req, res) => {
             .status(projectAccess.status)
             .json({ detail: projectAccess.detail });
 
+    if (externalRef) {
+        const { data: existing, error: lookupError } = await db
+            .from("chats")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("external_ref", externalRef)
+            .maybeSingle();
+        if (lookupError)
+            return void res.status(500).json({ detail: lookupError.message });
+        if (existing) return void res.json({ id: existing.id });
+    }
+
     const { data, error } = await db
         .from("chats")
-        .insert({ user_id: userId, project_id: projectId ?? null })
+        .insert({
+            user_id: userId,
+            project_id: projectId ?? null,
+            external_ref: externalRef,
+        })
         .select("id")
         .single();
 
